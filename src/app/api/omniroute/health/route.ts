@@ -34,6 +34,14 @@ async function handleCheck() {
   // continha a palavra "omniroute" — em máquina local (fora da rede do compose) esse
   // hostname não resolve (ENOTFOUND) e o health check gastava tempo/falava mesmo com
   // gateway local vivo. Agora só testamos: URL do ambiente > URL salva no SQLite > localhost.
+  //
+  // FIX (bug "não instalado na minha máquina"): quando o app roda FORA do Docker mas o
+  // .env contém OMNIROUTE_URL=http://omniroute:20128/v1 (hostname interno da rede do
+  // compose), essa URL nunca resolve no host. Antes ela era testada PRIMEIRO e o
+  // candidato localhost vinha por último — com timeout estourado, o card mostrava
+  // "não instalado" mesmo com o gateway saudável respondendo em localhost:20128.
+  // Agora candidatos com hostname fora da allowlist local são rebaixados para o fim
+  // da fila, e localhost SEMPRE é testado como fallback de proximidade.
   const envUrl = (process.env.OMNIROUTE_URL || "").trim();
   let dbUrl = "";
   try {
@@ -42,9 +50,25 @@ async function handleCheck() {
   } catch {
     /* banco indisponível; segue com env/localhost */
   }
-  const candidateUrls = Array.from(
-    new Set([envUrl, dbUrl, "http://localhost:20128/v1"].filter(Boolean))
-  );
+
+  const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1", "host.docker.internal"];
+  const isLocalish = (u: string): boolean => {
+    try {
+      const h = new URL(u).hostname.toLowerCase();
+      return LOCAL_HOSTS.includes(h) || h === "omniroute" || h === "nextcode-omniroute";
+    } catch {
+      return false;
+    }
+  };
+
+  const ordered = [envUrl, dbUrl, "http://localhost:20128/v1"]
+    .filter(Boolean)
+    .filter((u, i, arr) => arr.indexOf(u) === i);
+  // Prioriza candidatos locais/resolvidos-por-compose; empurra URLs exóticas p/ o fim.
+  const candidateUrls = [
+    ...ordered.filter(isLocalish),
+    ...ordered.filter((u) => !isLocalish(u)),
+  ];
 
   const startTime = Date.now();
   let isConnected = false;

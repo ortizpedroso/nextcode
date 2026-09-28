@@ -76,25 +76,38 @@ export function assertSafeUrl(rawUrl: string): URL {
   let url: URL;
   try {
     url = new URL(rawUrl);
-  } catch {
+  } catch (err: any) {
+    // FIX: "http://" (authority vazia) também é rejeitado pelo parser WHATWG.
+    // Distinguimos do lixo genérico para lançar a mensagem específica esperada
+    // pelos testes de regressão da Fase 7 e por diagnósticos claros na UI.
+    if (/^https?:\/\/[/?#]?$/.test(rawUrl.trim())) throw new SsrfError("hostname ausente");
     throw new SsrfError("URL inválida");
   }
+  // Alguns runtimes aceitam authority vazia: validamos explicitamente quando há
+  // "//" no início mas hostname vazio (file://x tem hostname, não cai aqui).
+  if (!url.hostname && /^https?:\/\//i.test(rawUrl.trim())) throw new SsrfError("hostname ausente");
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new SsrfError(`protocolo '${url.protocol}' não permitido (apenas http/https)`);
   }
-  const host = url.hostname.toLowerCase();
+  // FIX: normaliza IPv6 entre colchetes ANTES de checar vazio — `new URL("http://")`
+  // retorna hostname "" em alguns runtimes e o erro esperado ("hostname ausente")
+  // nunca era lançado, derrubando o teste de regressão da Fase 7.
+  const host = url.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
   if (!host) throw new SsrfError("hostname ausente");
 
   const literalIp = net.isIP(host) ? host : null;
   if (literalIp) {
+    // IPs literais SEMPRE passam pela checagem de rede privada/reservada,
+    // mesmo que apareçam em SSRF_ALLOWED_HOSTS — a allowlist só cobre hostnames.
     if (ipIsPrivateOrReserved(literalIp)) {
       throw new SsrfError(`IP privado/reservado ${host} bloqueado`);
     }
     return url;
   }
 
-  // Hostnames permitidos explicitamente (gateway local é o caso de uso legítimo)
-  if (allowedHosts().has(host)) return url;
+  // Hostnames da allowlist padrão embutida: gateway local é o caso de uso legítimo
+  // e dispensa validação pós-DNS (resolvem para loopback por design).
+  if (DEFAULT_ALLOWED_HOSTS.has(host)) return url;
 
   // Qualquer outro host: validação pós-DNS acontece em safeFetch
   return url;
@@ -103,7 +116,9 @@ export function assertSafeUrl(rawUrl: string): URL {
 /** Resolve DNS e valida o IP efetivo — mitiga DNS rebinding. */
 async function validateResolvedAddress(url: URL): Promise<void> {
   if (net.isIP(url.hostname)) return; // já validado em assertSafeUrl
-  if (allowedHosts().has(url.hostname.toLowerCase())) return; // alvo local intencional
+  if (DEFAULT_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) return; // alvo local intencional
+  // Hostnames extras via SSRF_ALLOWED_HOSTS NÃO pulam a checagem pós-DNS: eles são
+  // aprovados estaticamente, mas se resolverem para rede privada ainda são bloqueados.
   try {
     const { address } = await lookup(url.hostname, { all: false });
     if (ipIsPrivateOrReserved(address)) {

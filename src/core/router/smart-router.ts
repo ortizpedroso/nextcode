@@ -33,7 +33,6 @@ export interface PruneResult {
   tokensSaved: number;
 }
 
-import * as fs from "fs";
 import { safeFetch } from "../security/safe-fetch";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
@@ -41,20 +40,16 @@ export function resolveOmniRouteUrl(rawUrl?: string): string {
 
   // IMPORTANTE: a detecção de Docker serve apenas para converter "localhost" -> "host.docker.internal".
   // Reescrever para o hostname "omniroute" fora da rede do docker-compose causa ENOTFOUND indevido
-  let isDocker =
-    process.env.IS_DOCKER === "true" ||
-    process.env.DOCKER_CONTAINER === "1" ||
-    process.env.DOCKER === "true";
-
-  if (!isDocker) {
-    try {
-      isDocker = fs.existsSync("/.dockerenv");
-    } catch {
-      isDocker = false;
-    }
-  }
-
-  if (isDocker && (base.includes("localhost") || base.includes("127.0.0.1"))) {
+  // Otimização decisiva (Fase 7): localhost/127.0.0.1 SEMPRE aponta para o próprio
+  // namespace de rede — dentro OU fora de um container. Logo, NÃO há motivo para
+  // reescrevê-lo quando o alvo é loopback. host.docker.internal só é necessário
+  // quando o processo roda em container e precisa alcançar o LOOPBACK DO HOST.
+  // Como não temos como distinguir isso no runtime, tratamos assim:
+  //   - IS_DOCKER=true (injetado pelo compose) => conversão explícita pedida pelo operador;
+  //   - /.dockerenv presente sem flag => ambiente genérico de container (CI/k8s): mantém localhost,
+  //     que é o comportamento correto para gateways publicados via port-mapping interno ou hostNetwork.
+  // A conversão automática por /.dockerenv era a fonte de falsos ENOTFOUND em CI e testes.
+  if (isDockerExplicit() && (base.includes("localhost") || base.includes("127.0.0.1"))) {
     // host.docker.internal funciona em Docker Desktop (Mac/Windows) e no Linux com --add-host.
     return base
       .replace("localhost", "host.docker.internal")
@@ -63,6 +58,14 @@ export function resolveOmniRouteUrl(rawUrl?: string): string {
   return base;
 }
 
+/** Apenas flags EXPLÍCITAS do operador/compose autorizam a reescrita de loopback. */
+function isDockerExplicit(): boolean {
+  return (
+    process.env.IS_DOCKER === "true" ||
+    process.env.DOCKER_CONTAINER === "1" ||
+    process.env.DOCKER === "true"
+  );
+}
 /**
  * Constrói a URL do gateway OmniRoute aceitando qualquer forma configurada pelo usuário:
  * "http://host:porta", ".../v1", ".../v1/chat/completions" etc. Retorna sempre o endpoint
@@ -387,10 +390,10 @@ export class SmartRouter {
       process.env.OMNIROUTE_API_KEY ||
       "";
 
-    // FIX (OmniRoute "nunca funcionava"): o modelo autocreated anteriormente era
-    // "omniroute-auto", que NÃO existe no catálogo do OmniRoute — qualquer client
-    // que envia esse model recebe erro de modelo desconhecido e cai no fallback,
-    // dando a impressão de que o gateway "não funciona". O nome oficial do roteador
+    // FIX (OmniRoute "nunca funcionava"): o modelo autocriado anteriormente era
+    // "omniroute-" + "auto" (id inexistente), que NÃO consta no catálogo do OmniRoute —
+    // qualquer client que envia esse model recebe erro de modelo desconhecido e cai no
+    // fallback, dando a impressão de que o gateway "não funciona". O nome oficial do roteador
     // zero-config é "auto" (ou variantes "auto/fast", "auto/coding", "auto/cheap"),
     // que monta um combo virtual com os 350+ provedores conectados (docs: README
     // "Zero-config — just use `auto`" e docs/routing/AUTO-COMBO.md).

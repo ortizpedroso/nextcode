@@ -105,21 +105,47 @@ export async function POST(req: NextRequest) {
     const settingRow = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
     const envUrl = (process.env.OMNIROUTE_URL || "").trim();
     const dbUrl = (settingRow?.omniRouteUrl || settingRow?.customEndpoint || "").trim();
-    const effectiveEndpoint = envUrl || dbUrl || DEFAULT_OMNI_ENDPOINT;
-    const probeBase = effectiveEndpoint;
-    const probedRoot = resolveOmniRouteUrl(probeBase).replace(/\/+$/, "").replace(/\/v1$/i, "");
+
+    // FIX (bug "não instalado na minha máquina"): antes o setup sondava APENAS a
+    // primeira URL (env > db > default). Com OMNIROUTE_URL=http://omniroute:20128/v1
+    // no .env rodando `npm run dev` no host, o hostname "omniroute" não resolve e o
+    // probe falhava mesmo com o gateway saudável em localhost:20128 — o card ficava
+    // cinza/"não instalado". Agora sondamos TODOS os candidatos (env, db, default),
+    // priorizando os locais, e promovemos a rota primária com a URL que REALMENTE
+    // respondeu — essa é também a URL persistida, eliminando inconsistências.
+    const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1", "host.docker.internal"];
+    const isLocalish = (u: string): boolean => {
+      try {
+        const h = new URL(u).hostname.toLowerCase();
+        return LOCAL_HOSTS.includes(h) || h === "omniroute" || h === "nextcode-omniroute";
+      } catch {
+        return false;
+      }
+    };
+    const candidatesRaw = [envUrl, dbUrl, DEFAULT_OMNI_ENDPOINT].filter(Boolean);
+    const deduped = candidatesRaw.filter((u, i, arr) => arr.indexOf(u) === i);
+    const candidateUrls = [
+      ...deduped.filter(isLocalish),
+      ...deduped.filter((u) => !isLocalish(u)),
+    ];
 
     let gatewayAlive = false;
-    for (const target of [`${probedRoot}/v1/models`, `${probedRoot}/api/health`]) {
-      try {
-        const probe = await safeFetch(target, { timeoutMs: 2500 });
-        if (probe.ok || probe.status === 401) {
-          gatewayAlive = true;
-          break;
+    let effectiveEndpoint = envUrl || dbUrl || DEFAULT_OMNI_ENDPOINT;
+    for (const baseUrl of candidateUrls) {
+      const probedRoot = resolveOmniRouteUrl(baseUrl).replace(/\/+$/, "").replace(/\/v1$/i, "");
+      for (const target of [`${probedRoot}/v1/models`, `${probedRoot}/api/health`]) {
+        try {
+          const probe = await safeFetch(target, { timeoutMs: 2500 });
+          if (probe.ok || probe.status === 401) {
+            gatewayAlive = true;
+            effectiveEndpoint = baseUrl;
+            break;
+          }
+        } catch {
+          // gateway não responde nesse alvo; tenta o próximo
         }
-      } catch {
-        // gateway não responde nesse alvo; tenta o próximo
       }
+      if (gatewayAlive) break;
     }
 
     // 1. Gera arquivo de configuração local padrão caso não exista
