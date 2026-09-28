@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ==========================================
 # NextCode - Arquivo .gitignore Oficial
 # ==========================================
@@ -177,3 +178,35 @@ ehthumbs.db
 *.njsproj
 *.sln
 *.sw?
+=======
+# dependencies
+/node_modules
+/.pnpm-store
+
+# next.js build output
+/.next/
+/out/
+
+# production & environment
+build
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# sqlite & local databases
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/data/
+
+# scratch scripts & logs
+/scratch/
+*.log
+
+# OS & IDE files
+.DS_Store
+*.pem
+.vscode/
+.idea/
+>>>>>>> 5e6ed0f (feat: NextCode Engine - Integração OmniRoute, SmartRouter Fallback e otimizações de performance SSE)

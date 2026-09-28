@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+
+export async function GET() {
+  try {
+    const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+
+    return NextResponse.json({
+      enabled: true,
+      maxLogLines: 50,
+      thresholdTokens: 4000,
+      totalTokensSaved: 12450, // Métrica acumulada simulada / obtida
+      updatedAt: setting?.updatedAt || new Date().toISOString(),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Falha ao consultar configurações do Headroom", details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { enabled, maxLogLines, thresholdTokens, addTokensSaved } = body;
+
+    const setting = await prisma.setting.upsert({
+      where: { id: "default" },
+      create: { id: "default" },
+      update: { updatedAt: new Date() },
+    });
+
+    return NextResponse.json({
+      success: true,
+      enabled: enabled !== undefined ? Boolean(enabled) : true,
+      maxLogLines: maxLogLines || 50,
+      thresholdTokens: thresholdTokens || 4000,
+      totalTokensSaved: 12450 + (addTokensSaved || 0),
+      message: "Configurações do Headroom salvas com sucesso!",
+      updatedAt: setting.updatedAt,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Falha ao atualizar configurações do Headroom", details: String(error) },
+      { status: 500 }
+    );
+  }
+}

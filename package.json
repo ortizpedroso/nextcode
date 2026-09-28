@@ -1,0 +1,37 @@
+{
+  "name": "nextcode",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx tsx scripts/dev-server.ts",
+    "start": "node scripts/start-dynamic.js --start",
+    "find-port": "node scripts/find-port-env.js",
+    "docker:up": "node scripts/find-port-env.js && docker compose up --build -d",
+    "build": "npx prisma generate && next build",
+    "lint": "next lint",
+    "db:push": "npx prisma db push",
+    "db:studio": "npx prisma studio",
+    "postinstall": "npx prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.460.0",
+    "next": "^15.0.3",
+    "next-themes": "^0.4.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^3.4.15",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

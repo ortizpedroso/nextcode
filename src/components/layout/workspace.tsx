@@ -1,0 +1,241 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Layers,
+  MessageSquare,
+  ChevronRight,
+  ChevronLeft,
+  Sparkles,
+  CheckCircle2,
+  RefreshCw,
+} from "lucide-react";
+import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
+import { DagSidebar } from "@/components/session/dag-sidebar";
+import { PromptBar } from "@/components/session/prompt-bar";
+
+export interface TaskNode {
+  id: string;
+  sessionId: string;
+  title: string;
+  role: string;
+  status: "pending" | "running" | "completed" | "failed" | "blocked" | "quarantine";
+  dependencies: string;
+  mcpScope?: string;
+  result?: string;
+}
+
+export interface SessionMessage {
+  id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  tokens?: number;
+  tier?: string;
+  createdAt?: string;
+}
+
+interface WorkspaceProps {
+  activeView: "dag" | "settings" | "docs";
+  activeSessionId: string | null;
+  activeSessionTitle?: string;
+  activeProjectName?: string | null;
+  tasks: TaskNode[];
+  messages: SessionMessage[];
+  consoleLogs: string[];
+  tokensSaved: number;
+  loading: boolean;
+  executingNodeId: string | null;
+  settingsForm: SettingsFormState;
+  customProviders: CustomProviderItem[];
+  onUpdateSettingsForm: (updated: SettingsFormState) => void;
+  onSaveSettings: () => Promise<void>;
+  onCreateDAG: (prompt: string, modelOverride?: string) => Promise<void>;
+  onExecuteNode: (nodeId: string) => Promise<void>;
+  onRefreshTasks: () => Promise<void>;
+}
+
+export function Workspace({
+  activeView,
+  activeSessionId,
+  activeSessionTitle,
+  activeProjectName,
+  tasks,
+  messages,
+  consoleLogs,
+  tokensSaved,
+  loading,
+  executingNodeId,
+  settingsForm,
+  customProviders,
+  onUpdateSettingsForm,
+  onSaveSettings,
+  onCreateDAG,
+  onExecuteNode,
+  onRefreshTasks,
+}: WorkspaceProps) {
+  const [showDagPanel, setShowDagPanel] = useState(true);
+
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
+  const runningTask = tasks.find((t) => t.status === "running");
+
+  return (
+    <main className="flex-1 bg-white dark:bg-[#090d16] text-slate-900 dark:text-slate-100 flex flex-col h-screen overflow-hidden transition-colors">
+      {/* 1. VIEW: ORQUESTRATION DAG & INTERAÇÃO DA SESSÃO ATIVA */}
+      {activeView === "dag" && (
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Cabeçalho Superior da Sessão */}
+          <div className="px-6 py-3 border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50 shrink-0">
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-5 h-5 text-[#0066cc]" />
+              <div>
+                <h2 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>{activeSessionTitle || "Sessão de Orquestração NextCode"}</span>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-[#0066cc] dark:bg-blue-950 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                    {activeProjectName ? `Projeto: ${activeProjectName}` : "Sessão Ad-hoc"}
+                  </span>
+                </h2>
+                {activeSessionId && (
+                  <span className="text-[10px] text-slate-400 font-mono block">
+                    ID: {activeSessionId}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Status Indicador do Progresso Autônomo e Botão do Painel */}
+            <div className="flex items-center gap-3">
+              {!showDagPanel && tasks.length > 0 && (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-xs font-medium">
+                  {runningTask ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 text-[#0066cc] animate-spin" />
+                      <span className="text-slate-700 dark:text-slate-300">
+                        Executando: <strong className="text-slate-900 dark:text-white">{runningTask.title}</strong> ({completedCount}/{tasks.length})
+                      </span>
+                    </>
+                  ) : completedCount === tasks.length ? (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
+                        DAG Concluída ({completedCount}/{tasks.length} etapas)
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-500">
+                      Progresso DAG: {completedCount}/{tasks.length} etapas
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowDagPanel(!showDagPanel)}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-200/80 dark:border-slate-700"
+                title="Alternar Painel do Grafo DAG"
+              >
+                <Layers className="w-3.5 h-3.5 text-[#0066cc]" />
+                <span>Grafo DAG ({tasks.length})</span>
+                {showDagPanel ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Área Central: Chat Autônomo + Painel Lateral Status Tracker */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Esquerda: Área de Chat e Conversa com a IA */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden p-6">
+              {/* Lista de Mensagens */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                {messages.length === 0 && tasks.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-3 p-8 text-slate-400">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-[#0066cc] flex items-center justify-center font-bold text-2xl shadow-sm">
+                      ❖
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                      NextCode Autônomo Engine Workspace
+                    </h3>
+                    <p className="text-xs max-w-md leading-relaxed text-slate-500">
+                      Digite seu objetivo na barra inferior. O NextCode irá decompor a instrução via <strong>spec-decomposer</strong> e executar a DAG autonomamente nos bastidores de ponta a ponta.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {messages
+                      .filter((msg) => msg.role === "user" || msg.role === "assistant")
+                      .map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex gap-3 text-xs leading-relaxed max-w-3xl ${
+                          msg.role === "user" ? "ml-auto flex-row-reverse" : ""
+                        }`}
+                      >
+                        <div
+                          className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                            msg.role === "user"
+                              ? "bg-[#0066cc] text-white"
+                              : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          {msg.role === "user" ? "U" : "NC"}
+                        </div>
+
+                        <div
+                          className={`p-4 rounded-2xl border space-y-1.5 shadow-sm ${
+                            msg.role === "user"
+                              ? "bg-[#0066cc] text-white border-blue-600"
+                              : msg.role === "system"
+                              ? "bg-blue-50/60 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900 text-slate-800 dark:text-slate-200 font-mono text-[11px]"
+                              : "bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+                          }`}
+                        >
+                          <div className="font-semibold text-[11px] opacity-80 flex items-center justify-between gap-4">
+                            <span>
+                              {msg.role === "user"
+                                ? "Você"
+                                : msg.role === "system"
+                                ? "Notificação DAG"
+                                : "NextCode Engine"}
+                            </span>
+                            {msg.tier && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700">
+                                {msg.tier === "fast"
+                                  ? "⚡ Gemini Flash (Fast)"
+                                  : msg.tier === "heavy"
+                                  ? "🧠 Claude Sonnet (Heavy)"
+                                  : "🤖 OmniRoute Local"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* Componente PromptBar com Seletor Discreto */}
+              <PromptBar
+                loading={loading}
+                customProviders={customProviders}
+                onSubmit={onCreateDAG}
+              />
+            </div>
+
+            {/* Direita: Painel Lateral DagSidebar (Status Tracker Autônomo) */}
+            {showDagPanel && (
+              <DagSidebar
+                tasks={tasks}
+                tokensSaved={tokensSaved}
+                consoleLogs={consoleLogs}
+                executingNodeId={executingNodeId}
+                onClose={() => setShowDagPanel(false)}
+                onRefreshTasks={onRefreshTasks}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}

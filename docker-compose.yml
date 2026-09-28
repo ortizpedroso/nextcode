@@ -1,0 +1,37 @@
+services:
+  nextcode-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nextcode-app
+    ports:
+      - "3001:3001"
+    depends_on:
+      - omniroute
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./prisma:/app/prisma
+      - sqlite_data:/app/prisma/data
+    environment:
+      - DATABASE_URL=file:./prisma/dev.db
+      - NODE_ENV=development
+      - PORT=3001
+      - IS_DOCKER=true
+      - OMNIROUTE_URL=http://omniroute:20128/v1
+    restart: unless-stopped
+
+  omniroute:
+    image: diegosouzapw/omniroute:latest
+    container_name: nextcode-omniroute
+    ports:
+      - "20128:20128"
+    volumes:
+      - omniroute-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:
+    driver: local
+  omniroute-data:
+    driver: local
