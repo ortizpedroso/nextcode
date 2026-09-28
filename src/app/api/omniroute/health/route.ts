@@ -25,40 +25,61 @@ async function handleCheck() {
   }
 
   // 2. URLs candidatas para cobrir ambiente Docker e ambiente Host
-  const candidateUrls = [
-    process.env.OMNIROUTE_URL,
-    "http://omniroute:20128/v1",
-    "http://localhost:20128/v1",
-  ].filter(Boolean) as string[];
+  // FIX: antes era injetado "http://omniroute:20128/v1" sempre que OMNIROUTE_URL não
+  // continha a palavra "omniroute" — em máquina local (fora da rede do compose) esse
+  // hostname não resolve (ENOTFOUND) e o health check gastava tempo/falava mesmo com
+  // gateway local vivo. Agora só testamos: URL do ambiente > URL salva no SQLite > localhost.
+  const envUrl = (process.env.OMNIROUTE_URL || "").trim();
+  let dbUrl = "";
+  try {
+    const s2 = await prisma.setting.findUnique({ where: { id: "default" } });
+    dbUrl = (s2?.omniRouteUrl || s2?.customEndpoint || "").trim();
+  } catch {
+    /* banco indisponível; segue com env/localhost */
+  }
+  const candidateUrls = Array.from(
+    new Set([envUrl, dbUrl, "http://localhost:20128/v1"].filter(Boolean))
+  );
 
   const startTime = Date.now();
   let isConnected = false;
   let activeEndpoint = "http://localhost:20128/v1";
+  let lastHttpStatus: number | null = null;
 
   // 3. Checagem em cascata na porta 20128
   for (const baseUrl of candidateUrls) {
-    const cleanUrl = baseUrl.replace(/\/$/, "");
-    const targetUrl = cleanUrl.endsWith("/v1") ? `${cleanUrl}/models` : `${cleanUrl}/v1/models`;
+    const cleanUrl = baseUrl.replace(/\/+$/, "");
+    const root = cleanUrl.replace(/\/v1$/i, "");
+    // Tenta os caminhos conhecidos do OmniRoute: /v1/models (OpenAI-compat) e /api/health
+    const targets = [
+      `${cleanUrl.endsWith("/v1") ? cleanUrl : `${cleanUrl}/v1`}/models`,
+      `${root}/api/health`,
+    ];
 
-    try {
-      const res = await fetch(targetUrl, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        signal: AbortSignal.timeout(2000),
-      });
+    for (const targetUrl of targets) {
+      try {
+        const res = await fetch(targetUrl, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          signal: AbortSignal.timeout(2500),
+        });
 
-      // 200 OK ou 401 Unauthorized confirmam que o serviço está ativo e respondendo na porta 20128
-      if (res.ok || res.status === 401) {
-        isConnected = true;
-        activeEndpoint = cleanUrl;
-        break;
+        lastHttpStatus = res.status;
+
+        // 200 OK ou 401 Unauthorized confirmam que o serviço está ativo e respondendo na porta 20128
+        if (res.ok || res.status === 401) {
+          isConnected = true;
+          activeEndpoint = cleanUrl;
+          break;
+        }
+      } catch {
+        // Falha de rota ou timeout, tenta o próximo candidato
       }
-    } catch {
-      // Falha de rota ou timeout, tenta o próximo candidato
     }
+    if (isConnected) break;
   }
 
   const latencyMs = Date.now() - startTime;
@@ -69,8 +90,9 @@ async function handleCheck() {
     latencyMs: isConnected ? latencyMs : null,
     endpoint: activeEndpoint,
     isPrimaryRoute,
+    httpStatus: lastHttpStatus,
     message: isConnected
-      ? `OmniRoute Local operacional na porta 20128 (${latencyMs}ms)!`
-      : "Status: Offline (Nenhum serviço detectado na porta 20128). O NextCode está usando o Gemini direto como rota ativa.",
+      ? `OmniRoute Local operacional (${latencyMs}ms)!`
+      : "Status: Offline (Nenhum serviço detectado na porta 20128). Suba o gateway com 'docker compose up -d omniroute' ou desative a rota primária. O NextCode usará o Gemini direto como fallback.",
   });
 }

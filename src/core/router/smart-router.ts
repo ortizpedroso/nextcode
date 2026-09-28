@@ -38,12 +38,12 @@ import * as fs from "fs";
 export function resolveOmniRouteUrl(rawUrl?: string): string {
   const base = rawUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
 
+  // IMPORTANTE: a detecção de Docker serve apenas para converter "localhost" -> "host.docker.internal".
+  // Reescrever para o hostname "omniroute" fora da rede do docker-compose causa ENOTFOUND indevido
   let isDocker =
     process.env.IS_DOCKER === "true" ||
     process.env.DOCKER_CONTAINER === "1" ||
-    process.env.DOCKER === "true" ||
-    Boolean(process.env.OMNIROUTE_URL?.includes("omniroute")) ||
-    Boolean(process.env.OMNIROUTE_URL?.includes("host.docker.internal"));
+    process.env.DOCKER === "true";
 
   if (!isDocker) {
     try {
@@ -54,11 +54,26 @@ export function resolveOmniRouteUrl(rawUrl?: string): string {
   }
 
   if (isDocker && (base.includes("localhost") || base.includes("127.0.0.1"))) {
+    // host.docker.internal funciona em Docker Desktop (Mac/Windows) e no Linux com --add-host.
     return base
-      .replace("localhost", "omniroute")
-      .replace("127.0.0.1", "omniroute");
+      .replace("localhost", "host.docker.internal")
+      .replace("127.0.0.1", "host.docker.internal");
   }
   return base;
+}
+
+/**
+ * Constrói a URL do gateway OmniRoute aceitando qualquer forma configurada pelo usuário:
+ * "http://host:porta", ".../v1", ".../v1/chat/completions" etc. Retorna sempre o endpoint
+ * completo de chat completions e a raiz correspondente.
+ */
+export function buildOmniEndpoints(rawUrl?: string): { chatUrl: string; rootUrl: string } {
+  const resolved = resolveOmniRouteUrl(rawUrl).replace(/\/+$/, "");
+  const withoutSuffix = resolved.replace(/\/v1(\/chat\/completions)?$/i, "");
+  return {
+    chatUrl: `${withoutSuffix}/v1/chat/completions`,
+    rootUrl: withoutSuffix,
+  };
 }
 
 export const FAST_MODEL = "gemini-3.5-flash";
@@ -81,9 +96,9 @@ export interface DispatchOptions {
 
 export interface DispatchResult {
   response: Response;
-  providerUsed: "omniroute" | "gemini-fallback" | "gemini-direct";
-  badge: "🤖 OmniRoute Local" | "⚡ Gemini Flash (Fallback Automático)" | "⚡ Gemini Flash (Fallback)" | "⚡ Gemini Flash" | "🧠 Claude Sonnet";
-  tierTag: "omniroute" | "fast-fallback" | "fast" | "heavy";
+  providerUsed: "omniroute" | "gemini-fallback" | "none";
+  badge: string;
+  tierTag: "omniroute" | "fast-fallback" | "fast" | "heavy" | "exhausted";
   modelUsed: string;
 }
 
@@ -195,7 +210,7 @@ export class SmartRouter {
           return {
             ...analysis,
             tier: "custom",
-            actualModelUsed: "omniroute-auto",
+            actualModelUsed: "auto",
             fallbackTriggered: true,
             fallbackNotice: "Aviso: Chaves remotas indisponíveis. Redirecionando tarefa para o OmniRoute Local.",
           };
@@ -225,7 +240,7 @@ export class SmartRouter {
         return {
           ...analysis,
           tier: "custom",
-          actualModelUsed: "omniroute-auto",
+          actualModelUsed: "auto",
           fallbackTriggered: true,
           fallbackNotice: "Roteando para OmniRoute Local.",
         };
@@ -281,8 +296,8 @@ export class SmartRouter {
 
   /**
    * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall):
-   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (http://localhost:8080/v1/chat/completions, timeout 5s)
-   * 2. Tentativa 2 (Fallback Imediato): Google Gemini Direto (https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent)
+   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions, OpenAI-compatível)
+   * 2. Tentativa 2 (Fallback): Google Gemini Direto (streamGenerateContent/generateContent)
    * 3. Tentativa 3 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
    */
   public async dispatchWithFallback(options: DispatchOptions): Promise<DispatchResult> {
@@ -308,26 +323,128 @@ export class SmartRouter {
       process.env.OMNIROUTE_API_KEY ||
       "";
 
-    const primaryModel = tier === "heavy" ? HEAVY_MODEL : FAST_MODEL;
+    // FIX (OmniRoute "nunca funcionava"): o modelo autocreated anteriormente era
+    // "omniroute-auto", que NÃO existe no catálogo do OmniRoute — qualquer client
+    // que envia esse model recebe erro de modelo desconhecido e cai no fallback,
+    // dando a impressão de que o gateway "não funciona". O nome oficial do roteador
+    // zero-config é "auto" (ou variantes "auto/fast", "auto/coding", "auto/cheap"),
+    // que monta um combo virtual com os 350+ provedores conectados (docs: README
+    // "Zero-config — just use `auto`" e docs/routing/AUTO-COMBO.md).
+    const tierAutoVariant =
+      tier === "heavy" ? "auto/coding" : tier === "custom" ? "auto/smart" : "auto";
+    const requestedOmniModel = process.env.OMNIROUTE_MODEL?.trim() || tierAutoVariant;
+
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
-    const resolvedUrl = resolveOmniRouteUrl(rawUrl);
-    const baseUrl = resolvedUrl.replace(/\/$/, "");
-    const omniEndpoint = baseUrl.endsWith("/chat/completions")
-      ? baseUrl
-      : `${baseUrl}/chat/completions`;
+    const { chatUrl: omniEndpoint } = buildOmniEndpoints(rawUrl);
+
+    // Timeout de conexão do OmniRoute: o suficiente para detectar "porta fechada"
+    // rapidamente, mas realista para respostas de streaming de LLM (que demoram >1.2s).
+    const omniConnectTimeoutMs = Number(process.env.OMNIROUTE_TIMEOUT_MS) || 15000;
 
     // ----------------------------------------------------
-    // TENTATIVA 1: Google Gemini Direto (Resposta Ultra-rápida)
+    // TENTATIVA 1: OmniRoute Local Gateway (Rota Primária)
+    // ----------------------------------------------------
+    try {
+      const omniHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (effectiveOmniRouteKey) {
+        omniHeaders["Authorization"] = `Bearer ${effectiveOmniRouteKey}`;
+      }
+
+      const omniBody = JSON.stringify({
+        model: requestedOmniModel,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        stream,
+      });
+
+      const omniStart = Date.now();
+      const omniRes = await fetch(omniEndpoint, {
+        method: "POST",
+        headers: omniHeaders,
+        body: omniBody,
+        // O sinal cobre apenas o establishment da conexão; após 200 OK o stream
+        // segue vivo mesmo depois do timeout em Node >= 18.
+        signal: AbortSignal.timeout(omniConnectTimeoutMs),
+      }).catch((err) => {
+        console.warn(
+          `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
+        );
+        return null;
+      });
+
+      if (omniRes && omniRes.ok) {
+        // FIX ("cai no meio da conversa"): o AbortSignal.timeout cobre apenas o handshake.
+        // Se o gateway morrer/entrar em OOM durante o streaming, o body hangava para sempre.
+        // Agora impomos um idle-timeout: se nenhum byte chegar por OMNIROUTE_IDLE_TIMEOUT_MS,
+        // o stream é abortado e a requisição recai na cascata de fallback (Gemini direto).
+        const idleMs = Number(process.env.OMNIROUTE_IDLE_TIMEOUT_MS) || 45000;
+        let idleTimer: ReturnType<typeof setTimeout> | undefined;
+        let streamBroken = false;
+        const resetIdle = () => {
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            streamBroken = true;
+            try {
+              omniRes.body?.cancel().catch(() => {});
+            } catch {
+              /* body já fechado */
+            }
+          }, idleMs);
+        };
+        resetIdle();
+
+        if (omniRes.body) {
+          const guarded = omniRes.body.pipeThrough(
+            new TransformStream<Uint8Array, Uint8Array>({
+              transform(chunk, controller) {
+                resetIdle();
+                controller.enqueue(chunk);
+              },
+              flush() {
+                if (idleTimer) clearTimeout(idleTimer);
+              },
+            })
+          );
+          console.log(`[ROUTER] Chamada processada via OmniRoute Local (${requestedOmniModel}).`);
+          return {
+            response: new Response(guarded, { status: omniRes.status, headers: omniRes.headers }),
+            providerUsed: "omniroute",
+            badge: "🤖 OmniRoute Local",
+            tierTag: "omniroute",
+            modelUsed: requestedOmniModel,
+          };
+        } else {
+          if (idleTimer) clearTimeout(idleTimer);
+          console.log(`[ROUTER] Chamada processada via OmniRoute Local (${requestedOmniModel}).`);
+          return {
+            response: omniRes,
+            providerUsed: "omniroute",
+            badge: "🤖 OmniRoute Local",
+            tierTag: "omniroute",
+            modelUsed: requestedOmniModel,
+          };
+        }
+      } else if (omniRes) {
+        const errText = await omniRes.text().catch(() => "");
+        console.warn(
+          `[ROUTER] OmniRoute retornou HTTP ${omniRes.status} em ${omniEndpoint}. Resposta: ${errText.substring(0, 200)}`
+        );
+      }
+    } catch (omniErr) {
+      console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
+    }
+
+    // ----------------------------------------------------
+    // TENTATIVA 2: Fallback — Google Gemini Direto
     // ----------------------------------------------------
     if (effectiveGeminiKey) {
       const cleanApiKey = effectiveGeminiKey.trim();
-      const candidateModels = [
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-flash-latest",
-        "gemini-3.5-flash",
-        "gemini-3.7-flash",
-      ];
+      // Ordem coerente: modelos reais primeiro; nunca pedir "lite/latest" para uma tarefa heavy.
+      const candidateModels =
+        tier === "heavy"
+          ? [HEAVY_MODEL, FAST_MODEL, "gemini-flash-latest"]
+          : [FAST_MODEL, "gemini-3.5-flash-lite", "gemini-flash-latest"];
 
       for (const modelId of candidateModels) {
         try {
@@ -348,7 +465,7 @@ export class SmartRouter {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: geminiBody,
-            signal: AbortSignal.timeout(6000),
+            signal: AbortSignal.timeout(8000),
           });
 
           if (geminiRes.ok) {
@@ -365,59 +482,13 @@ export class SmartRouter {
             console.warn(
               `[ROUTER] Gemini Direto (${cleanModel}) retornou erro: ${errData.error?.message || geminiRes.status}`
             );
+            // 401/403 = chave inválida: testar outros modelos é inútil, aborta a lista.
+            if (geminiRes.status === 401 || geminiRes.status === 403) break;
           }
         } catch (geminiErr) {
           console.warn(`[ROUTER] Erro de rede ao conectar com Gemini Direto (${modelId}):`, geminiErr);
         }
       }
-    }
-
-    // ----------------------------------------------------
-    // TENTATIVA 2: OmniRoute Local Gateway
-    // ----------------------------------------------------
-    try {
-      const omniHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (effectiveOmniRouteKey) {
-        omniHeaders["Authorization"] = `Bearer ${effectiveOmniRouteKey}`;
-      }
-
-      const omniBody = JSON.stringify({
-        model: primaryModel,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        stream,
-      });
-
-      let omniRes: Response | null = null;
-      try {
-        omniRes = await fetch(omniEndpoint, {
-          method: "POST",
-          headers: omniHeaders,
-          body: omniBody,
-          signal: AbortSignal.timeout(1200),
-        });
-      } catch (err) {
-        console.warn(`[ROUTER] OmniRoute timeout/error (1200ms fast failover): ${String(err)}`);
-      }
-
-      if (omniRes && omniRes.ok) {
-        console.log(`[ROUTER] Chamada processada com sucesso via OmniRoute Local (${primaryModel}).`);
-        return {
-          response: omniRes,
-          providerUsed: "omniroute",
-          badge: "🤖 OmniRoute Local",
-          tierTag: "omniroute",
-          modelUsed: primaryModel,
-        };
-      } else if (omniRes) {
-        const errText = await omniRes.text().catch(() => "");
-        console.warn(
-          `[ROUTER] OmniRoute retornou status HTTP ${omniRes.status}. Resposta: ${errText.substring(0, 100)}`
-        );
-      }
-    } catch (omniErr) {
-      console.log(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
     }
 
     // ----------------------------------------------------
@@ -471,9 +542,11 @@ export class SmartRouter {
 
     return {
       response: fallbackResponse,
-      providerUsed: "gemini-direct",
-      badge: "⚡ Gemini Flash (Fallback)",
-      tierTag: "fast-fallback",
+      // Nenhum provedor real respondeu: rotular como "gemini-direct"/"fast-fallback"
+      // era uma inconsistência (o cliente recebia o alerta como se fosse resposta de IA).
+      providerUsed: "none",
+      badge: "🚫 Sem Provedor Disponível",
+      tierTag: "exhausted",
       modelUsed: "none",
     };
   }

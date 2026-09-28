@@ -37,7 +37,8 @@ export function OmniRouteCard() {
           setIsPrimaryRoute(data.isPrimaryRoute);
         }
       } else {
-        setStatus(data.status === "error" ? "error" : "stopped");
+        // Distinguir "registrado porém gateway parado" de "não instalado"
+        setStatus(data.registered || data.status === "stopped" ? "stopped" : data.status === "error" ? "error" : "not_installed");
         setFeedbackMsg(data.message || "OmniRoute não respondeu à validação de tráfego.");
         if (typeof data.isPrimaryRoute === "boolean") {
           setIsPrimaryRoute(data.isPrimaryRoute);
@@ -81,10 +82,17 @@ export function OmniRouteCard() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus("connected");
-        setLatencyMs(data.latencyMs || 10);
-        setFeedbackMsg(data.message || "OmniRoute Local ativado e registrado no SQLite!");
-        setIsPrimaryRoute(true);
+        // O setup agora reporta a verdade: só mostra "Conectado" se o gateway respondeu ao probe.
+        if (data.status === "connected") {
+          setStatus("connected");
+          setLatencyMs(data.latencyMs || 10);
+          setIsPrimaryRoute(true);
+        } else {
+          setStatus("stopped");
+          setLatencyMs(null);
+          setIsPrimaryRoute(false);
+        }
+        setFeedbackMsg(data.message || "OmniRoute Local registrado no SQLite!");
       } else {
         setFeedbackMsg(data.error || "Falha ao autoconfigurar OmniRoute.");
       }

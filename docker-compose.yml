@@ -22,12 +22,31 @@ services:
     restart: unless-stopped
 
   omniroute:
+    # FIX (queda do OmniRoute): o default da imagem é OMNIROUTE_MEMORY_MB=1024 e a
+    # documentação oficial exige heap maior + limite de cgroup acima do heap para
+    # cargas de agente de código — sem isso o processo morre com
+    # "FATAL ERROR: Reached heap limit" (OOM) exatamente no padrão de uso do NextCode
+    # (contextos longos via /v1/chat/completions). Fonte: README "Docker" e
+    # docs/reference/ENVIRONMENT.md (OMNIROUTE_MEMORY_MB).
     image: diegosouzapw/omniroute:latest
     container_name: nextcode-omniroute
+    stop_grace_period: 40s
     ports:
       - "20128:20128"
+    environment:
+      - PORT=20128
+      - OMNIROUTE_MEMORY_MB=8192
+    mem_limit: 10g
     volumes:
       - omniroute-data:/app/data
+    healthcheck:
+      # /healthz é o probe de readiness recomendado pela doc (liveness: /livez);
+      # timeouts curtos contra /api/monitoring/health reiniciam o container indevidamente.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:20128/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
 volumes:
