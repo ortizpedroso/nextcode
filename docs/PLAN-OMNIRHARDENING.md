@@ -56,3 +56,22 @@
 
 ## Critério de "tudo fechado"
 Fases 2–5 com aceite cumprido + testes da seção abaixo verdes. Sem isso, o sistema **não** deve ser exposto fora de `127.0.0.1`.
+
+---
+
+## Status de implementação (2026-09-29)
+
+| Fase | Estado | Commit |
+|---|---|---|
+| 1. Higiene do repo | ✅ concluída | 24c6e8c |
+| 2. Criptografia AES-256-GCM | ✅ concluída | 46b8683 |
+| 3. Anti-SSRF (safe-fetch) | ✅ concluída | 46b8683 |
+| 4. Auth + rate-limit + maskKey | ✅ concluída | 46b8683 |
+| 5. Jail do terminal sandboxed | ✅ concluída | 46b8683 |
+| 6. Observabilidade (/api/metrics) | ✅ concluída | 46b8683 |
+
+### Próximas fases candidatas (backlog)
+- **Fase 7:** testes automatizados (unit para crypto/safe-fetch/local-auth; e2e do fluxo OmniRoute com container descartável)
+- **Fase 8:** rotação de chaves (key rotation com versionamento `v2:` no envelope) + backup da master key
+- **Fase 9:** TLS/HTTPS local (self-signed ou mkcert) para o app e o gateway
+- **Fase 10:** auditoria contínua (`npm audit` + Trivy na imagem) no CI
