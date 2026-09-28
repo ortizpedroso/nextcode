@@ -1,6 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
+import { safeFetch } from "@/core/security/safe-fetch";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // Fases 3+4: rota que testa URLs/chaves fornecidas pelo usuário é o vetor SSRF
+  // clássico; agora exige token local e passa todas as URLs por safeFetch.
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { provider, apiKey, baseUrl } = body;
@@ -19,7 +25,7 @@ export async function POST(request: Request) {
     try {
       if (provider === "gemini") {
         const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`;
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await safeFetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
 
         if (res.ok) {
@@ -32,7 +38,7 @@ export async function POST(request: Request) {
 
       if (provider === "claude") {
         const url = "https://api.anthropic.com/v1/models";
-        const res = await fetch(url, {
+        const res = await safeFetch(url, {
           headers: {
             "x-api-key": key,
             "anthropic-version": "2023-06-01",
@@ -51,7 +57,7 @@ export async function POST(request: Request) {
 
       if (provider === "openai") {
         const targetUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/models` : "https://api.openai.com/v1/models";
-        const res = await fetch(targetUrl, {
+        const res = await safeFetch(targetUrl, {
           headers: {
             Authorization: `Bearer ${key}`,
           },
@@ -69,7 +75,7 @@ export async function POST(request: Request) {
 
       if (provider === "deepseek") {
         const url = "https://api.deepseek.com/v1/models";
-        const res = await fetch(url, {
+        const res = await safeFetch(url, {
           headers: {
             Authorization: `Bearer ${key}`,
           },
@@ -91,7 +97,7 @@ export async function POST(request: Request) {
         if (key) {
           headers["Authorization"] = `Bearer ${key}`;
         }
-        const res = await fetch(targetUrl, { headers, signal: controller.signal });
+        const res = await safeFetch(targetUrl, { headers, signal: controller.signal });
         clearTimeout(timeoutId);
 
         if (res.ok) {

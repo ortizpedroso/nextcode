@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { resolveOmniRouteUrl } from "@/core/router/smart-router";
+import { safeFetch } from "@/core/security/safe-fetch";
+import { readSecret } from "@/core/security/crypto";
 
 export async function GET() {
   const defaultEndpoint = "http://localhost:20128/v1";
@@ -12,7 +14,7 @@ export async function GET() {
   const catalogUrl = `${rootUrl}/api/models/catalog`;
 
   const setting = await prisma.setting.findFirst().catch(() => null);
-  const omniRouteKey = setting?.omniRouteKey;
+  const omniRouteKey = readSecret(setting?.omniRouteKey) || undefined;
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -23,10 +25,10 @@ export async function GET() {
 
   try {
     // 1. Tenta buscar a lista de modelos expostos no /v1/models
-    const modelsRes = await fetch(modelsUrl, {
+    const modelsRes = await safeFetch(modelsUrl, {
       method: "GET",
       headers,
-      signal: AbortSignal.timeout(3500),
+      timeoutMs: 3500,
     });
 
     if (!modelsRes.ok && modelsRes.status !== 401) {
@@ -54,7 +56,7 @@ export async function GET() {
     // 2. Tenta buscar provedores cadastrados no /api/providers ou /api/models/catalog
     let catalogProviders: string[] = [];
     try {
-      const providersRes = await fetch(providersUrl, { method: "GET", headers, signal: AbortSignal.timeout(2000) });
+      const providersRes = await safeFetch(providersUrl, { method: "GET", headers, timeoutMs: 2000 });
       if (providersRes.ok) {
         const providersData = await providersRes.json().catch(() => ({}));
         if (Array.isArray(providersData)) {

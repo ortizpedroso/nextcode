@@ -1,4 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
+import { safeFetch } from "@/core/security/safe-fetch";
+import { readSecret, writeSecret } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
@@ -16,7 +19,7 @@ export async function GET() {
     const v1Url = `${rootUrl}/v1`;
 
     const startTime = Date.now();
-    const apiKey = setting?.omniRouteKey || process.env.OMNIROUTE_KEY || undefined;
+    const apiKey = readSecret(setting?.omniRouteKey) || process.env.OMNIROUTE_KEY || undefined;
     const headers: Record<string, string> = {
       Accept: "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -25,9 +28,9 @@ export async function GET() {
     let res: Response | null = null;
     for (const healthTarget of [`${v1Url}/models`, `${rootUrl}/api/health`, `${rootUrl}/health`]) {
       try {
-        const attempt = await fetch(healthTarget, {
+        const attempt = await safeFetch(healthTarget, {
           headers,
-          signal: AbortSignal.timeout(2500),
+          timeoutMs: 2500,
         });
         // 200 ou 401 provam que o processo OmniRoute está vivo na porta configurada
         if (attempt.ok || attempt.status === 401) {
@@ -90,7 +93,9 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+    const guard = requireAuth(req);
+    if (guard.response) return guard.response;
   try {
     // 0. Detectar se o gateway OmniRoute REALMENTE responde antes de ativá-lo como rota primária.
     //    O setup anterior apenas escrevia config/SQLite e mentia "connected", fazendo o chat cair.
@@ -107,7 +112,7 @@ export async function POST() {
     let gatewayAlive = false;
     for (const target of [`${probedRoot}/v1/models`, `${probedRoot}/api/health`]) {
       try {
-        const probe = await fetch(target, { signal: AbortSignal.timeout(2500) });
+        const probe = await safeFetch(target, { timeoutMs: 2500 });
         if (probe.ok || probe.status === 401) {
           gatewayAlive = true;
           break;
@@ -158,13 +163,13 @@ export async function POST() {
         id: "omniroute-local",
         name: "OmniRoute Local Proxy",
         baseUrl: effectiveEndpoint,
-        apiKey: "omniroute-local-key",
+        apiKey: writeSecret("omniroute-local-key"),
         models: JSON.stringify(modelsList),
         headers: JSON.stringify({ "X-Client": "NextCode-Engine" }),
       },
       update: {
         baseUrl: effectiveEndpoint,
-        apiKey: "omniroute-local-key",
+        apiKey: writeSecret("omniroute-local-key"),
         models: JSON.stringify(modelsList),
       },
     });
@@ -179,13 +184,13 @@ export async function POST() {
         id: "default",
         customEndpoint: effectiveEndpoint,
         omniRouteUrl: effectiveEndpoint,
-        omniRouteKey: "omniroute-local-key",
+        omniRouteKey: writeSecret("omniroute-local-key"),
         activeProvider,
       },
       update: {
         customEndpoint: effectiveEndpoint,
         omniRouteUrl: effectiveEndpoint,
-        omniRouteKey: "omniroute-local-key",
+        omniRouteKey: writeSecret("omniroute-local-key"),
         activeProvider,
       },
     });

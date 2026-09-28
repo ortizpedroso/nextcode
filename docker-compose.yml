@@ -13,12 +13,19 @@ services:
       - /app/node_modules
       - ./prisma:/app/prisma
       - sqlite_data:/app/prisma/data
+      # Fase 5 (opcional): para montar o JAIL real do terminal, descomente as duas
+      # linhas abaixo DENTRO do bloco volumes. AVISO: montar o socket Docker dá ao
+      # container poder equivalente a root no host — use apenas se confiar no uso do
+      # terminal do NextCode e preferencialmente com um socket proxy (e.g. tecnativa/docker-socket-proxy)
+      # restringindo a criação de containers.
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - DATABASE_URL=file:./prisma/dev.db
       - NODE_ENV=development
       - PORT=3001
       - IS_DOCKER=true
       - OMNIROUTE_URL=http://omniroute:20128/v1
+      - NEXTCODE_SANDBOX_JAIL=on
     restart: unless-stopped
 
   omniroute:

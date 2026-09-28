@@ -1,11 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
+import { safeFetch } from "@/core/security/safe-fetch";
+import { readSecret } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 
 export async function GET() {
   return handleCheck();
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const guard = requireAuth(req);
+  if (guard.response) return guard.response;
   return handleCheck();
 }
 
@@ -17,7 +22,7 @@ async function handleCheck() {
   try {
     const setting = await prisma.setting.findFirst({ where: { id: "default" } });
     if (setting) {
-      apiKey = setting.omniRouteKey || undefined;
+      apiKey = readSecret(setting.omniRouteKey) || undefined;
       isPrimaryRoute = setting.activeProvider === "omniroute";
     }
   } catch (err: any) {
@@ -58,13 +63,13 @@ async function handleCheck() {
 
     for (const targetUrl of targets) {
       try {
-        const res = await fetch(targetUrl, {
+        const res = await safeFetch(targetUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
-          signal: AbortSignal.timeout(2500),
+          timeoutMs: 2500,
         });
 
         lastHttpStatus = res.status;

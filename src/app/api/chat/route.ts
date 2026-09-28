@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
 
@@ -76,9 +77,9 @@ export async function POST(request: Request) {
     const dispatchRes = await smartRouter.dispatchWithFallback({
       messages: headroomRes.messages,
       tier: activeTier === "heavy" ? "heavy" : "fast",
-      geminiKey: setting?.geminiKey,
+      geminiKey: readSecret(setting?.geminiKey),
       omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-      omniRouteKey: setting?.omniRouteKey,
+      omniRouteKey: readSecret(setting?.omniRouteKey),
       stream: false,
     });
 

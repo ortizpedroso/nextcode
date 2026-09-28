@@ -34,6 +34,7 @@ export interface PruneResult {
 }
 
 import * as fs from "fs";
+import { safeFetch } from "../security/safe-fetch";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
   const base = rawUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
@@ -76,6 +77,38 @@ export function buildOmniEndpoints(rawUrl?: string): { chatUrl: string; rootUrl:
   };
 }
 
+// ---------------------------------------------------------------------------
+// Fase 6 — Circuit-breaker do OmniRoute: após N falhas consecutivas, pula o
+// gateway por X ms (evita pagar timeout de conexão em TODA mensagem quando o
+// container está morto/entrando em OOM-restart).
+// ---------------------------------------------------------------------------
+const CB_FAILURE_THRESHOLD = Number(process.env.OMNIROUTE_CB_FAILURES) || 3;
+const CB_OPEN_MS = Number(process.env.OMNIROUTE_CB_COOLDOWN_MS) || 30000;
+let omniCbFailures = 0;
+let omniCbOpenedAt = 0;
+
+function omniCircuitOpen(): boolean {
+  if (omniCbFailures < CB_FAILURE_THRESHOLD) return false;
+  if (Date.now() - omniCbOpenedAt > CB_OPEN_MS) {
+    // meio-aberto: permite UMA tentativa de sondagem
+    omniCbFailures = CB_FAILURE_THRESHOLD - 1;
+    console.log("[ROUTER] Circuit-breaker OmniRoute meio-aberto: tentando sondar o gateway.");
+    return false;
+  }
+  return true;
+}
+function omniRecordFailure() {
+  omniCbFailures += 1;
+  if (omniCbFailures === CB_FAILURE_THRESHOLD) {
+    omniCbOpenedAt = Date.now();
+    console.warn(`[ROUTER] Circuit-breaker OmniRoute ABERTO por ${CB_OPEN_MS}ms apos ${CB_FAILURE_THRESHOLD} falhas consecutivas.`);
+  }
+}
+function omniRecordSuccess() {
+  if (omniCbFailures > 0) console.log("[ROUTER] Circuit-breaker OmniRoute FECHADO (gateway recuperado).");
+  omniCbFailures = 0;
+}
+
 export const FAST_MODEL = "gemini-3.5-flash";
 export const HEAVY_MODEL = "gemini-3.7-flash";
 
@@ -102,6 +135,37 @@ export interface DispatchResult {
   modelUsed: string;
 }
 
+
+// ---------------------------------------------------------------------------
+// Fase 6 — Métricas leves do dispatcher (in-memory, expostas via GET /api/metrics)
+// ---------------------------------------------------------------------------
+export interface RouterMetrics {
+  omnirouteAttempts: number;
+  omnirouteSuccesses: number;
+  geminiFallbacks: number;
+  exhausted: number;
+  omniLatenciesMs: number[];
+}
+const metrics: RouterMetrics = {
+  omnirouteAttempts: 0,
+  omnirouteSuccesses: 0,
+  geminiFallbacks: 0,
+  exhausted: 0,
+  omniLatenciesMs: [],
+};
+export function getRouterMetrics(): RouterMetrics & { p50?: number; p95?: number } {
+  const sorted = [...metrics.omniLatenciesMs].sort((a, b) => a - b);
+  const pct = (q: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : undefined);
+  return { ...metrics, p50: pct(0.5), p95: pct(0.95) };
+}
+function recordOmniAttempt() { metrics.omnirouteAttempts += 1; }
+function recordOmniSuccess(latencyMs: number) {
+  metrics.omnirouteSuccesses += 1;
+  metrics.omniLatenciesMs.push(latencyMs);
+  if (metrics.omniLatenciesMs.length > 200) metrics.omniLatenciesMs.shift();
+}
+function recordGeminiFallback() { metrics.geminiFallbacks += 1; }
+function recordExhausted() { metrics.exhausted += 1; }
 
 export class SmartRouter {
   private static HEAVY_KEYWORDS = [
@@ -344,6 +408,10 @@ export class SmartRouter {
     // ----------------------------------------------------
     // TENTATIVA 1: OmniRoute Local Gateway (Rota Primária)
     // ----------------------------------------------------
+    recordOmniAttempt();
+    if (omniCircuitOpen()) {
+      console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); indo direto para o fallback Gemini.");
+    } else
     try {
       const omniHeaders: Record<string, string> = {
         "Content-Type": "application/json",
@@ -359,14 +427,15 @@ export class SmartRouter {
       });
 
       const omniStart = Date.now();
-      const omniRes = await fetch(omniEndpoint, {
+      const omniRes = await safeFetch(omniEndpoint, {
         method: "POST",
         headers: omniHeaders,
         body: omniBody,
         // O sinal cobre apenas o establishment da conexão; após 200 OK o stream
         // segue vivo mesmo depois do timeout em Node >= 18.
-        signal: AbortSignal.timeout(omniConnectTimeoutMs),
+        timeoutMs: omniConnectTimeoutMs,
       }).catch((err) => {
+        omniRecordFailure();
         console.warn(
           `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
         );
@@ -374,6 +443,8 @@ export class SmartRouter {
       });
 
       if (omniRes && omniRes.ok) {
+        omniRecordSuccess();
+        recordOmniSuccess(Date.now() - omniStart);
         // FIX ("cai no meio da conversa"): o AbortSignal.timeout cobre apenas o handshake.
         // Se o gateway morrer/entrar em OOM durante o streaming, o body hangava para sempre.
         // Agora impomos um idle-timeout: se nenhum byte chegar por OMNIROUTE_IDLE_TIMEOUT_MS,
@@ -426,12 +497,14 @@ export class SmartRouter {
           };
         }
       } else if (omniRes) {
+        if (omniRes.status >= 500) omniRecordFailure();
         const errText = await omniRes.text().catch(() => "");
         console.warn(
           `[ROUTER] OmniRoute retornou HTTP ${omniRes.status} em ${omniEndpoint}. Resposta: ${errText.substring(0, 200)}`
         );
       }
     } catch (omniErr) {
+      omniRecordFailure();
       console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
     }
 
@@ -439,6 +512,7 @@ export class SmartRouter {
     // TENTATIVA 2: Fallback — Google Gemini Direto
     // ----------------------------------------------------
     if (effectiveGeminiKey) {
+      recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
       // Ordem coerente: modelos reais primeiro; nunca pedir "lite/latest" para uma tarefa heavy.
       const candidateModels =
@@ -540,6 +614,7 @@ export class SmartRouter {
       );
     }
 
+    recordExhausted();
     return {
       response: fallbackResponse,
       // Nenhum provedor real respondeu: rotular como "gemini-direct"/"fast-fallback"

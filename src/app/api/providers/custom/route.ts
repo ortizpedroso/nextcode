@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
+import { writeSecret } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 
 export async function GET() {
@@ -6,7 +8,9 @@ export async function GET() {
     const providers = await prisma.customProvider.findMany({
       orderBy: { updatedAt: "desc" },
     });
-    return NextResponse.json({ providers });
+    // Fase 4: nunca expor a apiKey (mesmo cifrada) para o cliente.
+    const safeProviders = providers.map((p) => ({ ...p, apiKey: p.apiKey ? "••••" : null }));
+    return NextResponse.json({ providers: safeProviders });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao buscar provedores customizados", details: String(error) },
@@ -15,7 +19,9 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { id, name, baseUrl, apiKey, models, headers } = body;
@@ -41,14 +47,14 @@ export async function POST(request: Request) {
         id: id.trim(),
         name: name.trim(),
         baseUrl: baseUrl.trim(),
-        apiKey: apiKey ? apiKey.trim() : null,
+        apiKey: apiKey ? writeSecret(apiKey) : null,
         models: typeof models === "string" ? models : JSON.stringify(models || []),
         headers: typeof headers === "string" ? headers : JSON.stringify(headers || {}),
       },
       update: {
         name: name.trim(),
         baseUrl: baseUrl.trim(),
-        apiKey: apiKey !== undefined ? (apiKey ? apiKey.trim() : null) : undefined,
+        apiKey: apiKey !== undefined ? (apiKey ? writeSecret(apiKey) : null) : undefined,
         models: models !== undefined ? (typeof models === "string" ? models : JSON.stringify(models)) : undefined,
         headers: headers !== undefined ? (typeof headers === "string" ? headers : JSON.stringify(headers)) : undefined,
       },

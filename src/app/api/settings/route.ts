@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
+import { writeSecret, isEncrypted } from "@/core/security/crypto";
 
 async function ensureSettingTable() {
   try {
@@ -42,12 +44,19 @@ export async function GET() {
       });
     }
 
+    // FASE 4: a UI nunca recebe o segredo em claro; apenas máscara estável.
+    const mask = (v?: string | null) => {
+      if (!v) return "";
+      const plain = isEncrypted(v) ? "" : v; // cifrado: sem tail visível
+      const shown = plain.length >= 4 ? plain.slice(-4) : "";
+      return `••••${shown}`;
+    };
     return NextResponse.json({
-      geminiKey: setting.geminiKey || "",
-      claudeKey: setting.claudeKey || "",
-      openaiKey: setting.openaiKey || "",
-      deepseekKey: setting.deepseekKey || "",
-      omniRouteKey: setting.omniRouteKey || "",
+      geminiKey: mask(setting.geminiKey),
+      claudeKey: mask(setting.claudeKey),
+      openaiKey: mask(setting.openaiKey),
+      deepseekKey: mask(setting.deepseekKey),
+      omniRouteKey: mask(setting.omniRouteKey),
       omniRouteUrl: setting.omniRouteUrl || "http://localhost:20128/v1",
       customEndpoint: setting.customEndpoint || "http://localhost:20128/v1",
       activeProvider: setting.activeProvider || "auto",
@@ -66,7 +75,9 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     await ensureSettingTable();
 
@@ -92,29 +103,29 @@ export async function POST(request: Request) {
     }
 
     const newGeminiKey =
-      geminiKey !== undefined && !geminiKey.startsWith("••••")
-        ? geminiKey.trim() || null
-        : existing?.geminiKey || null;
+      geminiKey !== undefined && !String(geminiKey).startsWith("••••")
+        ? writeSecret(String(geminiKey).trim())
+        : existing?.geminiKey || null; // mantém valor já armazenado (cifrado ou legado)
 
     const newClaudeKey =
-      claudeKey !== undefined && !claudeKey.startsWith("••••")
-        ? claudeKey.trim() || null
-        : existing?.claudeKey || null;
+      claudeKey !== undefined && !String(claudeKey).startsWith("••••")
+        ? writeSecret(String(claudeKey).trim())
+        : existing?.claudeKey || null; // mantém valor já armazenado (cifrado ou legado)
 
     const newOpenaiKey =
-      openaiKey !== undefined && !openaiKey.startsWith("••••")
-        ? openaiKey.trim() || null
-        : existing?.openaiKey || null;
+      openaiKey !== undefined && !String(openaiKey).startsWith("••••")
+        ? writeSecret(String(openaiKey).trim())
+        : existing?.openaiKey || null; // mantém valor já armazenado (cifrado ou legado)
 
     const newDeepseekKey =
-      deepseekKey !== undefined && !deepseekKey.startsWith("••••")
-        ? deepseekKey.trim() || null
-        : existing?.deepseekKey || null;
+      deepseekKey !== undefined && !String(deepseekKey).startsWith("••••")
+        ? writeSecret(String(deepseekKey).trim())
+        : existing?.deepseekKey || null; // mantém valor já armazenado (cifrado ou legado)
 
     const newOmniRouteKey =
-      omniRouteKey !== undefined && !omniRouteKey.startsWith("••••")
-        ? omniRouteKey.trim() || null
-        : existing?.omniRouteKey || null;
+      omniRouteKey !== undefined && !String(omniRouteKey).startsWith("••••")
+        ? writeSecret(String(omniRouteKey).trim())
+        : existing?.omniRouteKey || null; // mantém valor já armazenado (cifrado ou legado)
 
     const newEndpoint = customEndpoint || omniRouteUrl || existing?.customEndpoint || "http://localhost:20128/v1";
 
@@ -143,18 +154,18 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log("[SETTINGS] Chave salva com sucesso:", Boolean(updated.geminiKey));
+    console.log("[SETTINGS] Configurações salvas (chaves cifradas):", Boolean(updated.geminiKey));
     console.log("[SETTINGS] Estado final SQLite - Gemini:", Boolean(updated.geminiKey), "| Claude:", Boolean(updated.claudeKey));
 
     return NextResponse.json({
       success: true,
       message: "Configurações BYOK salvas com sucesso no SQLite!",
       setting: {
-        geminiKey: updated.geminiKey || "",
-        claudeKey: updated.claudeKey || "",
-        openaiKey: updated.openaiKey || "",
-        deepseekKey: updated.deepseekKey || "",
-        omniRouteKey: updated.omniRouteKey || "",
+        geminiKey: updated.geminiKey ? "••••" : "",
+        claudeKey: updated.claudeKey ? "••••" : "",
+        openaiKey: updated.openaiKey ? "••••" : "",
+        deepseekKey: updated.deepseekKey ? "••••" : "",
+        omniRouteKey: updated.omniRouteKey ? "••••" : "",
         customEndpoint: updated.customEndpoint,
       },
       updatedAt: updated.updatedAt,
