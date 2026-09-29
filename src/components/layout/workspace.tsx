@@ -94,9 +94,26 @@ export function Workspace({
   }, []);
   useEffect(() => {
     const el = chatScrollRef.current;
-    if (el && stickToBottomRef.current) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+    if (!el || !stickToBottomRef.current) return;
+    // FIX (auto-scroll durante streaming): antes rolavamos apenas quando
+    // messages.length mudava — mas o texto do assistant cresce DENTRO da última
+    // mensagem via streaming, sem mudar o length. Agora rolamos também a cada
+    // mutation do conteúdo: um MutationObserver observa a lista de mensagens e
+    // agenda um scrollTo via requestAnimationFrame (throttle natural de ~60fps).
+    const scheduleScroll = () => {
+      if (!stickToBottomRef.current) return;
+      window.requestAnimationFrame(() => {
+        const cur = chatScrollRef.current;
+        if (cur && stickToBottomRef.current) {
+          cur.scrollTop = cur.scrollHeight;
+        }
+      });
+    };
+    const observer = new MutationObserver(scheduleScroll);
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    // scroll imediato na troca de contagem (nova mensagem / fim de loading)
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    return () => observer.disconnect();
   }, [messages.length, loading]);
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
