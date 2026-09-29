@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import { safeFetch } from "@/core/security/safe-fetch";
-import { FAST_MODEL } from "@/core/router/smart-router";
+import { FAST_MODEL, HEAVY_MODEL } from "@/core/router/smart-router";
 
 export async function POST(request: NextRequest) {
   // Fases 3+4: rota que testa URLs/chaves fornecidas pelo usuário é o vetor SSRF
@@ -30,27 +30,50 @@ export async function POST(request: NextRequest) {
         clearTimeout(timeoutId);
 
         if (res.ok) {
-          // FIX DEFINITIVO ("verde mas quebrado"): validar uma chave Gemini contra
-          // /v1beta/models prova apenas AUTENTICIDADE — não que a chave consegue gerar
-          // conteúdo nos modelos que o chat realmente usa. Agora testamos também uma
-          // geração mínima no modelo preferido do router (cascata FAST_MODEL -> lite ->
-          // 2.0-flash). Se autenticar mas falhar na geração, o card fica AMARELO com o
-          // motivo real (ex.: free tier sem acesso ao modelo), em vez de mentir verde.
+          // FIX DEFINITIVO ("sempre amarelo mesmo com chave válida"):
+          //  1) A lista /v1beta/models NÃO é fonte confiável de elegibilidade: ela
+          //     retorna modelos SEM "generateContent" na supportedActions (ex.:
+          //     variantes -lite e thinking) que ainda assim funcionam via alias, e o
+          //     filtro antigo descartava candidatos válidos → sobrava só o obsoleto
+          //     gemini-2.5-flash-lite → HTTP 404 garantido.
+          //  2) O erro de geração agora É retornado (antes era engolido por um
+          //     clearTimeout() no caminho de sucesso).
+          //  3) Timeout dedicado por tentativa de geração (sem AbortController
+          //     externo competindo) e mensagem final com TODOS os erros vistos.
           const listJson = (await res.json().catch(() => null)) as
-            | { models?: Array<{ name?: string }> }
+            | { models?: Array<{ name?: string; supportedActions?: string[] }> }
             | null;
-          const supported = (listJson?.models ?? [])
-            .map((m) => (m.name || "").replace(/^models\//, ""))
-            .filter(Boolean);
-          const candidates = [FAST_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"].filter((id) =>
-            supported.length === 0 ? true : supported.includes(id)
+          const all = listJson?.models ?? [];
+          const canGenerate = new Set(
+            all
+              .filter((m) => !m.supportedActions || m.supportedActions.includes("generateContent"))
+              .map((m) => (m.name || "").replace(/^models\//, ""))
           );
+
+          // Cascata priorizada: modelo do router primeiro, depois aliases estáveis
+          // atuais da família Flash/Pro. Modelos obsoletos (-lite legadas) fora.
+          const priority = [
+            FAST_MODEL,
+            "gemini-2.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.0-flash",
+            HEAVY_MODEL,
+            "gemini-2.5-pro",
+            "gemini-pro-latest",
+          ];
+          // Candidatos = interseção com o catálogo (quando disponível), preservando
+          // a ordem de prioridade; se a lista vier vazia, usa a prioridade inteira.
+          const candidates = (canGenerate.size > 0
+            ? priority.filter((id) => canGenerate.has(id))
+            : priority
+          ).filter(Boolean) as string[];
+
           let genOk: string | null = null;
-          let genErr = "";
-          for (const modelId of candidates.slice(0, 4)) {
+          const errors: string[] = [];
+          for (const modelId of candidates.slice(0, 5)) {
             try {
               const genRes = await safeFetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${key}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${encodeURIComponent(key)}`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -58,18 +81,21 @@ export async function POST(request: NextRequest) {
                     contents: [{ role: "user", parts: [{ text: "responda apenas: OK" }] }],
                     generationConfig: { maxOutputTokens: 8 },
                   }),
-                  timeoutMs: 9000,
+                  timeoutMs: 12000,
                 }
               );
               if (genRes.ok) {
                 genOk = modelId;
                 break;
               }
-              const gj = (await genRes.json().catch(() => ({}))) as { error?: { message?: string } };
-              genErr = `${modelId}: HTTP ${genRes.status} ${gj?.error?.message || ""}`.slice(0, 160);
-              if (genRes.status === 401 || genRes.status === 403) break;
+              const gj = (await genRes.json().catch(() => ({}))) as { error?: { message?: string; status?: string } };
+              const msg = gj?.error?.message || `HTTP ${genRes.status}`;
+              // 404 "no longer available" = modelo morto p/ esta conta: pula em silêncio.
+              errors.push(`${modelId}: ${msg.slice(0, 120)}`);
+              if (genRes.status === 401 || genRes.status === 403) break; // chave inválida: para
             } catch (e) {
-              genErr = `${modelId}: ${String(e).slice(0, 80)}`;
+              const isAbort = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+              errors.push(`${modelId}: ${isAbort ? "timeout (rede lenta)" : String(e).slice(0, 80)}`);
             }
           }
           if (genOk) {
@@ -81,7 +107,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: false,
             warning: true,
-            message: `A chave autentica na API Google, mas NENHUM modelo de geração respondeu (${genErr || "nenhum candidato suportado"}). Verifique limites do free tier/quota em https://aistudio.google.com/apikey — modelos marcados como "no longer available to new users" são pulados automaticamente pela cascata.`,
+            message: `A chave autentica na API Google, mas nenhum modelo de teste respondeu (${errors.join(" | ") || "nenhum candidato elegível no catálogo"}). Verifique billing/free tier em https://aistudio.google.com/apikey`,
           }, { status: 200 });
         }
         const errData = await res.json().catch(() => ({}));

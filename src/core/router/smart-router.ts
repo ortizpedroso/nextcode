@@ -643,7 +643,7 @@ export class SmartRouter {
       try {
         const listRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${cleanApiKey}`,
-          { signal: AbortSignal.timeout(8000) }
+          { signal: AbortSignal.timeout(15000) }
         );
         if (listRes.ok) {
           const listJson = (await listRes.json().catch(() => null)) as
@@ -668,13 +668,17 @@ export class SmartRouter {
       // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
       const preferredOrder =
         tier === "heavy"
-          ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite"];
-      // Candidatos validados: intersecao com o que a chave suporta (mantendo a ordem de
-      // preferencia). Se a listagem falhou, mantemos a cascata original (comportamento antigo).
-      const candidateModels = supportedIds
-        ? preferredOrder.filter((id) => supportedIds!.includes(id))
-        : preferredOrder;
+          ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.5-pro", "gemini-pro-latest", "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
+          : [FAST_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", HEAVY_MODEL, "gemini-2.5-pro"];
+      // FIX DEFINITIVO do "Testar Conexão amarelo + chat quebrado": a lista
+      // /v1beta/models costuma vir SEM generateContent nas supportedActions de
+      // modelos que funcionam perfeitamente via alias (ex.: gemini-flash-latest),
+      // e a interseção antiga descartava candidatos válidos até sobrar apenas
+      // variantes obsoletas (404 garantido). Agora: usa a interseção SOMENTE se
+      // ela não ficar vazia; caso contrário mantém a cascata completa e deixa o
+      // 404 individual pular silenciosamente para o próximo candidato.
+      const intersected = supportedIds ? preferredOrder.filter((id) => supportedIds!.includes(id)) : preferredOrder;
+      const candidateModels = intersected.length > 0 ? intersected : preferredOrder;
       if (candidateModels.length === 0 && supportedIds) {
         lastGeminiFailure = `chave Gemini ativa, mas sem acesso a nenhum dos modelos preferidos (${preferredOrder.join(", ")}). Modelos visiveis para a chave: ${supportedIds.slice(0, 6).join(", ")}...`;
         console.warn(`[ROUTER] ${lastGeminiFailure}`);
@@ -699,7 +703,7 @@ export class SmartRouter {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: geminiBody,
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(20000),
           });
 
           if (geminiRes.ok) {
