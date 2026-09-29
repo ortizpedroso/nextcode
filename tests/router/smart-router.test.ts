@@ -84,8 +84,11 @@ describe("modelo 'auto' — correção dos 350+ provedores", () => {
   // Helper: replica a regra de seleção do router (linhas ~394-399 do smart-router)
   // e valida contra o comportamento real via mock de fetch.
   function expectedModel(tier: string, envOverride?: string) {
-    if (envOverride?.trim()) return envOverride.trim();
-    return tier === "heavy" ? "auto/coding" : tier === "custom" ? "auto/smart" : "auto";
+    if (envOverride?.trim()) return envOverride.trim().split(",")[0];
+    // cascata gratuita por tier (replica smart-router.ts)
+    return tier === "heavy"
+      ? "auto/coding:free"
+      : "auto/best-free";
   }
 
   it("regra de variantes por tier está correta no código-fonte", async () => {
@@ -95,17 +98,19 @@ describe("modelo 'auto' — correção dos 350+ provedores", () => {
       path.resolve(__dirname, "../../src/core/router/smart-router.ts"),
       "utf8"
     );
-    expect(src).toContain('"auto/coding"');
-    expect(src).toContain('"auto/smart"');
-    expect(src).toContain("process.env.OMNIROUTE_MODEL?.trim() || tierAutoVariant");
+    expect(src).toContain('"auto/coding:free"');
+    expect(src).toContain('"auto/best-free"');
+    expect(src).toContain('"auto/chat"');
+    expect(src).toContain('"auto/cheap"');
+    expect(src).toContain("process.env.OMNIROUTE_MODEL?.trim()");
     // regressão histórica: o ID inválido nunca deve voltar
     expect(src).not.toContain("omniroute-auto");
   });
 
   it("variants calculadas batem com as variantes oficiais do gateway", () => {
-    expect(expectedModel("fast")).toBe("auto");
-    expect(expectedModel("heavy")).toBe("auto/coding");
-    expect(expectedModel("custom")).toBe("auto/smart");
+    expect(expectedModel("fast")).toBe("auto/best-free");
+    expect(expectedModel("heavy")).toBe("auto/coding:free");
+    expect(expectedModel("custom")).toBe("auto/best-free");
     expect(expectedModel("fast", "meu-modelo")).toBe("meu-modelo");
     expect(expectedModel("fast", "  espaco  ")).toBe("espaco");
   });

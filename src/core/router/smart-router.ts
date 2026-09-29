@@ -473,9 +473,21 @@ export class SmartRouter {
     // obrigando o NextCode a cair no fallback Gemini e exibindo "Cotas Indisponíveis".
     // Agora: variantes gratuitas por padrão + max_tokens limitado (o erro real do gateway
     // era literalmente "requested up to 131072 tokens, but can only ...").
-    const tierAutoVariant =
-      tier === "heavy" ? "auto/coding:free" : tier === "custom" ? "auto/best-free" : "auto/best-free";
-    const requestedOmniModel = process.env.OMNIROUTE_MODEL?.trim() || tierAutoVariant;
+    // FIX (papel do OmniRoute — não depender de um único provedor): o gateway possui
+    // dezenas de combos "auto/*" que varrem TODOS os backends conectados (OpenRouter,
+    // Kiro, Pollinations, Ollama, Gemini free, etc.), não apenas OpenRouter. Pedir só
+    // "auto/best-free" travava o roteamento num único combo; se a cota dele esgotava
+    // (HTTP 402), o NextCode derrubava tudo para o fallback Gemini. Agora montamos uma
+    // CASCATA de variantes e tentamos cada uma em ordem: o gateway pula de provedor em
+    // provedor silenciosamente até algum backend gratuito responder.
+    const autoCascade =
+      tier === "heavy"
+        ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
+        : ["auto/best-free", "auto/chat", "auto/fast", "auto/cheap", "auto"];
+    const envModels = process.env.OMNIROUTE_MODEL?.trim();
+    const requestedOmniModels = envModels
+      ? envModels.split(",").map((s) => s.trim()).filter(Boolean)
+      : autoCascade;
     const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
 
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
@@ -493,7 +505,10 @@ export class SmartRouter {
       lastOmniFailure = "circuit-breaker aberto apos falhas consecutivas (cooldown de 30s)";
       console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); indo direto para o fallback Gemini.");
     } else
-    try {
+    for (let omniIdx = 0; omniIdx < requestedOmniModels.length; omniIdx++) {
+      const requestedOmniModel = requestedOmniModels[omniIdx];
+      let networkDown = false;
+      try {
       const omniHeaders: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -520,6 +535,7 @@ export class SmartRouter {
         // segue vivo mesmo depois do timeout em Node >= 18.
         timeoutMs: omniConnectTimeoutMs,
       }).catch((err) => {
+        networkDown = true;
         omniRecordFailure();
         lastOmniFailure = `falha de rede em ${omniEndpoint}: ${String(err).slice(0, 160)}`;
         console.warn(
@@ -593,13 +609,20 @@ export class SmartRouter {
           ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo atual do gateway — adicione créditos ou ajuste OMNIROUTE_MODEL): ${errText.slice(0, 160)}`
           : `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
         console.warn(
-          `[ROUTER] OmniRoute retornou HTTP ${omniRes.status} em ${omniEndpoint}. Resposta: ${errText.substring(0, 200)}`
+          `[ROUTER] OmniRoute HTTP ${omniRes.status} no modelo "${requestedOmniModel}" (${Date.now() - omniStart}ms). ` +
+            (quotaHit && omniIdx < requestedOmniModels.length - 1
+              ? `tentando próximo combo da cascata: "${requestedOmniModels[omniIdx + 1]}"`
+              : `Resposta: ${errText.substring(0, 200)}`)
         );
       }
+      // Rede fora (porta fechada/timeout): não adianta tentar os próximos combos — aborta a cascata.
+      if (networkDown) break;
     } catch (omniErr) {
       omniRecordFailure();
       lastOmniFailure = `exceção na tentativa OmniRoute: ${String(omniErr).slice(0, 160)}`;
       console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
+      break; // exceção de transporte: mesma lógica — não insistir nos próximos combos
+    }
     }
 
     // ----------------------------------------------------
