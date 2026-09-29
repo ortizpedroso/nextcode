@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
-import { SmartRouter, AvailableKeys } from "@/core/router/smart-router";
+import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
+import { buildProjectContextBlock } from "@/core/project/project-context";
 
 import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
 
@@ -53,6 +54,29 @@ export async function POST(request: Request) {
       { maxLogLines: 50 }
     );
 
+    // 4.5 FASE 14.2 — Injeta contexto do projeto local (sessão vinculada OU projectId no body).
+    // Fail-open: sem caminho válido => chat segue exatamente como antes.
+    const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
+    let projectContextInjected = false;
+    try {
+      const sessionForCtx = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+        include: { project: true },
+      });
+      const ctxProject =
+        sessionForCtx?.project ??
+        (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
+      if (ctxProject) {
+        const contextBlock = buildProjectContextBlock(ctxProject);
+        if (contextBlock) {
+          dispatchMessages.unshift({ role: "system", content: contextBlock });
+          projectContextInjected = true;
+        }
+      }
+    } catch (ctxErr) {
+      console.warn("[PROJECT_CONTEXT] Falha ao montar contexto (seguindo sem ele):", String(ctxErr));
+    }
+
     // 5. Consulta chaves BYOK no banco SQLite e roda o SmartRouter
     const setting = await prisma.setting.findUnique({ where: { id: "default" } });
     const availableKeys: AvailableKeys = {
@@ -75,7 +99,7 @@ export async function POST(request: Request) {
     let effectiveTier = activeTier;
 
     const dispatchRes = await smartRouter.dispatchWithFallback({
-      messages: headroomRes.messages,
+      messages: dispatchMessages,
       tier: activeTier === "heavy" ? "heavy" : "fast",
       geminiKey: readSecret(setting?.geminiKey),
       omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
@@ -127,6 +151,7 @@ export async function POST(request: Request) {
         messages: cleanMessages,
         intent,
         tokensSaved: headroomRes.tokensSaved,
+        projectContextInjected,
       },
       {
         headers: {

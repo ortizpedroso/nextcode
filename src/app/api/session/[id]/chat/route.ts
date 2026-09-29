@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
-import { SmartRouter } from "@/core/router/smart-router";
+import { SmartRouter, DispatchMessage } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
+import { buildProjectContextBlock } from "@/core/project/project-context";
 
 function extractTextFromChunk(rawChunk: string): string {
   let extracted = "";
@@ -108,10 +109,30 @@ export async function POST(
       { maxLogLines: 50 }
     );
 
+    // 3.5 FASE 14.2 — Injeta o contexto do projeto local (se a sessão pertence a um).
+    // Fail-open: caminho inexistente/ilegível => null => comportamento idêntico ao anterior.
+    const sessionWithProject = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { project: true },
+    });
+    const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
+    let projectContextInjected = false;
+    if (sessionWithProject?.project) {
+      try {
+        const contextBlock = buildProjectContextBlock(sessionWithProject.project);
+        if (contextBlock) {
+          dispatchMessages.unshift({ role: "system", content: contextBlock });
+          projectContextInjected = true;
+        }
+      } catch (ctxErr) {
+        console.warn("[PROJECT_CONTEXT] Falha ao montar contexto (seguindo sem ele):", String(ctxErr));
+      }
+    }
+
     // 4. Executa o despacho com a cascata de fallback silenciosa (Gemini Direto -> OmniRoute -> Esgotamento)
     const smartRouter = new SmartRouter();
     const result = await smartRouter.dispatchWithFallback({
-      messages: headroomRes.messages,
+      messages: dispatchMessages,
       tier: "fast",
       geminiKey: readSecret(setting?.geminiKey),
       omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
@@ -163,6 +184,7 @@ export async function POST(
           "X-Provider-Badge": result.badge,
           "X-Provider-Tier": result.tierTag,
           "X-Provider-Used": result.providerUsed,
+          "X-Project-Context": projectContextInjected ? "1" : "0",
         },
       });
     }
