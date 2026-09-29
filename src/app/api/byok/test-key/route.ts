@@ -42,12 +42,12 @@ export async function POST(request: NextRequest) {
           const supported = (listJson?.models ?? [])
             .map((m) => (m.name || "").replace(/^models\//, ""))
             .filter(Boolean);
-          const candidates = [FAST_MODEL, "gemini-2.5-flash-lite", "gemini-2.0-flash"].filter((id) =>
+          const candidates = [FAST_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"].filter((id) =>
             supported.length === 0 ? true : supported.includes(id)
           );
           let genOk: string | null = null;
           let genErr = "";
-          for (const modelId of candidates.slice(0, 3)) {
+          for (const modelId of candidates.slice(0, 4)) {
             try {
               const genRes = await safeFetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${key}`,
@@ -75,13 +75,13 @@ export async function POST(request: NextRequest) {
           if (genOk) {
             return NextResponse.json({
               success: true,
-              message: `Chave Gemini Válida e Ativa! Teste de geração OK em "${genOk}".`,
+              message: `✅ Chave autenticada com sucesso! Conexão ativa com o modelo ${genOk}.`,
             });
           }
           return NextResponse.json({
             success: false,
             warning: true,
-            message: `A chave autentica na API Google, mas NENHUM modelo de geração respondeu (${genErr || "nenhum candidato suportado"}). O chat vai falhar com esta chave — verifique limites do free tier/quota em https://aistudio.google.com/apikey`,
+            message: `A chave autentica na API Google, mas NENHUM modelo de geração respondeu (${genErr || "nenhum candidato suportado"}). Verifique limites do free tier/quota em https://aistudio.google.com/apikey — modelos marcados como "no longer available to new users" são pulados automaticamente pela cascata.`,
           }, { status: 200 });
         }
         const errData = await res.json().catch(() => ({}));

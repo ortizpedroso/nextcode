@@ -138,7 +138,7 @@ describe("modelo 'auto' — correção dos 350+ provedores", () => {
       expect(result.providerUsed).toBe("omniroute");
       const omniCall = captured.find((c) => String(c.url).includes("/v1/chat/completions"));
       expect(omniCall).toBeDefined();
-      expect(omniCall!.body.model).toBe("auto"); // regressão: nunca 'omniroute-auto'
+      expect(omniCall!.body.model).toBe("auto/best-free"); // regressão: nunca 'omniroute-auto'; variante gratuita (evita 402)
       expect(omniCall!.url).toBe("http://localhost:20128/v1/chat/completions");
     } finally {
       vi.unstubAllGlobals();
@@ -169,7 +169,7 @@ describe("modelo 'auto' — correção dos 350+ provedores", () => {
         stream: false,
       });
       const omniCall = captured.find((c) => String(c.url).includes("/v1/chat/completions"));
-      expect(omniCall?.body.model).toBe("auto/coding");
+      expect(omniCall?.body.model).toBe("auto/coding:free");
     } finally {
       vi.unstubAllGlobals();
     }

@@ -27,7 +27,7 @@ beforeAll(async () => {
       if (req.url === "/v1/models") {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(
-          JSON.stringify({ data: [{ id: "auto" }, { id: "auto/coding" }, { id: "auto/smart" }] })
+          JSON.stringify({ data: [{ id: "auto" }, { id: "auto/coding" }, { id: "auto/smart" }, { id: "auto/best-free" }, { id: "auto/coding:free" }] })
         );
       }
       if (req.url === "/v1/chat/completions" && req.method === "POST") {
@@ -36,7 +36,7 @@ beforeAll(async () => {
           return res.end(JSON.stringify({ error: { message: "invalid request" } }));
         }
         // modelo inexistente -> erro como o gateway real (reproduz o bug 'omniroute-auto')
-        if (!["auto", "auto/coding", "auto/smart"].includes(body.model)) {
+        if (!["auto", "auto/coding", "auto/smart", "auto/best-free", "auto/coding:free"].includes(body.model)) {
           res.writeHead(404, { "content-type": "application/json" });
           return res.end(JSON.stringify({ error: { message: `model '${body.model}' not found` } }));
         }
@@ -96,7 +96,7 @@ describe("E2E — SmartRouter x gateway OmniRoute (fake)", () => {
     const payload = await result.response.json();
     expect(payload.choices[0].message.content).toBe("olá do gateway fake");
     const chatReq = seenRequests.filter((r) => r.path === "/v1/chat/completions").pop();
-    expect(chatReq?.body.model).toBe("auto");
+    expect(chatReq?.body.model).toBe("auto/best-free"); // variante gratuita (evita HTTP 402 de créditos)
   });
 
   it("chat em streaming entrega chunks SSE pelo router", async () => {

@@ -467,9 +467,16 @@ export class SmartRouter {
     // zero-config é "auto" (ou variantes "auto/fast", "auto/coding", "auto/cheap"),
     // que monta um combo virtual com os 350+ provedores conectados (docs: README
     // "Zero-config — just use `auto`" e docs/routing/AUTO-COMBO.md).
+    // FIX (papel do OmniRoute): o gateway DEVE fazer o failover silencioso de provedor em
+    // provedor. Antes pedíamos a variante premium do combo ("auto/coding", "auto/smart"),
+    // que nos planos gratuitos estoura créditos e derruba o combo inteiro com HTTP 402 —
+    // obrigando o NextCode a cair no fallback Gemini e exibindo "Cotas Indisponíveis".
+    // Agora: variantes gratuitas por padrão + max_tokens limitado (o erro real do gateway
+    // era literalmente "requested up to 131072 tokens, but can only ...").
     const tierAutoVariant =
-      tier === "heavy" ? "auto/coding" : tier === "custom" ? "auto/smart" : "auto";
+      tier === "heavy" ? "auto/coding:free" : tier === "custom" ? "auto/best-free" : "auto/best-free";
     const requestedOmniModel = process.env.OMNIROUTE_MODEL?.trim() || tierAutoVariant;
+    const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
 
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
     const { chatUrl: omniEndpoint } = buildOmniEndpoints(rawUrl);
@@ -498,6 +505,10 @@ export class SmartRouter {
         model: requestedOmniModel,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         stream,
+        // FIX (HTTP 402 "requires more credits"): sem max_tokens o gateway reservava o
+        // teto do modelo (131072 tokens), que excede o saldo de planos gratuitos e fazia
+        // TODA a cascata de provedores falhar antes mesmo de tentar. Limitamos a reserva.
+        max_tokens: omniMaxTokens,
       });
 
       const omniStart = Date.now();
@@ -572,9 +583,15 @@ export class SmartRouter {
           };
         }
       } else if (omniRes) {
+        // FIX (failover silencioso do gateway): 402/429 NÃO são queda do OmniRoute — o
+        // gateway está vivo e respondendo; quem falhou foi a cota do combo. Não devem
+        // acionar circuit-breaker nem derrubar o card verde; apenas registrar diagnóstico.
         if (omniRes.status >= 500) omniRecordFailure();
         const errText = await omniRes.text().catch(() => "");
-        lastOmniFailure = `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
+        const quotaHit = omniRes.status === 402 || omniRes.status === 429;
+        lastOmniFailure = quotaHit
+          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo atual do gateway — adicione créditos ou ajuste OMNIROUTE_MODEL): ${errText.slice(0, 160)}`
+          : `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
         console.warn(
           `[ROUTER] OmniRoute retornou HTTP ${omniRes.status} em ${omniEndpoint}. Resposta: ${errText.substring(0, 200)}`
         );
@@ -622,10 +639,14 @@ export class SmartRouter {
       }
 
       // Ordem coerente: modelos reais primeiro; nunca pedir variante lite para tarefa heavy.
+      // FIX (HTTP 404 "no longer available to new users"): chaves novas da AI Studio não
+      // têm acesso a variantes descontinuadas (2.5-flash-lite) nem garantidas (2.5-flash);
+      // a cascata cobre os IDs vigentes em 2026, incluindo preview/latest e pro como último
+      // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
       const preferredOrder =
         tier === "heavy"
-          ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
+          ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-flash-latest"]
+          : [FAST_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash", "gemini-2.5-flash-lite"];
       // Candidatos validados: intersecao com o que a chave suporta (mantendo a ordem de
       // preferencia). Se a listagem falhou, mantemos a cascata original (comportamento antigo).
       const candidateModels = supportedIds
