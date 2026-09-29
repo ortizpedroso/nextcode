@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { authFetch } from "@/lib/client-session";
 import { Sidebar, ProjectItem, SessionItem } from "@/components/layout/sidebar";
 import { Workspace, TaskNode, SessionMessage } from "@/components/layout/workspace";
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
@@ -375,7 +376,7 @@ export default function DashboardOrchestrator() {
 
   const handleSaveSettings = async (updated: SettingsFormState) => {
     setSettingsForm(updated);
-    const res = await fetch("/api/settings", {
+    const res = await authFetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updated),

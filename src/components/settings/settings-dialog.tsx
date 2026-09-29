@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authFetch } from "@/lib/client-session";
 import {
   Key,
   Server,
@@ -152,7 +153,7 @@ export function SettingsDialog({
       return;
     }
     try {
-      const res = await fetch("/api/providers/custom", {
+      const res = await authFetch("/api/providers/custom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -189,7 +190,7 @@ export function SettingsDialog({
 
   const handleDeleteCustomProvider = async (id: string) => {
     try {
-      const res = await fetch(`/api/providers/custom/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/providers/custom/${id}`, { method: "DELETE" });
       if (res.ok) await fetchCustomProviders();
     } catch (err) {
       console.error("Erro ao deletar provedor:", err);
@@ -228,7 +229,7 @@ export function SettingsDialog({
 
   const handlePingMcp = async (id: string, name: string) => {
     try {
-      const res = await fetch(`/api/mcp/servers/${id}/ping`, { method: "POST" });
+      const res = await authFetch(`/api/mcp/servers/${id}/ping`, { method: "POST" });
       const data = await res.json();
       if (res.ok) {
         setTestResult({ provider: `MCP ${name}`, ok: true, message: data.message });
@@ -241,7 +242,7 @@ export function SettingsDialog({
 
   const handleDeleteMcp = async (id: string) => {
     try {
-      const res = await fetch(`/api/mcp/servers/${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/mcp/servers/${id}`, { method: "DELETE" });
       if (res.ok) await fetchMcpServers();
     } catch (err) {
       console.error("Erro ao apagar servidor MCP:", err);

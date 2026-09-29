@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { authFetch } from "@/lib/client-session";
 import {
   Key,
   ExternalLink,
@@ -60,7 +61,7 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
     }));
 
     try {
-      const res = await fetch("/api/byok/test-key", {
+      const res = await authFetch("/api/byok/test-key", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

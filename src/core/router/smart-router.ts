@@ -112,8 +112,13 @@ function omniRecordSuccess() {
   omniCbFailures = 0;
 }
 
-export const FAST_MODEL = "gemini-3.5-flash";
-export const HEAVY_MODEL = "gemini-3.7-flash";
+// FIX (chave Gemini válida dando erro 404): os IDs "gemini-3.5-flash"/"gemini-3.7-flash"
+// NÃO existem na API v1beta do Google — qualquer requisição com eles retorna
+// "404 NOT_FOUND: Model not found", o que parecia erro de chave. Agora usamos IDs
+// reais da API, e a cascata de candidatos abaixo cobre variantes oficiais em ordem
+// de preferência; um 404/400 avança para o próximo candidato em vez de derrubar tudo.
+export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
+export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-2.5-pro";
 
 
 export interface DispatchMessage {
@@ -517,11 +522,13 @@ export class SmartRouter {
     if (effectiveGeminiKey) {
       recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
-      // Ordem coerente: modelos reais primeiro; nunca pedir "lite/latest" para uma tarefa heavy.
+      // Ordem coerente: modelos reais primeiro; nunca pedir variante lite para tarefa heavy.
+      // FIX: incluída a cascata completa de IDs VÁLIDOS da API v1beta. Se um modelo for
+      // descontinuado/404, o loop avança para o próximo candidato (só 401/403 aborta).
       const candidateModels =
         tier === "heavy"
-          ? [HEAVY_MODEL, FAST_MODEL, "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-3.5-flash-lite", "gemini-flash-latest"];
+          ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
+          : [FAST_MODEL, "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
 
       for (const modelId of candidateModels) {
         try {

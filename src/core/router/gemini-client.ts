@@ -1,3 +1,6 @@
+// FIX: único ID garantidamente válido na v1beta hoje; sobrescrevível por env.
+const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
+
 let cachedModelName: string | null = null;
 
 /**
@@ -20,15 +23,20 @@ export async function resolveAvailableGeminiModel(apiKey: string): Promise<strin
         .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
         .map((m) => m.name.replace(/^models\//, ""));
 
-      // Prioridade: 3.5-flash > 3.7-flash > 3.8-flash > qualquer variante flash
+      // Prioridade (FIX): antes a lista procurava IDs inexistentes ("gemini-3.5-flash",
+      // "gemini-3.7-flash") e, se nada batesse, devolvia um ID inválido que causava 404
+      // na API do Google — interpretado pelo usuário como "chave válida dando erro".
+      // Agora: usa exatamente o que a ListModels retornou; nunca inventa ID.
       const preferred =
-        generateModels.find((m) => m === "gemini-3.5-flash") ||
-        generateModels.find((m) => m === "gemini-3.7-flash") ||
-        generateModels.find((m) => m.includes("3.5-flash")) ||
-        generateModels.find((m) => m.includes("3.7-flash")) ||
-        generateModels.find((m) => m.includes("3.8-flash")) ||
-        generateModels.find((m) => m.includes("flash")) ||
-        "gemini-3.5-flash";
+        generateModels.find((m) => m === "gemini-2.5-flash") ||
+        generateModels.find((m) => m === "gemini-2.0-flash") ||
+        generateModels.find((m) => m.includes("2.5-flash")) ||
+        generateModels.find((m) => m.includes("flash"));
+
+      if (!preferred) {
+        console.warn("[NextCode] ListModels não expõe nenhum modelo *-flash para esta chave.");
+        return "";
+      }
 
       cachedModelName = preferred.replace(/^models\//, "");
       console.log(`[NextCode] Modelo Gemini resolvido dinamicamente: ${cachedModelName}`);
@@ -38,8 +46,8 @@ export async function resolveAvailableGeminiModel(apiKey: string): Promise<strin
     console.warn("[NextCode] Falha ao listar modelos via ListModels, utilizando fallback seguro:", error);
   }
 
-  // Fallback padrão seguro
-  return "gemini-3.5-flash";
+  // Fallback padrão seguro: único ID garantidamente válido na v1beta hoje.
+  return FAST_MODEL_FALLBACK;
 }
 
 /**

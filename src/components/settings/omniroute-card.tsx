@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authFetch } from "@/lib/client-session";
 import {
   Cpu,
   CheckCircle2,
@@ -26,7 +27,7 @@ export function OmniRouteCard() {
     setIsValidating(true);
     setFeedbackMsg(null);
     try {
-      const res = await fetch("/api/omniroute/health", { method: "POST" });
+      const res = await authFetch("/api/omniroute/health", { method: "POST" });
       const data = await res.json();
 
       if (data.success || data.status === "connected" || data.status === "online") {
@@ -56,7 +57,7 @@ export function OmniRouteCard() {
   const handlePrimaryRouteToggle = async (checked: boolean) => {
     setIsPrimaryRoute(checked);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await authFetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ activeProvider: checked ? "omniroute" : "auto" }),
@@ -77,7 +78,7 @@ export function OmniRouteCard() {
     setSettingUp(true);
     setFeedbackMsg("Iniciando setup e registro do OmniRoute em 1 clique...");
     try {
-      const res = await fetch("/api/omniroute/setup", {
+      const res = await authFetch("/api/omniroute/setup", {
         method: "POST",
       });
       const data = await res.json();
