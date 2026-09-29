@@ -14,8 +14,10 @@ model Setting {
   openaiKey      String?
   deepseekKey    String?
   omniRouteKey   String?
-  omniRouteUrl   String?  @default("http://localhost:8080/v1")
-  customEndpoint String?  @default("http://localhost:8080/v1")
+  // 20128 = porta oficial do OmniRoute no docker-compose.yml (8080 era um default obsoleto
+  // que fazia o router apontar para porta fechada -> "Cotas e Serviços Indisponíveis")
+  omniRouteUrl   String?  @default("http://localhost:20128/v1")
+  customEndpoint String?  @default("http://localhost:20128/v1")
   activeProvider String   @default("auto")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
