@@ -50,3 +50,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Artefatos compilados acidentais
+*.js
+!next.config.js
+!postcss.config.js
+!tailwind.config.js
