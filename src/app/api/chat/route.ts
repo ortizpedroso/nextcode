@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     // Fail-open: sem caminho válido => chat segue exatamente como antes.
     const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
     let projectContextInjected = false;
+    let contextDiagnostics: string | null = null;
     try {
       const sessionForCtx = await prisma.session.findUnique({
         where: { id: activeSessionId },
@@ -66,15 +67,26 @@ export async function POST(request: Request) {
       const ctxProject =
         sessionForCtx?.project ??
         (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
-      if (ctxProject) {
+      if (!ctxProject) {
+        contextDiagnostics = "sessao sem projeto vinculado e sem projectId no body";
+      } else if (!ctxProject.path || !ctxProject.path.trim()) {
+        contextDiagnostics = `projeto "${ctxProject.name}" cadastrado SEM o caminho da pasta local`;
+      } else {
         const contextBlock = buildProjectContextBlock(ctxProject);
         if (contextBlock) {
           dispatchMessages.unshift({ role: "system", content: contextBlock });
           projectContextInjected = true;
+          console.log(`[PROJECT_CONTEXT] Contexto injetado p/ "${ctxProject.name}" (${ctxProject.path}) — ${contextBlock.length} chars.`);
+        } else {
+          contextDiagnostics = `caminho invalido ou ilegivel: "${ctxProject.path}"`;
         }
+      }
+      if (contextDiagnostics) {
+        console.warn(`[PROJECT_CONTEXT] Sem contexto de projeto: ${contextDiagnostics}`);
       }
     } catch (ctxErr) {
       console.warn("[PROJECT_CONTEXT] Falha ao montar contexto (seguindo sem ele):", String(ctxErr));
+      contextDiagnostics = `excecao: ${String(ctxErr)}`;
     }
 
     // 5. Consulta chaves BYOK no banco SQLite e roda o SmartRouter
@@ -117,6 +129,13 @@ export async function POST(request: Request) {
         aiResponseContent = resJson.candidates[0].content.parts[0].text;
       } else {
         aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+      }
+
+      // FIX (vínculo sessão↔projeto): quando o contexto NÃO pôde ser montado,
+      // dizemos honestamente o motivo em vez de a IA "alucinar" pedindo anexos.
+      // Não altera nada quando o contexto foi injetado com sucesso.
+      if (!projectContextInjected && contextDiagnostics) {
+        aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
       }
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;

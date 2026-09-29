@@ -203,6 +203,15 @@ export function Sidebar({
                         <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       )}
                       <span className="truncate">{proj.name}</span>
+                      {/* Aviso: projeto sem caminho local => análise de contexto indisponível */}
+                      {!proj.path && (
+                        <span
+                          className="text-[10px] text-amber-600 dark:text-amber-400 shrink-0 font-medium"
+                          title="Defina a pasta local em Editar Projeto para a IA conseguir analisar o código"
+                        >
+                          ⚠ sem pasta
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">

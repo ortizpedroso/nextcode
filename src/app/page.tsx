@@ -399,6 +399,18 @@ export default function DashboardOrchestrator() {
         settings={settingsForm}
         onSelectProject={(id) => {
           setActiveProjectId(id);
+          // FIX (vínculo sessão↔projeto): ao clicar num projeto, sincroniza o
+          // nome e limpa a sessão ativa. Sem isso, activeProjectId apontava para
+          // um projeto enquanto activeSessionId ainda pertencia a OUTRO projeto —
+          // o backend usava o projeto da sessão e injetava contexto errado/nulo.
+          const proj = projects.find((p) => p.id === id);
+          setActiveProjectName(proj?.name ?? null);
+          if (activeSessionId) {
+            setActiveSessionId(null);
+            setActiveSessionTitle("");
+            setMessages([]);
+            setTasks([]);
+          }
         }}
         onSelectSession={handleSelectSession}
         onCreateProject={handleCreateProject}
