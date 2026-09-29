@@ -1,5 +1,5 @@
 // FIX: único ID garantidamente válido na v1beta hoje; sobrescrevível por env.
-const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
+const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-3.6-flash";
 
 let cachedModelName: string | null = null;
 
@@ -23,14 +23,11 @@ export async function resolveAvailableGeminiModel(apiKey: string): Promise<strin
         .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
         .map((m) => m.name.replace(/^models\//, ""));
 
-      // Prioridade (FIX): antes a lista procurava IDs inexistentes ("gemini-3.5-flash",
-      // "gemini-3.7-flash") e, se nada batesse, devolvia um ID inválido que causava 404
-      // na API do Google — interpretado pelo usuário como "chave válida dando erro".
-      // Agora: usa exatamente o que a ListModels retornou; nunca inventa ID.
       const preferred =
-        generateModels.find((m) => m === "gemini-2.5-flash") ||
-        generateModels.find((m) => m === "gemini-2.0-flash") ||
-        generateModels.find((m) => m.includes("2.5-flash")) ||
+        generateModels.find((m) => m === "gemini-3.6-flash") ||
+        generateModels.find((m) => m === "gemini-3.1-pro-preview") ||
+        generateModels.find((m) => m.includes("3.6-flash")) ||
+        generateModels.find((m) => m.includes("3.5-flash-lite")) ||
         generateModels.find((m) => m.includes("flash"));
 
       if (!preferred) {
