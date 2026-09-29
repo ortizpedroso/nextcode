@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Check,
   XCircle,
+  Globe,
+  Save,
 } from "lucide-react";
 
 export function OmniRouteCard() {
@@ -22,6 +24,45 @@ export function OmniRouteCard() {
   const [settingUp, setSettingUp] = useState(false);
   const [isPrimaryRoute, setIsPrimaryRoute] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  // FIX (pedido do usuário): o card só tinha o Setup 1-clique — não existia campo para
+  // colar URL + API Key do OmniRoute. Agora há um formulário manual que grava em
+  // /api/settings (omniRouteUrl + omniRouteKey) e revalida com probe autenticado.
+  const [urlDraft, setUrlDraft] = useState("http://localhost:20128/v1");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [savingManual, setSavingManual] = useState(false);
+  const [hasSavedKey, setHasSavedKey] = useState(false);
+
+  const saveManualConfig = async () => {
+    setSavingManual(true);
+    setFeedbackMsg(null);
+    try {
+      const payload: Record<string, string> = {};
+      if (urlDraft.trim()) payload.omniRouteUrl = urlDraft.trim();
+      if (keyDraft.trim()) payload.omniRouteKey = keyDraft.trim();
+      if (!Object.keys(payload).length) {
+        setFeedbackMsg("Nada para salvar — preencha a URL e/ou cole a API Key.");
+        return;
+      }
+      const res = await authFetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, activeProvider: "omniroute" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setFeedbackMsg("Configuração salva e cifrada. Revalidando conexão...");
+        setKeyDraft("");
+        setHasSavedKey(true);
+        checkStatus();
+      } else {
+        setFeedbackMsg(data?.error || `Falha ao salvar (HTTP ${res.status}).`);
+      }
+    } catch (err) {
+      setFeedbackMsg(`Erro ao salvar: ${String(err)}`);
+    } finally {
+      setSavingManual(false);
+    }
+  };
 
   const checkStatus = async () => {
     setIsValidating(true);
@@ -31,15 +72,21 @@ export function OmniRouteCard() {
       const data = await res.json();
 
       if (data.success || data.status === "connected" || data.status === "online") {
-        setStatus("connected");
-        setLatencyMs(data.latencyMs || (data.latency ? parseInt(data.latency) : null));
+        // FIX: gateway vivo mas chave inválida (HTTP 401 autenticado) NÃO é "Conectado".
+        if (data.status === "connected_unauthorized" || data.keyValid === false) {
+          setStatus("error");
+          setLatencyMs(null);
+        } else {
+          setStatus("connected");
+          setLatencyMs(data.latencyMs || (data.latency ? parseInt(data.latency) : null));
+        }
         if (data.endpoint) setEndpoint(data.endpoint);
         if (typeof data.isPrimaryRoute === "boolean") {
           setIsPrimaryRoute(data.isPrimaryRoute);
         }
       } else {
         // Distinguir "registrado porém gateway parado" de "não instalado"
-        setStatus(data.registered || data.status === "stopped" ? "stopped" : data.status === "error" ? "error" : "not_installed");
+        setStatus(data.registered || data.status === "stopped" ? "stopped" : data.status === "error" ? "error" : data.status === "connected_unauthorized" ? "error" : "not_installed");
         setFeedbackMsg(data.message || "OmniRoute não respondeu à validação de tráfego.");
         if (typeof data.isPrimaryRoute === "boolean") {
           setIsPrimaryRoute(data.isPrimaryRoute);
@@ -130,7 +177,7 @@ export function OmniRouteCard() {
       return (
         <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 flex items-center gap-1.5">
           <XCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-          Erro no Gateway
+          Chave inválida / Erro no Gateway
         </span>
       );
     }
@@ -193,11 +240,51 @@ export function OmniRouteCard() {
           </code>
         </div>
         <div>
-          <span className="text-[11px] text-slate-400 block">Modelos Locais Suportados:</span>
+          <span className="text-[11px] text-slate-400 block">Modelos roteadores suportados:</span>
           <span className="font-medium text-slate-700 dark:text-slate-300 text-[11px]">
-            Gemini 3.8 Flash, Llama 3.2, DeepSeek R1
+            auto, auto/coding, auto/fast, auto/smart (350+ provedores)
           </span>
         </div>
+      </div>
+
+      {/* Configuração manual: URL + API Key do OmniRoute */}
+      <div className="bg-white/70 dark:bg-slate-950/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/80 space-y-2">
+        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 text-[#0066cc]" />
+          Conexão manual (URL + API Key gerada no painel do OmniRoute)
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={urlDraft}
+            onChange={(e) => setUrlDraft(e.target.value)}
+            placeholder="http://localhost:20128/v1"
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <input
+            type="password"
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            placeholder={hasSavedKey ? "API Key já salva — cole nova para substituir" : "API Key do OmniRoute (sk-or-...)"}
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={saveManualConfig}
+            disabled={savingManual}
+            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 transition-colors shrink-0"
+          >
+            {savingManual ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5" />
+            )}
+            Salvar e Validar
+          </button>
+        </div>
+        <p className="text-[10px] text-slate-400 leading-snug">
+          Gere a chave em http://localhost:20128 (painel do OmniRoute → API Keys). Ela é cifrada com
+          AES-256-GCM antes de ir ao SQLite. A URL aceita host:porta, .../v1 ou o endpoint completo.
+        </p>
       </div>
 
       {/* Botão de Ação Principal 1-Click Setup */}

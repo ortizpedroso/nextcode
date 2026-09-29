@@ -131,11 +131,27 @@ export async function POST(req: NextRequest) {
 
     let gatewayAlive = false;
     let effectiveEndpoint = envUrl || dbUrl || DEFAULT_OMNI_ENDPOINT;
+
+    // FIX (bug "não instalado" persistente): antes o probe era feito SEM Authorization.
+    // Como o OmniRoute exige API key em TODOS os endpoints (/v1/models inclusive),
+    // um gateway vivo respondia 401 ao probe anônimo e — dependendo da versão do
+    // runtime — a resposta nem chegava como ok, gravando-se uma chave placeholder
+    // inválida no SQLite. Resultado: chat com "Authentication required" e card cinza.
+    // Agora reaproveitamos a chave REAL já salva (descriptografada) no probe.
+    let savedKeyPlain = "";
+    try {
+      savedKeyPlain = readSecret(settingRow?.omniRouteKey) || process.env.OMNIROUTE_KEY || "";
+    } catch {
+      savedKeyPlain = process.env.OMNIROUTE_KEY || "";
+    }
+    const probeHeaders: Record<string, string> = { Accept: "application/json" };
+    if (savedKeyPlain.trim()) probeHeaders["Authorization"] = `Bearer ${savedKeyPlain.trim()}`;
+
     for (const baseUrl of candidateUrls) {
       const probedRoot = resolveOmniRouteUrl(baseUrl).replace(/\/+$/, "").replace(/\/v1$/i, "");
       for (const target of [`${probedRoot}/v1/models`, `${probedRoot}/api/health`]) {
         try {
-          const probe = await safeFetch(target, { timeoutMs: 2500 });
+          const probe = await safeFetch(target, { headers: probeHeaders, timeoutMs: 2500 });
           if (probe.ok || probe.status === 401) {
             gatewayAlive = true;
             effectiveEndpoint = baseUrl;
@@ -175,13 +191,30 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Registra automaticamente o OmniRoute na tabela CustomProvider do SQLite
+    // FIX: modelos com IDs inventados ("gemini-3.8-flash" etc.) não existem no catálogo
+    // real e poluíam a UI; agora usamos variantes REAIS confirmadas em /v1/models.
     const modelsList = [
       { id: "auto", name: "OmniRoute Auto Router (Recomendado)" },
-      { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Upstream)" },
-      { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Upstream)" },
-      { id: "llama3.2", name: "Llama 3.2 Local" },
-      { id: "deepseek-r1:14b", name: "DeepSeek R1 14B Local" },
+      { id: "auto/coding", name: "Auto — Coding (tarefa pesada)" },
+      { id: "auto/fast", name: "Auto — Fast (barato/rápido)" },
+      { id: "auto/smart", name: "Auto — Smart (raciocínio)" },
+      { id: "auto/best-free", name: "Auto — Melhor Gratuito" },
     ];
+
+    // FIX (placeholder inválido): nunca sobrescrever uma chave REAL já salva pelo
+    // usuário. O valor persistido é sempre a chave efetiva: env OMNIROUTE_KEY >
+    // chave real existente > placeholder explícito (somente quando nada existe).
+    let keyToStore = savedKeyPlain.trim();
+    if (!keyToStore) {
+      try {
+        const existingRow = await prisma.setting.findUnique({ where: { id: "default" } });
+        keyToStore = readSecret(existingRow?.omniRouteKey) || "";
+      } catch {
+        keyToStore = "";
+      }
+    }
+    const storedKeyValue = keyToStore.trim() || "CHANGE_ME_em_Configuracoes_Provedores";
+    const encryptedKey = writeSecret(storedKeyValue);
 
     const provider = await prisma.customProvider.upsert({
       where: { id: "omniroute-local" },
@@ -189,13 +222,13 @@ export async function POST(req: NextRequest) {
         id: "omniroute-local",
         name: "OmniRoute Local Proxy",
         baseUrl: effectiveEndpoint,
-        apiKey: writeSecret("omniroute-local-key"),
+        apiKey: encryptedKey,
         models: JSON.stringify(modelsList),
         headers: JSON.stringify({ "X-Client": "NextCode-Engine" }),
       },
       update: {
         baseUrl: effectiveEndpoint,
-        apiKey: writeSecret("omniroute-local-key"),
+        apiKey: encryptedKey,
         models: JSON.stringify(modelsList),
       },
     });
@@ -210,13 +243,13 @@ export async function POST(req: NextRequest) {
         id: "default",
         customEndpoint: effectiveEndpoint,
         omniRouteUrl: effectiveEndpoint,
-        omniRouteKey: writeSecret("omniroute-local-key"),
+        omniRouteKey: encryptedKey,
         activeProvider,
       },
       update: {
         customEndpoint: effectiveEndpoint,
         omniRouteUrl: effectiveEndpoint,
-        omniRouteKey: writeSecret("omniroute-local-key"),
+        omniRouteKey: encryptedKey,
         activeProvider,
       },
     });
@@ -227,9 +260,13 @@ export async function POST(req: NextRequest) {
       latencyMs: gatewayAlive ? 12 : null,
       endpoint: effectiveEndpoint,
       isPrimaryRoute: gatewayAlive,
+      keyConfigured: Boolean(keyToStore.trim()),
       provider,
       message: gatewayAlive
-        ? "OmniRoute Local detectado na porta 20128, provisionado e ativado como rota primária!"
+        ? keyToStore.trim()
+          ? "OmniRoute Local detectado, autenticado e ativado como rota primária!"
+          : "Gateway detectado, mas SEM chave válida salva — o chat ainda dará 'Authentication required'. " +
+            "Cole a API Key do OmniRoute em Configurações > Provedores (linha OpenRouter/Gateway) e clique em Salvar."
         : "OmniRoute registrado no SQLite/config, mas o GATEWAY NÃO está rodando na porta 20128. " +
           "O Smart Router continuará usando Gemini direto como fallback até você subir o serviço " +
           "(ex.: 'docker compose up -d omniroute').",

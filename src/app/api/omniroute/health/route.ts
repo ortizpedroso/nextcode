@@ -113,15 +113,37 @@ async function handleCheck() {
 
   const latencyMs = Date.now() - startTime;
 
+  // FIX (card verde vs. chat quebrado): o OmniRoute responde 401 para chave
+  // ausente/inválida — isso prova que o PROCESSO está vivo, mas NÃO que a chave
+  // salva funciona. Antes, nesses casos o card ia de "não instalado" direto para
+  // "Conectado", mascarando o problema real (chat com 'Authentication required').
+  // Agora distinguimos: 200 => conectado de verdade; 401 => "porta viva, chave inválida".
+  let authOk = false;
+  if (isConnected && apiKey) {
+    try {
+      const check = await safeFetch(`${activeEndpoint.replace(/\/+$/, "")}/models`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+        timeoutMs: 2500,
+      });
+      authOk = check.ok;
+    } catch {
+      authOk = false;
+    }
+  }
+
   return NextResponse.json({
     success: isConnected,
-    status: isConnected ? "connected" : "stopped",
+    status: isConnected ? (authOk || !lastHttpStatus || lastHttpStatus === 200 ? "connected" : "connected_unauthorized") : "stopped",
     latencyMs: isConnected ? latencyMs : null,
     endpoint: activeEndpoint,
     isPrimaryRoute,
     httpStatus: lastHttpStatus,
-    message: isConnected
-      ? `OmniRoute Local operacional (${latencyMs}ms)!`
-      : "Status: Offline (Nenhum serviço detectado na porta 20128). Suba o gateway com 'docker compose up -d omniroute' ou desative a rota primária. O NextCode usará o Gemini direto como fallback.",
+    keyValid: authOk,
+    message: !isConnected
+      ? "Status: Offline (Nenhum serviço detectado na porta 20128). Suba o gateway com 'docker compose up -d omniroute' ou desative a rota primária. O NextCode usará o Gemini direto como fallback."
+      : authOk
+        ? `OmniRoute Local operacional (${latencyMs}ms)!`
+        : "Gateway VIVO na porta 20128, mas a API Key salva é inválida ou está faltando (respondeu 401). " +
+          "Gere uma API key no painel do OmniRoute (http://localhost:20128), cole em Configurações > Provedores e clique em Salvar.",
   });
 }

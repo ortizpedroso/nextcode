@@ -390,10 +390,15 @@ export class SmartRouter {
       "";
 
     const effectiveOmniRouteKey =
-      (omniRouteKey && omniRouteKey.trim()) ||
+      (omniRouteKey && !/^enc:v\d:/i.test(omniRouteKey.trim()) ? omniRouteKey.trim() : "") ||
       process.env.OMNIROUTE_KEY ||
       process.env.OMNIROUTE_API_KEY ||
       "";
+    // FIX (defesa em profundidade): se um caller esquecer de descriptografar e passar o
+    // blob "enc:v1:...", ele NUNCA vai para a rede — cai no env/placeholder com aviso.
+    if (omniRouteKey && /^enc:v\d:/i.test(omniRouteKey.trim())) {
+      console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
+    }
 
     // FIX (OmniRoute "nunca funcionava"): o modelo autocriado anteriormente era
     // "omniroute-" + "auto" (id inexistente), que NÃO consta no catálogo do OmniRoute —
