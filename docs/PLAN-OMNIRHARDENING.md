@@ -84,3 +84,9 @@ Formato do envelope: `enc:v1:<iv>:<tag>:<cipher>` (legado, ainda lido) →
 ### Próximas fases candidatas (backlog)
 - **Fase 9:** TLS/HTTPS local (self-signed ou mkcert) para o app e o gateway
 - **Fase 10:** auditoria contínua (`npm audit` + Trivy na imagem) no CI
+
+## Fase 12 — Quota Tracker (cooldown por combo esgotado) ✅ CONCLUÍDA
+- `src/core/router/quota-tracker.ts`: HTTP 402 → cooldown até reset diário UTC (máx. 6h); HTTP 429 → janela curta de 5 min.
+- Cascata do smart-router pula combos em cooldown silenciosamente (failover real entre pools do gateway).
+- `/api/metrics` expõe `quotaCooldowns` para o painel da UI.
+- Testes: +7 casos (total 71 passando).

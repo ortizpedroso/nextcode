@@ -34,6 +34,7 @@ export interface PruneResult {
 }
 
 import { safeFetch } from "../security/safe-fetch";
+import { isComboOnCooldown, markComboExhausted } from "./quota-tracker";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
   // FIX DEFINITIVO (porta morta): normaliza qualquer URL apontando para a porta 8080
@@ -485,9 +486,17 @@ export class SmartRouter {
         ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
         : ["auto/best-free", "auto/chat", "auto/fast", "auto/cheap", "auto"];
     const envModels = process.env.OMNIROUTE_MODEL?.trim();
-    const requestedOmniModels = envModels
+    const fullList = envModels
       ? envModels.split(",").map((s) => s.trim()).filter(Boolean)
       : autoCascade;
+    // FIX (Fase 12 — failover silencioso de cota): combos em cooldown por 402/429
+    // são pulados até o reset dos free tiers. Se TODOS estiverem em cooldown,
+    // usamos a lista completa mesmo assim (última chance antes do fallback Gemini).
+    const requestedOmniModels = fullList.filter((m) => !isComboOnCooldown(m));
+    if (requestedOmniModels.length === 0 && fullList.length > 0) {
+      console.warn("[ROUTER] Todos os combos da cascata em cooldown de cota; tentando o primeiro como última chance.");
+      requestedOmniModels.push(fullList[0]);
+    }
     const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
 
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
@@ -605,6 +614,9 @@ export class SmartRouter {
         if (omniRes.status >= 500) omniRecordFailure();
         const errText = await omniRes.text().catch(() => "");
         const quotaHit = omniRes.status === 402 || omniRes.status === 429;
+        // FIX (Fase 12): registra cooldown do COMBO esgotado — a próxima mensagem
+        // já pula direto para o próximo combo da cascata, sem repetir o 402.
+        if (quotaHit) markComboExhausted(requestedOmniModel, omniRes.status);
         lastOmniFailure = quotaHit
           ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo atual do gateway — adicione créditos ou ajuste OMNIROUTE_MODEL): ${errText.slice(0, 160)}`
           : `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
