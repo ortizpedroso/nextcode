@@ -29,8 +29,7 @@ describe("crypto.ts — AES-256-GCM em repouso", () => {
     const enc = c.encryptSecret(secret);
 
     expect(enc).not.toContain(secret); // texto plano NUNCA aparece no cifrado
-    expect(enc.startsWith("enc:v1:")).toBe(true);
-    expect(c.isEncrypted(enc)).toBe(true);
+    expect(c.isEncrypted(enc)).toBe(true); // Fase 8: novo envelope v2 (v1 continua legível)
     expect(c.decryptSecret(enc)).toBe(secret);
     expect(c.readSecret(enc)).toBe(secret);
   });
@@ -122,5 +121,86 @@ describe("crypto.ts — AES-256-GCM em repouso", () => {
     process.env.NEXTCODE_MASTER_KEY = Buffer.alloc(32, 8).toString("base64");
     const c = await loadCrypto();
     expect(() => c.decryptSecret("enc:v1:somente-um-campo")).toThrow(/Formato/);
+  });
+
+  // ================= FASE 8 — Rotação de chaves (envelope v2) =================
+
+  it("v2: encryptSecret usa envelope enc:v2:<keyId>. com a chave ativa", async () => {
+    process.env.NEXTCODE_MASTER_KEY = Buffer.alloc(32, 11).toString("base64");
+    const c = await loadCrypto();
+    const enc = c.encryptSecret("sk-v2-teste");
+    expect(enc.startsWith("enc:v2:")).toBe(true);
+    const kid = enc.slice("enc:v2:".length).split(".")[0];
+    expect(kid).toMatch(/^[0-9a-f]{8}$/);
+    expect(kid).toBe(c.masterKeyId());
+    expect(c.decryptSecret(enc)).toBe("sk-v2-teste");
+    expect(c.isEncryptedWithActiveKey(enc)).toBe(true);
+  });
+
+  it("rotação sem downtime: NEXTCODE_MASTER_KEYS decifra dados da chave ANTIGA e escreve com a NOVA", async () => {
+    const oldKey = Buffer.alloc(32, 21).toString("base64");
+    const newKey = Buffer.alloc(32, 22).toString("base64");
+
+    // 1) dado criado sob a chave antiga (v2 do keyId antigo)
+    process.env.NEXTCODE_MASTER_KEY = oldKey;
+    let c = await loadCrypto();
+    const legacy = c.encryptSecret("sk-original");
+    expect(legacy.startsWith("enc:v2:")).toBe(true);
+
+    // 2) ambiente rotacionado: nova ativa + antiga ainda aceita para leitura
+    process.env.NEXTCODE_MASTER_KEYS = `${newKey},${oldKey}`;
+    c = await loadCrypto();
+    expect(c.readSecret(legacy)).toBe("sk-original"); // não quebrou nada
+    expect(c.isEncryptedWithActiveKey(legacy)).toBe(false); // precisa re-wrap
+
+    // 3) rewrap promove para a chave ativa
+    const promoted = c.rewrapSecret(legacy)!;
+    expect(c.isEncryptedWithActiveKey(promoted)).toBe(true);
+    expect(c.decryptSecret(promoted)).toBe("sk-original");
+    expect(c.masterKeyId()!.slice(0, 8)).not.toBe(legacy.slice("enc:v2:".length, "enc:v2:".length + 8));
+
+    // 4) writeSecret também faz lazy rewrap ao receber cifra antiga
+    const rew = c.writeSecret(legacy)!;
+    expect(c.isEncryptedWithActiveKey(rew)).toBe(true);
+  });
+
+  it("após remover a chave antiga, segredos não re-cifrados falham com mensagem clara (leia antes de remover!)", async () => {
+    const oldKey = Buffer.alloc(32, 31).toString("base64");
+    const newKey = Buffer.alloc(32, 32).toString("base64");
+    process.env.NEXTCODE_MASTER_KEY = oldKey;
+    let c = await loadCrypto();
+    const legacy = c.encryptSecret("sk-a-perder");
+    process.env.NEXTCODE_MASTER_KEYS = newKey; // antiga removida cedo demais
+    c = await loadCrypto();
+    expect(() => c.decryptSecret(legacy)).toThrow(/Nenhuma chave mestra atual\/antiga/);
+    expect(c.readSecret(legacy)).toBe(""); // readSecret degrada em vez de lançar
+  });
+
+  it("retrocompatibilidade total: v1 legado continua legível e é promovido a v2 no rewrap", async () => {
+    const key = Buffer.alloc(32, 41).toString("base64");
+    process.env.NEXTCODE_MASTER_KEY = key;
+    const c = await loadCrypto();
+    // constrói um envelope v1 manualmente (como o script da Fase 2 gerava)
+    const cryptoNode = await import("crypto");
+    const iv = cryptoNode.default.randomBytes(12);
+    const cipher = cryptoNode.default.createCipheriv("aes-256-gcm", Buffer.from(key, "base64"), iv);
+    const data = Buffer.concat([cipher.update("sk-v1-legada", "utf8"), cipher.final()]);
+    const v1 = `enc:v1:${iv.toString("base64")}:${cipher.getAuthTag().toString("base64")}:${data.toString("base64")}`;
+
+    expect(c.isEncrypted(v1)).toBe(true);
+    expect(c.readSecret(v1)).toBe("sk-v1-legada");
+    expect(c.isEncryptedWithActiveKey(v1)).toBe(false);
+    const promoted = c.rewrapSecret(v1)!;
+    expect(promoted.startsWith("enc:v2:")).toBe(true);
+    expect(c.decryptSecret(promoted)).toBe("sk-v1-legada");
+  });
+
+  it("rewrapSecret retorna null para valores vazios ou indecifráveis (nunca destrói dados)", async () => {
+    process.env.NEXTCODE_MASTER_KEYS = Buffer.alloc(32, 51).toString("base64");
+    const c = await loadCrypto();
+    expect(c.rewrapSecret(null)).toBe(null);
+    expect(c.rewrapSecret("")).toBe(null);
+    expect(c.rewrapSecret(c.encryptSecret("ja-ativa"))).toBe(null); // já usa chave ativa
+    expect(c.rewrapSecret("enc:v2:deadbeef.aaa:bbb:ccc")).toBe(null); // keyId desconhecido → preservado
   });
 });

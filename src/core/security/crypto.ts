@@ -1,44 +1,88 @@
 /**
  * Fase 2 — Criptografia de chaves em repouso (AES-256-GCM).
+ * Fase 8 — Rotação de chaves-mestras com formato envelope:
+ *   enc:v1:<iv_b64>:<tag_b64>:<cipher_b64>                      (chave atual / legada)
+ *   enc:v2:<keyId>.<iv_b64>:<tag_b64>:<cipher_b64>              (rotacionada)
  *
- * As API keys (Gemini/OpenAI/Claude/DeepSeek/OmniRoute) deixam de ser gravadas
- * em texto plano no SQLite. Formato armazenado:
- *   enc:v1:<iv_b64>:<tag_b64>:<cipher_b64>
+ * Suporte a múltiplas chaves simultâneas via NEXTCODE_MASTER_KEYS (lista separada
+ * por vírgula, ex.: "newKey,oldKey"). A PRIMEIRA é usada para novas escritas;
+ * TODAS são tentadas na leitura — o que permite rotacionar SEM downtime e
+ * re-cifrar sob demanda (lazy rewrap). NEXTCODE_MASTER_KEY continua suportada.
  *
- * A chave mestra vem do ambiente (NEXTCODE_MASTER_KEY), NUNCA do banco.
- * Valores sem prefixo "enc:v1:" são lidos como legado (texto plano) com aviso,
- * e são criptografados automaticamente na próxima escrita — migração suave.
+ * A chave mestra vem do ambiente, NUNCA do banco.
+ * Valores sem prefixo "enc:" são lidos como legado texto-plano com aviso.
  */
 import crypto from "crypto";
 
-const PREFIX = "enc:v1:";
+const V1_PREFIX = "enc:v1:";
+const V2_PREFIX = "enc:v2:";
 const KEY_LEN = 32; // AES-256
 
-let cachedMasterKey: Buffer | null = null;
+// Cache por valor-bruto da env var (testes alteram process.env e esperam novo comportamento).
+const keyCache = new Map<string, Buffer[]>();
 
-function getMasterKey(): Buffer | null {
-  if (cachedMasterKey) return cachedMasterKey;
-  const raw = (process.env.NEXTCODE_MASTER_KEY || "").trim();
-  if (!raw) return null;
-  // Aceita base64 de 32 bytes ou qualquer segredo (derivado via PBKDF2)
-  let key: Buffer | null = null;
+function deriveKey(raw: string): Buffer {
   try {
     const decoded = Buffer.from(raw, "base64");
-    if (decoded.length === KEY_LEN) key = decoded;
+    if (decoded.length === KEY_LEN) return decoded;
   } catch {
     /* não é base64 válido; segue para derivação */
   }
-  if (!key) {
-    key = crypto.pbkdf2Sync(raw, "nextcode-master-key-salt-v1", 100000, KEY_LEN, "sha256");
+  return crypto.pbkdf2Sync(raw, "nextcode-master-key-salt-v1", 100000, KEY_LEN, "sha256");
+}
+
+/** Lista ordenada de chaves-mestras derivadas. Índice 0 = ativa para escrita. */
+function getAllMasterKeys(): Buffer[] {
+  const multi = (process.env.NEXTCODE_MASTER_KEYS || "").trim();
+  const single = (process.env.NEXTCODE_MASTER_KEY || "").trim();
+  const sources = multi
+    ? multi.split(",").map((s) => s.trim()).filter(Boolean)
+    : single
+      ? [single]
+      : [];
+  if (sources.length === 0) return [];
+  const cacheKey = sources.join("|");
+  const cached = keyCache.get(cacheKey);
+  if (cached) return cached;
+  const keys = sources.map(deriveKey);
+  keyCache.set(cacheKey, keys);
+  return keys;
+}
+
+function getMasterKey(): Buffer | null {
+  const keys = getAllMasterKeys();
+  return keys.length > 0 ? keys[0] : null;
+}
+
+/** Identificador estável (8 hex) de uma chave mestra, p/ envelope v2. */
+export function masterKeyId(key?: Buffer | null): string | null {
+  const k = key ?? getMasterKey();
+  if (!k) return null;
+  return crypto.createHash("sha256").update(k).digest("hex").slice(0, 8);
+}
+
+/** true se `value` já foi cifrada com a chave ATIVA (não precisa de re-wrap). */
+export function isEncryptedWithActiveKey(value?: string | null): boolean {
+  if (typeof value !== "string") return false;
+  const activeId = masterKeyId();
+  if (!activeId) return isEncrypted(value); // sem env: aceita v1 como "ok" (modo legado)
+  if (value.startsWith(V1_PREFIX)) return false; // v1 será promovido a v2 na próxima escrita
+  if (value.startsWith(V2_PREFIX)) {
+    const kid = value.slice(V2_PREFIX.length).split(".")[0];
+    return kid === activeId;
   }
-  cachedMasterKey = key;
-  return key;
+  return false; // texto plano
 }
 
 export function isEncrypted(value?: string | null): boolean {
-  return typeof value === "string" && value.startsWith(PREFIX);
+  return typeof value === "string" && (value.startsWith(V1_PREFIX) || value.startsWith(V2_PREFIX));
 }
 
+/**
+ * Cifra com a chave ATIVA (índice 0 da lista) usando envelope v2 com keyId.
+ * Assim cada segredo carrega a impressão digital da chave que o protegeu,
+ * permitindo rotação sem perder a capacidade de leitura das chaves antigas.
+ */
 export function encryptSecret(plaintext: string): string {
   const master = getMasterKey();
   if (!master) {
@@ -53,7 +97,20 @@ export function encryptSecret(plaintext: string): string {
   const cipher = crypto.createCipheriv("aes-256-gcm", master, iv);
   const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return `${PREFIX}${iv.toString("base64")}:${tag.toString("base64")}:${enc.toString("base64")}`;
+  const kid = masterKeyId(master)!;
+  return `${V2_PREFIX}${kid}.${iv.toString("base64")}:${tag.toString("base64")}:${enc.toString("base64")}`;
+}
+
+/** Tenta decifrar um payload (iv:tag:cipher) com uma chave específica. */
+function tryDecryptWith(master: Buffer, ivB64: string, tagB64: string, dataB64: string): string | null {
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", master, Buffer.from(ivB64, "base64"));
+    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+    const dec = Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]);
+    return dec.toString("utf8");
+  } catch {
+    return null; // GCM auth fail → chave errada
+  }
 }
 
 export function decryptSecret(stored?: string | null): string {
@@ -63,21 +120,48 @@ export function decryptSecret(stored?: string | null): string {
     console.warn("[SECURITY] Chave legada em texto plano detectada — será criptografada na próxima gravação.");
     return stored;
   }
-  const master = getMasterKey();
-  if (!master) {
+  const masters = getAllMasterKeys();
+  if (masters.length === 0) {
     throw new Error(
       "Chave criptografada encontrada, mas NEXTCODE_MASTER_KEY não está definida. Restaure a chave mestra original."
     );
   }
-  const body = stored.slice(PREFIX.length);
-  const [ivB64, tagB64, dataB64] = body.split(":");
-  if (!ivB64 || !tagB64 || !dataB64) {
-    throw new Error("Formato de chave criptografada inválido (esperado enc:v1:iv:tag:cipher).");
+
+  let body: string;
+  let preferredId: string | null = null;
+  if (stored.startsWith(V2_PREFIX)) {
+    body = stored.slice(V2_PREFIX.length);
+    const dot = body.indexOf(".");
+    if (dot < 0) throw new Error("Formato de envelope v2 inválido (esperado enc:v2:keyId.iv:tag:cipher).");
+    preferredId = body.slice(0, dot);
+    body = body.slice(dot + 1);
+  } else {
+    body = stored.slice(V1_PREFIX.length);
   }
-  const decipher = crypto.createDecipheriv("aes-256-gcm", master, Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  const dec = Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]);
-  return dec.toString("utf8");
+
+  const parts = body.split(":");
+  if (parts.length !== 3 || parts.some((p) => !p)) {
+    throw new Error("Formato de chave criptografada inválido (esperado iv:tag:cipher).");
+  }
+  const [ivB64, tagB64, dataB64] = parts;
+
+  // Ordem de tentativa: se houver keyId (v2), testa a chave correspondente primeiro;
+  // depois todas as demais (cobre v1 legado e rotacões já removidas parcialmente).
+  const ordered = [...masters];
+  if (preferredId) {
+    ordered.sort((a, b) => {
+      const am = masterKeyId(a) === preferredId ? 0 : 1;
+      const bm = masterKeyId(b) === preferredId ? 0 : 1;
+      return am - bm;
+    });
+  }
+  for (const m of ordered) {
+    const out = tryDecryptWith(m, ivB64, tagB64, dataB64);
+    if (out !== null) return out;
+  }
+  throw new Error(
+    "Nenhuma chave mestra atual/antiga conseguiu decifrar este segredo (rotação incompleta ou NEXTCODE_MASTER_KEYS desatualizada)."
+  );
 }
 
 /**
@@ -98,8 +182,27 @@ export function writeSecret(plaintext?: string | null): string | null {
   if (plaintext === undefined || plaintext === null) return null;
   const trimmed = String(plaintext).trim();
   if (!trimmed) return null;
-  if (isEncrypted(trimmed)) return trimmed; // já cifrado (ex.: re-gravação idempotente)
+  // Re-gravação idempotente: se já está cifrado COM A CHAVE ATIVA, mantém.
+  // Se está cifrado com chave antiga (v1 ou v2 de keyId diferente), promove para a ativa.
+  if (isEncryptedWithActiveKey(trimmed)) return trimmed;
+  if (isEncrypted(trimmed)) {
+    const plain = readSecret(trimmed);
+    if (plain) return encryptSecret(plain); // lazy rewrap pós-rotação
+  }
   return encryptSecret(trimmed);
+}
+
+/**
+ * Fase 8 — Promove um segredo legado (texto-plano ou v1/v2 de chave antiga)
+ * para o envelope v2 cifrado com a chave ATIVA. Retorna null se nada precisa
+ * mudar (já usa a chave ativa) ou se o segredo não pôde ser lido.
+ */
+export function rewrapSecret(stored?: string | null): string | null {
+  if (!stored) return null;
+  if (isEncryptedWithActiveKey(stored)) return null; // nada a fazer
+  const plain = readSecret(stored);
+  if (!plain) return null; // indecifrável — não sobrescrever (evita destruir dados)
+  return encryptSecret(plain);
 }
 
 /** Máscara segura para logs/respostas: ****abcd */

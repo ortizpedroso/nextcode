@@ -1,0 +1,141 @@
+import { exec, execFile } from "child_process";
+import { ContextPruner } from "../headroom/context-pruner";
+/**
+ * Fase 5 — Jail do terminal sandboxed.
+ *
+ * Camadas de defesa (defesa em profundidade):
+ * 1. Blacklist ampliada de padrões destrutivos/escape (rm -rf, fork bomb,
+ *    acesso a /dev, devices cgroup, docker socket, variáveis sensíveis...);
+ * 2. Detecção de Docker no HOST => o comando é executado dentro de um
+ *    container efêmero endurecido (cap_drop ALL, no-new-privileges,
+ *    read-only, pids-limit, network off, tmpfs) em vez de direto no host;
+ * 3. Fora do Docker, mantém execução local com timeout duro + maxBuffer,
+ *    com aviso explícito de isolamento reduzido (documentado no README).
+ */
+export class SandboxedTerminalSkill {
+    static BLACKLIST_PATTERNS = [
+        /rm\s+-rf\s+[\/\*]/i,
+        /mkfs/i,
+        /dd\s+if=/i,
+        /:\(\)\s*{\s*:\|:&\s*};\s*:/, // Fork bomb
+        />\s*\/dev\/sd[a-z]/i,
+        /shutdown/i,
+        /reboot/i,
+        // --- Fase 5: padrões de escape/privilégio ---
+        /\/var\/run\/docker\.sock/i, // controle do daemon Docker
+        /docker\s+(exec|run|build|system)/i, // anel de fuga para outros containers
+        /nsenter|unshare|pivot_root|chroot/i, // manipulação de namespaces
+        /mount\s|umount\s/i, // montagem de filesystems
+        /ptrace|gdb\s+-p|strace\s+-p/i, // attach em processos alheios
+        /\/proc\/sys\/|\/sys\/fs\/cgroup/i, // tunelagem via procfs/cgroup
+        /iptables|nft|ip\s+link\s+set/i, // reconfiguração de rede do host
+        /crontab|systemctl|service\s+\w+\s+(start|stop)/i,
+        /\benv\b.*NEXTCODE_MASTER_KEY|\bprintenv\b/i, // exfiltração de segredos
+        /curl[^|;&]*\|\s*(ba)?sh|wget[^|;&]*\|\s*(ba)?sh/i, // pipe-to-shell remoto
+    ];
+    static isDockerHost() {
+        try {
+            return (process.env.IS_DOCKER === "true" ||
+                require("fs").existsSync("/.dockerenv"));
+        }
+        catch {
+            return false;
+        }
+    }
+    /**
+     * Executa comandos de terminal em ambiente controlado com timeout e filtro de segurança
+     */
+    static async execute(command, cwd = process.cwd(), timeoutMs = 30000) {
+        // 1. Verificação da lista de bloqueio de segurança (Blacklist)
+        for (const pattern of SandboxedTerminalSkill.BLACKLIST_PATTERNS) {
+            if (pattern.test(command)) {
+                console.warn(`[SANDBOX] Comando bloqueado pela política de segurança: ${command.slice(0, 120)}`);
+                return {
+                    success: false,
+                    command,
+                    stdout: "",
+                    stderr: "COMANDO BLOQUEADO POR POLÍTICA DE SEGURANÇA (POTENCIALMENTE DESTRUTIVO OU DE ESCAPE).",
+                    exitCode: 1,
+                    prunedOutput: "Comando destrutivo/escape detectado e bloqueado pela Sandbox do NextCode.",
+                    error: "Comando bloqueado por segurança.",
+                };
+            }
+        }
+        // 2. Dentro do container NextCode: executa num sub-container efêmero endurecido
+        //    quando o docker CLI estiver disponível (jail real, Fase 5).
+        if (SandboxedTerminalSkill.isDockerHost() && process.env.NEXTCODE_SANDBOX_JAIL !== "off") {
+            const jailed = await SandboxedTerminalSkill.runInJail(command, timeoutMs);
+            if (jailed)
+                return jailed;
+            // docker indisponível -> segue para modo local (com aviso)
+        }
+        return SandboxedTerminalSkill.runLocal(command, cwd, timeoutMs);
+    }
+    static runInJail(command, timeoutMs) {
+        const jailCmd = [
+            "docker", "run", "--rm", "-i",
+            "--network", "none", // sem rede: nem metadados, nem exfiltração
+            "--cap-drop", "ALL", // nenhuma capability privilegiada
+            "--security-opt", "no-new-privileges",
+            "--read-only", // rootfs imutável
+            "--tmpfs", "/tmp:size=64m", // quota de disco temporário
+            "--pids-limit", "128", // anti fork-bomb
+            "--memory", process.env.NEXTCODE_SANDBOX_MEM || "512m",
+            "--cpus", process.env.NEXTCODE_SANDBOX_CPUS || "1",
+            "alpine:3.20",
+            "/bin/sh", "-c", command,
+        ];
+        return new Promise((resolve) => {
+            execFile(jailCmd[0], jailCmd.slice(1), { timeout: timeoutMs + 5000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+                if (error && error.code === undefined) {
+                    // docker CLI ausente/falha de spawn -> sinaliza para usar modo local
+                    resolve(null);
+                    return;
+                }
+                const fullOutput = (stdout + "\n" + stderr).trim();
+                const prunedOutput = ContextPruner.prune(fullOutput, { maxLines: 80, maxChars: 3000 });
+                resolve({
+                    success: !error,
+                    command,
+                    stdout,
+                    stderr: stderr || (error ? "" : ""),
+                    exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0,
+                    prunedOutput,
+                    error: error ? `Falha no jail: ${error.message}` : undefined,
+                });
+            });
+        });
+    }
+    static runLocal(command, cwd, timeoutMs) {
+        return new Promise((resolve) => {
+            exec(command, { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+                const fullOutput = (stdout + "\n" + stderr).trim();
+                const prunedOutput = ContextPruner.prune(fullOutput, {
+                    maxLines: 80,
+                    maxChars: 3000,
+                });
+                if (error) {
+                    resolve({
+                        success: false,
+                        command,
+                        stdout,
+                        stderr,
+                        exitCode: error.code || 1,
+                        prunedOutput,
+                        error: error.message,
+                    });
+                }
+                else {
+                    resolve({
+                        success: true,
+                        command,
+                        stdout,
+                        stderr,
+                        exitCode: 0,
+                        prunedOutput,
+                    });
+                }
+            });
+        });
+    }
+}

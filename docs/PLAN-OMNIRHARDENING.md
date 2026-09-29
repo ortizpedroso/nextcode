@@ -69,9 +69,18 @@ Fases 2–5 com aceite cumprido + testes da seção abaixo verdes. Sem isso, o s
 | 4. Auth + rate-limit + maskKey | ✅ concluída | 46b8683 |
 | 5. Jail do terminal sandboxed | ✅ concluída | 46b8683 |
 | 6. Observabilidade (/api/metrics) | ✅ concluída | 46b8683 |
+| 7. Testes automatizados (Vitest, 64 testes) | ✅ concluída | d996fd9 |
+| 8. Rotação de chaves (envelope v2 + rewrap) | ✅ concluída | (este commit) |
+
+### Fase 8 — Como rotacionar a chave mestra (runbook)
+1. Gere a nova chave: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+2. No `.env`, use as DUAS chaves, **nova primeiro**: `NEXTCODE_MASTER_KEYS="<nova>,<antiga>"` e reinicie o app (novas escritas já usam a ativa; dados antigos continuam legíveis).
+3. Re-cifre tudo em repouso: `node scripts/rotate-master-key.mjs` (idempotente; segredos indecifráveis são pulados, nunca destruídos).
+4. Quando o script reportar "Nada a re-cifrar", remova a antiga do `.env` e reinicie.
+
+Formato do envelope: `enc:v1:<iv>:<tag>:<cipher>` (legado, ainda lido) →
+`enc:v2:<keyId>.<iv>:<tag>:<cipher>` (keyId = sha256(chave)[0:8], permite tentar a chave certa primeiro).
 
 ### Próximas fases candidatas (backlog)
-- **Fase 7:** testes automatizados (unit para crypto/safe-fetch/local-auth; e2e do fluxo OmniRoute com container descartável)
-- **Fase 8:** rotação de chaves (key rotation com versionamento `v2:` no envelope) + backup da master key
 - **Fase 9:** TLS/HTTPS local (self-signed ou mkcert) para o app e o gateway
 - **Fase 10:** auditoria contínua (`npm audit` + Trivy na imagem) no CI
