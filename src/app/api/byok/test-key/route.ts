@@ -51,15 +51,15 @@ export async function POST(request: NextRequest) {
           );
 
           // Cascata priorizada: modelo do router primeiro, depois aliases estáveis
-          // atuais da família Flash/Pro. Modelos obsoletos (-lite legadas) fora.
+          // atuais da família Flash/Pro. Modelos obsoletos (gemini-2.5) fora.
           const priority = [
             FAST_MODEL,
-            "gemini-2.5-flash",
-            "gemini-flash-latest",
-            "gemini-2.0-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.7-flash",
             HEAVY_MODEL,
-            "gemini-2.5-pro",
-            "gemini-pro-latest",
+            "gemini-3.1-pro-preview",
+            "gemini-flash-latest",
           ];
           // Candidatos = interseção com o catálogo (quando disponível), preservando
           // a ordem de prioridade; se a lista vier vazia, usa a prioridade inteira.
