@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Layers,
   MessageSquare,
@@ -75,6 +75,30 @@ export function Workspace({
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
 
+  // FIX (chat "nao sobe a conversa"): auto-scroll do historico. Antes nao havia nenhum
+  // scroll-into-view: cada nova mensagem era renderizada abaixo da dobra e o usuario
+  // precisava rolar manualmente. Agora rolamos para o fim quando chegam mensagens novas,
+  // mas SEM sequestrar o scroll se o usuario estiver lendo mensagens anteriores
+  // (padrao "near bottom": so auto-rola se ele ja estava proximo do final).
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 120;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (el && stickToBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages.length, loading]);
+
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const runningTask = tasks.find((t) => t.status === "running");
 
@@ -144,8 +168,8 @@ export function Workspace({
           <div className="flex-1 flex overflow-hidden">
             {/* Esquerda: Área de Chat e Conversa com a IA */}
             <div className="flex-1 flex flex-col h-full overflow-hidden p-6">
-              {/* Lista de Mensagens */}
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+              {/* Lista de Mensagens (ref p/ auto-scroll do historico) */}
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2">
                 {messages.length === 0 && tasks.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center space-y-3 p-8 text-slate-400">
                     <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-[#0066cc] flex items-center justify-center font-bold text-2xl shadow-sm">

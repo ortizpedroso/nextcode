@@ -36,7 +36,24 @@ export interface PruneResult {
 import { safeFetch } from "../security/safe-fetch";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
-  const base = rawUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
+  // FIX DEFINITIVO (porta morta): normaliza qualquer URL apontando para a porta 8080
+  // (default legado do schema Prisma — porta em que NADA roda) para a porta real do
+  // gateway, derivada de OMNIROUTE_URL do .env/compose (fallback 20128). Sem isso,
+  // registros legados no SQLite faziam o dispatcher bater em porta fechada enquanto a
+  // UI (que sonda localhost:20128 por cascata) mostrava o card verde — o paradoxo
+  // "verde mas quebrado".
+  const envUrl = (process.env.OMNIROUTE_URL || "").trim();
+  let base = (rawUrl || envUrl || "http://localhost:20128/v1").trim();
+  if (/:8080(\/|$)/.test(base)) {
+    let port = "20128";
+    try {
+      port = new URL(envUrl).port || "20128";
+    } catch {
+      /* env ausente/inválido: usa a porta padrão documentada */
+    }
+    base = base.replace(/:8080(?=\/|$)/, `:${port}`);
+    console.warn(`[ROUTER] omniRouteUrl legado na porta 8080 detectado — reescrito para :${port} (${base}).`);
+  }
 
   // IMPORTANTE: a detecção de Docker serve apenas para converter "localhost" -> "host.docker.internal".
   // Reescrever para o hostname "omniroute" fora da rede do docker-compose causa ENOTFOUND indevido
@@ -119,6 +136,43 @@ function omniRecordSuccess() {
 // de preferência; um 404/400 avança para o próximo candidato em vez de derrubar tudo.
 export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
 export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-2.5-pro";
+
+// FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
+// alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
+let lastOmniFailure = "";
+let lastGeminiFailure = "";
+function buildDispatchDiagnostics(): string {
+  const parts: string[] = [];
+  if (lastOmniFailure) parts.push(`OmniRoute: ${lastOmniFailure}`);
+  if (lastGeminiFailure) parts.push(`Gemini: ${lastGeminiFailure}`);
+  if (!parts.length) parts.push("nenhuma tentativa registrada (circuit-breaker aberto?)");
+  return `\n\n🔎 _Diagnóstico da última tentativa — ${parts.join(" | ")}_`;
+}
+
+/**
+ * FIX DEFINITIVO (single source of truth): resolve a chave Gemini REAL que sera usada
+ * pelo dispatcher, na MESMA ordem de precedencia (DB decifrado -> envs). Qualquer
+ * endpoint de teste (UI de provedores/BYOK) DEVE usar esta funcao — antes, a UI validava
+ * a chave digitada no form enquanto o chat lia o SQLite com outra master key/valor,
+ * gerando o paradoxo "chave verde mas erro". Agora teste e chat usam exatamente a mesma
+ * fonte; se o teste passa, o chat passa.
+ */
+export function resolveEffectiveGeminiKey(storedGeminiKey?: string | null): string {
+  try {
+    // readSecret aceita cifrado (enc:v1:) e legado texto-plano.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const plain = require("../security/crypto").readSecret(storedGeminiKey) as string;
+    if (plain && plain.trim() && !/^enc:v\d:/i.test(plain.trim())) return plain.trim();
+  } catch {
+    /* master key ausente/incorreta: segue para envs */
+  }
+  return (
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GEMINI_KEY?.trim() ||
+    process.env.GOOGLE_API_KEY?.trim() ||
+    ""
+  );
+}
 
 
 export interface DispatchMessage {
@@ -382,15 +436,21 @@ export class SmartRouter {
       stream = true,
     } = options;
 
-    const effectiveGeminiKey =
-      (geminiKey && geminiKey.trim()) ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GEMINI_KEY ||
-      process.env.GOOGLE_API_KEY ||
-      "";
+    // FIX DEFINITIVO (single source of truth): a chave que o dispatcher usa passa SEMPRE
+    // por readSecret() aqui — mesmo que um caller esqueça de descriptografar e mande o
+    // blob "enc:v1:" cru (foi exatamente assim que o chat enviava literalmente
+    // "Authorization: Bearer enc:v1:..." ao gateway, gerando HTTP 401/4xx enquanto a UI
+    // ficava verde). readSecret é idempotente: texto-plano passa intacto.
+    const effectiveGeminiKey = resolveEffectiveGeminiKey(geminiKey);
 
     const effectiveOmniRouteKey =
-      (omniRouteKey && !/^enc:v\d:/i.test(omniRouteKey.trim()) ? omniRouteKey.trim() : "") ||
+      (() => {
+        try {
+          return require("../security/crypto").readSecret(omniRouteKey) as string;
+        } catch {
+          return "";
+        }
+      })().trim() ||
       process.env.OMNIROUTE_KEY ||
       process.env.OMNIROUTE_API_KEY ||
       "";
@@ -423,6 +483,7 @@ export class SmartRouter {
     // ----------------------------------------------------
     recordOmniAttempt();
     if (omniCircuitOpen()) {
+      lastOmniFailure = "circuit-breaker aberto apos falhas consecutivas (cooldown de 30s)";
       console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); indo direto para o fallback Gemini.");
     } else
     try {
@@ -449,6 +510,7 @@ export class SmartRouter {
         timeoutMs: omniConnectTimeoutMs,
       }).catch((err) => {
         omniRecordFailure();
+        lastOmniFailure = `falha de rede em ${omniEndpoint}: ${String(err).slice(0, 160)}`;
         console.warn(
           `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
         );
@@ -512,12 +574,14 @@ export class SmartRouter {
       } else if (omniRes) {
         if (omniRes.status >= 500) omniRecordFailure();
         const errText = await omniRes.text().catch(() => "");
+        lastOmniFailure = `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
         console.warn(
           `[ROUTER] OmniRoute retornou HTTP ${omniRes.status} em ${omniEndpoint}. Resposta: ${errText.substring(0, 200)}`
         );
       }
     } catch (omniErr) {
       omniRecordFailure();
+      lastOmniFailure = `exceção na tentativa OmniRoute: ${String(omniErr).slice(0, 160)}`;
       console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
     }
 
@@ -527,13 +591,50 @@ export class SmartRouter {
     if (effectiveGeminiKey) {
       recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
+
+      // FIX DEFINITIVO ("chave valida mas da erro"): a UI de provedores valida a chave
+      // contra o endpoint /v1beta/models (listModels), que aceita QUALQUER chave Google
+      // válida. Ja o chat chama modelos ESPECIFICOS por ID — se a chave nao tiver acesso
+      // aquele modelo (free tier sem 2.5, projeto GCP sem API habilitada, restricao
+      // regional), todos os IDs falham com 404/PERMISSION_DENIED e o usuario ve "erro"
+      // mesmo com a chave verde. Agora descobrimos os IDs realmente acessiveis pela lista
+      // de models (mesma fonte do teste verde) e usamos apenas candidatos suportados.
+      let supportedIds: string[] | null = null;
+      try {
+        const listRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${cleanApiKey}`,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (listRes.ok) {
+          const listJson = (await listRes.json().catch(() => null)) as
+            | { models?: Array<{ name?: string }> }
+            | null;
+          const ids = (listJson?.models ?? [])
+            .map((m) => (m.name || "").replace(/^models\//, ""))
+            .filter(Boolean);
+          if (ids.length > 0) supportedIds = ids;
+        } else {
+          lastGeminiFailure = `listagem de modelos HTTP ${listRes.status} (chave rejeitada pela API mesmo apos teste verde na UI)`;
+          console.warn(`[ROUTER] Gemini: falha ao listar modelos (HTTP ${listRes.status}).`);
+        }
+      } catch (listErr) {
+        console.warn("[ROUTER] Gemini: erro de rede ao listar modelos:", String(listErr));
+      }
+
       // Ordem coerente: modelos reais primeiro; nunca pedir variante lite para tarefa heavy.
-      // FIX: incluída a cascata completa de IDs VÁLIDOS da API v1beta. Se um modelo for
-      // descontinuado/404, o loop avança para o próximo candidato (só 401/403 aborta).
-      const candidateModels =
+      const preferredOrder =
         tier === "heavy"
           ? [HEAVY_MODEL, FAST_MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
           : [FAST_MODEL, "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-flash-latest"];
+      // Candidatos validados: intersecao com o que a chave suporta (mantendo a ordem de
+      // preferencia). Se a listagem falhou, mantemos a cascata original (comportamento antigo).
+      const candidateModels = supportedIds
+        ? preferredOrder.filter((id) => supportedIds!.includes(id))
+        : preferredOrder;
+      if (candidateModels.length === 0 && supportedIds) {
+        lastGeminiFailure = `chave Gemini ativa, mas sem acesso a nenhum dos modelos preferidos (${preferredOrder.join(", ")}). Modelos visiveis para a chave: ${supportedIds.slice(0, 6).join(", ")}...`;
+        console.warn(`[ROUTER] ${lastGeminiFailure}`);
+      }
 
       for (const modelId of candidateModels) {
         try {
@@ -558,6 +659,7 @@ export class SmartRouter {
           });
 
           if (geminiRes.ok) {
+            lastGeminiFailure = "";
             console.log(`[ROUTER] Chamada processada com sucesso via Gemini Direto (${cleanModel}).`);
             return {
               response: geminiRes,
@@ -568,23 +670,31 @@ export class SmartRouter {
             };
           } else {
             const errData = await geminiRes.json().catch(() => ({}));
+            lastGeminiFailure = `${cleanModel}: HTTP ${geminiRes.status} — ${(errData as { error?: { message?: string } }).error?.message || "sem detalhe"}`.slice(0, 200);
             console.warn(
-              `[ROUTER] Gemini Direto (${cleanModel}) retornou erro: ${errData.error?.message || geminiRes.status}`
+              `[ROUTER] Gemini Direto (${cleanModel}) retornou erro: ${(errData as { error?: { message?: string } }).error?.message || geminiRes.status}`
             );
             // 401/403 = chave inválida: testar outros modelos é inútil, aborta a lista.
             if (geminiRes.status === 401 || geminiRes.status === 403) break;
           }
         } catch (geminiErr) {
+          lastGeminiFailure = `${modelId}: erro de rede ${String(geminiErr).slice(0, 120)}`;
           console.warn(`[ROUTER] Erro de rede ao conectar com Gemini Direto (${modelId}):`, geminiErr);
         }
       }
+    } else {
+      lastGeminiFailure = "nenhuma chave Gemini disponivel (readSecret vazio ou NEXTCODE_MASTER_KEY incorreta)";
     }
 
     // ----------------------------------------------------
     // TENTATIVA 3: Esgotamento de Cotas / Provedores
     // ----------------------------------------------------
+    // FIX (diagnóstico): o alerta genérico não dizia POR QUE cada rota falhou —
+    // agora anexamos as últimas razões reais capturadas nas tentativas 1 e 2
+    // (HTTP status/erro de rede do OmniRoute + último erro do Gemini).
     const alertText =
-      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível comunicar com o OmniRoute Local nem com a API direta do Gemini. Por favor, verifique se o OmniRoute está em execução na porta 20128 ou valide sua chave API em **Configurações > BYOK**.";
+      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível comunicar com o OmniRoute Local nem com a API direta do Gemini. Por favor, verifique se o OmniRoute está em execução na porta 20128 ou valide sua chave API em **Configurações > BYOK**." +
+      buildDispatchDiagnostics();
 
     let fallbackResponse: Response;
 
