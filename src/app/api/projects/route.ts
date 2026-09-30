@@ -41,12 +41,20 @@ export async function POST(request: Request) {
 
     const trimmedName = name.trim();
     // Resolve o caminho absoluto de forma segura
+    const slugName = trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
     let targetPath = requestedPath ? path.resolve(requestedPath.trim()) : null;
 
     if (!targetPath) {
       // Se não informado, gera o caminho padrão na pasta raiz de projetos (ex: c:\projetos\nome-do-projeto)
       const rootProjectsDir = path.dirname(process.cwd());
-      targetPath = path.join(rootProjectsDir, trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-"));
+      targetPath = path.join(rootProjectsDir, slugName);
+    } else {
+      // Se o usuário selecionou uma pasta pai (ex: c:\projetos) e digitou o nome do projeto (ex: Gatway),
+      // anexa a subpasta com o nome do projeto para que ela seja fisicamente criada no computador!
+      const currentBaseName = path.basename(targetPath).toLowerCase();
+      if (currentBaseName !== slugName && currentBaseName !== trimmedName.toLowerCase()) {
+        targetPath = path.join(targetPath, slugName);
+      }
     }
 
     // Cria a pasta física no sistema de arquivos se ela não existir
