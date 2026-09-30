@@ -61,28 +61,37 @@ model Project {
 
 
 model Session {
-  id        String     @id @default(uuid())
-  projectId String?
-  title     String     @default("Nova Sessão")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks     TaskNode[]
-  messages  Message[]
+  id            String     @id @default(uuid())
+  projectId     String?
+  title         String     @default("Nova Sessão")
+  specApproved  Boolean    @default(false)
+  intakeScenario String?
+  turnCount     Int        @default(0)
+  canonicalSpec String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  project       Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks         TaskNode[]
+  messages      Message[]
 }
 
 model TaskNode {
-  id           String   @id @default(uuid())
-  sessionId    String
-  title        String
-  role         String   @default("worker")
-  status       String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'quarantine'
-  dependencies String   @default("[]") // JSON Array de IDs de tarefas dependentes
-  mcpScope     String?  // Ferramentas MCP escopadas para este nó
-  payload      String?  // JSON string contendo entrada / contexto do nó
-  result       String?  // JSON string contendo saída / resultado da execução
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(uuid())
+  sessionId      String
+  title          String
+  role           String   @default("worker")
+  cluster        String   @default("backend")
+  filesScope     String   @default("[]") // JSON Array de arquivos escopados
+  attempts       Int      @default(0)
+  maxAttempts    Int      @default(3)
+  quarantinePath String?
+  status         String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'quarantine'
+  dependencies   String   @default("[]") // JSON Array de IDs de tarefas dependentes
+  mcpScope       String?  // Ferramentas MCP escopadas para este nó
+  payload        String?  // JSON string contendo entrada / contexto do nó
+  result         String?  // JSON string contendo saída / resultado da execução
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
@@ -98,3 +107,24 @@ model Message {
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
+
+model TelemetryLog {
+  id         String   @id @default(uuid())
+  sessionId  String?
+  action     String
+  details    String?  // JSON string contendo metadados
+  durationMs Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+model CandidateSkillProposal {
+  id             String   @id @default(uuid())
+  name           String
+  description    String
+  triggerPattern String
+  sampleContent  String
+  status         String   @default("pending") // 'pending' | 'approved' | 'rejected'
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+

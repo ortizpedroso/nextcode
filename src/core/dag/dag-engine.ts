@@ -1,9 +1,14 @@
-export type TaskStatus = "pending" | "running" | "completed" | "failed" | "blocked";
+export type TaskStatus = "pending" | "standby" | "running" | "quarantine" | "completed" | "failed" | "blocked";
 
 export interface DAGNode {
   id: string;
   title: string;
   role: string;
+  cluster?: "core" | "backend" | "frontend" | "integration";
+  filesScope?: string[];
+  attempts?: number;
+  maxAttempts?: number;
+  quarantinePath?: string;
   status: TaskStatus;
   dependencies: string[]; // Lista de IDs de nós de que esta tarefa depende
   mcpScope?: string;
@@ -24,15 +29,38 @@ export class DAGEngine {
   constructor(nodes: DAGNode[] = []) {
     this.nodes = new Map();
     for (const node of nodes) {
-      this.nodes.set(node.id, { ...node, dependencies: [...node.dependencies] });
+      this.nodes.set(node.id, {
+        ...node,
+        cluster: node.cluster || "backend",
+        filesScope: node.filesScope || [],
+        attempts: node.attempts || 0,
+        maxAttempts: node.maxAttempts || 3,
+        dependencies: [...node.dependencies],
+      });
     }
+  }
+
+  /**
+   * Verifica se dois nós possuem intersecção de arquivos no filesScope
+   */
+  public hasScopeCollision(nodeA: DAGNode, nodeB: DAGNode): boolean {
+    if (!nodeA.filesScope || !nodeB.filesScope) return false;
+    const scopeB = new Set(nodeB.filesScope);
+    return nodeA.filesScope.some((file) => scopeB.has(file));
   }
 
   /**
    * Adiciona um nó ao grafo DAG
    */
   public addNode(node: DAGNode): void {
-    this.nodes.set(node.id, { ...node, dependencies: [...node.dependencies] });
+    this.nodes.set(node.id, {
+      ...node,
+      cluster: node.cluster || "backend",
+      filesScope: node.filesScope || [],
+      attempts: node.attempts || 0,
+      maxAttempts: node.maxAttempts || 3,
+      dependencies: [...node.dependencies],
+    });
   }
 
   /**
@@ -156,7 +184,7 @@ export class DAGEngine {
     const executable: DAGNode[] = [];
 
     for (const node of this.nodes.values()) {
-      if (node.status !== "pending") {
+      if (node.status !== "pending" && node.status !== "standby") {
         continue;
       }
 
@@ -181,7 +209,7 @@ export class DAGEngine {
   }
 
   /**
-   * Atualiza o estado de um nó no grafo
+   * Atualiza o estado de um nó no grafo, controlando a contagem de tentativas (D-RANHO)
    */
   public updateNodeStatus(
     nodeId: string,
@@ -198,9 +226,13 @@ export class DAGEngine {
       node.result = result;
     }
 
-    // Se o nó falhou, bloqueia nós dependentes
     if (status === "failed") {
-      this.propagateBlockState();
+      node.attempts = (node.attempts || 0) + 1;
+      const maxAtt = node.maxAttempts || 3;
+      if (node.attempts >= maxAtt) {
+        node.status = "blocked";
+        this.propagateBlockState();
+      }
     }
 
     return node;
@@ -214,7 +246,7 @@ export class DAGEngine {
     while (changed) {
       changed = false;
       for (const node of this.nodes.values()) {
-        if (node.status === "pending") {
+        if (node.status === "pending" || node.status === "standby") {
           const hasFailedOrBlockedDep = node.dependencies.some((depId) => {
             const depNode = this.nodes.get(depId);
             return depNode && (depNode.status === "failed" || depNode.status === "blocked");
@@ -228,3 +260,4 @@ export class DAGEngine {
     }
   }
 }
+
