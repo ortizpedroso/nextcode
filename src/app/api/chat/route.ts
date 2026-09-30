@@ -61,12 +61,13 @@ export async function POST(request: Request) {
     const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
     let projectContextInjected = false;
     let contextDiagnostics: string | null = null;
+    let ctxProject: { name: string; path: string | null } | null = null;
     try {
       const sessionForCtx = await prisma.session.findUnique({
         where: { id: activeSessionId },
         include: { project: true },
       });
-      const ctxProject =
+      ctxProject =
         sessionForCtx?.project ??
         (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
       if (!ctxProject) {
