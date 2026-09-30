@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
 
@@ -13,6 +13,19 @@ interface PromptBarProps {
 export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps) {
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>("auto");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [prompt]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,6 +33,18 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
     const modelToPass = selectedModel === "auto" ? undefined : selectedModel;
     await onSubmit(prompt.trim(), modelToPass);
     setPrompt("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (prompt.trim() && !loading) {
+        handleSubmit(e as unknown as React.FormEvent);
+      }
+    }
   };
 
   const renderActiveBadge = () => {
@@ -56,18 +81,23 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
   return (
     <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 shrink-0">
       <form onSubmit={handleSubmit} className="space-y-2">
-        <div className="flex items-center gap-2 bg-slate-50/80 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2 shadow-sm focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
-          <div className="pl-2 text-[#0066cc]">
+        <div className="flex items-start gap-2 bg-slate-50/80 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2 shadow-sm focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
+          <div className="pl-2 pt-2 text-[#0066cc] shrink-0">
             <Sparkles className="w-4 h-4" />
           </div>
 
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
+            rows={1}
             placeholder="Digite o objetivo (ex: Criar API de auth JWT com refatoração de schema e testes)..."
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              adjustHeight();
+            }}
+            onKeyDown={handleKeyDown}
             disabled={loading}
-            className="flex-1 bg-transparent px-2 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50"
+            className="flex-1 bg-transparent px-2 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
           />
 
           {renderActiveBadge()}
