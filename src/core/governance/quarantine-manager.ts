@@ -76,15 +76,31 @@ export class QuarantineManager {
       let relativePath = match[1];
       const codeContent = match[2];
 
-      // Tenta encontrar anotações no próprio topo do código como // file: src/... ou // filepath: src/...
+      // Tenta encontrar anotações no próprio topo do código como // file: src/..., // src/..., # path: src/...
       if (!relativePath) {
-        const topHeaderMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):\s*([^\s\n*]+)/i);
-        if (topHeaderMatch) {
-          relativePath = topHeaderMatch[1];
+        // 1. Procurar declaração explícita como // file: src/... ou // filepath: src/...
+        const explicitHeaderMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):\s*([^\s\n*]+)/i);
+        if (explicitHeaderMatch) {
+          relativePath = explicitHeaderMatch[1];
+        } else {
+          // 2. Procurar caminho direto em comentário no topo como // src/..., // server/..., // lib/..., // app/...
+          const directPathMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)/i);
+          if (directPathMatch) {
+            relativePath = directPathMatch[1];
+          }
         }
       }
 
-      // Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice
+      // 3. Procurar em cabeçalhos markdown imediatamente anteriores ao bloco de código
+      if (!relativePath) {
+        const textBeforeBlock = text.substring(0, match.index);
+        const lastHeadingMatch = textBeforeBlock.match(/(?:###|####|#|\*\*)\s*(?:\[.*\]\s*)?`?([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)`?\s*$/m);
+        if (lastHeadingMatch) {
+          relativePath = lastHeadingMatch[1];
+        }
+      }
+
+      // 4. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice
       if (!relativePath && fallbackFilesScope.length > index) {
         relativePath = fallbackFilesScope[index];
       }

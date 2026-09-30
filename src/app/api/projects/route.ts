@@ -44,9 +44,9 @@ export async function POST(request: Request) {
     let targetPath = requestedPath ? path.resolve(requestedPath.trim()) : null;
 
     if (!targetPath) {
-      // Se não informado, gera um caminho padrão na pasta de projetos
-      const projectsDir = path.join(process.cwd(), "projects");
-      targetPath = path.join(projectsDir, trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-"));
+      // Se não informado, gera o caminho padrão na pasta raiz de projetos (ex: c:\projetos\nome-do-projeto)
+      const rootProjectsDir = path.dirname(process.cwd());
+      targetPath = path.join(rootProjectsDir, trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-"));
     }
 
     // Cria a pasta física no sistema de arquivos se ela não existir
