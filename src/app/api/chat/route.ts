@@ -62,11 +62,28 @@ export async function POST(request: Request) {
     try {
       const sessionForCtx = await prisma.session.findUnique({
         where: { id: activeSessionId },
-        include: { project: true },
+        include: {
+          project: {
+            include: {
+              sections: {
+                orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+              },
+            },
+          },
+        },
       });
       const ctxProject =
         sessionForCtx?.project ??
-        (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
+        (projectId
+          ? await prisma.project.findUnique({
+              where: { id: projectId },
+              include: {
+                sections: {
+                  orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+                },
+              },
+            })
+          : null);
       if (!ctxProject) {
         contextDiagnostics = "sessao sem projeto vinculado e sem projectId no body";
       } else if (!ctxProject.path || !ctxProject.path.trim()) {

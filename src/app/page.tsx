@@ -419,6 +419,7 @@ export default function DashboardOrchestrator() {
         onDeleteSession={handleDeleteSession}
         onCreateSession={handleCreateSession}
         onSaveSettings={handleSaveSettings}
+        onRefreshProjects={fetchProjects}
       />
 
       {/* Workspace Principal à Direita */}

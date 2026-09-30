@@ -16,6 +16,9 @@ export async function GET(request: Request) {
         sessions: {
           orderBy: { createdAt: "desc" },
         },
+        sections: {
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        },
       },
     });
 
@@ -46,6 +49,9 @@ export async function POST(request: Request) {
       },
       include: {
         sessions: true,
+        sections: {
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        },
       },
     });
 

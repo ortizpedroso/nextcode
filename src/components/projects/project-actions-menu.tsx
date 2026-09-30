@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MoreHorizontal, Pin, Edit3, Archive, Trash2, PinOff } from "lucide-react";
+import { MoreHorizontal, Pin, Edit3, Archive, Trash2, PinOff, BookOpen } from "lucide-react";
 
 export interface ProjectData {
   id: string;
@@ -16,6 +16,7 @@ interface ProjectActionsMenuProps {
   project: ProjectData;
   onTogglePin: (project: ProjectData) => void;
   onEdit: (project: ProjectData) => void;
+  onManageSections?: (project: ProjectData) => void;
   onToggleArchive: (project: ProjectData) => void;
   onDelete: (project: ProjectData) => void;
 }
@@ -24,6 +25,7 @@ export function ProjectActionsMenu({
   project,
   onTogglePin,
   onEdit,
+  onManageSections,
   onToggleArchive,
   onDelete,
 }: ProjectActionsMenuProps) {
@@ -94,6 +96,21 @@ export function ProjectActionsMenu({
             <Edit3 className="w-3.5 h-3.5 text-slate-400" />
             <span>Editar projeto</span>
           </button>
+
+          {/* Anexar / Gerenciar Seções */}
+          {onManageSections && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+                onManageSections(project);
+              }}
+              className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-[#0066cc]" />
+              <span>Anexar seções</span>
+            </button>
+          )}
 
           {/* Arquivar / Desarquivar */}
           <button

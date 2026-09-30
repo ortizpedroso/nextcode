@@ -24,6 +24,9 @@ export async function PATCH(
         sessions: {
           orderBy: { createdAt: "desc" },
         },
+        sections: {
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        },
       },
     });
 
