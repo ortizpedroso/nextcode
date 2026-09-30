@@ -360,10 +360,11 @@ export default function DashboardOrchestrator() {
                 ...prev,
                 `[TELEMETRIA DAG] Nó "${execData.executedTask?.title || taskNode.title}" concluído via MCP.`,
               ]);
-              // Atualiza apenas a lista de tarefas da DAG, preservando o chat limpo
+              // Atualiza a lista de tarefas da DAG e mensagens do chat se houver atualização
               const refreshRes = await fetch(`/api/dag?sessionId=${targetSessionId}`);
               const refreshData = await refreshRes.json();
               if (refreshData.tasks) setTasks(refreshData.tasks);
+              if (refreshData.messages) setMessages(refreshData.messages);
             }
           } catch (execErr) {
             setConsoleLogs((prev) => [...prev, `[ERRO DAG] Falha no nó ${taskNode.id}: ${String(execErr)}`]);
