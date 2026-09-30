@@ -11,17 +11,64 @@ export interface InstalledSkillResult {
 }
 
 export function convertGithubUrlToRaw(url: string): string {
+  const candidates = getGithubRawCandidateUrls(url);
+  return candidates[0] || url;
+}
+
+export function getGithubRawCandidateUrls(url: string): string[] {
   let cleaned = url.trim();
-  // Se for URL de blob: https://github.com/user/repo/blob/main/path/to/file.md
-  if (cleaned.includes("github.com") && cleaned.includes("/blob/")) {
-    cleaned = cleaned.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/");
-  } else if (cleaned.includes("github.com") && !cleaned.includes("raw.githubusercontent.com")) {
-    // Se for URL de repositório sem arquivo especificado, busca SKILL.md ou .cursorrules na raiz
-    if (!cleaned.endsWith("/SKILL.md") && !cleaned.endsWith("/.cursorrules")) {
-      cleaned = `${cleaned.replace(/\/$/, "")}/raw/main/SKILL.md`;
+
+  // Se for Gist: https://gist.github.com/user/gist_id
+  if (cleaned.includes("gist.github.com")) {
+    const gistMatch = cleaned.match(/gist\.github\.com\/([^\/]+)\/([a-f0-9]+)/i);
+    if (gistMatch) {
+      return [
+        `https://gist.githubusercontent.com/${gistMatch[1]}/${gistMatch[2]}/raw`,
+      ];
     }
   }
-  return cleaned;
+
+  // Se já for raw.githubusercontent.com
+  if (cleaned.includes("raw.githubusercontent.com")) {
+    return [cleaned];
+  }
+
+  // Se for URL de arquivo blob ou tree: https://github.com/user/repo/blob/main/path/to/SKILL.md
+  if (cleaned.includes("github.com") && (cleaned.includes("/blob/") || cleaned.includes("/tree/"))) {
+    const rawUrl = cleaned
+      .replace("github.com", "raw.githubusercontent.com")
+      .replace(/\/blob\//, "/")
+      .replace(/\/tree\//, "/");
+
+    const candidates = [rawUrl];
+    if (rawUrl.includes("/main/")) {
+      candidates.push(rawUrl.replace("/main/", "/master/"));
+    } else if (rawUrl.includes("/master/")) {
+      candidates.push(rawUrl.replace("/master/", "/main/"));
+    }
+    return candidates;
+  }
+
+  // Se for URL raiz do repositório: https://github.com/owner/repo
+  if (cleaned.includes("github.com")) {
+    const repoMatch = cleaned.match(/github\.com\/([^\/]+)\/([^\/#?]+)/i);
+    if (repoMatch) {
+      const owner = repoMatch[1];
+      const repo = repoMatch[2].replace(/\.git$/i, "");
+      return [
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/SKILL.md`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/master/SKILL.md`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/.cursorrules`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/master/.cursorrules`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/.cursor/rules/main.mdc`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/master/.cursor/rules/main.mdc`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/README.md`,
+        `https://raw.githubusercontent.com/${owner}/${repo}/master/README.md`,
+      ];
+    }
+  }
+
+  return [cleaned];
 }
 
 export function parseSkillContent(content: string, filenameHint: string = ""): {
@@ -30,8 +77,9 @@ export function parseSkillContent(content: string, filenameHint: string = ""): {
   description: string;
   cleanContent: string;
 } {
-  const isCursorRules = filenameHint.endsWith(".cursorrules") || filenameHint.endsWith(".mdc") || content.includes(".cursor/rules");
-  
+  const lowerHint = filenameHint.toLowerCase();
+  const isCursorRules = lowerHint.endsWith(".cursorrules") || lowerHint.endsWith(".mdc") || content.includes(".cursor/rules");
+
   let detectedType: "google" | "claude" | "cursor" | "codex" | "generic" = "generic";
   let skillName = "custom-skill";
   let description = "Skill personalizada instalada via GitHub";
@@ -49,18 +97,21 @@ export function parseSkillContent(content: string, filenameHint: string = ""): {
     const descMatch = yamlHeader.match(/description:\s*['"]?([^'"\n]+)['"]?/);
     if (descMatch) description = descMatch[1].trim();
 
-    if (yamlHeader.includes("google") || content.toLowerCase().includes("gemini") || content.toLowerCase().includes("antigravity")) {
+    const lowerHeader = yamlHeader.toLowerCase();
+    const lowerBody = content.toLowerCase();
+
+    if (lowerHeader.includes("google") || lowerBody.includes("gemini") || lowerBody.includes("antigravity")) {
       detectedType = "google";
-    } else if (yamlHeader.includes("claude") || content.toLowerCase().includes("anthropic")) {
+    } else if (lowerHeader.includes("claude") || lowerBody.includes("anthropic")) {
       detectedType = "claude";
     } else {
       detectedType = "google"; // Padrão SKILL.md do Google/Antigravity
     }
   } else if (isCursorRules) {
     detectedType = "cursor";
-    skillName = filenameHint.replace(/\.(cursorrules|mdc)$/, "") || "cursor-rules";
+    skillName = filenameHint.replace(/\.(cursorrules|mdc)$/i, "") || "cursor-rules";
     description = "Diretrizes de código do Cursor";
-  } else if (content.includes("codex") || content.includes("openai")) {
+  } else if (content.toLowerCase().includes("codex") || content.toLowerCase().includes("openai")) {
     detectedType = "codex";
     skillName = "codex-skill";
   }
@@ -76,36 +127,53 @@ export async function installSkillFromGithub(opts: {
   url: string;
   projectPath?: string | null;
 }): Promise<InstalledSkillResult> {
-  const rawUrl = convertGithubUrlToRaw(opts.url);
+  const candidateUrls = getGithubRawCandidateUrls(opts.url);
 
   let responseText = "";
-  try {
-    const res = await fetch(rawUrl);
-    if (!res.ok) {
-      // Se /raw/main/SKILL.md falhar, tenta /raw/master/SKILL.md ou /raw/main/.cursorrules
-      if (rawUrl.includes("/raw/main/SKILL.md")) {
-        const altUrl = rawUrl.replace("/raw/main/SKILL.md", "/raw/main/.cursorrules");
-        const altRes = await fetch(altUrl);
-        if (altRes.ok) {
-          responseText = await altRes.text();
-        } else {
-          throw new Error(`HTTP ${res.status}: Não foi possível baixar a skill da URL.`);
+  let successfulUrl = "";
+  let lastHttpStatus = 0;
+  let networkErrorMsg = "";
+
+  for (const candidateUrl of candidateUrls) {
+    try {
+      const res = await fetch(candidateUrl, {
+        headers: {
+          "User-Agent": "NextCode-Skill-Installer/1.0",
+          "Accept": "text/plain, text/markdown, text/html, */*",
+        },
+        redirect: "follow",
+      });
+
+      lastHttpStatus = res.status;
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim()) {
+          responseText = text;
+          successfulUrl = candidateUrl;
+          break;
         }
-      } else {
-        throw new Error(`HTTP ${res.status}: Não foi possível baixar a skill da URL.`);
       }
-    } else {
-      responseText = await res.text();
+    } catch (err) {
+      networkErrorMsg = (err as Error).message;
     }
-  } catch (err) {
-    throw new Error(`Falha ao se conectar ao GitHub: ${(err as Error).message}`);
   }
 
-  if (!responseText || !responseText.trim()) {
-    throw new Error("Conteúdo retornado pelo GitHub está vazio.");
+  if (!responseText) {
+    if (networkErrorMsg) {
+      throw new Error(`Falha de rede ao conectar ao GitHub (${networkErrorMsg}). Verifique sua conexão de internet.`);
+    }
+    if (lastHttpStatus === 404) {
+      throw new Error(
+        `Não foi possível localizar o arquivo de skill (SKILL.md, .cursorrules ou .mdc) no repositório (HTTP 404). Verifique se o link ou a branch do repositório no GitHub está correto.`
+      );
+    }
+    if (lastHttpStatus === 403) {
+      throw new Error(`Acesso negado pelo GitHub (HTTP 403). Certifique-se de que o repositório é público.`);
+    }
+    throw new Error(`Não foi possível baixar o conteúdo do GitHub (HTTP ${lastHttpStatus || "erro"}). Verifique a URL informada.`);
   }
 
-  const filenameHint = path.basename(opts.url);
+  const filenameHint = path.basename(successfulUrl || opts.url);
   const parsed = parseSkillContent(responseText, filenameHint);
 
   const baseDir = opts.projectPath && opts.projectPath.trim()
