@@ -84,7 +84,7 @@ export async function GET() {
     const knownFreePools = [
       "kiro",
       "pollinations",
-      "opencode-free",
+      "nextcode-free",
       "groq",
       "cerebras",
       "gemini",
@@ -102,11 +102,11 @@ export async function GET() {
 
     const sampleModels = rawModels.length > 0
       ? rawModels.slice(0, 15).map((m) => m.id)
-      : ["auto", "combo/auto", "opencode/big-pickle", "pollinations/default"];
+      : ["auto", "combo/auto", "nextcode/default", "pollinations/default"];
 
     const registeredProviders = Array.from(providerSet).length > 0
       ? Array.from(providerSet)
-      : ["openai", "gemini", "groq", "opencode", "pollinations"];
+      : ["openai", "gemini", "groq", "nextcode", "pollinations"];
 
     return NextResponse.json({
       online: true,

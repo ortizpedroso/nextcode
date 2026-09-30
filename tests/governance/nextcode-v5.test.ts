@@ -8,7 +8,7 @@ import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import * as path from "path";
 import * as fs from "fs";
 
-describe("OpenCode v5 Governance & Multi-Agent Architecture", () => {
+describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
   const testQuarantineDir = path.join(process.cwd(), ".test-quarantine");
 
   afterEach(() => {

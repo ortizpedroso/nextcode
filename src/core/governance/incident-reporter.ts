@@ -1,5 +1,5 @@
 /**
- * Evolution Incident Reporter (OpenCode v5 - Trava T6 D-RANHO)
+ * Evolution Incident Reporter (NextCode v5 - Trava T6 D-RANHO)
  * Compila o histórico de falhas de auditoria e gera um Relatório de Incidente de Evolução
  * quando uma tarefa atinge o limite de 3 tentativas rejeitadas.
  */

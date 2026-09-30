@@ -1,5 +1,5 @@
 /**
- * Hybrid Brief Builder & Parser (OpenCode v5)
+ * Hybrid Brief Builder & Parser (NextCode v5)
  * Gera e valida Briefs no formato Híbrido (YAML Frontmatter + Markdown Body)
  * Aplica a Trava T2 (Files Scope Lock - impede execução se files_scope for vazio)
  */

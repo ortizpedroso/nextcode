@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
         serviceName: "OmniRoute Local Proxy",
         port: 20128,
         primaryRoute: "local-first",
-        fallbackProviders: ["kiro", "opencode-free", "pollinations", "ollama", "openrouter"],
+        fallbackProviders: ["kiro", "nextcode-free", "pollinations", "ollama", "openrouter"],
         models: [
           { id: "auto", name: "OmniRoute Auto Router (zero-config)" },
           { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Upstream)" },

@@ -1,5 +1,5 @@
 /**
- * Skill Miner (OpenCode v5)
+ * Skill Miner (NextCode v5)
  * Analisa logs de telemetria em busca de rotinas repetitivas ou padrões de sucesso recorrentes
  * e gera propostas de CandidateSkillProposal na UI.
  * 

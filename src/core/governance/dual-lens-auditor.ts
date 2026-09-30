@@ -1,5 +1,5 @@
 /**
- * Dual-Lens Blind Auditor (OpenCode v5 - Trava T5)
+ * Dual-Lens Blind Auditor (NextCode v5 - Trava T5)
  * Executa a validação em 2 Camadas / 2 Tipos:
  * - Validador Tipo 1 (Determinístico / Mecânico): Linters, compiladores, SAST security scanner e testes unitários. Custo Token = 0.
  * - Validador Tipo 2 (Semântico / Auditor Cego - LLM):

@@ -1,5 +1,5 @@
 /**
- * Intake Engine (OpenCode v5)
+ * Intake Engine (NextCode v5)
  * Classifica e gerencia a entrada de intenções do usuário nos 4 Cenários Intelectuais:
  * - Scenario A: Intenção Macro / SaaS (Requer Elicitação + Spec Canônica + User Spec Approval Lock)
  * - Scenario B: Intenção Micro / Quick Fix (Gera Brief Híbrido direto com files_scope)

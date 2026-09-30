@@ -1,5 +1,5 @@
 /**
- * Telemetry Logger (OpenCode v5)
+ * Telemetry Logger (NextCode v5)
  * Registra assincronamente eventos de execução, falhas, uso de ferramentas e métricas
  * no SQLite WAL para posterior mineração de habilidades.
  */

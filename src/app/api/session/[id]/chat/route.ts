@@ -140,7 +140,7 @@ export async function POST(
       stream: true,
     });
 
-    // 5. Separa o stream com tee() (OpenCode Pattern): streamForClient vai direto para o HTTP sem delay, streamForBuffer acumula para o Prisma
+    // 5. Separa o stream com tee() (NextCode Pattern): streamForClient vai direto para o HTTP sem delay, streamForBuffer acumula para o Prisma
     if (result.response.body) {
       const [streamForClient, streamForBuffer] = result.response.body.tee();
 
@@ -173,7 +173,7 @@ export async function POST(
         }
       })();
 
-      // 6. Retorna o stream nativo com os cabeçalhos essenciais SSE anti-buffering do OpenCode
+      // 6. Retorna o stream nativo com os cabeçalhos essenciais SSE anti-buffering do NextCode
       return new Response(streamForClient, {
         status: 200,
         headers: {

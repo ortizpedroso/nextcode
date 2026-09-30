@@ -1,5 +1,5 @@
 /**
- * Quarantine Manager (OpenCode v5)
+ * Quarantine Manager (NextCode v5)
  * Gerencia a criação, isolamento e movimentação de arquivos na Quarentena de Staging.
  * Garante que o Agente Executor só escreva em ambientes protegidos e isolados antes da auditoria cega.
  */
