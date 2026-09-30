@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import * as fs from "fs";
+import * as path from "path";
 
 export async function GET(request: Request) {
   try {
@@ -31,17 +33,57 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, description, path, isPinned } = body;
+    const { name, description, path: requestedPath, isPinned } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Nome do projeto é obrigatório" }, { status: 400 });
     }
 
+    const trimmedName = name.trim();
+    // Resolve o caminho absoluto de forma segura
+    let targetPath = requestedPath ? path.resolve(requestedPath.trim()) : null;
+
+    if (!targetPath) {
+      // Se não informado, gera um caminho padrão na pasta de projetos
+      const projectsDir = path.join(process.cwd(), "projects");
+      targetPath = path.join(projectsDir, trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-"));
+    }
+
+    // Cria a pasta física no sistema de arquivos se ela não existir
+    if (!fs.existsSync(targetPath)) {
+      fs.mkdirSync(targetPath, { recursive: true });
+    }
+
+    // Se o diretório estiver novo ou vazio, inicializa a estrutura base de projeto
+    const existingFiles = fs.readdirSync(targetPath);
+    if (existingFiles.length === 0) {
+      const readmeContent = `# ${trimmedName}\n\n${description || "Projeto criado via NextCode."}\n\n## Estrutura do Projeto\n- Gerado autonomamente pelo NextCode v5.\n`;
+      fs.writeFileSync(path.join(targetPath, "README.md"), readmeContent, "utf-8");
+
+      const packageJsonContent = JSON.stringify(
+        {
+          name: trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+          version: "0.1.0",
+          private: true,
+          description: description || "Projeto autônomo NextCode",
+          scripts: {
+            test: "vitest run",
+          },
+        },
+        null,
+        2
+      );
+      fs.writeFileSync(path.join(targetPath, "package.json"), packageJsonContent, "utf-8");
+
+      const gitignoreContent = "node_modules/\n.env\n.quarantine/\ndist/\n.next/\n";
+      fs.writeFileSync(path.join(targetPath, ".gitignore"), gitignoreContent, "utf-8");
+    }
+
     const project = await prisma.project.create({
       data: {
-        name: name.trim(),
+        name: trimmedName,
         description: description || null,
-        path: path ? path.trim() : null,
+        path: targetPath,
         isPinned: Boolean(isPinned),
       },
       include: {
@@ -49,7 +91,11 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, project });
+    return NextResponse.json({
+      success: true,
+      project,
+      physicalPathCreated: targetPath,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao criar projeto", details: String(error) },
@@ -57,3 +103,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

@@ -7,6 +7,9 @@ import { MCPClient } from "@/core/mcp/mcp-client";
 import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
+import { QuarantineManager } from "@/core/governance/quarantine-manager";
+import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 
 export async function GET(request: Request) {
   try {
@@ -244,20 +247,54 @@ export async function POST(request: Request) {
         stepResultText = `Etapa concluída com notificação: ${String(err)}`;
       }
 
+      // 4. Quarentena, Auditoria Cega e Promoção para a Pasta Física do Projeto
+      const qm = new QuarantineManager();
+      const filesScope: string[] = task.filesScope ? JSON.parse(task.filesScope) : [];
+      
+      // Extrai os blocos de código gerados e grava no workspace isolado de quarentena
+      const codeContentMap = qm.extractAndWriteCodeBlocks(task.id, stepResultText, filesScope);
+      
+      // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
+      const type1Res = DualLensAuditor.validateType1(codeContentMap);
+      const type2Res = DualLensAuditor.validateType2(type1Res, task.title, stepResultText, codeContentMap);
+
+      let finalStatus: "completed" | "failed" = "completed";
+      let promotionTarget: string | null = null;
+
+      if (type2Res.verdict === "APPROVED") {
+        finalStatus = "completed";
+        // Resolve o caminho do projeto (ou pasta padrão) e promove o código aprovado
+        const targetProjectRoot = task.session.project?.path || process.cwd();
+        qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
+        promotionTarget = targetProjectRoot;
+      } else {
+        finalStatus = "failed";
+        qm.purgeWorkspace(task.id);
+      }
+
       const mcpRes = {
-        success: true,
+        success: type2Res.verdict === "APPROVED",
         nodeId: task.id,
         title: task.title,
         output: stepResultText,
+        auditVerdict: type2Res.verdict,
+        promotedPath: promotionTarget,
       };
 
-      // Atualiza estado para 'completed' no SQLite
+      // Atualiza estado do nó no SQLite
       const updatedTask = await prisma.taskNode.update({
         where: { id: nodeId },
         data: {
-          status: "completed",
+          status: finalStatus,
+          attempts: finalStatus === "failed" ? task.attempts + 1 : task.attempts,
           result: JSON.stringify(mcpRes),
         },
+      });
+
+      TelemetryLogger.log({
+        sessionId: task.sessionId,
+        action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
+        details: { nodeId: task.id, title: task.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
       });
 
       // Checa se todos os nós da sessão foram concluídos
@@ -279,7 +316,7 @@ export async function POST(request: Request) {
           data: {
             sessionId: task.sessionId,
             role: "assistant",
-            content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas e validadas com sucesso:\n\n${completedSummary}\n\n✅ _Relatório final gravado e integrado à sessão._`,
+            content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${task.session.project?.path || process.cwd()}\`_`,
           },
         });
       }
@@ -307,6 +344,7 @@ export async function POST(request: Request) {
         success: true,
         executedTask: updatedTask,
         nextExecutableNodes: executableNodes,
+        promotedPath: promotionTarget,
       });
     }
 

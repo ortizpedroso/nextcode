@@ -171,4 +171,33 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(report).toContain("Severidade:");
     });
   });
+
+  describe("5. Promoção Física de Projetos & Quarentena", () => {
+    it("deve extrair código formatado em markdown e promover fisicamente para a pasta do projeto", () => {
+      const qm = new QuarantineManager(testQuarantineDir);
+      const testProjectRoot = path.join(process.cwd(), ".test-project-dest");
+      const taskId = "TASK-PROMOTE-999";
+
+      const markdownOutput = `Aqui está o código:
+\`\`\`ts filepath="src/services/api.service.ts"
+export const fetchApi = () => true;
+\`\`\`
+`;
+
+      // Extrai e grava na quarentena
+      const codeMap = qm.extractAndWriteCodeBlocks(taskId, markdownOutput, ["src/services/api.service.ts"]);
+      expect(codeMap["src/services/api.service.ts"]).toBe("export const fetchApi = () => true;\n");
+
+      // Promove da quarentena para a pasta do projeto
+      const promoted = qm.promoteToMainRepo(taskId, testProjectRoot, ["src/services/api.service.ts"]);
+      expect(promoted).toBe(true);
+
+      const destFile = path.join(testProjectRoot, "src/services/api.service.ts");
+      expect(fs.existsSync(destFile)).toBe(true);
+      expect(fs.readFileSync(destFile, "utf-8")).toBe("export const fetchApi = () => true;\n");
+
+      // Limpa os arquivos de teste
+      fs.rmSync(testProjectRoot, { recursive: true, force: true });
+    });
+  });
 });

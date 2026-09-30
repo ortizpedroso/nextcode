@@ -57,6 +57,57 @@ export class QuarantineManager {
   }
 
   /**
+   * Extrai blocos de código formatados em markdown e grava na quarentena
+   */
+  public extractAndWriteCodeBlocks(
+    taskId: string,
+    text: string,
+    fallbackFilesScope: string[] = []
+  ): Record<string, string> {
+    const codeMap: Record<string, string> = {};
+    const workspacePath = this.prepareWorkspace(taskId);
+
+    // Regex para encontrar blocos de código ```lang ... ```
+    const codeBlockRegex = /```(?:[a-zA-Z0-9_-]+)?(?:\s+(?:file|path|filepath)="?([^"\n\s]+)"?)?\n([\s\S]*?)```/g;
+    let match: RegExpExecArray | null;
+    let index = 0;
+
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      let relativePath = match[1];
+      const codeContent = match[2];
+
+      // Tenta encontrar anotações no próprio topo do código como // file: src/... ou // filepath: src/...
+      if (!relativePath) {
+        const topHeaderMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):\s*([^\s\n*]+)/i);
+        if (topHeaderMatch) {
+          relativePath = topHeaderMatch[1];
+        }
+      }
+
+      // Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice
+      if (!relativePath && fallbackFilesScope.length > index) {
+        relativePath = fallbackFilesScope[index];
+      }
+
+      if (relativePath && codeContent) {
+        const cleanPath = relativePath.trim().replace(/^\\|^\//, "");
+        this.writeFile(taskId, cleanPath, codeContent);
+        codeMap[cleanPath] = codeContent;
+      }
+      index++;
+    }
+
+    // Se nenhum bloco com marcação foi encontrado, mas há código e escopo, salva o primeiro escopo
+    if (Object.keys(codeMap).length === 0 && fallbackFilesScope.length > 0 && text.trim()) {
+      const primaryScopeFile = fallbackFilesScope[0];
+      this.writeFile(taskId, primaryScopeFile, text);
+      codeMap[primaryScopeFile] = text;
+    }
+
+    return codeMap;
+  }
+
+  /**
    * Promove as alterações aprovadas da quarentena para o repositório principal do projeto
    */
   public promoteToMainRepo(taskId: string, targetProjectRoot: string, filesScope: string[]): boolean {
@@ -65,7 +116,16 @@ export class QuarantineManager {
       return false;
     }
 
-    for (const fileRel of filesScope) {
+    // Se o diretório alvo do projeto não existir, cria-o fisicamente
+    if (!fs.existsSync(targetProjectRoot)) {
+      fs.mkdirSync(targetProjectRoot, { recursive: true });
+    }
+
+    // Garante a cópia de todos os arquivos gerados na quarentena para a pasta do projeto
+    const filesInQuarantine = this.listFilesInQuarantine(workspacePath);
+    const targetFiles = filesInQuarantine.length > 0 ? filesInQuarantine : filesScope;
+
+    for (const fileRel of targetFiles) {
       const sourcePath = path.join(workspacePath, fileRel);
       if (fs.existsSync(sourcePath)) {
         const destPath = path.join(targetProjectRoot, fileRel);
@@ -80,6 +140,26 @@ export class QuarantineManager {
     // Limpa a quarentena após promoção bem-sucedida
     fs.rmSync(workspacePath, { recursive: true, force: true });
     return true;
+  }
+
+  /**
+   * Lista recursivamente arquivos dentro da quarentena
+   */
+  private listFilesInQuarantine(dir: string, baseDir: string = dir): string[] {
+    let results: string[] = [];
+    if (!fs.existsSync(dir)) return results;
+
+    const list = fs.readdirSync(dir);
+    for (const file of list) {
+      const filePath = path.join(dir, file);
+      const stat = fs.statSync(filePath);
+      if (stat && stat.isDirectory()) {
+        results = results.concat(this.listFilesInQuarantine(filePath, baseDir));
+      } else {
+        results.push(path.relative(baseDir, filePath));
+      }
+    }
+    return results;
   }
 
   /**
