@@ -4,6 +4,7 @@ import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
 import { buildProjectContextBlock } from "@/core/project/project-context";
+import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 
 import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
 
@@ -87,6 +88,18 @@ export async function POST(request: Request) {
     } catch (ctxErr) {
       console.warn("[PROJECT_CONTEXT] Falha ao montar contexto (seguindo sem ele):", String(ctxErr));
       contextDiagnostics = `excecao: ${String(ctxErr)}`;
+    }
+
+    // 4.6 RESOLUÇÃO E INJEÇÃO DE SKILLS DE IA (/skill-name [pedido])
+    try {
+      const targetDir = process.cwd();
+      const skillRes = resolveSkillOrCommand(targetPrompt, targetDir);
+      if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
+        dispatchMessages.unshift({ role: "system", content: skillRes.skillBlock });
+        console.log(`[SKILL_INJECTOR] Skill "/${skillRes.commandName}" injetada com sucesso no contexto!`);
+      }
+    } catch (skillErr) {
+      console.warn("[SKILL_INJECTOR] Falha ao resolver skill:", String(skillErr));
     }
 
     // 5. Consulta chaves BYOK no banco SQLite e roda o SmartRouter

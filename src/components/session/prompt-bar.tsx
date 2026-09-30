@@ -220,73 +220,82 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
       )}
 
       <form onSubmit={handleSubmit} className="space-y-2">
-        <div className="flex items-start gap-2 bg-slate-50/80 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2 shadow-sm focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
-          <div className="pl-2 pt-2 text-[#0066cc] shrink-0">
-            <Sparkles className="w-4 h-4" />
-          </div>
+        <div className="bg-slate-50/80 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-3 shadow-sm focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all flex flex-col gap-2.5">
+          {/* Linha Superior: Ícone + Textarea */}
+          <div className="flex items-start gap-2">
+            <div className="pt-1 text-[#0066cc] shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
 
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            placeholder="Digite o objetivo ou / para listar skills (ex: /plan, /my-skill)..."
-            value={prompt}
-            onChange={(e) => {
-              setPrompt(e.target.value);
-              adjustHeight();
-            }}
-            onFocus={() => fetchSkills()}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            className="flex-1 bg-transparent px-2 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
-          />
-
-          {renderActiveBadge()}
-
-          {/* Seletor de Modelo Discreto */}
-          <div className="relative flex items-center shrink-0">
-            <Cpu className="w-3.5 h-3.5 text-slate-400 absolute left-2 pointer-events-none" />
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              placeholder="Digite o objetivo ou / para listar skills (ex: /plan, /my-skill)..."
+              value={prompt}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                adjustHeight();
+              }}
+              onFocus={() => fetchSkills()}
+              onKeyDown={handleKeyDown}
               disabled={loading}
-              className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl pl-7 pr-3 py-1.5 text-xs font-medium focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer transition-colors max-w-[210px] truncate disabled:opacity-50"
-              title="Seletor de Modelo de Execução"
-            >
-              <option value="auto">NextCode Auto (Inteligente)</option>
-              <option value="fast">Forçar Fast (Gemini 2.5 Flash)</option>
-              <option value="heavy">Forçar Heavy (Claude 3.7 / Gemini Pro)</option>
-              {customProviders.length > 0 && (
-                <optgroup label="Provedores Personalizados">
-                  {customProviders.map((cp) => {
-                    const modelsArr = JSON.parse(cp.models || "[]");
-                    return modelsArr.map((m: { id: string; name: string }) => (
-                      <option key={`${cp.id}-${m.id}`} value={`${cp.id}:${m.id}`}>
-                        {cp.name} - {m.name}
-                      </option>
-                    ));
-                  })}
-                </optgroup>
-              )}
-            </select>
+              className="flex-1 bg-transparent px-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
+            />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading || !prompt.trim()}
-            className="bg-[#0066cc] hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-xl flex items-center gap-1.5 text-xs shadow-sm disabled:opacity-40 transition-colors shrink-0"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Processando...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5" />
-                <span>Enviar</span>
-              </>
-            )}
-          </button>
+          {/* Linha Inferior: Canto Inferior Esquerdo (Seletor de Provedor + Badge) | Canto Inferior Direito (Botão Enviar) */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-200/40 dark:border-slate-800/40 gap-2">
+            {/* Canto Inferior Esquerdo: Seletor de Modelo de Provedor */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex items-center shrink-0">
+                <Cpu className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={loading}
+                  className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer transition-colors max-w-[220px] truncate disabled:opacity-50"
+                  title="Escolha do Modelo de Provedor"
+                >
+                  <option value="auto">NextCode Auto (Inteligente)</option>
+                  <option value="fast">Forçar Fast (Gemini 2.5 Flash)</option>
+                  <option value="heavy">Forçar Heavy (Claude 3.7 / Gemini Pro)</option>
+                  {customProviders.length > 0 && (
+                    <optgroup label="Provedores Personalizados">
+                      {customProviders.map((cp) => {
+                        const modelsArr = JSON.parse(cp.models || "[]");
+                        return modelsArr.map((m: { id: string; name: string }) => (
+                          <option key={`${cp.id}-${m.id}`} value={`${cp.id}:${m.id}`}>
+                            {cp.name} - {m.name}
+                          </option>
+                        ));
+                      })}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {renderActiveBadge()}
+            </div>
+
+            {/* Canto Inferior Direito: Botão Enviar */}
+            <button
+              type="submit"
+              disabled={loading || !prompt.trim()}
+              className="bg-[#0066cc] hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-xl flex items-center gap-1.5 text-xs shadow-sm disabled:opacity-40 transition-colors shrink-0"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Processando...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Enviar</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
     </div>
