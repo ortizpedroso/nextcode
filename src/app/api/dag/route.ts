@@ -285,11 +285,11 @@ export async function POST(request: Request) {
       }
 
       // Avalia dependências dos outros nós na sessão via DAGEngine
-      const sessionTasks = await prisma.taskNode.findMany({
+      const updatedSessionTasks = await prisma.taskNode.findMany({
         where: { sessionId: task.sessionId },
       });
 
-      const dagNodes: DAGNode[] = sessionTasks.map((t) => ({
+      const dagNodes: DAGNode[] = updatedSessionTasks.map((t) => ({
         id: t.id,
         title: t.title,
         role: t.role,
