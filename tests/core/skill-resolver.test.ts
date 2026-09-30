@@ -53,7 +53,7 @@ describe("skill-resolver — resolveSkillOrCommand", () => {
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("plan");
     expect(res.userRequest).toBe("Refatorar módulo de autenticação");
-    expect(res.skillBlock).toContain("MODO DE PLANEJAMENTO ATIVO");
+    expect(res.skillBlock).toContain("EXECUÇÃO DE COMANDO: /plan");
   });
 
   it("resolve comando embutido /goal", () => {
@@ -61,7 +61,7 @@ describe("skill-resolver — resolveSkillOrCommand", () => {
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("goal");
     expect(res.userRequest).toBe("Criar SaaS de automação");
-    expect(res.skillBlock).toContain("MODO OBJETIVO AUTÔNOMO ATIVO");
+    expect(res.skillBlock).toContain("EXECUÇÃO DE COMANDO: /goal");
   });
 
   it("resolve skill personalizada instalada /my-code-reviewer com pedido do usuário", () => {
@@ -69,7 +69,8 @@ describe("skill-resolver — resolveSkillOrCommand", () => {
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("my-code-reviewer");
     expect(res.userRequest).toBe("revise este arquivo index.ts");
-    expect(res.skillBlock).toContain("[INSTRUÇÕES DA SKILL DE IA /my-code-reviewer]");
+    expect(res.skillBlock).toContain("EXECUÇÃO ATIVA DA SKILL: /my-code-reviewer");
     expect(res.skillBlock).toContain("SOLID");
+    expect(res.skillBlock).toContain("RELATÓRIO DE RESULTADOS & EXCEÇÕES");
   });
 });

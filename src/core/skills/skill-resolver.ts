@@ -111,7 +111,7 @@ export function resolveSkillOrCommand(
       commandName: "plan",
       userRequest,
       builtInAction: "plan",
-      skillBlock: `<system_instruction mode="planning">\n[MODO DE PLANEJAMENTO ATIVO]\nO usuário solicitou a elaboração de um plano técnico detalhado para:\n"${userRequest || "Elaborar plano de desenvolvimento"}"\nInstrução: Analise a arquitetura e proponha as etapas de implementação e testes necessários.\n</system_instruction>`,
+      skillBlock: `<system_instruction mode="planning">\n[EXECUÇÃO DE COMANDO: /plan]\nIdentifique sua resposta com "📋 **[Plano de Arquitetura]**". Analise a arquitetura e elabore um plano de implementação detalhado com passos de execução e verificações para:\n"${userRequest || "Elaborar plano de desenvolvimento"}"\n</system_instruction>`,
     };
   }
 
@@ -121,7 +121,7 @@ export function resolveSkillOrCommand(
       commandName: "goal",
       userRequest,
       builtInAction: "goal",
-      skillBlock: `<system_instruction mode="goal">\n[MODO OBJETIVO AUTÔNOMO ATIVO]\nObjetivo principal:\n"${userRequest || "Executar objetivo definido"}"\nInstrução: Decompor o objetivo e prosseguir com a execução autônoma até o resultado final.\n</system_instruction>`,
+      skillBlock: `<system_instruction mode="goal">\n[EXECUÇÃO DE COMANDO: /goal]\nIdentifique sua resposta com "🎯 **[Objetivo Autônomo]**". Defina o plano autônomo e execute as tarefas até a conclusão para:\n"${userRequest || "Executar objetivo definido"}"\n</system_instruction>`,
     };
   }
 
@@ -131,14 +131,27 @@ export function resolveSkillOrCommand(
       commandName: "help",
       userRequest,
       builtInAction: "help",
-      skillBlock: `<system_instruction mode="help">\n[GUIA DE AJUDA & SKILLS]\nExiba o guia rápido e ensine como utilizar slash commands (/) e instalar novas skills via GitHub.\n</system_instruction>`,
+      skillBlock: `<system_instruction mode="help">\n[EXECUÇÃO DE COMANDO: /help]\nIdentifique sua resposta com "💡 **[Ajuda & Habilidades de IA]**". Exiba a lista de comandos e explique como instalar skills do GitHub em Configurações > Skills MCP.\n</system_instruction>`,
     };
   }
 
   // Busca skill personalizada instalada
   const foundSkill = findSkillContent(commandName, targetDir);
   if (foundSkill) {
-    const skillBlock = `<skill_instructions name="${commandName}" type="${foundSkill.type}">\n[INSTRUÇÕES DA SKILL DE IA /${commandName}]\nSiga rigorosamente as diretrizes e regras especificadas abaixo para atender ao pedido do usuário:\n\n${foundSkill.content}\n</skill_instructions>`;
+    const skillBlock = `<skill_execution_context name="${commandName}" type="${foundSkill.type}">
+[EXECUÇÃO ATIVA DA SKILL: /${commandName}]
+ATENÇÃO MODELO: O usuário acionou a skill "/${commandName}". Você DEVE assumir a autoridade e o papel desta skill e EXECUTAR COMPLETAMENTE a instrução enviada.
+
+REGRAS OBRIGATÓRIAS DE EXECUÇÃO:
+1. IDENTIFICAÇÃO: Inicie sua resposta identificando expressamente a skill acionada com o cabeçalho: ⚡ **[Skill /${commandName}]**.
+2. EXECUÇÃO COMPLETA: NÃO apenas descreva o que vai fazer nem pare no meio. Execute as tarefas até o fim.
+3. RELATÓRIO DE RESULTADOS & EXCEÇÕES: Ao finalizar, apresente um resumo claro relatando o que foi executado (códigos/arquivos alterados) ou quais problemas/exceções foram encontrados durante o processo.
+4. DIRETRISES DA SKILL: Siga rigorosamente as instruções e especificações técnicas abaixo:
+
+--- ESPECIFICAÇÃO TÉCNICA DA SKILL (/${commandName}) ---
+${foundSkill.content}
+--- FIM DA ESPECIFICAÇÃO ---
+</skill_execution_context>`;
 
     return {
       isSkillOrCommand: true,

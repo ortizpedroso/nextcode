@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as fs from "fs";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
 
     // 4.6 RESOLUÇÃO E INJEÇÃO DE SKILLS DE IA (/skill-name [pedido])
     try {
-      const targetDir = process.cwd();
+      const targetDir = ctxProject?.path && fs.existsSync(ctxProject.path) ? ctxProject.path : process.cwd();
       const skillRes = resolveSkillOrCommand(targetPrompt, targetDir);
       if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
         dispatchMessages.unshift({ role: "system", content: skillRes.skillBlock });
