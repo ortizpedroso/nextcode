@@ -240,7 +240,8 @@ LEIS DE EXECUÇÃO DA DAG:
 
       let stepResultText = "";
       try {
-        const dispatchRes = await smartRouter.dispatchWithFallback({
+        const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 45000;
+        const dispatchPromise = smartRouter.dispatchWithFallback({
           messages: dispatchMessages,
           tier: "fast",
           geminiKey: readSecret(setting?.geminiKey),
@@ -249,16 +250,25 @@ LEIS DE EXECUÇÃO DA DAG:
           stream: false,
         });
 
-        const resJson = await dispatchRes.response.json().catch(() => ({}));
-        if (resJson.choices?.[0]?.message?.content) {
-          stepResultText = resJson.choices[0].message.content;
-        } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-          stepResultText = resJson.candidates[0].content.parts[0].text;
-        } else {
-          stepResultText = `Etapa "${task.title}" executada com sucesso pelo motor autônomo.`;
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout de resposta excedido na etapa da DAG (limite 45s)")), stepTimeoutMs)
+        );
+
+        const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
+
+        if (dispatchRes) {
+          const resJson = await dispatchRes.response.json().catch(() => ({}));
+          if (resJson.choices?.[0]?.message?.content) {
+            stepResultText = resJson.choices[0].message.content;
+          } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+            stepResultText = resJson.candidates[0].content.parts[0].text;
+          } else {
+            stepResultText = `Etapa "${task.title}" executada pelo motor autônomo.`;
+          }
         }
       } catch (err) {
-        stepResultText = `Etapa concluída com notificação: ${String(err)}`;
+        stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
+        console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${task.title}":`, String(err));
       }
 
       // 4. Quarentena, Auditoria Cega e Promoção para a Pasta Física do Projeto
