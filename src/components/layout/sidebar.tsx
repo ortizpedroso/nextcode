@@ -57,6 +57,7 @@ interface SidebarProps {
   onCreateSession: (projectId?: string | null) => Promise<void>;
   onSaveSettings: (updated: SettingsFormState) => Promise<void>;
   onRefreshProjects?: () => Promise<void>;
+  onAttachSessionToProject?: (sessionId: string, projectId: string | null) => Promise<void>;
 }
 
 export function Sidebar({
@@ -74,6 +75,7 @@ export function Sidebar({
   onCreateSession,
   onSaveSettings,
   onRefreshProjects,
+  onAttachSessionToProject,
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const [openProjectDialogOpen, setOpenProjectDialogOpen] = useState(false);
@@ -278,7 +280,12 @@ export function Sidebar({
                               </button>
 
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <SessionActionsMenu session={sess} onDelete={onDeleteSession} />
+                                <SessionActionsMenu
+                                  session={sess}
+                                  projects={activeProjects}
+                                  onAttachToProject={onAttachSessionToProject}
+                                  onDelete={onDeleteSession}
+                                />
                               </div>
                             </div>
                           );
@@ -318,7 +325,12 @@ export function Sidebar({
                   </button>
 
                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SessionActionsMenu session={sess} onDelete={onDeleteSession} />
+                    <SessionActionsMenu
+                      session={sess}
+                      projects={activeProjects}
+                      onAttachToProject={onAttachSessionToProject}
+                      onDelete={onDeleteSession}
+                    />
                   </div>
                 </div>
               );

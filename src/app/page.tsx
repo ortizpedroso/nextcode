@@ -207,6 +207,37 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  const handleAttachSessionToProject = async (sessionId: string, projectId: string | null) => {
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchProjects();
+        await fetchAdhocSessions();
+
+        const targetProj = projects.find((p) => p.id === projectId);
+        if (activeSessionId === sessionId) {
+          setActiveProjectId(projectId);
+          setActiveProjectName(targetProj?.name || null);
+        }
+
+        const projNameStr = targetProj ? `ao projeto "${targetProj.name}"` : "às Sessões Ad-hoc (desvinculada)";
+        setConsoleLogs((prev) => [
+          ...prev,
+          `[SESSÃO] Sessão ${sessionId.substring(0, 6)} anexada ${projNameStr}.`,
+        ]);
+      } else {
+        console.error("Erro ao vincular sessão ao projeto:", data.error);
+      }
+    } catch (err) {
+      console.error("Erro ao vincular sessão ao projeto:", err);
+    }
+  };
+
   const handleCreateSession = async (projectId?: string | null) => {
     try {
       const targetProjectId = projectId !== undefined ? projectId : activeProjectId;
@@ -420,6 +451,7 @@ export default function DashboardOrchestrator() {
         onCreateSession={handleCreateSession}
         onSaveSettings={handleSaveSettings}
         onRefreshProjects={fetchProjects}
+        onAttachSessionToProject={handleAttachSessionToProject}
       />
 
       {/* Workspace Principal à Direita */}

@@ -42,16 +42,20 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { title } = body;
+    const { title, projectId } = body;
+
+    const dataToUpdate: Record<string, unknown> = {};
+    if (title !== undefined) dataToUpdate.title = String(title).trim();
+    if (projectId !== undefined) {
+      dataToUpdate.projectId = projectId ? String(projectId).trim() : null;
+    }
 
     const updated = await prisma.session.update({
       where: { id },
-      data: {
-        ...(title !== undefined && { title: String(title).trim() }),
-      },
+      data: dataToUpdate,
       include: {
         project: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, path: true },
         },
       },
     });
