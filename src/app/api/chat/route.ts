@@ -9,6 +9,8 @@ import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 
 import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
 
+import { IntakeEngine } from "@/core/intake/intake-engine";
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -56,9 +58,11 @@ export async function POST(request: Request) {
       { maxLogLines: 50 }
     );
 
-    // 4.5 FASE 14.2 — Injeta contexto do projeto local (sessão vinculada OU projectId no body).
-    // Fail-open: sem caminho válido => chat segue exatamente como antes.
-    const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
+    // 4.5 Injeta as Leis Inegociáveis de Governança NextCode v5 (NADA É CRIADO SEM SPEC E BRIEF)
+    const dispatchMessages: DispatchMessage[] = [
+      { role: "system", content: IntakeEngine.getGovernanceSystemPrompt() },
+      ...headroomRes.messages,
+    ];
     let projectContextInjected = false;
     let contextDiagnostics: string | null = null;
     let ctxProject: { name: string; path: string | null } | null = null;

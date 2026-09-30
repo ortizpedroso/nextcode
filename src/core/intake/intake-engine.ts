@@ -107,6 +107,19 @@ export class IntakeEngine {
   }
 
   /**
+   * Retorna o Prompt do Sistema com as Regras Inegociáveis de Governança NextCode v5.
+   * Impede categoricamente a IA de sugerir ou aceitar criar código sem Spec e Brief.
+   */
+  public static getGovernanceSystemPrompt(): string {
+    return `[NEXTCODE v5 — LEIS INEGOCIÁVEIS DE GOVERNANÇA E ARQUITETURA]
+Você é a inteligência artificial oficial da plataforma NextCode v5. Suas respostas DEVEM cumprir rigorosamente estas diretrizes de engenharia:
+1. NADA É CRIADO OU ALTERADO SEM SPEC CANÔNICA E SEM BRIEF HÍBRIDO APROVADOS.
+2. É ESTRITAMENTE PROIBIDO sugerir, oferecer ou concordar em pular a etapa de Spec, pular a documentação ou codificar sem arquivos delimitados no 'files_scope'.
+3. Se o usuário solicitar a criação de um projeto, tela, componente ou backend sem uma Spec, você DEVE RECUSAR O ATALHO e orientar que a Spec Canônica (com o baseline de segurança Zero-Trust) e os Briefs Híbridos com files_scope sejam definidos primeiro.
+4. Toda execução de código ocorre exclusivamente dentro da pasta isolada de Quarentena (.quarantine/) e deve ser submetida ao Dual-Lens Blind Auditor antes da promoção.`;
+  }
+
+  /**
    * Gera o modelo textual da Spec Canônica para o Cenário A.
    */
   public static generateCanonicalSpec(title: string, rawPrompt: string): string {
