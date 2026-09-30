@@ -56,25 +56,26 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
     adjustHeight();
   }, [prompt]);
 
-  // Lista unificada de comandos (Built-in + Skills customizadas instaladas)
+  // Lista unificada de comandos (Skills customizadas instaladas + Comandos do Sistema)
   const allCommands = [...skills, ...BUILTIN_COMMANDS];
 
-  // Filtra comandos baseados na barra digitada (/termo)
-  const isSlashActive = prompt.startsWith("/");
-  const filterQuery = isSlashActive ? prompt.slice(1).toLowerCase() : "";
+  // O popup de autocomplete só fica ativo enquanto o usuário estiver digitando o nome da skill (sem espaço após o comando)
+  const slashMatch = prompt.match(/^\/([^\s]*)$/);
+  const isSlashTyping = slashMatch !== null;
+  const filterQuery = isSlashTyping ? slashMatch[1].toLowerCase() : "";
 
-  const filteredCommands = isSlashActive
+  const filteredCommands = isSlashTyping
     ? allCommands.filter((s) => s.name.toLowerCase().includes(filterQuery))
     : [];
 
   useEffect(() => {
-    if (isSlashActive) {
+    if (isSlashTyping) {
       setShowSkillsPopup(true);
       setSelectedIndex(0);
     } else {
       setShowSkillsPopup(false);
     }
-  }, [prompt, isSlashActive]);
+  }, [prompt, isSlashTyping]);
 
   const handleSelectSkill = (skill: SkillItemInfo) => {
     setPrompt(`/${skill.name} `);

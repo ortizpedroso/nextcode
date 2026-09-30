@@ -22,7 +22,6 @@ function scanSubdirsForSkills(baseDir: string): SkillItemInfo[] {
     { dir: path.join(baseDir, ".cursor", "rules"), defaultType: "cursor" as const },
     ...(homeDir && homeDir !== baseDir ? [
       { dir: path.join(homeDir, ".gemini", "skills"), defaultType: "google" as const },
-      { dir: path.join(homeDir, ".gemini", "antigravity", "builtin", "skills"), defaultType: "google" as const },
       { dir: path.join(homeDir, ".claude", "skills"), defaultType: "claude" as const },
     ] : []),
   ];
