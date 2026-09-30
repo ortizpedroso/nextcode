@@ -113,15 +113,7 @@ export async function POST(
     // Fail-open: caminho inexistente/ilegível => null => comportamento idêntico ao anterior.
     const sessionWithProject = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: {
-        project: {
-          include: {
-            sections: {
-              orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-            },
-          },
-        },
-      },
+      include: { project: true },
     });
     const dispatchMessages: DispatchMessage[] = [...headroomRes.messages];
     let projectContextInjected = false;

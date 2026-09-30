@@ -19,13 +19,6 @@
 import * as fs from "fs";
 import * as path from "path";
 
-export interface ProjectSectionItem {
-  id?: string;
-  title: string;
-  content: string;
-  order?: number;
-}
-
 export interface ProjectSnapshot {
   projectName: string;
   projectPath: string;
@@ -33,7 +26,6 @@ export interface ProjectSnapshot {
   manifestName?: string; // package.json / requirements.txt / go.mod ...
   manifestContent?: string;
   readmeExcerpt?: string;
-  sections?: ProjectSectionItem[];
   tree: string[]; // linhas de árvore já truncadas
   totalFilesScanned: number;
   truncated: boolean;
@@ -131,74 +123,59 @@ function buildTree(
 }
 
 /**
- * Gera o snapshot do projeto. Retorna null se não houver nem caminho local válido
- * nem seções anexadas.
+ * Gera o snapshot do projeto. Retorna null se o caminho não existir/não for
+ * diretório — o chamador deve simplesmente seguir sem contexto (fail-open).
  */
 export function buildProjectSnapshot(project: {
   name: string;
   path?: string | null;
   description?: string | null;
-  sections?: ProjectSectionItem[] | null;
 }): ProjectSnapshot | null {
-  const hasSections = Array.isArray(project.sections) && project.sections.length > 0;
-  const hasPath = Boolean(project.path && project.path.trim());
+  if (!project.path || !project.path.trim()) return null;
 
-  if (!hasPath && !hasSections) return null;
-
-  let normalizedPath = "";
-  let isDir = false;
-
-  if (hasPath) {
-    normalizedPath = path.normalize(project.path!.trim());
-    try {
-      const stat = fs.statSync(normalizedPath);
-      isDir = stat.isDirectory();
-    } catch {
-      isDir = false;
-    }
+  const normalized = path.normalize(project.path.trim());
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(normalized);
+  } catch {
+    return null;
   }
-
-  if (!isDir && !hasSections) return null;
+  if (!stat.isDirectory()) return null;
 
   // Manifesto (define stack/objetivo)
   let manifestName: string | undefined;
   let manifestContent: string | undefined;
-  let readmeExcerpt: string | undefined;
-  const counter: { files: number; lines: string[] } = { files: 0, lines: [] };
-
-  if (isDir) {
-    for (const candidate of MANIFEST_CANDIDATES) {
-      const content = safeReadFile(path.join(normalizedPath, candidate), MAX_MANIFEST_BYTES);
-      if (content) {
-        manifestName = candidate;
-        manifestContent = content;
-        break;
-      }
+  for (const candidate of MANIFEST_CANDIDATES) {
+    const content = safeReadFile(path.join(normalized, candidate), MAX_MANIFEST_BYTES);
+    if (content) {
+      manifestName = candidate;
+      manifestContent = content;
+      break;
     }
-
-    // README (descrição humana do projeto)
-    for (const candidate of ["README.md", "readme.md", "README.rst", "README.txt", "LEIA-ME.md"]) {
-      const content = safeReadFile(path.join(normalizedPath, candidate), MAX_README_BYTES);
-      if (content) {
-        readmeExcerpt = content;
-        break;
-      }
-    }
-
-    // Árvore de arquivos
-    buildTree(normalizedPath, { counter });
   }
 
+  // README (descrição humana do projeto)
+  let readmeExcerpt: string | undefined;
+  for (const candidate of ["README.md", "readme.md", "README.rst", "README.txt", "LEIA-ME.md"]) {
+    const content = safeReadFile(path.join(normalized, candidate), MAX_README_BYTES);
+    if (content) {
+      readmeExcerpt = content;
+      break;
+    }
+  }
+
+  // Árvore de arquivos
+  const counter: { files: number; lines: string[] } = { files: 0, lines: [] };
+  buildTree(normalized, { counter });
   const truncated = counter.lines.length >= MAX_TREE_LINES;
 
   return {
     projectName: project.name,
-    projectPath: isDir ? normalizedPath : "(sem pasta local)",
+    projectPath: normalized,
     description: project.description,
     manifestName,
     manifestContent,
     readmeExcerpt,
-    sections: project.sections || undefined,
     tree: counter.lines,
     totalFilesScanned: counter.files,
     truncated,
@@ -212,20 +189,9 @@ export function formatProjectContext(snapshot: ProjectSnapshot): string {
   const parts: string[] = [];
   parts.push("<project_context>");
   parts.push(`Nome do projeto: ${snapshot.projectName}`);
-  if (snapshot.projectPath !== "(sem pasta local)") {
-    parts.push(`Caminho local: ${snapshot.projectPath}`);
-  }
+  parts.push(`Caminho local: ${snapshot.projectPath}`);
   if (snapshot.description) parts.push(`Descrição cadastrada: ${snapshot.description}`);
-  if (snapshot.totalFilesScanned > 0) {
-    parts.push(`Arquivos mapeados na estrutura: ${snapshot.totalFilesScanned}${snapshot.truncated ? " (lista truncada)" : ""}`);
-  }
-
-  if (snapshot.sections && snapshot.sections.length > 0) {
-    parts.push("\n--- Seções Anexadas ao Projeto ---");
-    for (const sec of snapshot.sections) {
-      parts.push(`[Seção: ${sec.title}]\n${sec.content}`);
-    }
-  }
+  parts.push(`Arquivos mapeados na estrutura: ${snapshot.totalFilesScanned}${snapshot.truncated ? " (lista truncada)" : ""}`);
 
   if (snapshot.manifestName && snapshot.manifestContent) {
     parts.push(`\n--- ${snapshot.manifestName} ---\n${snapshot.manifestContent}`);
@@ -233,12 +199,10 @@ export function formatProjectContext(snapshot: ProjectSnapshot): string {
   if (snapshot.readmeExcerpt) {
     parts.push(`\n--- README (resumo) ---\n${snapshot.readmeExcerpt}`);
   }
-  if (snapshot.tree.length > 0) {
-    parts.push(`\n--- Estrutura de arquivos ---\n${snapshot.tree.join("\n")}`);
-  }
+  parts.push(`\n--- Estrutura de arquivos ---\n${snapshot.tree.join("\n")}`);
   parts.push("</project_context>");
   parts.push(
-    "\nInstrução: as perguntas do usuário podem se referir a 'o projeto'. Use o contexto acima para responder com conhecimento real dos arquivos e seções cadastradas. Se faltar informação, peça para abrir arquivos específicos pelo caminho."
+    "\nInstrução: as perguntas do usuário podem se referir a 'o projeto'. Use o contexto acima para responder com conhecimento real dos arquivos. Se faltar informação, peça para abrir arquivos específicos pelo caminho."
   );
 
   let text = parts.join("\n");
@@ -255,7 +219,6 @@ export function buildProjectContextBlock(project: {
   name: string;
   path?: string | null;
   description?: string | null;
-  sections?: ProjectSectionItem[] | null;
 }): string | null {
   const snapshot = buildProjectSnapshot(project);
   if (!snapshot) return null;

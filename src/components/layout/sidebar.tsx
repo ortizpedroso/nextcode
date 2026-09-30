@@ -22,17 +22,8 @@ import { ProjectActionsMenu, ProjectData } from "@/components/projects/project-a
 import { SessionActionsMenu } from "@/components/projects/session-actions-menu";
 import { OpenProjectDialog, ProjectFormData } from "@/components/projects/open-project-dialog";
 import { SettingsDialog, SettingsFormState } from "@/components/settings/settings-dialog";
-import { ProjectSectionsModal } from "@/components/projects/project-sections-modal";
-
-export interface ProjectSectionItem {
-  id: string;
-  title: string;
-  content: string;
-}
-
 export interface ProjectItem extends ProjectData {
   sessions?: SessionItem[];
-  sections?: ProjectSectionItem[];
 }
 
 export interface SessionItem {
@@ -80,7 +71,6 @@ export function Sidebar({
   const { theme, setTheme } = useTheme();
   const [openProjectDialogOpen, setOpenProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectFormData | null>(null);
-  const [sectionsProject, setSectionsProject] = useState<ProjectData | null>(null);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
@@ -245,7 +235,6 @@ export function Sidebar({
                         project={proj}
                         onTogglePin={(p) => onUpdateProject(p.id, { isPinned: !p.isPinned })}
                         onEdit={handleOpenEditModal}
-                        onManageSections={(p) => setSectionsProject(p)}
                         onToggleArchive={(p) => onUpdateProject(p.id, { isArchived: !p.isArchived })}
                         onDelete={(p) => onDeleteProject(p.id)}
                       />
@@ -380,13 +369,7 @@ export function Sidebar({
         onSubmit={handleProjectFormSubmit}
       />
 
-      {/* Modal de Gerenciamento de Seções do Projeto */}
-      <ProjectSectionsModal
-        isOpen={!!sectionsProject}
-        project={sectionsProject}
-        onClose={() => setSectionsProject(null)}
-        onSectionsUpdated={onRefreshProjects}
-      />
+
 
       {/* Hub Central de Configurações Unificado */}
       <SettingsDialog
