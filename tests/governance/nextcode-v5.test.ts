@@ -46,10 +46,10 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res.suggestedAction).toBe("DIRECT_LLM_RESPONSE");
     });
 
-    it("deve exportar o prompt de governança obrigatório contendo a regra 'NADA É CRIADO SEM SPEC E BRIEF'", () => {
+    it("deve exportar o prompt de governança obrigatório que proíbe pedir briefs ao usuário", () => {
       const sysPrompt = IntakeEngine.getGovernanceSystemPrompt();
-      expect(sysPrompt).toContain("NADA É CRIADO OU ALTERADO SEM SPEC CANÔNICA E SEM BRIEF HÍBRIDO APROVADOS");
-      expect(sysPrompt).toContain("É ESTRITAMENTE PROIBIDO sugerir, oferecer ou concordar em pular a etapa de Spec");
+      expect(sysPrompt).toContain("GERAÇÃO AUTOMÁTICA DE BRIEFS");
+      expect(sysPrompt).toContain("NUNCA peça para o usuário escrever, enviar ou fornecer um Brief");
     });
   });
 
