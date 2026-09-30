@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2 } from "lucide-react";
+import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
 import { SkillItemInfo } from "@/app/api/skills/list/route";
 
@@ -11,6 +11,13 @@ interface PromptBarProps {
   projectId?: string | null;
   onSubmit: (prompt: string, modelOverride?: string) => Promise<void>;
 }
+
+const BUILTIN_COMMANDS: SkillItemInfo[] = [
+  { name: "plan", description: "Ativar modo de planejamento e criar plano detalhado", type: "generic", path: "builtin:plan" },
+  { name: "goal", description: "Executar tarefa complexa em modo autônomo e focado", type: "generic", path: "builtin:goal" },
+  { name: "help", description: "Exibir guia rápido e lista de habilidades do assistente", type: "generic", path: "builtin:help" },
+  { name: "clear", description: "Limpar histórico e contexto da sessão atual", type: "generic", path: "builtin:clear" },
+];
 
 export function PromptBar({ loading, customProviders, projectId, onSubmit }: PromptBarProps) {
   const [prompt, setPrompt] = useState("");
@@ -49,26 +56,25 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
     adjustHeight();
   }, [prompt]);
 
-  // Filter skills based on slash command input
-  const getFilterQuery = () => {
-    if (!prompt.startsWith("/")) return null;
-    const match = prompt.match(/^\/([^\s]*)/);
-    return match ? match[1].toLowerCase() : null;
-  };
+  // Lista unificada de comandos (Built-in + Skills customizadas instaladas)
+  const allCommands = [...skills, ...BUILTIN_COMMANDS];
 
-  const filterQuery = getFilterQuery();
-  const filteredSkills = filterQuery !== null
-    ? skills.filter((s) => s.name.toLowerCase().includes(filterQuery))
+  // Filtra comandos baseados na barra digitada (/termo)
+  const isSlashActive = prompt.startsWith("/");
+  const filterQuery = isSlashActive ? prompt.slice(1).toLowerCase() : "";
+
+  const filteredCommands = isSlashActive
+    ? allCommands.filter((s) => s.name.toLowerCase().includes(filterQuery))
     : [];
 
   useEffect(() => {
-    if (filterQuery !== null && filteredSkills.length > 0) {
+    if (isSlashActive) {
       setShowSkillsPopup(true);
       setSelectedIndex(0);
     } else {
       setShowSkillsPopup(false);
     }
-  }, [prompt, filterQuery, filteredSkills.length]);
+  }, [prompt, isSlashActive]);
 
   const handleSelectSkill = (skill: SkillItemInfo) => {
     setPrompt(`/${skill.name} `);
@@ -91,20 +97,20 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showSkillsPopup && filteredSkills.length > 0) {
+    if (showSkillsPopup && filteredCommands.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % filteredSkills.length);
+        setSelectedIndex((prev) => (prev + 1) % filteredCommands.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev - 1 + filteredSkills.length) % filteredSkills.length);
+        setSelectedIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
         return;
       }
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        handleSelectSkill(filteredSkills[selectedIndex]);
+        handleSelectSkill(filteredCommands[selectedIndex]);
         return;
       }
       if (e.key === "Escape") {
@@ -131,7 +137,7 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
       case "cursor":
         return <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">Cursor</span>;
       default:
-        return <span className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Skill</span>;
+        return <span className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Comando</span>;
     }
   };
 
@@ -170,33 +176,45 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
     <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 shrink-0 relative">
       {/* Popup Autocomplete de Slash Commands */}
       {showSkillsPopup && (
-        <div className="absolute bottom-full mb-2 left-0 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden text-xs">
-          <div className="p-2 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>Comandos & Skills Disponíveis</span>
+        <div className="absolute bottom-full mb-2 left-0 w-80 sm:w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden text-xs">
+          <div className="p-2.5 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50">
+            <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+              <Command className="w-3.5 h-3.5 text-[#0066cc]" />
+              Skills & Slash Commands
+            </span>
             <span className="text-[9px] font-normal text-slate-400">↑↓ navegar | Enter/Tab selecionar</span>
           </div>
-          <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
-            {filteredSkills.map((skill, idx) => (
-              <button
-                key={skill.path}
-                type="button"
-                onClick={() => handleSelectSkill(skill)}
-                className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between transition-colors ${
-                  idx === selectedIndex
-                    ? "bg-[#e8f1fb] dark:bg-blue-950/80 text-[#0066cc] dark:text-blue-300 font-medium"
-                    : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate pr-2">
-                  <FileCode2 className="w-3.5 h-3.5 text-[#0066cc] shrink-0" />
-                  <div className="truncate">
-                    <span className="font-bold font-mono">/{skill.name}</span>
-                    <span className="text-[10px] text-slate-400 block truncate">{skill.description}</span>
+          <div className="max-h-56 overflow-y-auto p-1 space-y-0.5">
+            {filteredCommands.length === 0 ? (
+              <div className="p-3 text-slate-400 text-[11px] text-center italic">
+                Nenhum comando ou skill encontrado com &quot;/{filterQuery}&quot;.
+              </div>
+            ) : (
+              filteredCommands.map((item, idx) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectSkill(item);
+                  }}
+                  className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between transition-colors ${
+                    idx === selectedIndex
+                      ? "bg-[#e8f1fb] dark:bg-blue-950/80 text-[#0066cc] dark:text-blue-300 font-medium"
+                      : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <FileCode2 className="w-3.5 h-3.5 text-[#0066cc] shrink-0" />
+                    <div className="truncate">
+                      <span className="font-bold font-mono">/{item.name}</span>
+                      <span className="text-[10px] text-slate-400 block truncate">{item.description}</span>
+                    </div>
                   </div>
-                </div>
-                {renderTypeBadge(skill.type)}
-              </button>
-            ))}
+                  {renderTypeBadge(item.type)}
+                </button>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -210,12 +228,13 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
           <textarea
             ref={textareaRef}
             rows={1}
-            placeholder="Digite o objetivo ou / para listar skills (ex: /my-skill ou refatorar API JWT)..."
+            placeholder="Digite o objetivo ou / para listar skills (ex: /plan, /my-skill)..."
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
               adjustHeight();
             }}
+            onFocus={() => fetchSkills()}
             onKeyDown={handleKeyDown}
             disabled={loading}
             className="flex-1 bg-transparent px-2 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
@@ -273,4 +292,5 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
     </div>
   );
 }
+
 
