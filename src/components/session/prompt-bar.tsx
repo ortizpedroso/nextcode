@@ -1,19 +1,41 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2 } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
+import { SkillItemInfo } from "@/app/api/skills/list/route";
 
 interface PromptBarProps {
   loading: boolean;
   customProviders: CustomProviderItem[];
+  projectId?: string | null;
   onSubmit: (prompt: string, modelOverride?: string) => Promise<void>;
 }
 
-export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps) {
+export function PromptBar({ loading, customProviders, projectId, onSubmit }: PromptBarProps) {
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>("auto");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Slash commands state
+  const [skills, setSkills] = useState<SkillItemInfo[]>([]);
+  const [showSkillsPopup, setShowSkillsPopup] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const fetchSkills = useCallback(async () => {
+    try {
+      const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+      const res = await fetch(`/api/skills/list${query}`);
+      const data = await res.json();
+      if (res.ok && data.skills) {
+        setSkills(data.skills);
+      }
+    } catch {}
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchSkills();
+  }, [fetchSkills]);
 
   const adjustHeight = () => {
     const textarea = textareaRef.current;
@@ -27,23 +49,89 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
     adjustHeight();
   }, [prompt]);
 
+  // Filter skills based on slash command input
+  const getFilterQuery = () => {
+    if (!prompt.startsWith("/")) return null;
+    const match = prompt.match(/^\/([^\s]*)/);
+    return match ? match[1].toLowerCase() : null;
+  };
+
+  const filterQuery = getFilterQuery();
+  const filteredSkills = filterQuery !== null
+    ? skills.filter((s) => s.name.toLowerCase().includes(filterQuery))
+    : [];
+
+  useEffect(() => {
+    if (filterQuery !== null && filteredSkills.length > 0) {
+      setShowSkillsPopup(true);
+      setSelectedIndex(0);
+    } else {
+      setShowSkillsPopup(false);
+    }
+  }, [prompt, filterQuery, filteredSkills.length]);
+
+  const handleSelectSkill = (skill: SkillItemInfo) => {
+    setPrompt(`/${skill.name} `);
+    setShowSkillsPopup(false);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim() || loading) return;
     const modelToPass = selectedModel === "auto" ? undefined : selectedModel;
     await onSubmit(prompt.trim(), modelToPass);
     setPrompt("");
+    setShowSkillsPopup(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showSkillsPopup && filteredSkills.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % filteredSkills.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 + filteredSkills.length) % filteredSkills.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        handleSelectSkill(filteredSkills[selectedIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowSkillsPopup(false);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (prompt.trim() && !loading) {
         handleSubmit(e as unknown as React.FormEvent);
       }
+    }
+  };
+
+  const renderTypeBadge = (type: string) => {
+    switch (type) {
+      case "google":
+        return <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">Google</span>;
+      case "claude":
+        return <span className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950 px-1.5 py-0.5 rounded border border-purple-200 dark:border-purple-800">Claude</span>;
+      case "cursor":
+        return <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">Cursor</span>;
+      default:
+        return <span className="text-[10px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Skill</span>;
     }
   };
 
@@ -79,7 +167,40 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
   };
 
   return (
-    <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 shrink-0">
+    <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 shrink-0 relative">
+      {/* Popup Autocomplete de Slash Commands */}
+      {showSkillsPopup && (
+        <div className="absolute bottom-full mb-2 left-0 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden text-xs">
+          <div className="p-2 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>Comandos & Skills Disponíveis</span>
+            <span className="text-[9px] font-normal text-slate-400">↑↓ navegar | Enter/Tab selecionar</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
+            {filteredSkills.map((skill, idx) => (
+              <button
+                key={skill.path}
+                type="button"
+                onClick={() => handleSelectSkill(skill)}
+                className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between transition-colors ${
+                  idx === selectedIndex
+                    ? "bg-[#e8f1fb] dark:bg-blue-950/80 text-[#0066cc] dark:text-blue-300 font-medium"
+                    : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <FileCode2 className="w-3.5 h-3.5 text-[#0066cc] shrink-0" />
+                  <div className="truncate">
+                    <span className="font-bold font-mono">/{skill.name}</span>
+                    <span className="text-[10px] text-slate-400 block truncate">{skill.description}</span>
+                  </div>
+                </div>
+                {renderTypeBadge(skill.type)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-2">
         <div className="flex items-start gap-2 bg-slate-50/80 dark:bg-slate-950 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2 shadow-sm focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/10 transition-all">
           <div className="pl-2 pt-2 text-[#0066cc] shrink-0">
@@ -89,7 +210,7 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
           <textarea
             ref={textareaRef}
             rows={1}
-            placeholder="Digite o objetivo (ex: Criar API de auth JWT com refatoração de schema e testes)..."
+            placeholder="Digite o objetivo ou / para listar skills (ex: /my-skill ou refatorar API JWT)..."
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
@@ -152,3 +273,4 @@ export function PromptBar({ loading, customProviders, onSubmit }: PromptBarProps
     </div>
   );
 }
+

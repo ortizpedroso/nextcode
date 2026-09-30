@@ -26,6 +26,7 @@ import {
 import { ByokTab } from "./byok-tab";
 import { OmniRouteCard } from "./omniroute-card";
 import { HeadroomCard } from "./headroom-card";
+import { GithubSkillInstallerCard } from "./github-skill-installer-card";
 
 export interface SettingsFormState {
   geminiKey: string;
@@ -591,9 +592,11 @@ export function SettingsDialog({
               </div>
             )}
 
-            {/* ABA 3: CRUD SERVIDORES MCP */}
+            {/* ABA 3: CRUD SERVIDORES MCP & SKILLS GITHUB */}
             {activeTab === "mcp" && (
-              <div className="space-y-4">
+              <div className="space-y-6">
+                <GithubSkillInstallerCard />
+
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                   <h4 className="font-bold text-slate-900 dark:text-white">
                     Servidores Model Context Protocol (MCP)
