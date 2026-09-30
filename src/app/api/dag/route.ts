@@ -215,13 +215,27 @@ export async function POST(request: Request) {
       const setting = await prisma.setting.findUnique({ where: { id: "default" } });
       const smartRouter = new SmartRouter();
 
-      const dispatchMessages: DispatchMessage[] = [];
+      const autonomousWorkerPrompt = `[DIRETRIZES DE EXECUÇÃO AUTÔNOMA DO SUBAGENTE NEXTCODE v5]
+Você é um subagente de execução autônoma (${task.role}) para a etapa "${task.title}".
+LEIS DE EXECUÇÃO DA DAG:
+1. NUNCA FAÇA PERGUNTAS AO USUÁRIO OU SOLICITE CONFIRMAÇÃO/INFORMAÇÕES. Execute 100% da tarefa de forma autônoma.
+2. Se o projeto estiver em fase inicial ou sem arquivos, decida a melhor arquitetura e implemente os arquivos de código-fonte completos imediatamente.
+3. Para cada arquivo do escopo (${task.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com o caminho no topo:
+\`\`\`typescript
+// file: caminho/relativo/do/arquivo.ts
+<código completo aqui>
+\`\`\`
+4. Sua resposta deve conter execuções concretas e o código funcional para a etapa ser aprovada pela auditoria cega.`;
+
+      const dispatchMessages: DispatchMessage[] = [
+        { role: "system", content: autonomousWorkerPrompt },
+      ];
       if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
       if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
 
       dispatchMessages.push({
         role: "user",
-        content: `[EXECUÇÃO DA ETAPA DA DAG: ${task.title}]\nPapel/Função: ${task.role}\nObjetivo: Execute esta etapa de forma concreta e retorne os detalhes da execução e códigos/verificações realizadas.`,
+        content: `[EXECUÇÃO DA ETAPA DA DAG: ${task.title}]\nPapel/Função: ${task.role}\nEscopo de Arquivos: ${task.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
       });
 
       let stepResultText = "";

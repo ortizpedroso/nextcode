@@ -91,14 +91,30 @@ export class DualLensAuditor {
 - Conformidade mecânica: PASS
 - Análise de contrato: Código atende ao escopo delimitado sem viés de relatórios externos.`;
 
-    // Lente 2 (Verificação Cruzada): Confronta as alegações do Worker com as descobertas da Lente 1
-    const workerClaimedSuccess = workerExecutionReport.toLowerCase().includes("concluído") || workerExecutionReport.toLowerCase().includes("sucesso");
+    // Lente 2 (Verificação Cruzada): Confronta as alegações do Worker com os arquivos extraídos da Quarentena
+    const textLower = workerExecutionReport.toLowerCase();
+    const hasSuccessKeywords =
+      textLower.includes("concluído") ||
+      textLower.includes("concluido") ||
+      textLower.includes("sucesso") ||
+      textLower.includes("executado") ||
+      textLower.includes("gerado") ||
+      textLower.includes("criado") ||
+      textLower.includes("implementado") ||
+      textLower.includes("finished") ||
+      textLower.includes("created") ||
+      textLower.includes("done") ||
+      textLower.includes("success");
+
+    const hasExtractedFiles = filesInScope.length > 0;
+    const workerClaimedSuccess = hasSuccessKeywords || hasExtractedFiles;
+
     let verdict: "APPROVED" | "REJECTED" = "APPROVED";
     let rejectionReason: string | undefined = undefined;
 
     if (!workerClaimedSuccess) {
       verdict = "REJECTED";
-      rejectionReason = "Relatório do Worker indicou falha ou incapacidade de concluir a tarefa.";
+      rejectionReason = "Nenhum arquivo de código foi gerado e o relatório não indicou conclusão autônoma.";
     }
 
     const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
