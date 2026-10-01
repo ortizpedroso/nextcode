@@ -33,9 +33,19 @@ export async function GET() {
   try {
     await ensureSettingTable();
 
-    let setting = await prisma.setting.findFirst({
-      where: { id: "default" },
-    });
+    let setting: any = null;
+    try {
+      const rows = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Setting" WHERE "id" = 'default' LIMIT 1`);
+      if (rows && rows.length > 0) setting = rows[0];
+    } catch {
+      setting = null;
+    }
+
+    if (!setting) {
+      setting = await prisma.setting.findFirst({
+        where: { id: "default" },
+      });
+    }
 
     if (!setting) {
       setting = await prisma.setting.create({
@@ -61,8 +71,8 @@ export async function GET() {
       claudeKey: mask(setting.claudeKey),
       openaiKey: mask(setting.openaiKey),
       deepseekKey: mask(setting.deepseekKey),
-      groqKey: mask((setting as any).groqKey),
-      nvidiaKey: mask((setting as any).nvidiaKey),
+      groqKey: mask(setting.groqKey),
+      nvidiaKey: mask(setting.nvidiaKey),
       omniRouteKey: mask(setting.omniRouteKey),
       omniRouteUrl: setting.omniRouteUrl || "http://localhost:20128/v1",
       customEndpoint: setting.customEndpoint || "http://localhost:20128/v1",
@@ -71,8 +81,8 @@ export async function GET() {
       hasClaudeKey: Boolean(setting.claudeKey),
       hasOpenaiKey: Boolean(setting.openaiKey),
       hasDeepseekKey: Boolean(setting.deepseekKey),
-      hasGroqKey: Boolean((setting as any).groqKey),
-      hasNvidiaKey: Boolean((setting as any).nvidiaKey),
+      hasGroqKey: Boolean(setting.groqKey),
+      hasNvidiaKey: Boolean(setting.nvidiaKey),
       hasOmniRouteKey: Boolean(setting.omniRouteKey),
       updatedAt: setting.updatedAt,
     });
@@ -104,11 +114,10 @@ export async function POST(request: NextRequest) {
       activeProvider,
     } = body;
 
-    let existing = null;
+    let existing: any = null;
     try {
-      existing = await prisma.setting.findFirst({
-        where: { id: "default" },
-      });
+      const rows = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Setting" WHERE "id" = 'default' LIMIT 1`);
+      if (rows && rows.length > 0) existing = rows[0];
     } catch {
       existing = null;
     }
@@ -125,16 +134,41 @@ export async function POST(request: NextRequest) {
     const newClaudeKey = processKeyUpdate(claudeKey, existing?.claudeKey);
     const newOpenaiKey = processKeyUpdate(openaiKey, existing?.openaiKey);
     const newDeepseekKey = processKeyUpdate(deepseekKey, existing?.deepseekKey);
-    const newGroqKey = processKeyUpdate(groqKey, (existing as any)?.groqKey);
-    const newNvidiaKey = processKeyUpdate(nvidiaKey, (existing as any)?.nvidiaKey);
+    const newGroqKey = processKeyUpdate(groqKey, existing?.groqKey);
+    const newNvidiaKey = processKeyUpdate(nvidiaKey, existing?.nvidiaKey);
     const newOmniRouteKey = processKeyUpdate(omniRouteKey, existing?.omniRouteKey);
 
     const newEndpoint = customEndpoint || omniRouteUrl || existing?.customEndpoint || "http://localhost:20128/v1";
 
-    const updated = await prisma.setting.upsert({
-      where: { id: "default" },
-      create: {
-        id: "default",
+    let updated: any = null;
+    try {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "Setting" ("id", "geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "omniRouteKey", "omniRouteUrl", "customEndpoint", "activeProvider", "updatedAt")
+         VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT("id") DO UPDATE SET
+           "geminiKey" = excluded."geminiKey",
+           "claudeKey" = excluded."claudeKey",
+           "openaiKey" = excluded."openaiKey",
+           "deepseekKey" = excluded."deepseekKey",
+           "groqKey" = excluded."groqKey",
+           "nvidiaKey" = excluded."nvidiaKey",
+           "omniRouteKey" = excluded."omniRouteKey",
+           "omniRouteUrl" = excluded."omniRouteUrl",
+           "customEndpoint" = excluded."customEndpoint",
+           "activeProvider" = excluded."activeProvider",
+           "updatedAt" = CURRENT_TIMESTAMP;`,
+        newGeminiKey,
+        newClaudeKey,
+        newOpenaiKey,
+        newDeepseekKey,
+        newGroqKey,
+        newNvidiaKey,
+        newOmniRouteKey,
+        newEndpoint,
+        newEndpoint,
+        activeProvider || "auto"
+      );
+      updated = {
         geminiKey: newGeminiKey,
         claudeKey: newClaudeKey,
         openaiKey: newOpenaiKey,
@@ -142,25 +176,37 @@ export async function POST(request: NextRequest) {
         groqKey: newGroqKey,
         nvidiaKey: newNvidiaKey,
         omniRouteKey: newOmniRouteKey,
-        omniRouteUrl: newEndpoint,
         customEndpoint: newEndpoint,
-        activeProvider: activeProvider || "auto",
-      } as any,
-      update: {
-        geminiKey: newGeminiKey,
-        claudeKey: newClaudeKey,
-        openaiKey: newOpenaiKey,
-        deepseekKey: newDeepseekKey,
-        groqKey: newGroqKey,
-        nvidiaKey: newNvidiaKey,
-        omniRouteKey: newOmniRouteKey,
-        omniRouteUrl: newEndpoint,
-        customEndpoint: newEndpoint,
-        activeProvider: activeProvider || "auto",
-      } as any,
-    });
+      };
+    } catch (sqlErr) {
+      console.warn("[SETTINGS] Direct SQL upsert fallback:", sqlErr);
+      updated = await prisma.setting.upsert({
+        where: { id: "default" },
+        create: {
+          id: "default",
+          geminiKey: newGeminiKey,
+          claudeKey: newClaudeKey,
+          openaiKey: newOpenaiKey,
+          deepseekKey: newDeepseekKey,
+          omniRouteKey: newOmniRouteKey,
+          omniRouteUrl: newEndpoint,
+          customEndpoint: newEndpoint,
+          activeProvider: activeProvider || "auto",
+        },
+        update: {
+          geminiKey: newGeminiKey,
+          claudeKey: newClaudeKey,
+          openaiKey: newOpenaiKey,
+          deepseekKey: newDeepseekKey,
+          omniRouteKey: newOmniRouteKey,
+          omniRouteUrl: newEndpoint,
+          customEndpoint: newEndpoint,
+          activeProvider: activeProvider || "auto",
+        },
+      });
+    }
 
-    console.log("[SETTINGS] Configurações salvas (chaves cifradas): Gemini=", Boolean(updated.geminiKey), "| Groq=", Boolean((updated as any).groqKey), "| NVIDIA=", Boolean((updated as any).nvidiaKey));
+    console.log("[SETTINGS] Configurações salvas (chaves cifradas): Gemini=", Boolean(updated.geminiKey), "| Groq=", Boolean(updated.groqKey), "| NVIDIA=", Boolean(updated.nvidiaKey));
 
     return NextResponse.json({
       success: true,
