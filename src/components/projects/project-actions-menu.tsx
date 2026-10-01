@@ -139,7 +139,7 @@ export function ProjectActionsMenu({
               Excluir Projeto
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Tem certeza que deseja apagar o projeto <strong>"{project.name}"</strong>? Esta ação excluirá todas as sessões e nós da DAG vinculados em cascata.
+              Tem certeza que deseja apagar o projeto <strong>"{project.name}"</strong>? Esta ação removerá o registro do banco de dados e <strong>excluirá fisicamente a pasta no disco ({project.path || "caminho local"})</strong>.
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
