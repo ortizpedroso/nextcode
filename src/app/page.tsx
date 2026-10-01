@@ -134,9 +134,14 @@ export default function DashboardOrchestrator() {
         body: JSON.stringify(data),
       });
       const resData = await res.json();
-      if (res.ok) {
+      if (res.ok && resData.project) {
         await fetchProjects();
         setActiveProjectId(resData.project.id);
+        setActiveProjectName(resData.project.name);
+        setActiveSessionId(null);
+        setActiveSessionTitle("");
+        setTasks([]);
+        setMessages([]);
         setConsoleLogs((prev) => [
           ...prev,
           `[PROJETO] Projeto "${resData.project.name}" ${resData.project.path ? `(Pasta: ${resData.project.path})` : ""} cadastrado!`,
@@ -430,18 +435,25 @@ export default function DashboardOrchestrator() {
         adhocSessions={adhocSessions}
         settings={settingsForm}
         onSelectProject={(id) => {
-          setActiveProjectId(id);
-          // FIX (vínculo sessão↔projeto): ao clicar num projeto, sincroniza o
-          // nome e limpa a sessão ativa. Sem isso, activeProjectId apontava para
-          // um projeto enquanto activeSessionId ainda pertencia a OUTRO projeto —
-          // o backend usava o projeto da sessão e injetava contexto errado/nulo.
-          const proj = projects.find((p) => p.id === id);
-          setActiveProjectName(proj?.name ?? null);
-          if (activeSessionId) {
+          if (!id) {
+            setActiveProjectId(null);
+            setActiveProjectName(null);
             setActiveSessionId(null);
             setActiveSessionTitle("");
-            setMessages([]);
             setTasks([]);
+            setMessages([]);
+            return;
+          }
+          setActiveProjectId(id);
+          const proj = projects.find((p) => p.id === id);
+          setActiveProjectName(proj?.name ?? null);
+          if (proj && proj.sessions && proj.sessions.length > 0) {
+            handleSelectSession(proj.sessions[0].id);
+          } else {
+            setActiveSessionId(null);
+            setActiveSessionTitle("");
+            setTasks([]);
+            setMessages([]);
           }
         }}
         onSelectSession={handleSelectSession}

@@ -60,16 +60,22 @@ export function OpenProjectDialog({
   const [explorerLoading, setExplorerLoading] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (editingProject) {
+      setTab(editingProject.path ? "open" : "create");
       setName(editingProject.name || "");
       setDescription(editingProject.description || "");
       setPath(editingProject.path || "");
     } else {
+      setTab("create");
       setName("");
       setDescription("");
       setPath("");
+      setPathValid({ checked: false, exists: false, message: "" });
+      setIsBrowserOpen(false);
     }
-  }, [editingProject]);
+  }, [editingProject, isOpen]);
 
   useEffect(() => {
     if (!path || !path.trim()) {
@@ -149,6 +155,11 @@ export function OpenProjectDialog({
         description: description.trim() || undefined,
         path: path.trim() || undefined,
       });
+      setName("");
+      setDescription("");
+      setPath("");
+      setPathValid({ checked: false, exists: false, message: "" });
+      setIsBrowserOpen(false);
       onClose();
     } catch (err) {
       console.error("Erro ao salvar projeto:", err);
