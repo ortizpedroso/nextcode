@@ -215,17 +215,15 @@ export async function POST(request: Request) {
       const setting = await prisma.setting.findUnique({ where: { id: "default" } });
       const smartRouter = new SmartRouter();
 
-      const autonomousWorkerPrompt = `[DIRETRIZES DE EXECUÇÃO AUTÔNOMA DO SUBAGENTE NEXTCODE v5]
-Você é um subagente de execução autônoma (${task.role}) para a etapa "${task.title}".
-LEIS DE EXECUÇÃO DA DAG:
-1. NUNCA FAÇA PERGUNTAS AO USUÁRIO OU SOLICITE CONFIRMAÇÃO/INFORMAÇÕES. Execute 100% da tarefa de forma autônoma.
-2. Se o projeto estiver em fase inicial ou sem arquivos, decida a melhor arquitetura e implemente os arquivos de código-fonte completos imediatamente.
-3. Para cada arquivo do escopo (${task.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com o caminho no topo:
+      const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${task.role}) responsável pela etapa "${task.title}".
+DIRETRIZES DE EXECUÇÃO:
+1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
+2. Para cada arquivo no escopo (${task.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
 \`\`\`typescript
 // file: caminho/relativo/do/arquivo.ts
 <código completo aqui>
 \`\`\`
-4. Sua resposta deve conter execuções concretas e o código funcional para a etapa ser aprovada pela auditoria cega.`;
+3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.`;
 
       const dispatchMessages: DispatchMessage[] = [
         { role: "system", content: autonomousWorkerPrompt },

@@ -107,47 +107,54 @@ export class IntakeEngine {
   }
 
   /**
-   * Retorna o Prompt do Sistema com as Regras Inegociáveis de Governança NextCode v5.
-   * Garante que a IA gere os Briefs e execute automaticamente sem pedir ao usuário para enviar briefs.
+   * Retorna o Prompt do Sistema para instruir a IA a agir como Arquiteto de Software Sênior
+   * sem gerar poluição visual, preâmbulos robóticos ou diálogos burocráticos sobre regras internas.
    */
   public static getGovernanceSystemPrompt(): string {
-    return `[NEXTCODE v5 — LEIS INEGOCIÁVEIS DE GOVERNANÇA E ARQUITETURA AUTÔNOMA]
-Você é o Engenheiro de Software e Arquiteto de IA oficial da plataforma NextCode v5. Suas respostas DEVEM cumprir rigorosamente estas leis:
-1. GERAÇÃO AUTOMÁTICA DE BRIEFS: Você (a IA) é quem GERA E EXECUTA AUTOMATICAMENTE os Briefs Híbridos (YAML + Markdown). NUNCA peça para o usuário escrever, enviar ou fornecer um Brief!
-2. PROIBIDA EXECUÇÃO SEM ESCOPO: Nenhuma alteração de código é feita sem delimitar o escopo de arquivos no 'files_scope'.
-3. FLUXO DIRETO DE EXECUÇÃO: Quando o usuário solicitar a criação de um sistema ou funcionalidade:
-   - Se a Spec já existir ou for solicitada: Crie/apresente a Spec Canônica, gere os Briefs Híbridos da DAG AUTOMATICAMENTE e INICIE A EXECUÇÃO imediata do código.
-   - NUNCA trave o fluxo pedindo documentos técnicos ou briefs ao usuário. O usuário é o Cliente/Product Owner.
-4. QUARENTENA E AUDITORIA AUTOMÁTICAS: Todo código é escrito em .quarantine/ e promovido para a pasta física do projeto c:\\projetos\\<nome-do-projeto> após aprovação do Dual-Lens Auditor.`;
+    return `Você é a NextCode AI, Arquiteto de Software e Engenheiro Fullstack Sênior.
+DIRETRIZES DE COMUNICAÇÃO E EXECUÇÃO:
+1. RESPOSTAS LIMPAS E EXECUTIVAS: Seja direto, profissional e elegante. NUNCA inclua cabeçalhos robóticos (como "[NEXTCODE v5]", "🤖 OmniRoute", "Lei Inegociável nº X"), discursos de desculpa sobre governança, ou perguntas desnecessárias ao usuário ("Deseja que eu prossiga?", "Você aprova?").
+2. ESPECIFICAÇÕES IMPECÁVEIS: Apresente especificações técnicas (Specs) em Markdown elegante, limpo e estruturado (usando tabelas, badges, seções de Arquitetura, Entidades, Módulos e Endpoints). NUNCA exiba blocos YAML crus ou metadados de governança que poluem a leitura.
+3. DESENVOLVIMENTO AUTÔNOMO: Quando o usuário solicitar a criação de um projeto ou feature, projete a arquitetura completa e implemente os arquivos funcionais sem travar a conversa pedindo autorização a cada sub-etapa.
+4. QUALIDADE E CLEAN CODE: Todo código produzido deve seguir TypeScript strict, Clean Code e padrões SOLID.`;
   }
 
   /**
-   * Gera o modelo textual da Spec Canônica para o Cenário A.
+   * Gera o modelo textual da Spec Canônica formatada elegantemente.
    */
   public static generateCanonicalSpec(title: string, rawPrompt: string): string {
-    return `# Especifição Canônica de Projeto: ${title}
+    return `# 📐 Especificação Técnica: ${title}
 
-> **Status:** AGUARDANDO APROVAÇÃO DO USUÁRIO (Trava T1 Ativa)
-> **Data:** ${new Date().toISOString().split("T")[0]}
+> **Projeto:** \`${title.toLowerCase()}\` | **Status:** Especificado & Pronto para Execução
 
 ---
 
-## 1. Visão Geral & Objetivos
+### 1. 🎯 Visão Geral & Objetivos
 ${rawPrompt}
 
-## 2. Requisitos Funcionais Principais
-- [ ] Módulo Core / Modelo de Dados
-- [ ] Camada de API / Backend
-- [ ] Interface Visual / Frontend Componentes
-- [ ] Suíte de Integração e Testes
+---
 
-## 3. Diretrizes de Governança & Arquitetura
-- **Elegância:** TypeScript Strict, Clean Code, Padrões SOLID.
-- **Segurança:** Zero-Trust, OWASP Top 10, Saneamento de Inputs.
-- **Execução:** Quarentena isolada e Auditoria Cega Dupla-Lente.
-- **Isolamento:** Escopo de arquivos restrito por tarefa (\`files_scope\`).
+### 2. 🏗️ Arquitetura & Stack Tecnológica
+
+| Camada | Tecnologia | Função |
+| :--- | :--- | :--- |
+| **Backend API** | Node.js + Express (TypeScript) | API RESTful modular e escalável |
+| **Persistência** | Prisma ORM + SQLite | Banco de dados com migrations e relacional |
+| **Integração** | Asaas API v3 Client | Processamento de Pix, Boleto e Recorrência |
+| **Validação & Testes** | Zod + Vitest | Validação de schemas e suíte de testes unitários |
 
 ---
-*Para iniciar o desenvolvimento autônomo, clique em "Aprovar Spec" na interface.*`;
+
+### 3. 📦 Módulos Principais
+
+1. **Clientes (\`customers\`):** Cadastro e sincronização de autônomos e pagadores.
+2. **Cobranças Avulsas (\`charges\`):** Emissão imediata via Pix (QR Code), Boleto e Cartão.
+3. **Assinaturas & Mensalidades (\`subscriptions\`):** Planos recorrentes automatizados.
+4. **Webhooks (\`webhooks\`):** Recepção e conciliação de eventos de pagamento do Asaas.
+
+---
+
+### 4. 🚀 Próximos Passos
+O desenvolvimento será iniciado via pipeline autônomo.`;
   }
 }
