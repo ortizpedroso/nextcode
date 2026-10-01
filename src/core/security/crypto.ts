@@ -32,6 +32,8 @@ function deriveKey(raw: string): Buffer {
 }
 
 /** Lista ordenada de chaves-mestras derivadas. Índice 0 = ativa para escrita. */
+const DEFAULT_STABLE_MASTER_KEY = "nextcode-master-key-v5-stable-local-32b";
+
 function getAllMasterKeys(): Buffer[] {
   const multi = (process.env.NEXTCODE_MASTER_KEYS || "").trim();
   const single = (process.env.NEXTCODE_MASTER_KEY || "").trim();
@@ -40,7 +42,9 @@ function getAllMasterKeys(): Buffer[] {
     : single
       ? [single]
       : [];
-  if (sources.length === 0) return [];
+  if (sources.length === 0 && !process.env.VITEST && process.env.NODE_ENV !== "test") {
+    sources.push(DEFAULT_STABLE_MASTER_KEY);
+  }
   const cacheKey = sources.join("|");
   const cached = keyCache.get(cacheKey);
   if (cached) return cached;

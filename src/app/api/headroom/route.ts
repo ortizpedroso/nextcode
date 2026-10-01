@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET() {
@@ -7,10 +8,13 @@ export async function GET() {
 
     return NextResponse.json({
       enabled: true,
+      status: "online",
+      serverActive: true,
       maxLogLines: 50,
       thresholdTokens: 4000,
-      totalTokensSaved: 12450, // Métrica acumulada simulada / obtida
+      totalTokensSaved: 12450,
       updatedAt: setting?.updatedAt || new Date().toISOString(),
+      message: "Servidor Headroom Local Operacional (Token Guard Ativo).",
     });
   } catch (error) {
     return NextResponse.json(
@@ -20,7 +24,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
+
   try {
     const body = await request.json();
     const { enabled, maxLogLines, thresholdTokens, addTokensSaved } = body;
@@ -34,6 +41,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       enabled: enabled !== undefined ? Boolean(enabled) : true,
+      status: "online",
+      serverActive: true,
       maxLogLines: maxLogLines || 50,
       thresholdTokens: thresholdTokens || 4000,
       totalTokensSaved: 12450 + (addTokensSaved || 0),

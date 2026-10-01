@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
-import { writeSecret, isEncrypted } from "@/core/security/crypto";
+import { writeSecret, readSecret, isEncrypted } from "@/core/security/crypto";
 
 async function ensureSettingTable() {
   try {
@@ -47,7 +47,8 @@ export async function GET() {
     // FASE 4: a UI nunca recebe o segredo em claro; apenas máscara estável.
     const mask = (v?: string | null) => {
       if (!v) return "";
-      const plain = isEncrypted(v) ? "" : v; // cifrado: sem tail visível
+      const plain = readSecret(v);
+      if (!plain) return "";
       const shown = plain.length >= 4 ? plain.slice(-4) : "";
       return `••••${shown}`;
     };

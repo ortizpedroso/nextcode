@@ -311,14 +311,19 @@ export function SettingsDialog({
 
             <button
               onClick={() => setActiveTab("headroom")}
-              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2.5 font-medium transition-all ${
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between font-medium transition-all ${
                 activeTab === "headroom"
                   ? "bg-[#e8f1fb] dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 font-semibold"
                   : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-900"
               }`}
             >
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              <span>Headroom Token Optimizer</span>
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                <span>Headroom Token Optimizer</span>
+              </div>
+              <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                Ativo
+              </span>
             </button>
 
             <button

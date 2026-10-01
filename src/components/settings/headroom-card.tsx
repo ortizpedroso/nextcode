@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { authFetch } from "@/lib/client-session";
 import {
   ShieldCheck,
   CheckCircle2,
@@ -23,7 +24,7 @@ export function HeadroomCard() {
 
   const fetchHeadroomConfig = async () => {
     try {
-      const res = await fetch("/api/headroom");
+      const res = await authFetch("/api/headroom");
       const data = await res.json();
       if (data) {
         setEnabled(data.enabled ?? true);
@@ -40,7 +41,7 @@ export function HeadroomCard() {
     setSaving(true);
     setFeedbackMsg(null);
     try {
-      const res = await fetch("/api/headroom", {
+      const res = await authFetch("/api/headroom", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

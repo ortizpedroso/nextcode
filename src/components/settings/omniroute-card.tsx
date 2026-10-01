@@ -17,16 +17,14 @@ import {
 } from "lucide-react";
 
 export function OmniRouteCard() {
-  const [status, setStatus] = useState<"connected" | "stopped" | "error" | "not_installed">("connected");
+  const [status, setStatus] = useState<"checking" | "connected" | "disconnected" | "error" | "not_installed">("checking");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [endpoint, setEndpoint] = useState<string>("http://localhost:20128/v1");
   const [isValidating, setIsValidating] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
   const [isPrimaryRoute, setIsPrimaryRoute] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
-  // FIX (pedido do usuário): o card só tinha o Setup 1-clique — não existia campo para
-  // colar URL + API Key do OmniRoute. Agora há um formulário manual que grava em
-  // /api/settings (omniRouteUrl + omniRouteKey) e revalida com probe autenticado.
+
   const [urlDraft, setUrlDraft] = useState("http://localhost:20128/v1");
   const [keyDraft, setKeyDraft] = useState("");
   const [savingManual, setSavingManual] = useState(false);
@@ -66,13 +64,11 @@ export function OmniRouteCard() {
 
   const checkStatus = async () => {
     setIsValidating(true);
-    setFeedbackMsg(null);
     try {
       const res = await authFetch("/api/omniroute/health", { method: "POST" });
       const data = await res.json();
 
       if (data.success || data.status === "connected" || data.status === "online") {
-        // FIX: gateway vivo mas chave inválida (HTTP 401 autenticado) NÃO é "Conectado".
         if (data.status === "connected_unauthorized" || data.keyValid === false) {
           setStatus("error");
           setLatencyMs(null);
@@ -85,17 +81,15 @@ export function OmniRouteCard() {
           setIsPrimaryRoute(data.isPrimaryRoute);
         }
       } else {
-        // Distinguir "registrado porém gateway parado" de "não instalado"
-        setStatus(data.registered || data.status === "stopped" ? "stopped" : data.status === "error" ? "error" : data.status === "connected_unauthorized" ? "error" : "not_installed");
-        setFeedbackMsg(data.message || "OmniRoute não respondeu à validação de tráfego.");
+        setStatus("disconnected");
+        setLatencyMs(null);
         if (typeof data.isPrimaryRoute === "boolean") {
           setIsPrimaryRoute(data.isPrimaryRoute);
         }
       }
-    } catch (err) {
-      console.error("Erro ao checar OmniRoute:", err);
-      setStatus("stopped");
-      setFeedbackMsg(`Erro ao comunicar com a rota de health: ${String(err)}`);
+    } catch {
+      setStatus("disconnected");
+      setLatencyMs(null);
     } finally {
       setIsValidating(false);
     }
@@ -130,13 +124,12 @@ export function OmniRouteCard() {
       });
       const data = await res.json();
       if (data.success) {
-        // O setup agora reporta a verdade: só mostra "Conectado" se o gateway respondeu ao probe.
         if (data.status === "connected") {
           setStatus("connected");
           setLatencyMs(data.latencyMs || 10);
           setIsPrimaryRoute(true);
         } else {
-          setStatus("stopped");
+          setStatus("disconnected");
           setLatencyMs(null);
           setIsPrimaryRoute(false);
         }
@@ -153,15 +146,24 @@ export function OmniRouteCard() {
   };
 
   useEffect(() => {
-    checkStatus();
+    const init = async () => {
+      try {
+        const res = await authFetch("/api/settings");
+        const data = await res.json();
+        if (data.omniRouteUrl) setUrlDraft(data.omniRouteUrl);
+        if (data.hasOmniRouteKey) setHasSavedKey(true);
+      } catch {}
+      await checkStatus();
+    };
+    init();
   }, []);
 
   const renderBadge = () => {
-    if (isValidating && status === "connected") {
+    if (status === "checking") {
       return (
-        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 flex items-center gap-1.5">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 dark:text-blue-400" />
-          Validando Tráfego...
+        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 flex items-center gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0066cc]" />
+          Verificando Status...
         </span>
       );
     }
@@ -181,18 +183,10 @@ export function OmniRouteCard() {
         </span>
       );
     }
-    if (status === "stopped") {
-      return (
-        <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800 flex items-center gap-1.5">
-          <PauseCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          Parado (localhost:20128)
-        </span>
-      );
-    }
     return (
-      <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 flex items-center gap-1.5">
-        <AlertCircle className="w-3.5 h-3.5 text-slate-500" />
-        Não Instalado
+      <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-1.5">
+        <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+        Desconectado (Gateway Parado)
       </span>
     );
   };
