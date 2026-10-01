@@ -180,10 +180,13 @@ export async function POST(request: Request) {
       orderBy: { createdAt: "asc" },
     });
 
+    const currentSession = await prisma.session.findUnique({ where: { id: activeSessionId } });
+
     return NextResponse.json(
       {
         success: true,
         sessionId: activeSessionId,
+        specApproved: currentSession?.specApproved || false,
         userMessage,
         assistantMessage,
         messages: cleanMessages,

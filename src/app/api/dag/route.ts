@@ -85,27 +85,19 @@ export async function POST(request: Request) {
 
     // Ação 1: Criar e Decompor um novo objetivo em nós de DAG
     if (action === "create_dag" || prompt) {
-      const targetPrompt = prompt || "Novo Objetivo NextCode";
-      let activeSessionId = sessionId;
+      // 0. Trava T1 (Spec Approval Lock): Impede criação de DAG se a Spec não foi aprovada pelo usuário
+      const existingSessionCheck = activeSessionId
+        ? await prisma.session.findUnique({ where: { id: activeSessionId } })
+        : null;
 
-      if (!activeSessionId) {
-        const session = await prisma.session.create({
-          data: {
-            title: targetPrompt.length > 30 ? `${targetPrompt.substring(0, 30)}...` : targetPrompt,
-            projectId: projectId || null,
+      if (existingSessionCheck && !existingSessionCheck.specApproved) {
+        return NextResponse.json(
+          {
+            error: "Trava T1 Violada (Spec Approval Lock)",
+            details: "A Spec Canônica precisa ser aprovada pelo usuário antes de iniciar a decomposição e execução da DAG.",
           },
-        });
-        activeSessionId = session.id;
-      } else {
-        const existingSession = await prisma.session.findUnique({ where: { id: activeSessionId } });
-        if (existingSession && existingSession.title.startsWith("Nova Sessão")) {
-          await prisma.session.update({
-            where: { id: activeSessionId },
-            data: {
-              title: targetPrompt.length > 30 ? `${targetPrompt.substring(0, 30)}...` : targetPrompt,
-            },
-          });
-        }
+          { status: 400 }
+        );
       }
 
       // Consulta chaves para classificação do SmartRouter
@@ -180,6 +172,17 @@ export async function POST(request: Request) {
 
       if (!task) {
         return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
+      }
+
+      // Trava T1: Se a Spec não foi aprovada pelo usuário, impede a execução de nós no disco
+      if (!task.session.specApproved) {
+        return NextResponse.json(
+          {
+            error: "Trava T1 Violada (Spec Approval Lock)",
+            details: "A Spec Canônica precisa ser aprovada pelo usuário antes de executar alterações no disco.",
+          },
+          { status: 400 }
+        );
       }
 
       // Atualiza estado para 'running'

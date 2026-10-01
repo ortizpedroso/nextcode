@@ -313,8 +313,10 @@ export default function DashboardOrchestrator() {
         await fetchProjects();
         await fetchAdhocSessions();
 
-        // 2. Dispara a decomposição e execução autônoma da DAG em background (apenas no painel da DAG)
-        triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
+        // 2. Dispara a DAG em background APENAS se a Spec Canônica tiver sido aprovada pelo usuário (Trava T1)
+        if (chatData.specApproved) {
+          triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
+        }
       }
     } catch (err) {
       setConsoleLogs((prev) => [...prev, `[ERRO] Falha no envio da mensagem: ${String(err)}`]);
