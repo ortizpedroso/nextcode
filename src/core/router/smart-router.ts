@@ -22,6 +22,8 @@ export interface AvailableKeys {
   hasGeminiKey: boolean;
   hasClaudeKey: boolean;
   hasOpenaiKey: boolean;
+  hasGroqKey?: boolean;
+  hasNvidiaKey?: boolean;
   hasOmniRouteKey: boolean;
   customEndpoint?: string | null;
 }

@@ -33,6 +33,8 @@ export interface SettingsFormState {
   claudeKey: string;
   openaiKey: string;
   deepseekKey: string;
+  groqKey: string;
+  nvidiaKey: string;
   omniRouteKey: string;
   customEndpoint: string;
 }

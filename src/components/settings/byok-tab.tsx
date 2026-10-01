@@ -234,6 +234,22 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
         )}
 
         {renderProviderRow(
+          "Groq Cloud (Llama 3.3 / DeepSeek / Mixtral)",
+          "groq",
+          "groqKey",
+          "https://console.groq.com/keys",
+          "gsk_..."
+        )}
+
+        {renderProviderRow(
+          "NVIDIA NIM Cloud (Llama 3.3 / Nemotron)",
+          "nvidia",
+          "nvidiaKey",
+          "https://build.nvidia.com/",
+          "nvapi-..."
+        )}
+
+        {renderProviderRow(
           "OpenRouter / Gateway Customizado",
           "omniRoute",
           "omniRouteKey",

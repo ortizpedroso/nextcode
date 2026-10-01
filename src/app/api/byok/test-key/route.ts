@@ -152,6 +152,38 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: `Erro DeepSeek: ${errMsg}` });
       }
 
+      if (provider === "groq") {
+        const url = "https://api.groq.com/openai/v1/models";
+        const res = await safeFetch(url, {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          return NextResponse.json({ success: true, message: "⚡ Chave Groq Válida e Ativa!" });
+        }
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.error?.message || `Status HTTP ${res.status}`;
+        return NextResponse.json({ success: false, message: `Erro Groq: ${errMsg}` });
+      }
+
+      if (provider === "nvidia") {
+        const url = "https://integrate.api.nvidia.com/v1/models";
+        const res = await safeFetch(url, {
+          headers: { Authorization: `Bearer ${key}` },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          return NextResponse.json({ success: true, message: "🟢 Chave NVIDIA NIM Válida e Ativa!" });
+        }
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.error?.message || `Status HTTP ${res.status}`;
+        return NextResponse.json({ success: false, message: `Erro NVIDIA: ${errMsg}` });
+      }
+
       if (provider === "omniRoute" || provider === "custom") {
         const targetUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/models` : "https://openrouter.ai/api/v1/models";
         const headers: Record<string, string> = {};

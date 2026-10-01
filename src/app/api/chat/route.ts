@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
       hasGeminiKey: Boolean(setting?.geminiKey),
       hasClaudeKey: Boolean(setting?.claudeKey),
       hasOpenaiKey: Boolean(setting?.openaiKey),
+      hasGroqKey: Boolean((setting as any)?.groqKey),
+      hasNvidiaKey: Boolean((setting as any)?.nvidiaKey),
       hasOmniRouteKey: Boolean(setting?.omniRouteKey),
       customEndpoint: setting?.customEndpoint,
     };

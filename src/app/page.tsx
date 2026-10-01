@@ -42,6 +42,8 @@ export default function DashboardOrchestrator() {
     claudeKey: "",
     openaiKey: "",
     deepseekKey: "",
+    groqKey: "",
+    nvidiaKey: "",
     omniRouteKey: "",
     customEndpoint: "",
   });
@@ -116,6 +118,8 @@ export default function DashboardOrchestrator() {
         claudeKey: data.claudeKey || "",
         openaiKey: data.openaiKey || "",
         deepseekKey: data.deepseekKey || "",
+        groqKey: data.groqKey || "",
+        nvidiaKey: data.nvidiaKey || "",
         omniRouteKey: data.omniRouteKey || "",
         customEndpoint: data.customEndpoint || "",
       });

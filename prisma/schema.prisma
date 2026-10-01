@@ -13,6 +13,8 @@ model Setting {
   claudeKey      String?
   openaiKey      String?
   deepseekKey    String?
+  groqKey        String?
+  nvidiaKey      String?
   omniRouteKey   String?
   // 20128 = porta oficial do OmniRoute no docker-compose.yml (8080 era um default obsoleto
   // que fazia o router apontar para porta fechada -> "Cotas e Serviços Indisponíveis")
