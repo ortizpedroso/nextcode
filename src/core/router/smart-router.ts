@@ -201,6 +201,12 @@ export interface DispatchOptions {
   omniRouteUrl?: string | null;
   omniRouteKey?: string | null;
   stream?: boolean;
+  /**
+   * C5 — sinal de abort real (ex.: AbortSignal.timeout do guard da DAG).
+   * Quando informado, cancela ativamente os fetches dos provedores em vez de
+   * apenas "esquecer" a promise via Promise.race (timeout decorativo).
+   */
+  signal?: AbortSignal;
 }
 
 export interface DispatchResult {
@@ -437,7 +443,7 @@ export class SmartRouter {
   /**
    * Tenta chamada direta à API da Groq Cloud
    */
-  private async tryGroqDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+  private async tryGroqDirect(messages: DispatchMessage[], apiKey?: string | null, signal?: AbortSignal): Promise<DispatchResult | null> {
     const cleanKey = (apiKey || "").trim();
     if (!cleanKey) return null;
     try {
@@ -447,6 +453,7 @@ export class SmartRouter {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${cleanKey}`,
         },
+        signal,
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -478,7 +485,7 @@ export class SmartRouter {
   /**
    * Tenta chamada direta à API da NVIDIA NIM
    */
-  private async tryNvidiaDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+  private async tryNvidiaDirect(messages: DispatchMessage[], apiKey?: string | null, signal?: AbortSignal): Promise<DispatchResult | null> {
     const cleanKey = (apiKey || "").trim();
     if (!cleanKey) return null;
     try {
@@ -488,6 +495,7 @@ export class SmartRouter {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${cleanKey}`,
         },
+        signal,
         body: JSON.stringify({
           model: "meta/llama-3.3-70b-instruct",
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -519,7 +527,7 @@ export class SmartRouter {
   /**
    * Tenta chamada direta à API da DeepSeek
    */
-  private async tryDeepseekDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+  private async tryDeepseekDirect(messages: DispatchMessage[], apiKey?: string | null, signal?: AbortSignal): Promise<DispatchResult | null> {
     const cleanKey = (apiKey || "").trim();
     if (!cleanKey) return null;
     try {
@@ -529,6 +537,7 @@ export class SmartRouter {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${cleanKey}`,
         },
+        signal,
         body: JSON.stringify({
           model: "deepseek-chat",
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -578,19 +587,20 @@ export class SmartRouter {
       omniRouteUrl,
       omniRouteKey,
       stream = true,
+      signal,
     } = options;
 
     // Se o usuário selecionou explicitamente um modelo de provedor direto no UI
     if (modelOverride === "groq" && groqKey) {
-      const groqRes = await this.tryGroqDirect(messages, groqKey);
+      const groqRes = await this.tryGroqDirect(messages, groqKey, signal);
       if (groqRes) return groqRes;
     }
     if (modelOverride === "nvidia" && nvidiaKey) {
-      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey);
+      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey, signal);
       if (nvidiaRes) return nvidiaRes;
     }
     if (modelOverride === "deepseek" && deepseekKey) {
-      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey);
+      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey, signal);
       if (deepseekRes) return deepseekRes;
     }
 
@@ -665,6 +675,8 @@ export class SmartRouter {
         headers: omniHeaders,
         body: omniBody,
         timeoutMs: omniConnectTimeoutMs,
+        // C5: sinal do guard da DAG tem prioridade sobre o timeout interno.
+        ...(signal ? { signal } : {}),
       }).catch((err) => {
         networkDown = true;
         omniRecordFailure();
@@ -754,7 +766,7 @@ export class SmartRouter {
     // TENTATIVA 2: Fallback — Groq Cloud API Direta
     // ----------------------------------------------------
     if (groqKey) {
-      const groqRes = await this.tryGroqDirect(messages, groqKey);
+      const groqRes = await this.tryGroqDirect(messages, groqKey, signal);
       if (groqRes) return groqRes;
     }
 
@@ -762,7 +774,7 @@ export class SmartRouter {
     // TENTATIVA 3: Fallback — NVIDIA NIM API Direta
     // ----------------------------------------------------
     if (nvidiaKey) {
-      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey);
+      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey, signal);
       if (nvidiaRes) return nvidiaRes;
     }
 
@@ -770,7 +782,7 @@ export class SmartRouter {
     // TENTATIVA 4: Fallback — DeepSeek API Direta
     // ----------------------------------------------------
     if (deepseekKey) {
-      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey);
+      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey, signal);
       if (deepseekRes) return deepseekRes;
     }
 
@@ -803,7 +815,8 @@ export class SmartRouter {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: geminiBody,
-            signal: AbortSignal.timeout(20000),
+            // C5: aborta imediatamente quando o guard da DAG cancela; senão usa teto de 20s.
+            signal: signal ?? AbortSignal.timeout(20000),
           });
 
           if (geminiRes.status === 503 || geminiRes.status === 429) {
@@ -813,7 +826,7 @@ export class SmartRouter {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: geminiBody,
-              signal: AbortSignal.timeout(20000),
+              signal: signal ?? AbortSignal.timeout(20000),
             });
           }
 

@@ -259,6 +259,11 @@ DIRETRIZES DE EXECUÇÃO:
       let stepResultText = "";
       try {
         const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 45000;
+        // C5 — timeout REAL: AbortSignal.timeout cancela ativamente os fetches dos
+        // provedores (OmniRoute/Groq/NVIDIA/DeepSeek/Gemini) quando estoura, em vez
+        // de apenas abandonar a promise via Promise.race (timeout decorativo, que
+        // deixava requisições zumbis consumindo cota e conexões após o "timeout").
+        const stepSignal = AbortSignal.timeout(stepTimeoutMs);
         const dispatchPromise = smartRouter.dispatchWithFallback({
           messages: dispatchMessages,
           tier: "fast",
@@ -266,13 +271,18 @@ DIRETRIZES DE EXECUÇÃO:
           omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
           omniRouteKey: readSecret(setting?.omniRouteKey),
           stream: false,
+          signal: stepSignal,
         });
 
-        const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout de resposta excedido na etapa da DAG (limite 45s)")), stepTimeoutMs)
-        );
+        const timeoutPromise = new Promise<null>((resolve) => {
+          if (stepSignal.aborted) return resolve(null);
+          stepSignal.addEventListener("abort", () => resolve(null), { once: true });
+        });
 
         const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
+        if (!dispatchRes) {
+          throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
+        }
 
         if (dispatchRes) {
           const resJson = await dispatchRes.response.json().catch(() => ({}));

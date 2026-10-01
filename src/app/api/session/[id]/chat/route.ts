@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, DispatchMessage } from "@/core/router/smart-router";
@@ -63,10 +65,13 @@ function createPrismaBufferStream(
   return sourceStream.pipeThrough(transformStream);
 }
 
+// C1 — dispara dispatch LLM (custo + uso das chaves BYOK): exige auth local.
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = requireAuth(req);
+  if (guard.response) return guard.response;
   try {
     const { id: sessionId } = await Promise.resolve(params);
 

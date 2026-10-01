@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { requireAuth } from "@/core/security/local-auth";
 
-export async function POST(request: Request) {
+// C1 — rota mutativa (cria sessão, aprova a Trava T1 e dispara análise/custos): exige auth local.
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { action, prompt, sessionId, projectId } = body;

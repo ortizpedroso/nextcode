@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(request: Request) {
@@ -28,7 +30,10 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+// C1 — criação de sessão é mutação: exige auth local.
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { projectId, title } = body;

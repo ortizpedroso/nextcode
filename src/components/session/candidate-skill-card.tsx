@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/client-session";
 
 import { useState, useEffect } from "react";
 import { Sparkles, Check, X, ShieldAlert, Cpu } from "lucide-react";
@@ -39,7 +40,7 @@ export function CandidateSkillCard() {
   const handleAction = async (proposalId: string, action: "approve" | "reject") => {
     setLoadingId(proposalId);
     try {
-      const res = await fetch("/api/skills/proposals", {
+      const res = await authFetch("/api/skills/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proposalId, action }),

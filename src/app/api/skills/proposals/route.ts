@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { requireAuth } from "@/core/security/local-auth";
 
-export async function GET() {
+export async function GET(_request: NextRequest) {
   try {
     // Roda análise de telemetria para verificar se há novos candidatos
     await SkillMiner.analyzeAndPropose(3).catch(() => {});
@@ -21,7 +22,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+// C1 — aprovação/rejeição de skill grava no disco: obrigatoriamente autenticada.
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { proposalId, action } = body;
