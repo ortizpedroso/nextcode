@@ -100,9 +100,15 @@ export class QuarantineManager {
         }
       }
 
-      // 4. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice
-      if (!relativePath && fallbackFilesScope.length > index) {
-        relativePath = fallbackFilesScope[index];
+      // 4. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice ou primário
+      if (!relativePath) {
+        if (fallbackFilesScope.length > index) {
+          relativePath = fallbackFilesScope[index];
+        } else if (fallbackFilesScope.length > 0) {
+          relativePath = fallbackFilesScope[0];
+        } else {
+          relativePath = `src/generated-${index + 1}.ts`;
+        }
       }
 
       if (relativePath && codeContent) {
@@ -113,9 +119,9 @@ export class QuarantineManager {
       index++;
     }
 
-    // Se nenhum bloco com marcação foi encontrado, mas há código e escopo, salva o primeiro escopo
-    if (Object.keys(codeMap).length === 0 && fallbackFilesScope.length > 0 && text.trim()) {
-      const primaryScopeFile = fallbackFilesScope[0];
+    // Se nenhum bloco com marcação foi encontrado, mas há texto, salva no escopo primário ou padrão
+    if (Object.keys(codeMap).length === 0 && text.trim()) {
+      const primaryScopeFile = fallbackFilesScope[0] || "src/output.ts";
       this.writeFile(taskId, primaryScopeFile, text);
       codeMap[primaryScopeFile] = text;
     }

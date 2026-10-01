@@ -13,6 +13,18 @@ export class SpecDecomposerSkill {
   public static decompose(goal: string, scopeContext?: string): DecompositionResult {
     const nodes: DAGNode[] = [];
 
+    const goalLower = goal.toLowerCase();
+    let devFilesScope: string[] = [];
+    if (goalLower.includes("asaas") || goalLower.includes("pagamento")) {
+      devFilesScope = ["src/services/asaas.ts", "src/app/api/webhooks/asaas/route.ts"];
+    } else if (goalLower.includes("produto") || goalLower.includes("product")) {
+      devFilesScope = ["src/app/dashboard/products/page.tsx"];
+    } else if (goalLower.includes("financeiro") || goalLower.includes("financial")) {
+      devFilesScope = ["src/app/dashboard/financial/page.tsx"];
+    } else {
+      devFilesScope = ["src/app/page.tsx", "src/core/engine.ts"];
+    }
+
     // Nó 1: Análise e Planejamento Arquitetural
     const planNodeId = `task-plan-${Date.now()}`;
     nodes.push({
@@ -21,6 +33,7 @@ export class SpecDecomposerSkill {
       role: "architect",
       status: "pending",
       dependencies: [],
+      filesScope: ["docs/spec-architecture.md"],
       mcpScope: "read_file,grep_search",
       payload: { goal, context: scopeContext, step: "architecture" },
     });
@@ -33,6 +46,7 @@ export class SpecDecomposerSkill {
       role: "developer",
       status: "pending",
       dependencies: [planNodeId],
+      filesScope: devFilesScope,
       mcpScope: "write_file,smart_patch",
       payload: { goal, context: scopeContext, step: "implementation" },
     });
@@ -45,6 +59,7 @@ export class SpecDecomposerSkill {
       role: "qa_engineer",
       status: "pending",
       dependencies: [implNodeId],
+      filesScope: ["tests/verification.spec.ts"],
       mcpScope: "sandboxed_terminal",
       payload: { goal, context: scopeContext, step: "verification" },
     });

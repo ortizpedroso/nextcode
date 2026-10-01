@@ -13,7 +13,11 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
 
   afterEach(() => {
     if (fs.existsSync(testQuarantineDir)) {
-      fs.rmSync(testQuarantineDir, { recursive: true, force: true });
+      try {
+        fs.rmSync(testQuarantineDir, { recursive: true, force: true });
+      } catch (err) {
+        // Silencia erros transitórios de trava de diretório no Windows
+      }
     }
   });
 

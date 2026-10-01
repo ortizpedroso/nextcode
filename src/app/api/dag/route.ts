@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
             role: node.role,
             status: "pending",
             dependencies: JSON.stringify(node.dependencies),
+            filesScope: JSON.stringify(node.filesScope || []),
             mcpScope: node.mcpScope,
             payload: JSON.stringify({
               ...(typeof node.payload === "object" && node.payload !== null ? node.payload : { data: node.payload }),

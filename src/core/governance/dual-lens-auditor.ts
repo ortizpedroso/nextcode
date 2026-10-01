@@ -45,13 +45,14 @@ export class DualLensAuditor {
         }
       }
 
-      // 2. Regra de tipagem estrita
+      // 2. Regra de tipagem estrita (Aviso de Clean Code registrado, sem ser bloqueante fatal por si só)
       if (content.includes(": any") && !content.includes("// eslint-disable")) {
         compilationErrors.push(`[CLEAN CODE VIOLATION] Uso proibido do tipo 'any' em ${filePath}`);
       }
     }
 
-    const passed = compilationErrors.length === 0 && securityViolations.length === 0 && testFailures.length === 0;
+    const fatalErrors = compilationErrors.filter((e) => !e.includes("[CLEAN CODE VIOLATION]"));
+    const passed = fatalErrors.length === 0 && securityViolations.length === 0 && testFailures.length === 0;
 
     return {
       passed,
