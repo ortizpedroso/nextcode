@@ -114,14 +114,29 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
     baseUrl?: string
   ) => {
     const status = testStates[field];
+    const rawVal = settings[field] || "";
+    const isSaved = Boolean(rawVal.trim() && rawVal !== "__REMOVE__");
+    const isMasked = rawVal.startsWith("••••") || rawVal.startsWith("****");
 
     return (
       <div className="space-y-1.5 p-4 rounded-xl bg-slate-50/60 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Key className="w-3.5 h-3.5 text-[#0066cc]" />
-            {label}
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-[#0066cc]" />
+              {label}
+            </label>
+            {isSaved ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                Salva no Banco (AES-256)
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full">
+                Não configurada
+              </span>
+            )}
+          </div>
           <a
             href={getKeyUrl}
             target="_blank"
@@ -136,8 +151,11 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
         <div className="flex gap-2 items-center">
           <input
             type="password"
+            name={`byok_${String(field)}`}
+            autoComplete="new-password"
+            data-lpignore="true"
             placeholder={placeholder}
-            value={settings[field]}
+            value={rawVal === "__REMOVE__" ? "" : rawVal}
             onChange={(e) => handleKeyChange(field, e.target.value)}
             className="flex-1 bg-white dark:bg-slate-950 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 font-mono shadow-sm"
           />
@@ -146,7 +164,7 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
           <button
             type="button"
             onClick={() => testKey(provider, field, baseUrl)}
-            disabled={status?.testing || !settings[field]?.trim()}
+            disabled={status?.testing || !settings[field]?.trim() || settings[field] === "__REMOVE__"}
             className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors disabled:opacity-40 shrink-0 border border-slate-200/80 dark:border-slate-700"
           >
             {status?.testing ? (
@@ -161,6 +179,18 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
               </>
             )}
           </button>
+
+          {/* Botão Remover Chave (se existir chave salva) */}
+          {isSaved && (
+            <button
+              type="button"
+              onClick={() => handleKeyChange(field, "__REMOVE__")}
+              className="px-2.5 py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg text-xs font-medium border border-rose-200 dark:border-rose-900 transition-colors shrink-0"
+              title="Remover esta chave do banco de dados"
+            >
+              Remover
+            </button>
+          )}
         </div>
 
         {/* Feedback Visual de Validação */}

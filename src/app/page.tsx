@@ -517,6 +517,7 @@ export default function DashboardOrchestrator() {
       throw new Error(errData.details || errData.error || "Erro ao salvar configurações");
     }
     await fetchCustomProviders();
+    await fetchSettings();
   };
 
   return (

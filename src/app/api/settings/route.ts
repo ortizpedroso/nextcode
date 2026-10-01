@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
     const processKeyUpdate = (val: any, existingVal?: string | null) => {
       if (val === undefined || val === null) return existingVal || null;
       const str = String(val).trim();
+      if (str === "__REMOVE__" || str === "REMOVE") return null;
       if (!str) return existingVal || null;
       if (str.startsWith("••••") || str.startsWith("****")) return existingVal || null;
       return writeSecret(str);
@@ -188,6 +189,8 @@ export async function POST(request: NextRequest) {
           claudeKey: newClaudeKey,
           openaiKey: newOpenaiKey,
           deepseekKey: newDeepseekKey,
+          groqKey: newGroqKey,
+          nvidiaKey: newNvidiaKey,
           omniRouteKey: newOmniRouteKey,
           omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
@@ -198,6 +201,8 @@ export async function POST(request: NextRequest) {
           claudeKey: newClaudeKey,
           openaiKey: newOpenaiKey,
           deepseekKey: newDeepseekKey,
+          groqKey: newGroqKey,
+          nvidiaKey: newNvidiaKey,
           omniRouteKey: newOmniRouteKey,
           omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
