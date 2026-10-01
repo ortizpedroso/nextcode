@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TaskNode } from "@/components/layout/workspace";
 import {
   Layers,
@@ -13,6 +13,8 @@ import {
   Terminal,
   ChevronRight,
   Sparkles,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface DagSidebarProps {
@@ -33,6 +35,29 @@ export function DagSidebar({
   onRefreshTasks,
 }: DagSidebarProps) {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
+  const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+
+  const handleCopy = async (id: string, text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        textArea.remove();
+      }
+      setCopiedTaskId(id);
+      setTimeout(() => setCopiedTaskId(null), 2000);
+    } catch (err) {
+      console.error("Erro ao copiar texto:", err);
+    }
+  };
 
   useEffect(() => {
     if (logsContainerRef.current) {
@@ -159,7 +184,18 @@ export function DagSidebar({
                 </div>
 
                 {task.result && (
-                  <div className="text-[10px] bg-slate-50 dark:bg-slate-950 p-2 rounded-lg border border-slate-200/60 dark:border-slate-800/80 text-slate-700 dark:text-slate-300 font-mono overflow-x-auto max-h-24">
+                  <div className="relative group text-[10px] bg-slate-50 dark:bg-slate-950 p-2 rounded-lg border border-slate-200/60 dark:border-slate-800/80 text-slate-700 dark:text-slate-300 font-mono overflow-x-auto max-h-24">
+                    <button
+                      onClick={() => handleCopy(task.id, task.result || "")}
+                      className="absolute top-1 right-1 p-1 bg-white/80 dark:bg-slate-900/80 rounded border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Copiar resultado"
+                    >
+                      {copiedTaskId === task.id ? (
+                        <Check className="w-3 h-3 text-emerald-500" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                    </button>
                     {task.result}
                   </div>
                 )}

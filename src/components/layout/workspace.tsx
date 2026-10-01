@@ -9,6 +9,8 @@ import {
   Sparkles,
   CheckCircle2,
   RefreshCw,
+  Copy,
+  Check,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -74,6 +76,29 @@ export function Workspace({
   onRefreshTasks,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopy = async (id: string, text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand("copy");
+        textArea.remove();
+      }
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error("Erro ao copiar texto:", err);
+    }
+  };
 
   // FIX (chat "nao sobe a conversa"): auto-scroll do historico. Antes nao havia nenhum
   // scroll-into-view: cada nova mensagem era renderizada abaixo da dobra e o usuario
@@ -253,15 +278,38 @@ export function Workspace({
                                 ? "Notificação DAG"
                                 : "NextCode Engine"}
                             </span>
-                            {msg.tier && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700">
-                                {msg.tier === "fast"
-                                  ? "⚡ Gemini Flash (Fast)"
-                                  : msg.tier === "heavy"
-                                  ? "🧠 Claude Sonnet (Heavy)"
-                                  : "🤖 OmniRoute Local"}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {msg.tier && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700">
+                                  {msg.tier === "fast"
+                                    ? "⚡ Gemini Flash (Fast)"
+                                    : msg.tier === "heavy"
+                                    ? "🧠 Claude Sonnet (Heavy)"
+                                    : "🤖 OmniRoute Local"}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleCopy(msg.id, msg.content)}
+                                className={`p-1 rounded-md transition-colors flex items-center gap-1 text-[10px] ${
+                                  msg.role === "user"
+                                    ? "hover:bg-blue-700 text-white/80 hover:text-white"
+                                    : "hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                                }`}
+                                title="Copiar resposta"
+                              >
+                                {copiedId === msg.id ? (
+                                  <>
+                                    <Check className={`w-3.5 h-3.5 ${msg.role === "user" ? "text-emerald-200" : "text-emerald-500"}`} />
+                                    <span className={`font-medium ${msg.role === "user" ? "text-emerald-200" : "text-emerald-500"}`}>Copiado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Copiar</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                           <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                         </div>
