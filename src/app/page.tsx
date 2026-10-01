@@ -128,7 +128,7 @@ export default function DashboardOrchestrator() {
 
   const handleCreateProject = async (data: ProjectFormData) => {
     try {
-      const res = await fetch("/api/projects", {
+      const res = await authFetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -154,7 +154,7 @@ export default function DashboardOrchestrator() {
 
   const handleUpdateProject = async (id: string, data: Partial<ProjectData>) => {
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await authFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -170,7 +170,7 @@ export default function DashboardOrchestrator() {
 
   const handleDeleteProject = async (projectId: string) => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await authFetch(`/api/projects/${projectId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -192,7 +192,7 @@ export default function DashboardOrchestrator() {
 
   const handleDeleteSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await authFetch(`/api/sessions/${sessionId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -214,7 +214,7 @@ export default function DashboardOrchestrator() {
 
   const handleAttachSessionToProject = async (sessionId: string, projectId: string | null) => {
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`, {
+      const res = await authFetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
@@ -247,7 +247,7 @@ export default function DashboardOrchestrator() {
     try {
       const targetProjectId = projectId !== undefined ? projectId : activeProjectId;
 
-      const res = await fetch("/api/sessions", {
+      const res = await authFetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: targetProjectId }),
@@ -283,8 +283,8 @@ export default function DashboardOrchestrator() {
     setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..."`]);
 
     try {
-      // 1. Chamada direta ao endpoint conversacional /api/chat
-      const chatRes = await fetch("/api/chat", {
+      // 1. Chamada direta ao endpoint conversacional /api/chat com authFetch
+      const chatRes = await authFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -328,7 +328,7 @@ export default function DashboardOrchestrator() {
   // Execução de DAG autônoma estritamente no painel lateral
   const triggerBackgroundDAG = async (prompt: string, targetSessionId: string, modelOverride?: string) => {
     try {
-      const res = await fetch("/api/dag", {
+      const res = await authFetch("/api/dag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -355,7 +355,7 @@ export default function DashboardOrchestrator() {
           setConsoleLogs((prev) => [...prev, `[TELEMETRIA DAG] Executando nó: "${taskNode.title}" (${taskNode.role})...`]);
 
           try {
-            const execRes = await fetch("/api/dag", {
+            const execRes = await authFetch("/api/dag", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "execute_node", nodeId: taskNode.id }),
@@ -368,7 +368,7 @@ export default function DashboardOrchestrator() {
                 `[TELEMETRIA DAG] Nó "${execData.executedTask?.title || taskNode.title}" concluído via MCP.`,
               ]);
               // Atualiza a lista de tarefas da DAG e mensagens do chat se houver atualização
-              const refreshRes = await fetch(`/api/dag?sessionId=${targetSessionId}`);
+              const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`);
               const refreshData = await refreshRes.json();
               if (refreshData.tasks) setTasks(refreshData.tasks);
               if (refreshData.messages) setMessages(refreshData.messages);
@@ -390,7 +390,7 @@ export default function DashboardOrchestrator() {
     setConsoleLogs((prev) => [...prev, `[EXEC] Executando nó ID: ${nodeId}...`]);
 
     try {
-      const res = await fetch("/api/dag", {
+      const res = await authFetch("/api/dag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "execute_node", nodeId }),
@@ -402,7 +402,7 @@ export default function DashboardOrchestrator() {
           ...prev,
           `[SUCCESS] Nó '${data.executedTask.title}' concluído com sucesso via MCP Protocol!`,
         ]);
-        const refreshRes = await fetch(`/api/dag?sessionId=${activeSessionId}`);
+        const refreshRes = await authFetch(`/api/dag?sessionId=${activeSessionId}`);
         const refreshData = await refreshRes.json();
         if (refreshData.tasks) setTasks(refreshData.tasks);
       }

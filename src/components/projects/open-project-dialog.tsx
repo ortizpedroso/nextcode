@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-session";
+
 export interface ProjectFormData {
   id?: string;
   name: string;
@@ -85,7 +87,7 @@ export function OpenProjectDialog({
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/fs/validate-path", {
+        const res = await authFetch("/api/fs/validate-path", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ targetPath: path }),
@@ -108,7 +110,7 @@ export function OpenProjectDialog({
     setExplorerLoading(true);
     try {
       const query = targetPath ? `?targetPath=${encodeURIComponent(targetPath)}` : "";
-      const res = await fetch(`/api/fs/list-dirs${query}`);
+      const res = await authFetch(`/api/fs/list-dirs${query}`);
       const data = await res.json();
       if (res.ok) {
         setExplorerCurrentPath(data.currentPath || "");
