@@ -166,10 +166,31 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
         </span>
       );
     }
+    if (selectedModel === "groq") {
+      return (
+        <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-full shrink-0">
+          ⚡ Groq Cloud
+        </span>
+      );
+    }
+    if (selectedModel === "nvidia") {
+      return (
+        <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full shrink-0">
+          🟢 NVIDIA NIM
+        </span>
+      );
+    }
+    if (selectedModel === "deepseek") {
+      return (
+        <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-700 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950/70 border border-cyan-200 dark:border-cyan-800 px-2 py-0.5 rounded-full shrink-0">
+          🐋 DeepSeek API
+        </span>
+      );
+    }
     return (
       <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 rounded-full shrink-0">
         <Bot className="w-3 h-3 text-blue-500" />
-        Custom Model
+        Provedor Personalizado
       </span>
     );
   };
@@ -255,12 +276,15 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
                   disabled={loading}
-                  className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer transition-colors max-w-[220px] truncate disabled:opacity-50"
+                  className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium focus:outline-none hover:bg-slate-50 dark:hover:bg-slate-850 cursor-pointer transition-colors max-w-[240px] truncate disabled:opacity-50"
                   title="Escolha do Modelo de Provedor"
                 >
                   <option value="auto">NextCode Auto (Inteligente)</option>
-                  <option value="fast">Forçar Fast (Gemini 2.5 Flash)</option>
-                  <option value="heavy">Forçar Heavy (Claude 3.7 / Gemini Pro)</option>
+                  <option value="fast">⚡ Gemini 1.5 Flash (Fast)</option>
+                  <option value="heavy">🧠 Claude Sonnet / Gemini Pro</option>
+                  <option value="groq">⚡ Groq Cloud (Llama 3.3)</option>
+                  <option value="nvidia">🟢 NVIDIA NIM (Llama 3.3)</option>
+                  <option value="deepseek">🐋 DeepSeek API Direta</option>
                   {customProviders.length > 0 && (
                     <optgroup label="Provedores Personalizados">
                       {customProviders.map((cp) => {
