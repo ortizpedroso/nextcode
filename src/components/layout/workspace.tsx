@@ -81,40 +81,56 @@ export function Workspace({
   // mas SEM sequestrar o scroll se o usuario estiver lendo mensagens anteriores
   // (padrao "near bottom": so auto-rola se ele ja estava proximo do final).
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottomRef = useRef(true);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const userHasScrolledUpRef = useRef(false);
+
+  // Monitora scroll manual do usuario para detectar se ele subiu propositalmente para ler o historico
   useEffect(() => {
     const el = chatScrollRef.current;
     if (!el) return;
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      stickToBottomRef.current = distanceFromBottom < 120;
+      userHasScrolledUpRef.current = distanceFromBottom > 80;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  };
+
+  // Sempre que houver nova mensagem, mudança de loading ou troca de sessão, força o scroll até o fim
+  useEffect(() => {
+    userHasScrolledUpRef.current = false;
+    scrollToBottom("smooth");
+    const timer = setTimeout(() => {
+      scrollToBottom("auto");
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [messages.length, loading, activeSessionId]);
+
+  // MutationObserver para garantir scroll automatico continuo durante o streaming do assistente
   useEffect(() => {
     const el = chatScrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    // FIX (auto-scroll durante streaming): antes rolavamos apenas quando
-    // messages.length mudava — mas o texto do assistant cresce DENTRO da última
-    // mensagem via streaming, sem mudar o length. Agora rolamos também a cada
-    // mutation do conteúdo: um MutationObserver observa a lista de mensagens e
-    // agenda um scrollTo via requestAnimationFrame (throttle natural de ~60fps).
+    if (!el) return;
+
     const scheduleScroll = () => {
-      if (!stickToBottomRef.current) return;
-      window.requestAnimationFrame(() => {
-        const cur = chatScrollRef.current;
-        if (cur && stickToBottomRef.current) {
-          cur.scrollTop = cur.scrollHeight;
-        }
-      });
+      if (!userHasScrolledUpRef.current) {
+        window.requestAnimationFrame(() => {
+          if (chatScrollRef.current && !userHasScrolledUpRef.current) {
+            chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+          }
+        });
+      }
     };
+
     const observer = new MutationObserver(scheduleScroll);
     observer.observe(el, { childList: true, subtree: true, characterData: true });
-    // scroll imediato na troca de contagem (nova mensagem / fim de loading)
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     return () => observer.disconnect();
-  }, [messages.length, loading]);
+  }, []);
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const runningTask = tasks.find((t) => t.status === "running");
@@ -251,6 +267,7 @@ export function Workspace({
                         </div>
                       </div>
                     ))}
+                    <div ref={messagesEndRef} />
                   </>
                 )}
               </div>

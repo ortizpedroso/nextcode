@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { TaskNode } from "@/components/layout/workspace";
 import {
   Layers,
@@ -31,6 +32,13 @@ export function DagSidebar({
   onClose,
   onRefreshTasks,
 }: DagSidebarProps) {
+  const logsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [consoleLogs.length]);
   const getStatusBadge = (status: TaskNode["status"]) => {
     switch (status) {
       case "completed":
@@ -174,7 +182,7 @@ export function DagSidebar({
           )}
         </div>
 
-        <div className="bg-slate-900 text-slate-200 p-2.5 rounded-xl font-mono text-[10px] h-28 overflow-y-auto space-y-1 shadow-inner">
+        <div ref={logsContainerRef} className="bg-slate-900 text-slate-200 p-2.5 rounded-xl font-mono text-[10px] h-28 overflow-y-auto space-y-1 shadow-inner">
           {consoleLogs.length === 0 ? (
             <span className="text-slate-500 italic block">Aguardando logs de execução autônoma...</span>
           ) : (
