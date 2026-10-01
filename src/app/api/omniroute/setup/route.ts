@@ -181,8 +181,8 @@ export async function POST(req: NextRequest) {
         fallbackProviders: ["kiro", "nextcode-free", "pollinations", "ollama", "openrouter"],
         models: [
           { id: "auto", name: "OmniRoute Auto Router (zero-config)" },
-          { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Upstream)" },
-          { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Upstream)" },
+          { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Upstream)" },
+          { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Upstream)" },
           { id: "llama3.2", name: "Llama 3.2 Local" },
           { id: "deepseek-r1:14b", name: "DeepSeek R1 Local" },
         ],

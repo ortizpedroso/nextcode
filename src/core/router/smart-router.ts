@@ -135,8 +135,8 @@ function omniRecordSuccess() {
 // "404 NOT_FOUND: Model not found", o que parecia erro de chave. Agora usamos IDs
 // reais da API, e a cascata de candidatos abaixo cobre variantes oficiais em ordem
 // de preferência; um 404/400 avança para o próximo candidato em vez de derrubar tudo.
-export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-3.6-flash";
-export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.1-pro-preview";
+export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
+export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-2.5-pro";
 
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
 // alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
@@ -680,8 +680,8 @@ export class SmartRouter {
       // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
       const preferredOrder =
         tier === "heavy"
-          ? [HEAVY_MODEL, "gemini-3.7-flash", "gemini-pro-latest", FAST_MODEL, "gemini-3.5-flash-lite", "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-3.5-flash-lite", "gemini-flash-latest", HEAVY_MODEL, "gemini-3.7-flash", "gemini-pro-latest"];
+          ? [HEAVY_MODEL, "gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro-latest", FAST_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
+          : [FAST_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest", HEAVY_MODEL, "gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro-latest"];
       // FIX DEFINITIVO do "Testar Conexão amarelo + chat quebrado": a lista
       // /v1beta/models costuma vir SEM generateContent nas supportedActions de
       // modelos que funcionam perfeitamente via alias (ex.: gemini-flash-latest),

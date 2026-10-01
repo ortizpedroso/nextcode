@@ -78,7 +78,7 @@ export class IntentRouter {
 
     const isHeavy = heavyScore >= fastScore && heavyScore > 0;
     const tier: ModelTier = isHeavy ? "heavy" : "fast";
-    const targetModel = isHeavy ? "claude-3-7-sonnet / gemini-3.1-pro-preview" : "gemini-3.8-flash";
+    const targetModel = isHeavy ? "claude-3-7-sonnet / gemini-2.5-pro" : "gemini-2.5-flash";
     const confidence = Math.min(1.0, 0.6 + Math.abs(heavyScore - fastScore) * 0.1);
 
     const reasoning = isHeavy
