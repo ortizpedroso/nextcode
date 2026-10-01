@@ -1,7 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import { safeFetch } from "@/core/security/safe-fetch";
-import { FAST_MODEL, HEAVY_MODEL } from "@/core/router/smart-router";
+import prisma from "@/lib/prisma";
+import { readSecret } from "@/core/security/crypto";
+
+async function resolveKeyForTest(provider: string, inputKey?: string): Promise<string> {
+  const str = (inputKey || "").trim();
+  if (str && !str.startsWith("••••") && !str.startsWith("****")) {
+    return str;
+  }
+  let setting: any = null;
+  try {
+    const rows = await prisma.$queryRawUnsafe<any[]>(`SELECT * FROM "Setting" WHERE "id" = 'default' LIMIT 1`);
+    if (rows && rows.length > 0) setting = rows[0];
+  } catch {
+    setting = null;
+  }
+  if (!setting) {
+    setting = await prisma.setting.findFirst({ where: { id: "default" } });
+  }
+  if (!setting) return "";
+
+  let encryptedVal: string | null = null;
+  if (provider === "gemini") encryptedVal = setting.geminiKey;
+  else if (provider === "claude") encryptedVal = setting.claudeKey;
+  else if (provider === "openai") encryptedVal = setting.openaiKey;
+  else if (provider === "deepseek") encryptedVal = setting.deepseekKey;
+  else if (provider === "groq") encryptedVal = setting.groqKey;
+  else if (provider === "nvidia") encryptedVal = setting.nvidiaKey;
+  else if (provider === "omniRoute" || provider === "custom") encryptedVal = setting.omniRouteKey;
+
+  if (!encryptedVal) return "";
+  return readSecret(encryptedVal) || "";
+}
 
 export async function POST(request: NextRequest) {
   // Fases 3+4: rota que testa URLs/chaves fornecidas pelo usuário é o vetor SSRF
@@ -12,14 +43,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { provider, apiKey, baseUrl } = body;
 
-    if (!apiKey || typeof apiKey !== "string" || !apiKey.trim()) {
+    const key = await resolveKeyForTest(provider, apiKey);
+    if (!key && provider !== "omniRoute" && provider !== "custom") {
       return NextResponse.json(
-        { success: false, message: "Nenhuma chave API fornecida." },
+        { success: false, message: "Nenhuma chave salva no banco de dados ou informada no campo." },
         { status: 400 }
       );
     }
 
-    const key = apiKey.trim();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
 
