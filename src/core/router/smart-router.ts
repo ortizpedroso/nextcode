@@ -143,13 +143,20 @@ export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-1.5-pro";
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
 // alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
 let lastOmniFailure = "";
+let lastGroqFailure = "";
+let lastNvidiaFailure = "";
+let lastDeepseekFailure = "";
 let lastGeminiFailure = "";
+
 function buildDispatchDiagnostics(): string {
   const parts: string[] = [];
-  if (lastOmniFailure) parts.push(`OmniRoute: ${lastOmniFailure}`);
-  if (lastGeminiFailure) parts.push(`Gemini: ${lastGeminiFailure}`);
-  if (!parts.length) parts.push("nenhuma tentativa registrada (circuit-breaker aberto?)");
-  return `\n\n🔎 _Diagnóstico da última tentativa — ${parts.join(" | ")}_`;
+  if (lastOmniFailure) parts.push(`OmniRoute Local: ${lastOmniFailure}`);
+  if (lastGroqFailure) parts.push(`Groq Cloud: ${lastGroqFailure}`);
+  if (lastNvidiaFailure) parts.push(`NVIDIA NIM: ${lastNvidiaFailure}`);
+  if (lastDeepseekFailure) parts.push(`DeepSeek API: ${lastDeepseekFailure}`);
+  if (lastGeminiFailure) parts.push(`Gemini Direto: ${lastGeminiFailure}`);
+  if (!parts.length) parts.push("nenhuma tentativa registrada");
+  return `\n\n🔎 _Diagnóstico dos Provedores — ${parts.join(" | ")}_`;
 }
 
 /**
@@ -186,7 +193,11 @@ export interface DispatchMessage {
 export interface DispatchOptions {
   messages: DispatchMessage[];
   tier?: ModelTier;
+  modelOverride?: string | null;
   geminiKey?: string | null;
+  groqKey?: string | null;
+  nvidiaKey?: string | null;
+  deepseekKey?: string | null;
   omniRouteUrl?: string | null;
   omniRouteKey?: string | null;
   stream?: boolean;
@@ -194,9 +205,9 @@ export interface DispatchOptions {
 
 export interface DispatchResult {
   response: Response;
-  providerUsed: "omniroute" | "gemini-fallback" | "none";
+  providerUsed: "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
   badge: string;
-  tierTag: "omniroute" | "fast-fallback" | "fast" | "heavy" | "exhausted";
+  tierTag: "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
   modelUsed: string;
 }
 
@@ -424,26 +435,165 @@ export class SmartRouter {
   }
 
   /**
+   * Tenta chamada direta à API da Groq Cloud
+   */
+  private async tryGroqDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+    const cleanKey = (apiKey || "").trim();
+    if (!cleanKey) return null;
+    try {
+      const res = await safeFetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+        timeoutMs: 15000,
+      });
+      if (res.ok) {
+        lastGroqFailure = "";
+        console.log("[ROUTER] Chamada processada com sucesso via Groq Cloud (llama-3.3-70b-versatile).");
+        return {
+          response: res,
+          providerUsed: "groq-fallback",
+          badge: "⚡ Groq Cloud (Llama 3.3)",
+          tierTag: "groq-fallback",
+          modelUsed: "llama-3.3-70b-versatile",
+        };
+      }
+      const errText = await res.text().catch(() => "");
+      lastGroqFailure = `HTTP ${res.status}: ${errText.slice(0, 150)}`;
+      console.warn(`[ROUTER] Groq Cloud retornou HTTP ${res.status}: ${errText.slice(0, 150)}`);
+      return null;
+    } catch (err) {
+      lastGroqFailure = `Erro de rede: ${String(err).slice(0, 150)}`;
+      console.warn(`[ROUTER] Erro de rede ao conectar com Groq Cloud: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Tenta chamada direta à API da NVIDIA NIM
+   */
+  private async tryNvidiaDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+    const cleanKey = (apiKey || "").trim();
+    if (!cleanKey) return null;
+    try {
+      const res = await safeFetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`,
+        },
+        body: JSON.stringify({
+          model: "meta/llama-3.3-70b-instruct",
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+        timeoutMs: 15000,
+      });
+      if (res.ok) {
+        lastNvidiaFailure = "";
+        console.log("[ROUTER] Chamada processada com sucesso via NVIDIA NIM (meta/llama-3.3-70b-instruct).");
+        return {
+          response: res,
+          providerUsed: "nvidia-fallback",
+          badge: "🟢 NVIDIA NIM (Llama 3.3)",
+          tierTag: "nvidia-fallback",
+          modelUsed: "meta/llama-3.3-70b-instruct",
+        };
+      }
+      const errText = await res.text().catch(() => "");
+      lastNvidiaFailure = `HTTP ${res.status}: ${errText.slice(0, 150)}`;
+      console.warn(`[ROUTER] NVIDIA NIM retornou HTTP ${res.status}: ${errText.slice(0, 150)}`);
+      return null;
+    } catch (err) {
+      lastNvidiaFailure = `Erro de rede: ${String(err).slice(0, 150)}`;
+      console.warn(`[ROUTER] Erro de rede ao conectar com NVIDIA NIM: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * Tenta chamada direta à API da DeepSeek
+   */
+  private async tryDeepseekDirect(messages: DispatchMessage[], apiKey?: string | null): Promise<DispatchResult | null> {
+    const cleanKey = (apiKey || "").trim();
+    if (!cleanKey) return null;
+    try {
+      const res = await safeFetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        }),
+        timeoutMs: 15000,
+      });
+      if (res.ok) {
+        lastDeepseekFailure = "";
+        console.log("[ROUTER] Chamada processada com sucesso via DeepSeek API (deepseek-chat).");
+        return {
+          response: res,
+          providerUsed: "deepseek-fallback",
+          badge: "🐋 DeepSeek API Direta",
+          tierTag: "deepseek-fallback",
+          modelUsed: "deepseek-chat",
+        };
+      }
+      const errText = await res.text().catch(() => "");
+      lastDeepseekFailure = `HTTP ${res.status}: ${errText.slice(0, 150)}`;
+      console.warn(`[ROUTER] DeepSeek API retornou HTTP ${res.status}: ${errText.slice(0, 150)}`);
+      return null;
+    } catch (err) {
+      lastDeepseekFailure = `Erro de rede: ${String(err).slice(0, 150)}`;
+      console.warn(`[ROUTER] Erro de rede ao conectar com DeepSeek API: ${String(err)}`);
+      return null;
+    }
+  }
+
+  /**
    * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall):
-   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions, OpenAI-compatível)
-   * 2. Tentativa 2 (Fallback): Google Gemini Direto (streamGenerateContent/generateContent)
-   * 3. Tentativa 3 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
+   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions)
+   * 2. Tentativa 2: Groq Cloud API Direta
+   * 3. Tentativa 3: NVIDIA NIM API Direta
+   * 4. Tentativa 4: DeepSeek API Direta
+   * 5. Tentativa 5: Google Gemini Direto
+   * 6. Tentativa 6 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
    */
   public async dispatchWithFallback(options: DispatchOptions): Promise<DispatchResult> {
     const {
       messages,
       tier = "fast",
+      modelOverride,
       geminiKey,
+      groqKey,
+      nvidiaKey,
+      deepseekKey,
       omniRouteUrl,
       omniRouteKey,
       stream = true,
     } = options;
 
-    // FIX DEFINITIVO (single source of truth): a chave que o dispatcher usa passa SEMPRE
-    // por readSecret() aqui — mesmo que um caller esqueça de descriptografar e mande o
-    // blob "enc:v1:" cru (foi exatamente assim que o chat enviava literalmente
-    // "Authorization: Bearer enc:v1:..." ao gateway, gerando HTTP 401/4xx enquanto a UI
-    // ficava verde). readSecret é idempotente: texto-plano passa intacto.
+    // Se o usuário selecionou explicitamente um modelo de provedor direto no UI
+    if (modelOverride === "groq" && groqKey) {
+      const groqRes = await this.tryGroqDirect(messages, groqKey);
+      if (groqRes) return groqRes;
+    }
+    if (modelOverride === "nvidia" && nvidiaKey) {
+      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey);
+      if (nvidiaRes) return nvidiaRes;
+    }
+    if (modelOverride === "deepseek" && deepseekKey) {
+      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey);
+      if (deepseekRes) return deepseekRes;
+    }
+
     const effectiveGeminiKey = resolveEffectiveGeminiKey(geminiKey);
 
     const effectiveOmniRouteKey =
@@ -457,32 +607,11 @@ export class SmartRouter {
       process.env.OMNIROUTE_KEY ||
       process.env.OMNIROUTE_API_KEY ||
       "";
-    // FIX (defesa em profundidade): se um caller esquecer de descriptografar e passar o
-    // blob "enc:v1:...", ele NUNCA vai para a rede — cai no env/placeholder com aviso.
+
     if (omniRouteKey && /^enc:v\d:/i.test(omniRouteKey.trim())) {
       console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
     }
 
-    // FIX (OmniRoute "nunca funcionava"): o modelo autocriado anteriormente era
-    // "omniroute-" + "auto" (id inexistente), que NÃO consta no catálogo do OmniRoute —
-    // qualquer client que envia esse model recebe erro de modelo desconhecido e cai no
-    // fallback, dando a impressão de que o gateway "não funciona". O nome oficial do roteador
-    // zero-config é "auto" (ou variantes "auto/fast", "auto/coding", "auto/cheap"),
-    // que monta um combo virtual com os 350+ provedores conectados (docs: README
-    // "Zero-config — just use `auto`" e docs/routing/AUTO-COMBO.md).
-    // FIX (papel do OmniRoute): o gateway DEVE fazer o failover silencioso de provedor em
-    // provedor. Antes pedíamos a variante premium do combo ("auto/coding", "auto/smart"),
-    // que nos planos gratuitos estoura créditos e derruba o combo inteiro com HTTP 402 —
-    // obrigando o NextCode a cair no fallback Gemini e exibindo "Cotas Indisponíveis".
-    // Agora: variantes gratuitas por padrão + max_tokens limitado (o erro real do gateway
-    // era literalmente "requested up to 131072 tokens, but can only ...").
-    // FIX (papel do OmniRoute — não depender de um único provedor): o gateway possui
-    // dezenas de combos "auto/*" que varrem TODOS os backends conectados (OpenRouter,
-    // Kiro, Pollinations, Ollama, Gemini free, etc.), não apenas OpenRouter. Pedir só
-    // "auto/best-free" travava o roteamento num único combo; se a cota dele esgotava
-    // (HTTP 402), o NextCode derrubava tudo para o fallback Gemini. Agora montamos uma
-    // CASCATA de variantes e tentamos cada uma em ordem: o gateway pula de provedor em
-    // provedor silenciosamente até algum backend gratuito responder.
     const autoCascade =
       tier === "heavy"
         ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
@@ -491,9 +620,7 @@ export class SmartRouter {
     const fullList = envModels
       ? envModels.split(",").map((s) => s.trim()).filter(Boolean)
       : autoCascade;
-    // FIX (Fase 12 — failover silencioso de cota): combos em cooldown por 402/429
-    // são pulados até o reset dos free tiers. Se TODOS estiverem em cooldown,
-    // usamos a lista completa mesmo assim (última chance antes do fallback Gemini).
+
     const requestedOmniModels = fullList.filter((m) => !isComboOnCooldown(m));
     if (requestedOmniModels.length === 0 && fullList.length > 0) {
       console.warn("[ROUTER] Todos os combos da cascata em cooldown de cota; tentando o primeiro como última chance.");
@@ -504,8 +631,6 @@ export class SmartRouter {
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
     const { chatUrl: omniEndpoint } = buildOmniEndpoints(rawUrl);
 
-    // Timeout de conexão do OmniRoute: o suficiente para detectar "porta fechada"
-    // rapidamente, mas realista para respostas de streaming de LLM (que demoram >1.2s).
     const omniConnectTimeoutMs = Number(process.env.OMNIROUTE_TIMEOUT_MS) || 15000;
 
     // ----------------------------------------------------
@@ -514,7 +639,7 @@ export class SmartRouter {
     recordOmniAttempt();
     if (omniCircuitOpen()) {
       lastOmniFailure = "circuit-breaker aberto apos falhas consecutivas (cooldown de 30s)";
-      console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); indo direto para o fallback Gemini.");
+      console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); avançando na cascata BYOK.");
     } else
     for (let omniIdx = 0; omniIdx < requestedOmniModels.length; omniIdx++) {
       const requestedOmniModel = requestedOmniModels[omniIdx];
@@ -531,9 +656,6 @@ export class SmartRouter {
         model: requestedOmniModel,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         stream,
-        // FIX (HTTP 402 "requires more credits"): sem max_tokens o gateway reservava o
-        // teto do modelo (131072 tokens), que excede o saldo de planos gratuitos e fazia
-        // TODA a cascata de provedores falhar antes mesmo de tentar. Limitamos a reserva.
         max_tokens: omniMaxTokens,
       });
 
@@ -542,8 +664,6 @@ export class SmartRouter {
         method: "POST",
         headers: omniHeaders,
         body: omniBody,
-        // O sinal cobre apenas o establishment da conexão; após 200 OK o stream
-        // segue vivo mesmo depois do timeout em Node >= 18.
         timeoutMs: omniConnectTimeoutMs,
       }).catch((err) => {
         networkDown = true;
@@ -558,10 +678,7 @@ export class SmartRouter {
       if (omniRes && omniRes.ok) {
         omniRecordSuccess();
         recordOmniSuccess(Date.now() - omniStart);
-        // FIX ("cai no meio da conversa"): o AbortSignal.timeout cobre apenas o handshake.
-        // Se o gateway morrer/entrar em OOM durante o streaming, o body hangava para sempre.
-        // Agora impomos um idle-timeout: se nenhum byte chegar por OMNIROUTE_IDLE_TIMEOUT_MS,
-        // o stream é abortado e a requisição recai na cascata de fallback (Gemini direto).
+
         const idleMs = Number(process.env.OMNIROUTE_IDLE_TIMEOUT_MS) || 45000;
         let idleTimer: ReturnType<typeof setTimeout> | undefined;
         let streamBroken = false;
@@ -610,17 +727,12 @@ export class SmartRouter {
           };
         }
       } else if (omniRes) {
-        // FIX (failover silencioso do gateway): 402/429 NÃO são queda do OmniRoute — o
-        // gateway está vivo e respondendo; quem falhou foi a cota do combo. Não devem
-        // acionar circuit-breaker nem derrubar o card verde; apenas registrar diagnóstico.
         if (omniRes.status >= 500) omniRecordFailure();
         const errText = await omniRes.text().catch(() => "");
         const quotaHit = omniRes.status === 402 || omniRes.status === 429;
-        // FIX (Fase 12): registra cooldown do COMBO esgotado — a próxima mensagem
-        // já pula direto para o próximo combo da cascata, sem repetir o 402.
         if (quotaHit) markComboExhausted(requestedOmniModel, omniRes.status);
         lastOmniFailure = quotaHit
-          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo atual do gateway — adicione créditos ou ajuste OMNIROUTE_MODEL): ${errText.slice(0, 160)}`
+          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo do gateway): ${errText.slice(0, 160)}`
           : `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
         console.warn(
           `[ROUTER] OmniRoute HTTP ${omniRes.status} no modelo "${requestedOmniModel}" (${Date.now() - omniStart}ms). ` +
@@ -629,30 +741,46 @@ export class SmartRouter {
               : `Resposta: ${errText.substring(0, 200)}`)
         );
       }
-      // Rede fora (porta fechada/timeout): não adianta tentar os próximos combos — aborta a cascata.
       if (networkDown) break;
     } catch (omniErr) {
       omniRecordFailure();
       lastOmniFailure = `exceção na tentativa OmniRoute: ${String(omniErr).slice(0, 160)}`;
       console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
-      break; // exceção de transporte: mesma lógica — não insistir nos próximos combos
+      break;
     }
     }
 
     // ----------------------------------------------------
-    // TENTATIVA 2: Fallback — Google Gemini Direto
+    // TENTATIVA 2: Fallback — Groq Cloud API Direta
+    // ----------------------------------------------------
+    if (groqKey) {
+      const groqRes = await this.tryGroqDirect(messages, groqKey);
+      if (groqRes) return groqRes;
+    }
+
+    // ----------------------------------------------------
+    // TENTATIVA 3: Fallback — NVIDIA NIM API Direta
+    // ----------------------------------------------------
+    if (nvidiaKey) {
+      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey);
+      if (nvidiaRes) return nvidiaRes;
+    }
+
+    // ----------------------------------------------------
+    // TENTATIVA 4: Fallback — DeepSeek API Direta
+    // ----------------------------------------------------
+    if (deepseekKey) {
+      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey);
+      if (deepseekRes) return deepseekRes;
+    }
+
+    // ----------------------------------------------------
+    // TENTATIVA 5: Fallback — Google Gemini Direto
     // ----------------------------------------------------
     if (effectiveGeminiKey) {
       recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
 
-      // FIX DEFINITIVO ("chave valida mas da erro"): a UI de provedores valida a chave
-      // contra o endpoint /v1beta/models (listModels), que aceita QUALQUER chave Google
-      // válida. Ja o chat chama modelos ESPECIFICOS por ID — se a chave nao tiver acesso
-      // aquele modelo (free tier sem 2.5, projeto GCP sem API habilitada, restricao
-      // regional), todos os IDs falham com 404/PERMISSION_DENIED e o usuario ve "erro"
-      // mesmo com a chave verde. Agora descobrimos os IDs realmente acessiveis pela lista
-      // de models (mesma fonte do teste verde) e usamos apenas candidatos suportados.
       const { getAvailableGeminiModels } = require("./gemini-client");
       const candidateModels: string[] = await getAvailableGeminiModels(cleanApiKey);
 
@@ -678,9 +806,6 @@ export class SmartRouter {
             signal: AbortSignal.timeout(20000),
           });
 
-          // FIX (picos de demanda HTTP 503 / 429): picos temporários na infraestrutura do Gemini
-          // são comuns na tier gratuita; se retornar 503/429, aguarda 1.2s e re-tenta uma vez
-          // antes de desistir do modelo.
           if (geminiRes.status === 503 || geminiRes.status === 429) {
             console.warn(`[ROUTER] Gemini Direto (${cleanModel}) retornou HTTP ${geminiRes.status} (pico de demanda). Re-tentando em 1.2s...`);
             await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -708,7 +833,6 @@ export class SmartRouter {
             console.warn(
               `[ROUTER] Gemini Direto (${cleanModel}) retornou erro: ${(errData as { error?: { message?: string } }).error?.message || geminiRes.status}`
             );
-            // 401/403 = chave inválida: testar outros modelos é inútil, aborta a lista.
             if (geminiRes.status === 401 || geminiRes.status === 403) break;
           }
         } catch (geminiErr) {
@@ -721,13 +845,10 @@ export class SmartRouter {
     }
 
     // ----------------------------------------------------
-    // TENTATIVA 3: Esgotamento de Cotas / Provedores
+    // TENTATIVA 6: Esgotamento de Cotas / Provedores
     // ----------------------------------------------------
-    // FIX (diagnóstico): o alerta genérico não dizia POR QUE cada rota falhou —
-    // agora anexamos as últimas razões reais capturadas nas tentativas 1 e 2
-    // (HTTP status/erro de rede do OmniRoute + último erro do Gemini).
     const alertText =
-      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível comunicar com o OmniRoute Local nem com a API direta do Gemini. Por favor, verifique se o OmniRoute está em execução na porta 20128 ou valide sua chave API em **Configurações > BYOK**." +
+      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível obter resposta de nenhum dos provedores configurados (OmniRoute Local, Groq Cloud, NVIDIA NIM, DeepSeek ou Gemini Direto). Verifique se o OmniRoute está em execução na porta 20128 ou regularize suas chaves em **Configurações > BYOK**." +
       buildDispatchDiagnostics();
 
     let fallbackResponse: Response;
@@ -776,8 +897,6 @@ export class SmartRouter {
     recordExhausted();
     return {
       response: fallbackResponse,
-      // Nenhum provedor real respondeu: rotular como "gemini-direct"/"fast-fallback"
-      // era uma inconsistência (o cliente recebia o alerta como se fosse resposta de IA).
       providerUsed: "none",
       badge: "🚫 Sem Provedor Disponível",
       tierTag: "exhausted",

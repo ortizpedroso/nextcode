@@ -137,7 +137,11 @@ export async function POST(request: NextRequest) {
     const dispatchRes = await smartRouter.dispatchWithFallback({
       messages: dispatchMessages,
       tier: activeTier === "heavy" ? "heavy" : "fast",
+      modelOverride,
       geminiKey: readSecret(setting?.geminiKey),
+      groqKey: readSecret((setting as any)?.groqKey),
+      nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+      deepseekKey: readSecret((setting as any)?.deepseekKey),
       omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
       omniRouteKey: readSecret(setting?.omniRouteKey),
       stream: false,
