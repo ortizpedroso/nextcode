@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command } from "lucide-react";
+import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command, Square } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
 import { SkillItemInfo } from "@/app/api/skills/list/route";
 
@@ -10,6 +10,7 @@ interface PromptBarProps {
   customProviders: CustomProviderItem[];
   projectId?: string | null;
   onSubmit: (prompt: string, modelOverride?: string) => Promise<void>;
+  onStop?: () => void;
 }
 
 const BUILTIN_COMMANDS: SkillItemInfo[] = [
@@ -19,7 +20,7 @@ const BUILTIN_COMMANDS: SkillItemInfo[] = [
   { name: "clear", description: "Limpar histórico e contexto da sessão atual", type: "generic", path: "builtin:clear" },
 ];
 
-export function PromptBar({ loading, customProviders, projectId, onSubmit }: PromptBarProps) {
+export function PromptBar({ loading, customProviders, projectId, onSubmit, onStop }: PromptBarProps) {
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>("auto");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -239,12 +240,11 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
               }}
               onFocus={() => fetchSkills()}
               onKeyDown={handleKeyDown}
-              disabled={loading}
-              className="flex-1 bg-transparent px-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
+              className="flex-1 bg-transparent px-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
             />
           </div>
 
-          {/* Linha Inferior: Canto Inferior Esquerdo (Seletor de Provedor + Badge) | Canto Inferior Direito (Botão Enviar) */}
+          {/* Linha Inferior: Canto Inferior Esquerdo (Seletor de Provedor + Badge) | Canto Inferior Direito (Botão Enviar / Parar) */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-200/40 dark:border-slate-800/40 gap-2">
             {/* Canto Inferior Esquerdo: Seletor de Modelo de Provedor */}
             <div className="flex items-center gap-2">
@@ -278,24 +278,29 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit }: Pro
               {renderActiveBadge()}
             </div>
 
-            {/* Canto Inferior Direito: Botão Enviar */}
-            <button
-              type="submit"
-              disabled={loading || !prompt.trim()}
-              className="bg-[#0066cc] hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-xl flex items-center gap-1.5 text-xs shadow-sm disabled:opacity-40 transition-colors shrink-0"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Processando...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Enviar</span>
-                </>
-              )}
-            </button>
+            {/* Canto Inferior Direito: Botão Enviar / Parar */}
+            {loading ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onStop) onStop();
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-medium px-4 py-1.5 rounded-xl flex items-center gap-1.5 text-xs shadow-sm transition-colors shrink-0 cursor-pointer"
+                title="Interromper processamento atual"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>Parar</span>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!prompt.trim()}
+                className="bg-[#0066cc] hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-xl flex items-center gap-1.5 text-xs shadow-sm disabled:opacity-40 transition-colors shrink-0"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Enviar</span>
+              </button>
+            )}
           </div>
         </div>
       </form>

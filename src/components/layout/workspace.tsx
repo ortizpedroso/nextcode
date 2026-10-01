@@ -54,6 +54,7 @@ interface WorkspaceProps {
   onCreateDAG: (prompt: string, modelOverride?: string) => Promise<void>;
   onExecuteNode: (nodeId: string) => Promise<void>;
   onRefreshTasks: () => Promise<void>;
+  onStop?: () => void;
 }
 
 export function Workspace({
@@ -74,6 +75,7 @@ export function Workspace({
   onCreateDAG,
   onExecuteNode,
   onRefreshTasks,
+  onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -325,6 +327,7 @@ export function Workspace({
                 loading={loading}
                 customProviders={customProviders}
                 onSubmit={onCreateDAG}
+                onStop={onStop}
               />
             </div>
 

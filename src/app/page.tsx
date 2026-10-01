@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { authFetch } from "@/lib/client-session";
 import { Sidebar, ProjectItem, SessionItem } from "@/components/layout/sidebar";
 import { Workspace, TaskNode, SessionMessage } from "@/components/layout/workspace";
@@ -25,6 +25,17 @@ export default function DashboardOrchestrator() {
   const [tokensSaved, setTokensSaved] = useState<number>(12450);
   const [loading, setLoading] = useState(false);
   const [executingNodeId, setExecutingNodeId] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleStopProcessing = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setExecutingNodeId(null);
+    setConsoleLogs((prev) => [...prev, "[CANCELADO] Processamento interrompido pelo usuário."]);
+  };
 
   const [settingsForm, setSettingsForm] = useState<SettingsFormState>({
     geminiKey: "",
@@ -279,11 +290,17 @@ export default function DashboardOrchestrator() {
 
   // Chat Conversacional Direto com a IA (Sem poluir o chat com notificações técnicas de DAG)
   const handleSendMessage = async (prompt: string, modelOverride?: string) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..."`]);
 
     try {
-      // 1. Chamada direta ao endpoint conversacional /api/chat com authFetch
+      // 1. Chamada direta ao endpoint conversacional /api/chat com authFetch e AbortSignal
       const chatRes = await authFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,6 +310,7 @@ export default function DashboardOrchestrator() {
           projectId: activeProjectId,
           modelOverride,
         }),
+        signal: controller.signal,
       });
 
       const chatData = await chatRes.json();
@@ -314,19 +332,31 @@ export default function DashboardOrchestrator() {
         await fetchAdhocSessions();
 
         // 2. Dispara a DAG em background APENAS se a Spec Canônica tiver sido aprovada pelo usuário (Trava T1)
-        if (chatData.specApproved) {
-          triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
+        if (chatData.specApproved && !controller.signal.aborted) {
+          await triggerBackgroundDAG(prompt, targetSessionId, modelOverride, controller.signal);
         }
       }
-    } catch (err) {
-      setConsoleLogs((prev) => [...prev, `[ERRO] Falha no envio da mensagem: ${String(err)}`]);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        setConsoleLogs((prev) => [...prev, "[CHAT] Processamento interrompido pelo usuário."]);
+      } else {
+        setConsoleLogs((prev) => [...prev, `[ERRO] Falha no envio da mensagem: ${String(err)}`]);
+      }
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
   // Execução de DAG autônoma estritamente no painel lateral
-  const triggerBackgroundDAG = async (prompt: string, targetSessionId: string, modelOverride?: string) => {
+  const triggerBackgroundDAG = async (
+    prompt: string,
+    targetSessionId: string,
+    modelOverride?: string,
+    signal?: AbortSignal
+  ) => {
     try {
       const res = await authFetch("/api/dag", {
         method: "POST",
@@ -338,6 +368,7 @@ export default function DashboardOrchestrator() {
           projectId: activeProjectId,
           tierOverride: modelOverride,
         }),
+        signal,
       });
 
       const data = await res.json();
@@ -351,6 +382,10 @@ export default function DashboardOrchestrator() {
         // Execução sequencial dos nós da DAG em background
         const createdNodes: TaskNode[] = data.tasks;
         for (const taskNode of createdNodes) {
+          if (signal?.aborted) {
+            setConsoleLogs((prev) => [...prev, "[DAG AUTÔNOMA] Execução de nós cancelada."]);
+            break;
+          }
           setExecutingNodeId(taskNode.id);
           setConsoleLogs((prev) => [...prev, `[TELEMETRIA DAG] Executando nó: "${taskNode.title}" (${taskNode.role})...`]);
 
@@ -359,6 +394,7 @@ export default function DashboardOrchestrator() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "execute_node", nodeId: taskNode.id }),
+              signal,
             });
 
             if (execRes.ok) {
@@ -368,20 +404,28 @@ export default function DashboardOrchestrator() {
                 `[TELEMETRIA DAG] Nó "${execData.executedTask?.title || taskNode.title}" concluído via MCP.`,
               ]);
               // Atualiza a lista de tarefas da DAG e mensagens do chat se houver atualização
-              const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`);
+              const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`, { signal });
               const refreshData = await refreshRes.json();
               if (refreshData.tasks) setTasks(refreshData.tasks);
               if (refreshData.messages) setMessages(refreshData.messages);
             }
-          } catch (execErr) {
+          } catch (execErr: unknown) {
+            if (execErr instanceof Error && execErr.name === "AbortError") {
+              setConsoleLogs((prev) => [...prev, "[TELEMETRIA DAG] Execução do nó cancelada pelo usuário."]);
+              break;
+            }
             setConsoleLogs((prev) => [...prev, `[ERRO DAG] Falha no nó ${taskNode.id}: ${String(execErr)}`]);
           } finally {
             setExecutingNodeId(null);
           }
         }
       }
-    } catch (dagErr) {
-      console.error("Erro na DAG autônoma:", dagErr);
+    } catch (dagErr: unknown) {
+      if (dagErr instanceof Error && dagErr.name === "AbortError") {
+        setConsoleLogs((prev) => [...prev, "[DAG AUTÔNOMA] Operação cancelada pelo usuário."]);
+      } else {
+        console.error("Erro na DAG autônoma:", dagErr);
+      }
     }
   };
 
@@ -488,6 +532,7 @@ export default function DashboardOrchestrator() {
         onCreateDAG={handleSendMessage}
         onExecuteNode={handleExecuteNode}
         onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
+        onStop={handleStopProcessing}
       />
     </div>
   );
