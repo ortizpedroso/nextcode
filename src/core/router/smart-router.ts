@@ -680,8 +680,8 @@ export class SmartRouter {
       // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
       const preferredOrder =
         tier === "heavy"
-          ? [HEAVY_MODEL, "gemini-1.5-pro", "gemini-2.0-flash", FAST_MODEL, "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", HEAVY_MODEL, "gemini-1.5-pro", "gemini-flash-latest"];
+          ? ["gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", HEAVY_MODEL, FAST_MODEL]
+          : ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite", FAST_MODEL, HEAVY_MODEL];
       // FIX DEFINITIVO do "Testar Conexão amarelo + chat quebrado": a lista
       // /v1beta/models costuma vir SEM generateContent nas supportedActions de
       // modelos que funcionam perfeitamente via alias (ex.: gemini-flash-latest),
