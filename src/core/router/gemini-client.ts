@@ -1,5 +1,5 @@
 // FIX: único ID garantidamente válido na v1beta hoje; sobrescrevível por env.
-const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
+const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-1.5-flash";
 
 let cachedModelName: string | null = null;
 
@@ -24,11 +24,10 @@ export async function resolveAvailableGeminiModel(apiKey: string): Promise<strin
         .map((m) => m.name.replace(/^models\//, ""));
 
       const preferred =
-        generateModels.find((m) => m === "gemini-2.5-flash") ||
-        generateModels.find((m) => m === "gemini-2.5-pro") ||
-        generateModels.find((m) => m.includes("2.5-flash")) ||
-        generateModels.find((m) => m.includes("2.0-flash")) ||
+        generateModels.find((m) => m === "gemini-1.5-flash") ||
+        generateModels.find((m) => m === "gemini-2.0-flash") ||
         generateModels.find((m) => m.includes("1.5-flash")) ||
+        generateModels.find((m) => m.includes("2.0-flash")) ||
         generateModels.find((m) => m.includes("flash"));
 
       if (!preferred) {

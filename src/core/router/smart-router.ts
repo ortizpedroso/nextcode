@@ -135,8 +135,8 @@ function omniRecordSuccess() {
 // "404 NOT_FOUND: Model not found", o que parecia erro de chave. Agora usamos IDs
 // reais da API, e a cascata de candidatos abaixo cobre variantes oficiais em ordem
 // de preferência; um 404/400 avança para o próximo candidato em vez de derrubar tudo.
-export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash";
-export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-2.5-pro";
+export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-1.5-flash";
+export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-1.5-pro";
 
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
 // alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
@@ -680,8 +680,8 @@ export class SmartRouter {
       // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
       const preferredOrder =
         tier === "heavy"
-          ? [HEAVY_MODEL, "gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro-latest", FAST_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"]
-          : [FAST_MODEL, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest", HEAVY_MODEL, "gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro-latest"];
+          ? [HEAVY_MODEL, "gemini-1.5-pro", "gemini-2.0-flash", FAST_MODEL, "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-flash-latest"]
+          : [FAST_MODEL, "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", HEAVY_MODEL, "gemini-1.5-pro", "gemini-flash-latest"];
       // FIX DEFINITIVO do "Testar Conexão amarelo + chat quebrado": a lista
       // /v1beta/models costuma vir SEM generateContent nas supportedActions de
       // modelos que funcionam perfeitamente via alias (ex.: gemini-flash-latest),
@@ -711,12 +711,26 @@ export class SmartRouter {
             generationConfig: { temperature: 0.7 },
           });
 
-          const geminiRes = await fetch(geminiUrl, {
+          let geminiRes = await fetch(geminiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: geminiBody,
             signal: AbortSignal.timeout(20000),
           });
+
+          // FIX (picos de demanda HTTP 503 / 429): picos temporários na infraestrutura do Gemini
+          // são comuns na tier gratuita; se retornar 503/429, aguarda 1.2s e re-tenta uma vez
+          // antes de desistir do modelo.
+          if (geminiRes.status === 503 || geminiRes.status === 429) {
+            console.warn(`[ROUTER] Gemini Direto (${cleanModel}) retornou HTTP ${geminiRes.status} (pico de demanda). Re-tentando em 1.2s...`);
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+            geminiRes = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: geminiBody,
+              signal: AbortSignal.timeout(20000),
+            });
+          }
 
           if (geminiRes.ok) {
             lastGeminiFailure = "";
