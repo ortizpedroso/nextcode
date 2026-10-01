@@ -85,10 +85,31 @@ export async function POST(request: Request) {
 
     // Ação 1: Criar e Decompor um novo objetivo em nós de DAG
     if (action === "create_dag" || prompt) {
+      const targetPrompt = prompt || "Novo Objetivo NextCode";
+      let activeSessionId = sessionId;
+
+      if (!activeSessionId) {
+        const session = await prisma.session.create({
+          data: {
+            title: targetPrompt.length > 30 ? `${targetPrompt.substring(0, 30)}...` : targetPrompt,
+            projectId: projectId || null,
+          },
+        });
+        activeSessionId = session.id;
+      } else {
+        const existingSession = await prisma.session.findUnique({ where: { id: activeSessionId } });
+        if (existingSession && existingSession.title.startsWith("Nova Sessão")) {
+          await prisma.session.update({
+            where: { id: activeSessionId },
+            data: {
+              title: targetPrompt.length > 30 ? `${targetPrompt.substring(0, 30)}...` : targetPrompt,
+            },
+          });
+        }
+      }
+
       // 0. Trava T1 (Spec Approval Lock): Impede criação de DAG se a Spec não foi aprovada pelo usuário
-      const existingSessionCheck = activeSessionId
-        ? await prisma.session.findUnique({ where: { id: activeSessionId } })
-        : null;
+      const existingSessionCheck = await prisma.session.findUnique({ where: { id: activeSessionId } });
 
       if (existingSessionCheck && !existingSessionCheck.specApproved) {
         return NextResponse.json(
