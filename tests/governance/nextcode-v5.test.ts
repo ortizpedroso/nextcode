@@ -46,10 +46,10 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res.suggestedAction).toBe("DIRECT_LLM_RESPONSE");
     });
 
-    it("deve exportar o prompt de governança obrigatório que proíbe pedir briefs ao usuário", () => {
+    it("deve exportar o prompt de governança limpo e autônomo sem poluição", () => {
       const sysPrompt = IntakeEngine.getGovernanceSystemPrompt();
-      expect(sysPrompt).toContain("GERAÇÃO AUTOMÁTICA DE BRIEFS");
-      expect(sysPrompt).toContain("NUNCA peça para o usuário escrever, enviar ou fornecer um Brief");
+      expect(sysPrompt).toContain("RESPOSTAS LIMPAS E EXECUTIVAS");
+      expect(sysPrompt).toContain("DESENVOLVIMENTO AUTÔNOMO");
     });
   });
 
