@@ -240,7 +240,8 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
               }}
               onFocus={() => fetchSkills()}
               onKeyDown={handleKeyDown}
-              className="flex-1 bg-transparent px-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
+              disabled={loading}
+              className="flex-1 bg-transparent px-1 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none disabled:opacity-50 resize-none overflow-y-auto max-h-40 leading-relaxed font-sans"
             />
           </div>
 
