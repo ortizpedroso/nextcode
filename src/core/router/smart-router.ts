@@ -651,50 +651,8 @@ export class SmartRouter {
       // regional), todos os IDs falham com 404/PERMISSION_DENIED e o usuario ve "erro"
       // mesmo com a chave verde. Agora descobrimos os IDs realmente acessiveis pela lista
       // de models (mesma fonte do teste verde) e usamos apenas candidatos suportados.
-      let supportedIds: string[] | null = null;
-      try {
-        const listRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${cleanApiKey}`,
-          { signal: AbortSignal.timeout(15000) }
-        );
-        if (listRes.ok) {
-          const listJson = (await listRes.json().catch(() => null)) as
-            | { models?: Array<{ name?: string }> }
-            | null;
-          const ids = (listJson?.models ?? [])
-            .map((m) => (m.name || "").replace(/^models\//, ""))
-            .filter(Boolean);
-          if (ids.length > 0) supportedIds = ids;
-        } else {
-          lastGeminiFailure = `listagem de modelos HTTP ${listRes.status} (chave rejeitada pela API mesmo apos teste verde na UI)`;
-          console.warn(`[ROUTER] Gemini: falha ao listar modelos (HTTP ${listRes.status}).`);
-        }
-      } catch (listErr) {
-        console.warn("[ROUTER] Gemini: erro de rede ao listar modelos:", String(listErr));
-      }
-
-      // Ordem coerente: modelos reais primeiro; nunca pedir variante lite para tarefa heavy.
-      // FIX (HTTP 404 "no longer available to new users"): chaves novas da AI Studio não
-      // têm acesso a variantes descontinuadas (2.5-flash-lite) nem garantidas (2.5-flash);
-      // a cascata cobre os IDs vigentes em 2026, incluindo preview/latest e pro como último
-      // recurso — cada 404/404-like avança silenciosamente para o próximo candidato.
-      const preferredOrder =
-        tier === "heavy"
-          ? ["gemini-1.5-pro", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", HEAVY_MODEL, FAST_MODEL]
-          : ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.0-flash-lite", FAST_MODEL, HEAVY_MODEL];
-      // FIX DEFINITIVO do "Testar Conexão amarelo + chat quebrado": a lista
-      // /v1beta/models costuma vir SEM generateContent nas supportedActions de
-      // modelos que funcionam perfeitamente via alias (ex.: gemini-flash-latest),
-      // e a interseção antiga descartava candidatos válidos até sobrar apenas
-      // variantes obsoletas (404 garantido). Agora: usa a interseção SOMENTE se
-      // ela não ficar vazia; caso contrário mantém a cascata completa e deixa o
-      // 404 individual pular silenciosamente para o próximo candidato.
-      const intersected = supportedIds ? preferredOrder.filter((id) => supportedIds!.includes(id)) : preferredOrder;
-      const candidateModels = intersected.length > 0 ? intersected : preferredOrder;
-      if (candidateModels.length === 0 && supportedIds) {
-        lastGeminiFailure = `chave Gemini ativa, mas sem acesso a nenhum dos modelos preferidos (${preferredOrder.join(", ")}). Modelos visiveis para a chave: ${supportedIds.slice(0, 6).join(", ")}...`;
-        console.warn(`[ROUTER] ${lastGeminiFailure}`);
-      }
+      const { getAvailableGeminiModels } = require("./gemini-client");
+      const candidateModels: string[] = await getAvailableGeminiModels(cleanApiKey);
 
       for (const modelId of candidateModels) {
         try {

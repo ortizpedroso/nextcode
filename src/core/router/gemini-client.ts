@@ -1,55 +1,67 @@
-// FIX: único ID garantidamente válido na v1beta hoje; sobrescrevível por env.
 const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-1.5-flash";
 
-let cachedModelName: string | null = null;
+let cachedModels: string[] | null = null;
 
 /**
- * Resolve dinamicamente o modelo do Gemini suportado e ativo para a chave informada
- * via chamada oficial ao endpoint ListModels (https://generativelanguage.googleapis.com/v1beta/models)
+ * Consulta dinamicamente a API do Google para obter TODOS os modelos ativos
+ * e suportados especificamente para a chave informada via /v1beta/models.
  */
-export async function resolveAvailableGeminiModel(apiKey: string): Promise<string> {
-  if (cachedModelName) {
-    return cachedModelName;
+export async function getAvailableGeminiModels(apiKey: string): Promise<string[]> {
+  if (cachedModels && cachedModels.length > 0) {
+    return cachedModels;
   }
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`);
     if (res.ok) {
       const data = await res.json();
-      const models: Array<{ name: string; supportedGenerationMethods?: string[] }> = data.models || [];
+      const models: Array<{ name: string; supportedGenerationMethods?: string[]; supportedActions?: string[] }> = data.models || [];
 
-      // Filtra apenas modelos que suportam generateContent
-      const generateModels = models
-        .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
-        .map((m) => m.name.replace(/^models\//, ""));
+      // Filtra modelos que suportam geração de conteúdo e remove obsoletos (2.5)
+      const valid = models
+        .filter((m) => {
+          const methods = m.supportedGenerationMethods || m.supportedActions || [];
+          return methods.length === 0 || methods.includes("generateContent");
+        })
+        .map((m) => m.name.replace(/^models\//, ""))
+        .filter((name) => name && !name.includes("2.5"));
 
-      const preferred =
-        generateModels.find((m) => m === "gemini-1.5-flash") ||
-        generateModels.find((m) => m === "gemini-2.0-flash") ||
-        generateModels.find((m) => m.includes("1.5-flash")) ||
-        generateModels.find((m) => m.includes("2.0-flash")) ||
-        generateModels.find((m) => m.includes("flash"));
+      if (valid.length > 0) {
+        // Ordena com preferências de estabilidade/velocidade: 1.5-flash -> 2.0-flash -> 1.5-pro
+        const sorted = valid.sort((a, b) => {
+          const rank = (name: string) => {
+            if (name === "gemini-1.5-flash") return 1;
+            if (name === "gemini-2.0-flash") return 2;
+            if (name.includes("1.5-flash")) return 3;
+            if (name.includes("2.0-flash")) return 4;
+            if (name === "gemini-1.5-pro") return 5;
+            if (name.includes("pro")) return 6;
+            if (name.includes("flash")) return 7;
+            return 10;
+          };
+          return rank(a) - rank(b);
+        });
 
-      if (!preferred) {
-        console.warn("[NextCode] ListModels não expõe nenhum modelo *-flash para esta chave.");
-        return "";
+        cachedModels = sorted;
+        console.log(`[NextCode] Catálogo dinâmico resolvido para a chave Gemini: ${sorted.join(", ")}`);
+        return sorted;
       }
-
-      cachedModelName = preferred.replace(/^models\//, "");
-      console.log(`[NextCode] Modelo Gemini resolvido dinamicamente: ${cachedModelName}`);
-      return cachedModelName;
     }
   } catch (error) {
-    console.warn("[NextCode] Falha ao listar modelos via ListModels, utilizando fallback seguro:", error);
+    console.warn("[NextCode] Falha ao consultar /v1beta/models para a chave:", error);
   }
 
-  // Fallback padrão seguro: único ID garantidamente válido na v1beta hoje.
-  return FAST_MODEL_FALLBACK;
+  return [FAST_MODEL_FALLBACK, "gemini-2.0-flash", "gemini-1.5-pro"];
+}
+
+export async function resolveAvailableGeminiModel(apiKey: string): Promise<string> {
+  const models = await getAvailableGeminiModels(apiKey);
+  return models[0] || FAST_MODEL_FALLBACK;
 }
 
 /**
- * Invalida o cache de modelo para forçar re-descoberta na próxima requisição
+ * Invalida o cache de modelos para forçar re-descoberta na próxima requisição
  */
 export function invalidateGeminiModelCache() {
-  cachedModelName = null;
+  cachedModels = null;
 }

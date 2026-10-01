@@ -103,30 +103,19 @@ export async function POST(request: NextRequest) {
       existing = null;
     }
 
-    const newGeminiKey =
-      geminiKey !== undefined && !String(geminiKey).startsWith("••••")
-        ? writeSecret(String(geminiKey).trim())
-        : existing?.geminiKey || null; // mantém valor já armazenado (cifrado ou legado)
+    const processKeyUpdate = (val: any, existingVal?: string | null) => {
+      if (val === undefined || val === null) return existingVal || null;
+      const str = String(val).trim();
+      if (!str) return existingVal || null;
+      if (str.startsWith("••••") || str.startsWith("****")) return existingVal || null;
+      return writeSecret(str);
+    };
 
-    const newClaudeKey =
-      claudeKey !== undefined && !String(claudeKey).startsWith("••••")
-        ? writeSecret(String(claudeKey).trim())
-        : existing?.claudeKey || null; // mantém valor já armazenado (cifrado ou legado)
-
-    const newOpenaiKey =
-      openaiKey !== undefined && !String(openaiKey).startsWith("••••")
-        ? writeSecret(String(openaiKey).trim())
-        : existing?.openaiKey || null; // mantém valor já armazenado (cifrado ou legado)
-
-    const newDeepseekKey =
-      deepseekKey !== undefined && !String(deepseekKey).startsWith("••••")
-        ? writeSecret(String(deepseekKey).trim())
-        : existing?.deepseekKey || null; // mantém valor já armazenado (cifrado ou legado)
-
-    const newOmniRouteKey =
-      omniRouteKey !== undefined && !String(omniRouteKey).startsWith("••••")
-        ? writeSecret(String(omniRouteKey).trim())
-        : existing?.omniRouteKey || null; // mantém valor já armazenado (cifrado ou legado)
+    const newGeminiKey = processKeyUpdate(geminiKey, existing?.geminiKey);
+    const newClaudeKey = processKeyUpdate(claudeKey, existing?.claudeKey);
+    const newOpenaiKey = processKeyUpdate(openaiKey, existing?.openaiKey);
+    const newDeepseekKey = processKeyUpdate(deepseekKey, existing?.deepseekKey);
+    const newOmniRouteKey = processKeyUpdate(omniRouteKey, existing?.omniRouteKey);
 
     const newEndpoint = customEndpoint || omniRouteUrl || existing?.customEndpoint || "http://localhost:20128/v1";
 
