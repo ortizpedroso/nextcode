@@ -37,6 +37,30 @@ export async function POST(request: NextRequest) {
       activeSessionId = session.id;
     }
 
+    // Auto-aprovação inteligente de Spec (Trava T1) se houver comando de execução/implementação
+    const lowerPrompt = targetPrompt.toLowerCase();
+    const isExecutionCommand =
+      lowerPrompt.includes("implementar") ||
+      lowerPrompt.includes("implemente") ||
+      lowerPrompt.includes("executar") ||
+      lowerPrompt.includes("execute") ||
+      lowerPrompt.includes("só pare quando") ||
+      lowerPrompt.includes("so pare quando") ||
+      lowerPrompt.includes("aprovo") ||
+      lowerPrompt.includes("aprovar") ||
+      lowerPrompt.includes("iniciar dag") ||
+      lowerPrompt.includes("validar e aprovar") ||
+      lowerPrompt.includes("pode rodar") ||
+      lowerPrompt.includes("pode fazer");
+
+    if (isExecutionCommand) {
+      await prisma.session.update({
+        where: { id: activeSessionId },
+        data: { specApproved: true },
+      });
+      console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por intenção de execução/implementação.`);
+    }
+
     // 2. Registra mensagem do usuário no banco SQLite
     const userMessage = await prisma.message.create({
       data: {

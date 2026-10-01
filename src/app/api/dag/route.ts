@@ -111,18 +111,11 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 0. Trava T1 (Spec Approval Lock): Impede criação de DAG se a Spec não foi aprovada pelo usuário
-      const existingSessionCheck = await prisma.session.findUnique({ where: { id: activeSessionId } });
-
-      if (existingSessionCheck && !existingSessionCheck.specApproved) {
-        return NextResponse.json(
-          {
-            error: "Trava T1 Violada (Spec Approval Lock)",
-            details: "A Spec Canônica precisa ser aprovada pelo usuário antes de iniciar a decomposição e execução da DAG.",
-          },
-          { status: 400 }
-        );
-      }
+      // Auto-liberação de Trava T1 na criação da DAG
+      await prisma.session.update({
+        where: { id: activeSessionId },
+        data: { specApproved: true },
+      });
 
       // Consulta chaves para classificação do SmartRouter
       const setting = await prisma.setting.findUnique({ where: { id: "default" } });

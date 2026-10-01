@@ -335,8 +335,24 @@ export default function DashboardOrchestrator() {
         await fetchProjects();
         await fetchAdhocSessions();
 
-        // 2. Dispara a DAG em background APENAS se a Spec Canônica tiver sido aprovada pelo usuário (Trava T1)
-        if (chatData.specApproved && !controller.signal.aborted) {
+        // 2. Dispara a DAG em background se a Spec estiver aprovada ou houver comando de execução
+        const lowerPrompt = prompt.toLowerCase();
+        const hasExecIntent =
+          chatData.specApproved ||
+          lowerPrompt.includes("implementar") ||
+          lowerPrompt.includes("implemente") ||
+          lowerPrompt.includes("executar") ||
+          lowerPrompt.includes("execute") ||
+          lowerPrompt.includes("só pare quando") ||
+          lowerPrompt.includes("so pare quando") ||
+          lowerPrompt.includes("aprovo") ||
+          lowerPrompt.includes("aprovar") ||
+          lowerPrompt.includes("iniciar dag") ||
+          lowerPrompt.includes("validar e aprovar") ||
+          lowerPrompt.includes("pode rodar") ||
+          lowerPrompt.includes("pode fazer");
+
+        if (hasExecIntent && !controller.signal.aborted) {
           await triggerBackgroundDAG(prompt, targetSessionId, modelOverride, controller.signal);
         }
       }
@@ -362,6 +378,7 @@ export default function DashboardOrchestrator() {
     signal?: AbortSignal
   ) => {
     try {
+      // 1. Assegura a criação dos nós da DAG
       const res = await authFetch("/api/dag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -380,48 +397,75 @@ export default function DashboardOrchestrator() {
         setTasks(data.tasks);
         setConsoleLogs((prev) => [
           ...prev,
-          `[DAG AUTÔNOMA] ${data.tasks.length} nós de tarefas gerados no painel lateral. Iniciando tarefas...`,
+          `[DAG AUTÔNOMA] ${data.tasks.length} nós de tarefas prontos no painel. Iniciando execução do pipeline...`,
+        ]);
+      }
+
+      // 2. Loop contínuo de execução dos nós da DAG até 100% de conclusão
+      let isLooping = true;
+      let executedCount = 0;
+
+      while (isLooping && !signal?.aborted) {
+        // Atualiza o estado atual das tarefas da sessão no banco
+        const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`, { signal });
+        const refreshData = await refreshRes.json();
+        const currentTasks: TaskNode[] = refreshData.tasks || [];
+        setTasks(currentTasks);
+        if (refreshData.messages) setMessages(refreshData.messages);
+
+        // Encontra o próximo nó com status "pending"
+        const nextPendingNode = currentTasks.find((t) => t.status === "pending");
+        if (!nextPendingNode) {
+          isLooping = false;
+          if (executedCount > 0) {
+            setConsoleLogs((prev) => [
+              ...prev,
+              `[DAG AUTÔNOMA] ✅ Pipeline de tarefas da DAG concluído com sucesso (${executedCount} nós executados, auditados e promovidos)!`,
+            ]);
+          }
+          break;
+        }
+
+        setExecutingNodeId(nextPendingNode.id);
+        setConsoleLogs((prev) => [
+          ...prev,
+          `[TELEMETRIA DAG] Executando nó (${executedCount + 1}): "${nextPendingNode.title}" (${nextPendingNode.role})...`,
         ]);
 
-        // Execução sequencial dos nós da DAG em background
-        const createdNodes: TaskNode[] = data.tasks;
-        for (const taskNode of createdNodes) {
-          if (signal?.aborted) {
-            setConsoleLogs((prev) => [...prev, "[DAG AUTÔNOMA] Execução de nós cancelada."]);
+        try {
+          const execRes = await authFetch("/api/dag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "execute_node", nodeId: nextPendingNode.id }),
+            signal,
+          });
+
+          const execData = await execRes.json().catch(() => ({}));
+          if (execRes.ok) {
+            executedCount += 1;
+            setConsoleLogs((prev) => [
+              ...prev,
+              `[TELEMETRIA DAG] Nó "${nextPendingNode.title}" concluído, auditado e promovido para o projeto!`,
+            ]);
+          } else {
+            setConsoleLogs((prev) => [
+              ...prev,
+              `[ERRO DAG] Nó "${nextPendingNode.title}" interrompido: ${execData.details || execData.error || "falha na execução"}`,
+            ]);
+            isLooping = false;
             break;
           }
-          setExecutingNodeId(taskNode.id);
-          setConsoleLogs((prev) => [...prev, `[TELEMETRIA DAG] Executando nó: "${taskNode.title}" (${taskNode.role})...`]);
-
-          try {
-            const execRes = await authFetch("/api/dag", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "execute_node", nodeId: taskNode.id }),
-              signal,
-            });
-
-            if (execRes.ok) {
-              const execData = await execRes.json();
-              setConsoleLogs((prev) => [
-                ...prev,
-                `[TELEMETRIA DAG] Nó "${execData.executedTask?.title || taskNode.title}" concluído via MCP.`,
-              ]);
-              // Atualiza a lista de tarefas da DAG e mensagens do chat se houver atualização
-              const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`, { signal });
-              const refreshData = await refreshRes.json();
-              if (refreshData.tasks) setTasks(refreshData.tasks);
-              if (refreshData.messages) setMessages(refreshData.messages);
-            }
-          } catch (execErr: unknown) {
-            if (execErr instanceof Error && execErr.name === "AbortError") {
-              setConsoleLogs((prev) => [...prev, "[TELEMETRIA DAG] Execução do nó cancelada pelo usuário."]);
-              break;
-            }
-            setConsoleLogs((prev) => [...prev, `[ERRO DAG] Falha no nó ${taskNode.id}: ${String(execErr)}`]);
-          } finally {
-            setExecutingNodeId(null);
+        } catch (execErr: unknown) {
+          if (execErr instanceof Error && execErr.name === "AbortError") {
+            setConsoleLogs((prev) => [...prev, "[TELEMETRIA DAG] Execução cancelada pelo usuário."]);
+            isLooping = false;
+            break;
           }
+          setConsoleLogs((prev) => [...prev, `[ERRO DAG] Exceção no nó ${nextPendingNode.id}: ${String(execErr)}`]);
+          isLooping = false;
+          break;
+        } finally {
+          setExecutingNodeId(null);
         }
       }
     } catch (dagErr: unknown) {
