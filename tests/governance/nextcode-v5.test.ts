@@ -49,7 +49,7 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
     it("deve exportar o prompt de governança limpo e autônomo sem poluição", () => {
       const sysPrompt = IntakeEngine.getGovernanceSystemPrompt();
       expect(sysPrompt).toContain("RESPOSTAS LIMPAS E EXECUTIVAS");
-      expect(sysPrompt).toContain("DESENVOLVIMENTO AUTÔNOMO");
+      expect(sysPrompt).toContain("PROIBIDO ESCREVER CÓDIGO DE IMPLEMENTAÇÃO NO CHAT");
     });
   });
 
