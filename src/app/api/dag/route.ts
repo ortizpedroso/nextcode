@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
@@ -74,7 +75,9 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { action, prompt, sessionId, projectId, tierOverride } = body;

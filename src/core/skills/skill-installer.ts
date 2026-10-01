@@ -123,6 +123,8 @@ export function parseSkillContent(content: string, filenameHint: string = ""): {
   return { detectedType, skillName, description, cleanContent };
 }
 
+import { safeFetch } from "@/core/security/safe-fetch";
+
 export async function installSkillFromGithub(opts: {
   url: string;
   projectPath?: string | null;
@@ -136,12 +138,12 @@ export async function installSkillFromGithub(opts: {
 
   for (const candidateUrl of candidateUrls) {
     try {
-      const res = await fetch(candidateUrl, {
+      const res = await safeFetch(candidateUrl, {
         headers: {
           "User-Agent": "NextCode-Skill-Installer/1.0",
           "Accept": "text/plain, text/markdown, text/html, */*",
         },
-        redirect: "follow",
+        timeoutMs: 10000,
       });
 
       lastHttpStatus = res.status;

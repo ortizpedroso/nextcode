@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
 import * as path from "path";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { targetPath } = body;

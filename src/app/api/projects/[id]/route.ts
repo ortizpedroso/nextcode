@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -39,9 +42,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const { id } = await params;
 

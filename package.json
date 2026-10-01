@@ -12,6 +12,7 @@
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",
     "postinstall": "npx prisma generate",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

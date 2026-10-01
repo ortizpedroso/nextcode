@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
@@ -11,7 +12,9 @@ import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/
 
 import { IntakeEngine } from "@/core/intake/intake-engine";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const body = await request.json();
     const { sessionId, prompt, projectId, modelOverride } = body;
