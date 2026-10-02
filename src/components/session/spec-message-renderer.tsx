@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Cpu,
   Layers,
+  Workflow,
 } from "lucide-react";
 
 interface SpecMessageRendererProps {
@@ -260,7 +261,6 @@ function RenderParsedMarkdown({ text }: { text: string }) {
  * Formata inline markdown (**negrito**, *itálico*, `código inline`)
  */
 function formatInlineMarkdown(text: string): React.ReactNode {
-  // Regex simples para capturar `code`, **bold**, *italic*
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
 
   return parts.map((part, idx) => {
@@ -293,10 +293,11 @@ function formatInlineMarkdown(text: string): React.ReactNode {
 }
 
 /**
- * Card estilizado para exibição de blocos de código com botão de cópia
+ * Card estilizado para exibição de blocos de código e diagramas Mermaid
  */
 function CodeBlockCard({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
+  const [showRawMermaid, setShowRawMermaid] = useState(false);
 
   const handleCopyCode = async () => {
     try {
@@ -319,6 +320,61 @@ function CodeBlockCard({ code, language }: { code: string; language: string }) {
       console.error("Erro ao copiar código:", err);
     }
   };
+
+  // Suporte a Diagramas Mermaid
+  if (language.toLowerCase() === "mermaid") {
+    const steps = code
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("graph") && !l.startsWith("flowchart") && !l.startsWith("subgraph") && !l.startsWith("end"));
+
+    return (
+      <div className="my-3 border border-indigo-200 dark:border-indigo-900/60 rounded-xl bg-indigo-50/30 dark:bg-slate-950 overflow-hidden shadow-sm">
+        <div className="px-3.5 py-2 bg-indigo-100/60 dark:bg-indigo-950/60 border-b border-indigo-200 dark:border-indigo-900/60 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Workflow className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span className="text-xs font-bold text-slate-900 dark:text-white">
+              Diagrama Visual de Fluxo (Mermaid)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowRawMermaid(!showRawMermaid)}
+              className="text-[10px] px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium"
+            >
+              {showRawMermaid ? "Ver Fluxo" : "Ver Código"}
+            </button>
+            <button
+              onClick={handleCopyCode}
+              className="p-1 rounded text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors"
+              title="Copiar Diagrama"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {showRawMermaid ? (
+          <pre className="p-3.5 text-slate-100 font-mono text-[11px] overflow-x-auto leading-relaxed max-h-96 bg-slate-950">
+            {code}
+          </pre>
+        ) : (
+          <div className="p-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {steps.map((step, idx) => (
+                <React.Fragment key={idx}>
+                  <div className="px-3 py-1.5 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 shadow-sm flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <span>{step.replace(/-->|--/g, "➔").replace(/["\[\]]/g, "")}</span>
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="my-3 border border-slate-800 rounded-xl bg-slate-950 overflow-hidden shadow-sm">
