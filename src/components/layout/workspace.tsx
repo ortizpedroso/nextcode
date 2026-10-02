@@ -24,6 +24,7 @@ import { SettingsFormState, CustomProviderItem } from "@/components/settings/set
 import { DagSidebar } from "@/components/session/dag-sidebar";
 import { PromptBar } from "@/components/session/prompt-bar";
 import { WebTerminal } from "@/components/session/web-terminal";
+import { SpecMessageRenderer } from "@/components/session/spec-message-renderer";
 
 export interface TaskNode {
   id: string;
@@ -430,7 +431,11 @@ export function Workspace({
                               </button>
                             </div>
                           </div>
-                          <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                          <SpecMessageRenderer
+                            content={msg.content}
+                            onOpenSpecModal={onOpenSpecModal}
+                            role={msg.role}
+                          />
                         </div>
                       </div>
                     ))}
