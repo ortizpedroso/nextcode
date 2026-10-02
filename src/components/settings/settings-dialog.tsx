@@ -22,6 +22,9 @@ import {
   Globe,
   Radio,
   Check,
+  UserCheck,
+  ShieldAlert,
+  Lock,
 } from "lucide-react";
 import { ByokTab } from "./byok-tab";
 import { OmniRouteCard } from "./omniroute-card";
@@ -72,7 +75,7 @@ export function SettingsDialog({
   onClose,
   onSave,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<"keys" | "custom" | "mcp" | "omniroute" | "headroom" | "preferences" | "docs">("keys");
+  const [activeTab, setActiveTab] = useState<"keys" | "custom" | "mcp" | "omniroute" | "headroom" | "roles" | "preferences" | "docs">("keys");
   const [formData, setFormData] = useState<SettingsFormState>(settings);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ provider: string; ok: boolean; message: string } | null>(null);
@@ -106,6 +109,11 @@ export function SettingsDialog({
     env: "",
   });
 
+  // RBAC Roles State
+  const [currentRole, setCurrentRole] = useState<"ADMIN" | "DEVELOPER" | "AUDITOR">("DEVELOPER");
+  const [availableRoles, setAvailableRoles] = useState<any[]>([]);
+  const [roleUpdating, setRoleUpdating] = useState(false);
+
   const fetchCustomProviders = async () => {
     try {
       const res = await fetch("/api/providers/custom");
@@ -126,11 +134,46 @@ export function SettingsDialog({
     }
   };
 
+  const fetchRbacRoles = async () => {
+    try {
+      const res = await authFetch("/api/auth/roles");
+      const data = await res.json();
+      if (data.availableRoles) setAvailableRoles(data.availableRoles);
+    } catch (err) {
+      console.error("Erro ao carregar papéis RBAC:", err);
+    }
+  };
+
+  const handleSelectRole = async (role: "ADMIN" | "DEVELOPER" | "AUDITOR") => {
+    setRoleUpdating(true);
+    try {
+      const res = await authFetch("/api/auth/roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCurrentRole(role);
+        setTestResult({
+          provider: "RBAC Permissões",
+          ok: true,
+          message: `Papel '${role}' ativado com ${data.activePermissions.length} permissões.`,
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao alterar papel RBAC:", err);
+    } finally {
+      setRoleUpdating(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setFormData(settings);
       fetchCustomProviders();
       fetchMcpServers();
+      fetchRbacRoles();
     }
   }, [isOpen, settings]);
 
@@ -329,6 +372,23 @@ export function SettingsDialog({
             </button>
 
             <button
+              onClick={() => setActiveTab("roles")}
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between font-medium transition-all ${
+                activeTab === "roles"
+                  ? "bg-[#e8f1fb] dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 font-semibold"
+                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <UserCheck className="w-4 h-4 text-indigo-500" />
+                <span>Papéis & RBAC</span>
+              </div>
+              <span className="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-950 px-1.5 py-0.5 rounded-full border border-indigo-300 dark:border-indigo-800 font-mono">
+                {currentRole}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("mcp")}
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2.5 font-medium transition-all ${
                 activeTab === "mcp"
@@ -401,6 +461,85 @@ export function SettingsDialog({
 
             {/* ABA: HEADROOM TOKEN OPTIMIZER */}
             {activeTab === "headroom" && <HeadroomCard />}
+
+            {/* ABA: RBAC PAPÉIS & PERMISSÕES */}
+            {activeTab === "roles" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-indigo-500" />
+                      <span>Controle de Acesso RBAC & Multi-Tenancy</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Defina o perfil de permissão ativo para governança das operações na DAG e no Terminal.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+                  {(availableRoles.length > 0
+                    ? availableRoles
+                    : [
+                        {
+                          role: "ADMIN",
+                          description: "Acesso total ao sistema, gerenciamento de chaves, cotas e servidores MCP",
+                          permissions: ["read:*", "write:*", "admin:*", "exec:*", "quarantine:*"],
+                        },
+                        {
+                          role: "DEVELOPER",
+                          description: "Criação de DAGs, execução de tarefas no terminal e proposição de skills",
+                          permissions: ["read:*", "write:code", "exec:terminal", "quarantine:stage"],
+                        },
+                        {
+                          role: "AUDITOR",
+                          description: "Leitura de logs de auditoria Dual-Lens, telemetria e revisões de código",
+                          permissions: ["read:telemetry", "read:audit", "read:code"],
+                        },
+                      ]
+                  ).map((r) => {
+                    const isSelected = currentRole === r.role;
+                    return (
+                      <div
+                        key={r.role}
+                        onClick={() => handleSelectRole(r.role)}
+                        className={`p-4 rounded-xl border cursor-pointer transition-all space-y-2 flex flex-col justify-between ${
+                          isSelected
+                            ? "bg-indigo-50/70 dark:bg-indigo-950/60 border-indigo-500 dark:border-indigo-600 shadow-sm"
+                            : "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-indigo-300"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between font-bold text-xs">
+                            <span className={isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-slate-900 dark:text-white"}>
+                              {r.role}
+                            </span>
+                            {isSelected && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                            {r.description}
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200/50 dark:border-slate-800">
+                          <span className="text-[10px] font-mono text-slate-400 block mb-1">Permissões ({r.permissions.length}):</span>
+                          <div className="flex flex-wrap gap-1">
+                            {r.permissions.map((p: string, i: number) => (
+                              <span
+                                key={i}
+                                className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 font-mono text-slate-700 dark:text-slate-300"
+                              >
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* ABA 2: PROVEDORES OPENAI-COMPATIBLE CUSTOMIZADOS */}
             {activeTab === "custom" && (
