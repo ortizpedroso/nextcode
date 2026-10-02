@@ -13,6 +13,7 @@ import {
   Check,
   Lock,
   Terminal,
+  Activity,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -61,6 +62,7 @@ interface WorkspaceProps {
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: () => void;
+  onOpenTelemetryModal?: () => void;
   onStop?: () => void;
 }
 
@@ -86,6 +88,7 @@ export function Workspace({
   onInspectQuarantine,
   onExportAuditReport,
   onOpenSpecModal,
+  onOpenTelemetryModal,
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
@@ -231,6 +234,15 @@ export function Workspace({
               >
                 <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>Spec T1</span>
+              </button>
+
+              <button
+                onClick={onOpenTelemetryModal}
+                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-indigo-200 dark:border-indigo-800"
+                title="Visualizar Métricas de Telemetria e Incidentes"
+              >
+                <Activity className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Telemetria</span>
               </button>
 
               <button

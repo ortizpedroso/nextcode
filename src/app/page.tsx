@@ -9,6 +9,7 @@ import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { QuarantineDiffModal } from "@/components/session/quarantine-diff-modal";
 import { CanonicalSpecModal } from "@/components/session/canonical-spec-modal";
+import { TelemetryModal } from "@/components/session/telemetry-modal";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -25,6 +26,7 @@ export default function DashboardOrchestrator() {
   const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
 
   const [showSpecModal, setShowSpecModal] = useState(false);
+  const [showTelemetryModal, setShowTelemetryModal] = useState(false);
   const [canonicalSpec, setCanonicalSpec] = useState("");
   const [isSpecApproved, setIsSpecApproved] = useState(false);
 
@@ -597,6 +599,7 @@ export default function DashboardOrchestrator() {
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
         onOpenSpecModal={() => setShowSpecModal(true)}
+        onOpenTelemetryModal={() => setShowTelemetryModal(true)}
         onStop={handleStopProcessing}
       />
 
@@ -604,6 +607,12 @@ export default function DashboardOrchestrator() {
         <QuarantineDiffModal
           taskId={inspectTaskId}
           onClose={() => setInspectTaskId(null)}
+        />
+      )}
+
+      {showTelemetryModal && (
+        <TelemetryModal
+          onClose={() => setShowTelemetryModal(false)}
         />
       )}
 
