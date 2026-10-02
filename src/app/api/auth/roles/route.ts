@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 
-export type RoleType = "ADMIN" | "DEVELOPER" | "AUDITOR";
+type RoleType = "ADMIN" | "DEVELOPER" | "AUDITOR";
 
-export interface RolePermissions {
+interface RolePermissions {
   role: RoleType;
   description: string;
   permissions: string[];
 }
 
-export const ROLE_DEFINITIONS: Record<RoleType, RolePermissions> = {
+const ROLE_DEFINITIONS: Record<RoleType, RolePermissions> = {
   ADMIN: {
     role: "ADMIN",
     description: "Acesso total ao sistema, gerenciamento de chaves, cotas e servidores MCP",

@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
       for (const node of decomposedNodes) {
         const dbTask = await prisma.taskNode.create({
           data: {
+            id: node.id,
             sessionId: activeSessionId,
             title: node.title,
             role: node.role,
@@ -412,17 +413,29 @@ DIRETRIZES DE EXECUÇÃO:
           orderBy: { createdAt: "asc" },
         });
 
-        const dagNodes: DAGNode[] = currentDbTasks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          role: t.role,
-          status: t.status as DAGNode["status"],
-          dependencies: JSON.parse(t.dependencies || "[]"),
-          mcpScope: t.mcpScope || undefined,
-          filesScope: t.filesScope ? JSON.parse(t.filesScope) : [],
-          attempts: t.attempts,
-          maxAttempts: t.maxAttempts,
-        }));
+        const knownIds = new Set(currentDbTasks.map((t) => t.id));
+
+        const dagNodes: DAGNode[] = currentDbTasks.map((t, idx) => {
+          const rawDeps: string[] = JSON.parse(t.dependencies || "[]");
+          const validDeps = rawDeps.filter((depId) => knownIds.has(depId));
+          const hasUnresolvedUnknownDep = rawDeps.some((depId) => !knownIds.has(depId));
+          const autoResolvedDeps =
+            hasUnresolvedUnknownDep && idx > 0 && currentDbTasks[idx - 1].status === "completed"
+              ? [currentDbTasks[idx - 1].id]
+              : validDeps;
+
+          return {
+            id: t.id,
+            title: t.title,
+            role: t.role,
+            status: t.status as DAGNode["status"],
+            dependencies: autoResolvedDeps,
+            mcpScope: t.mcpScope || undefined,
+            filesScope: t.filesScope ? JSON.parse(t.filesScope) : [],
+            attempts: t.attempts,
+            maxAttempts: t.maxAttempts,
+          };
+        });
 
         const dagEngine = new DAGEngine(dagNodes);
         const executableNodes = dagEngine.getExecutableNodes();
