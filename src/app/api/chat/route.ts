@@ -10,6 +10,9 @@ import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 
 import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
 import { IntakeEngine } from "@/core/intake/intake-engine";
+import { InputPreprocessorEngine } from "@/core/intake/input-preprocessor";
+import { EnvironmentWorkspaceAdapter } from "@/core/execution/environment-adapter";
+import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { extractFilePathsFromText } from "@/core/skills/spec-decomposer";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
@@ -29,6 +32,12 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(attachments) && attachments.length > 0) {
       targetPrompt += `\n\n[ANEXO MULTIMODAL: ${attachments.length} imagem(ns) enviada(s) como contexto visual de interface/diagrama]`;
     }
+
+    // 0. PRÉ-PROCESSADOR UNIVERSAL (Markdown + YAML Frontmatter)
+    const preprocessedInput = InputPreprocessorEngine.preprocess(targetPrompt, {
+      projectId: projectId || null,
+    });
+
     let activeSessionId = sessionId;
 
     // 1. Garante uma sessão ativa
@@ -66,7 +75,7 @@ export async function POST(request: NextRequest) {
       console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por intenção de execução/implementação.`);
     }
 
-    // 2. Registra mensagem do usuário no banco SQLite
+    // 2. Registra mensagem do usuário no banco SQLite (armazenando a entrada tratada com YAML + MD)
     const userMessage = await prisma.message.create({
       data: {
         sessionId: activeSessionId,
@@ -90,7 +99,12 @@ export async function POST(request: NextRequest) {
       { maxLogLines: 50 }
     );
 
-    // 4.5 Injeta as Leis Inegociáveis de Governança NextCode v5 (NADA É CRIADO SEM SPEC E BRIEF)
+    // Substitui o último item do histórico pelo prompt pré-processado (YAML + Markdown) para a LLM
+    if (headroomRes.messages.length > 0) {
+      headroomRes.messages[headroomRes.messages.length - 1].content = preprocessedInput.fullFormattedPrompt;
+    }
+
+    // 4.5 Injeta as Leis Inegociáveis de Governança NextCode v5
     const dispatchMessages: DispatchMessage[] = [
       { role: "system", content: IntakeEngine.getGovernanceSystemPrompt() },
       ...headroomRes.messages,
@@ -159,7 +173,7 @@ export async function POST(request: NextRequest) {
     const activeTier = modelOverride || intent.tier;
     const modelName = intent.actualModelUsed;
 
-    // 6. Geração da Resposta da IA via Cascata de Fallback (OmniRoute -> Gemini Direto -> Esgotamento)
+    // 6. Geração da Resposta da IA via Cascata de Fallback
     let aiResponseContent = "";
     let effectiveTier = activeTier;
 
@@ -188,19 +202,20 @@ export async function POST(request: NextRequest) {
         aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
       }
 
-      // FIX (vínculo sessão↔projeto): quando o contexto NÃO pôde ser montado,
-      // dizemos honestamente o motivo em vez de a IA "alucinar" pedindo anexos.
-      // Não altera nada quando o contexto foi injetado com sucesso.
       if (!projectContextInjected && contextDiagnostics) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
       }
 
-      // 6.5 Se a resposta da IA contiver blocos de código e houver um projeto vinculado com caminho local,
-      // extrai e promove fisicamente os arquivos alterados para o disco do usuário!
-      if (ctxProject?.path && fs.existsSync(ctxProject.path) && aiResponseContent.includes("```")) {
+      // 6.5 PROMOÇÃO E EXECUÇÃO VIA ENVIRONMENT WORKSPACE ADAPTER (Local vs Nuvem)
+      const taskId = `chat-exec-${Date.now()}`;
+      const envAdapter = new EnvironmentWorkspaceAdapter({
+        taskId,
+        projectPath: ctxProject?.path || "",
+      });
+
+      if (aiResponseContent.includes("```")) {
         try {
           const qm = new QuarantineManager();
-          const taskId = `chat-exec-${Date.now()}`;
           const promptFiles = extractFilePathsFromText(targetPrompt);
           const codeMap = qm.extractAndWriteCodeBlocks(taskId, aiResponseContent, promptFiles);
 
@@ -208,12 +223,22 @@ export async function POST(request: NextRequest) {
             const type1Res = DualLensAuditor.validateType1(codeMap);
             if (type1Res.passed) {
               const promotedFiles = Object.keys(codeMap);
-              qm.promoteToMainRepo(taskId, ctxProject.path, promotedFiles);
-              console.log(
-                `[CHAT_FILE_PROMOTION] ${promotedFiles.length} arquivo(s) promovido(s) no disco em ${ctxProject.path}:`,
-                promotedFiles
-              );
-              aiResponseContent += `\n\n⚡ **[NextCode Auto-Patch]** ${promotedFiles.length} arquivo(s) atualizado(s) no disco em \`${ctxProject.path}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+              const writeResult = envAdapter.writeFilesToWorkspace(codeMap);
+
+              if (writeResult.mode === "LOCAL" && ctxProject?.path) {
+                qm.promoteToMainRepo(taskId, ctxProject.path, promotedFiles);
+                console.log(
+                  `[CHAT_FILE_PROMOTION] [LOCAL] ${promotedFiles.length} arquivo(s) promovido(s) no disco em ${ctxProject.path}:`,
+                  promotedFiles
+                );
+                aiResponseContent += `\n\n⚡ **[NextCode Auto-Patch] (Modo Local)** ${promotedFiles.length} arquivo(s) atualizado(s) no disco em \`${ctxProject.path}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+              } else {
+                console.log(
+                  `[CHAT_FILE_PROMOTION] [NUVEM/QUARENTENA] ${promotedFiles.length} arquivo(s) armazenado(s) em quarentena:`,
+                  promotedFiles
+                );
+                aiResponseContent += `\n\n☁️ **[NextCode Sandbox Artifact] (Modo Nuvem / Quarentena)** ${promotedFiles.length} arquivo(s) gravado(s) no repositório isolado em \`${writeResult.quarantinePath}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+              }
             } else {
               qm.purgeWorkspace(taskId);
               console.warn(
@@ -263,8 +288,13 @@ export async function POST(request: NextRequest) {
         assistantMessage,
         messages: cleanMessages,
         intent,
-        tokensSaved: headroomRes.tokensSaved,
+        tokensSaved: headroomRes.tokensSaved + (preprocessedInput.originalLength - preprocessedInput.processedLength),
         projectContextInjected,
+        inputPreprocessorStats: {
+          originalLength: preprocessedInput.originalLength,
+          processedLength: preprocessedInput.processedLength,
+          reductionRatio: preprocessedInput.tokenReductionPercent,
+        },
       },
       {
         headers: {
