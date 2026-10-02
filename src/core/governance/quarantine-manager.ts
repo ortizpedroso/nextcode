@@ -168,6 +168,21 @@ export class QuarantineManager {
       index++;
     }
 
+    // Fallback: Se nenhum bloco ``` foi extraído, procura por padrões de comando do PowerShell (Set-Content -Path "..." -Value "...")
+    if (Object.keys(codeMap).length === 0 && text.includes("Set-Content")) {
+      const psRegex = /Set-Content\s+-Path\s+["']([^"']+)["']\s+-Value\s+["']([^"']+)["']/gi;
+      let psMatch: RegExpExecArray | null;
+      while ((psMatch = psRegex.exec(text)) !== null) {
+        const psPath = psMatch[1];
+        const psValue = psMatch[2].replace(/;/g, "\n");
+        if (psPath && !QuarantineManager.isInvalidFilePath(psPath)) {
+          const cleanPath = psPath.trim().replace(/^\\|^\//, "");
+          this.writeFile(taskId, cleanPath, psValue);
+          codeMap[cleanPath] = psValue;
+        }
+      }
+    }
+
     // Se nenhum bloco com marcação foi encontrado, mas há texto, salva no escopo primário válido ou padrão
     if (Object.keys(codeMap).length === 0 && text.trim()) {
       const primaryScopeFile = fallbackFilesScope.find(f => !QuarantineManager.isInvalidFilePath(f)) || "src/output.ts";
