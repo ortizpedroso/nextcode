@@ -432,45 +432,45 @@ DIRETRIZES DE EXECUÇÃO:
           break;
         }
 
-        // Processa o primeiro nó elegível da fila
-        const nodeToExecute = executableNodes[0];
-        const taskDb = currentDbTasks.find((t) => t.id === nodeToExecute.id);
-        if (!taskDb) break;
+        // Execução Concorrente de Subagentes: Processa em lote (máx. 3 nós paralelos sem dependências mútuas)
+        const batchToExecute = executableNodes.slice(0, 3);
+        const tasksToExecute = batchToExecute
+          .map((node) => currentDbTasks.find((t) => t.id === node.id))
+          .filter((t): t is typeof currentDbTasks[0] => Boolean(t));
 
-        // Atualiza estado para 'running'
-        await prisma.taskNode.update({
-          where: { id: taskDb.id },
-          data: { status: "running" },
-        });
+        if (tasksToExecute.length === 0) break;
 
-        // 1. Contexto do projeto local
-        let projectContextBlock = "";
-        if (session.project && session.project.path) {
-          projectContextBlock = buildProjectContextBlock(session.project) || "";
-        }
+        const executeNodeInQueue = async (taskDb: typeof tasksToExecute[0]) => {
+          await prisma.taskNode.update({
+            where: { id: taskDb.id },
+            data: { status: "running" },
+          });
 
-        // 2. Skill de instrução
-        let skillInstructionBlock = "";
-        const firstUserMsg = await prisma.message.findFirst({
-          where: { sessionId: targetSessionId, role: "user" },
-          orderBy: { createdAt: "asc" },
-        });
-
-        if (firstUserMsg && firstUserMsg.content.startsWith("/")) {
-          const skillRes = resolveSkillOrCommand(
-            firstUserMsg.content,
-            session.project?.path || process.cwd()
-          );
-          if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
-            skillInstructionBlock = skillRes.skillBlock;
+          let projectContextBlock = "";
+          if (session.project && session.project.path) {
+            projectContextBlock = buildProjectContextBlock(session.project) || "";
           }
-        }
 
-        // 3. Dispatch via SmartRouter (Timeout resiliente de 90s)
-        const setting = await prisma.setting.findUnique({ where: { id: "default" } });
-        const smartRouter = new SmartRouter();
+          let skillInstructionBlock = "";
+          const firstUserMsg = await prisma.message.findFirst({
+            where: { sessionId: targetSessionId, role: "user" },
+            orderBy: { createdAt: "asc" },
+          });
 
-        const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role}) responsável pela etapa "${taskDb.title}".
+          if (firstUserMsg && firstUserMsg.content.startsWith("/")) {
+            const skillRes = resolveSkillOrCommand(
+              firstUserMsg.content,
+              session.project?.path || process.cwd()
+            );
+            if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
+              skillInstructionBlock = skillRes.skillBlock;
+            }
+          }
+
+          const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+          const smartRouter = new SmartRouter();
+
+          const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Para cada arquivo no escopo (${taskDb.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
@@ -480,119 +480,124 @@ DIRETRIZES DE EXECUÇÃO:
 \`\`\`
 3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.`;
 
-        const dispatchMessages: DispatchMessage[] = [
-          { role: "system", content: autonomousWorkerPrompt },
-        ];
-        if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
-        if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
+          const dispatchMessages: DispatchMessage[] = [
+            { role: "system", content: autonomousWorkerPrompt },
+          ];
+          if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
+          if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
 
-        dispatchMessages.push({
-          role: "user",
-          content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
-        });
-
-        let stepResultText = "";
-        try {
-          const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000;
-          const stepSignal = AbortSignal.timeout(stepTimeoutMs);
-          const dispatchPromise = smartRouter.dispatchWithFallback({
-            messages: dispatchMessages,
-            tier: "fast",
-            geminiKey: readSecret(setting?.geminiKey),
-            groqKey: readSecret((setting as any)?.groqKey),
-            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-            deepseekKey: readSecret((setting as any)?.deepseekKey),
-            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-            omniRouteKey: readSecret(setting?.omniRouteKey),
-            stream: false,
-            signal: stepSignal,
+          dispatchMessages.push({
+            role: "user",
+            content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
           });
 
-          const timeoutPromise = new Promise<null>((resolve) => {
-            if (stepSignal.aborted) return resolve(null);
-            stepSignal.addEventListener("abort", () => resolve(null), { once: true });
-          });
+          let stepResultText = "";
+          try {
+            const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000;
+            const stepSignal = AbortSignal.timeout(stepTimeoutMs);
+            const dispatchPromise = smartRouter.dispatchWithFallback({
+              messages: dispatchMessages,
+              tier: "fast",
+              geminiKey: readSecret(setting?.geminiKey),
+              groqKey: readSecret((setting as any)?.groqKey),
+              nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+              deepseekKey: readSecret((setting as any)?.deepseekKey),
+              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+              omniRouteKey: readSecret(setting?.omniRouteKey),
+              stream: false,
+              signal: stepSignal,
+            });
 
-          const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
-          if (!dispatchRes) {
-            throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
+            const timeoutPromise = new Promise<null>((resolve) => {
+              if (stepSignal.aborted) return resolve(null);
+              stepSignal.addEventListener("abort", () => resolve(null), { once: true });
+            });
+
+            const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
+            if (!dispatchRes) {
+              throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
+            }
+
+            if (dispatchRes) {
+              const resJson = await dispatchRes.response.json().catch(() => ({}));
+              if (resJson.choices?.[0]?.message?.content) {
+                stepResultText = resJson.choices[0].message.content;
+              } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+                stepResultText = resJson.candidates[0].content.parts[0].text;
+              } else {
+                stepResultText = `Etapa "${taskDb.title}" executada pelo motor autônomo.`;
+              }
+            }
+          } catch (err) {
+            stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
+            console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
           }
 
-          if (dispatchRes) {
-            const resJson = await dispatchRes.response.json().catch(() => ({}));
-            if (resJson.choices?.[0]?.message?.content) {
-              stepResultText = resJson.choices[0].message.content;
-            } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-              stepResultText = resJson.candidates[0].content.parts[0].text;
+          const qm = new QuarantineManager();
+          const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
+          const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
+          const type1Res = DualLensAuditor.validateType1(codeContentMap);
+          const type2Res = DualLensAuditor.validateType2(type1Res, taskDb.title, stepResultText, codeContentMap);
+
+          let finalStatus: "completed" | "failed" | "blocked" = "completed";
+          let promotionTarget: string | null = null;
+          const newAttempts = (taskDb.attempts || 0) + 1;
+
+          if (type2Res.verdict === "APPROVED") {
+            finalStatus = "completed";
+            const targetProjectRoot = session.project?.path || process.cwd();
+            qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
+            promotionTarget = targetProjectRoot;
+          } else {
+            qm.purgeWorkspace(taskDb.id);
+            if (newAttempts >= (taskDb.maxAttempts || 3)) {
+              finalStatus = "blocked";
             } else {
-              stepResultText = `Etapa "${taskDb.title}" executada pelo motor autônomo.`;
+              finalStatus = "failed";
             }
           }
-        } catch (err) {
-          stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
-          console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
-        }
 
-        // 4. Quarentena e Auditoria Dupla-Lente
-        const qm = new QuarantineManager();
-        const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
-        const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
-        const type1Res = DualLensAuditor.validateType1(codeContentMap);
-        const type2Res = DualLensAuditor.validateType2(type1Res, taskDb.title, stepResultText, codeContentMap);
+          const mcpRes = {
+            success: type2Res.verdict === "APPROVED",
+            nodeId: taskDb.id,
+            title: taskDb.title,
+            output: stepResultText,
+            auditVerdict: type2Res.verdict,
+            promotedPath: promotionTarget,
+          };
 
-        let finalStatus: "completed" | "failed" | "blocked" = "completed";
-        let promotionTarget: string | null = null;
-        const newAttempts = (taskDb.attempts || 0) + 1;
+          await prisma.taskNode.update({
+            where: { id: taskDb.id },
+            data: {
+              status: finalStatus,
+              attempts: newAttempts,
+              result: JSON.stringify(mcpRes),
+            },
+          });
 
-        if (type2Res.verdict === "APPROVED") {
-          finalStatus = "completed";
-          const targetProjectRoot = session.project?.path || process.cwd();
-          qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
-          promotionTarget = targetProjectRoot;
-        } else {
-          qm.purgeWorkspace(taskDb.id);
-          if (newAttempts >= (taskDb.maxAttempts || 3)) {
-            finalStatus = "blocked";
-          } else {
-            finalStatus = "failed";
-          }
-        }
+          TelemetryLogger.log({
+            sessionId: targetSessionId,
+            action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
+            details: { nodeId: taskDb.id, title: taskDb.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
+          });
 
-        const mcpRes = {
-          success: type2Res.verdict === "APPROVED",
-          nodeId: taskDb.id,
-          title: taskDb.title,
-          output: stepResultText,
-          auditVerdict: type2Res.verdict,
-          promotedPath: promotionTarget,
+          return { id: taskDb.id, finalStatus };
         };
 
-        await prisma.taskNode.update({
-          where: { id: taskDb.id },
-          data: {
-            status: finalStatus,
-            attempts: newAttempts,
-            result: JSON.stringify(mcpRes),
-          },
-        });
+        const batchResults = await Promise.all(tasksToExecute.map((t) => executeNodeInQueue(t)));
+        processedCount += batchResults.length;
 
-        processedCount++;
-
-        TelemetryLogger.log({
-          sessionId: targetSessionId,
-          action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
-          details: { nodeId: taskDb.id, title: taskDb.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
-        });
-
-        // Se o nó falhou definitivamente (blocked), propaga bloqueio
-        if (finalStatus === "blocked") {
-          dagEngine.updateNodeStatus(taskDb.id, "blocked");
-          for (const remainingNode of dagEngine.getNodes()) {
-            if (remainingNode.status === "blocked") {
-              await prisma.taskNode.update({
-                where: { id: remainingNode.id },
-                data: { status: "blocked" },
-              });
+        // Propaga bloqueio em cascata se algum nó do lote falhou definitivamente
+        for (const res of batchResults) {
+          if (res.finalStatus === "blocked") {
+            dagEngine.updateNodeStatus(res.id, "blocked");
+            for (const remainingNode of dagEngine.getNodes()) {
+              if (remainingNode.status === "blocked") {
+                await prisma.taskNode.update({
+                  where: { id: remainingNode.id },
+                  data: { status: "blocked" },
+                });
+              }
             }
           }
         }
@@ -633,6 +638,45 @@ DIRETRIZES DE EXECUÇÃO:
         processedCount,
         allCompleted,
         tasks: finalSessionTasks,
+      });
+    }
+
+    // Ação 4: Desbloqueio e re-tentativa manual de um nó com falha/bloqueado
+    if (action === "retry_node" && nodeId) {
+      const targetTask = await prisma.taskNode.findUnique({ where: { id: nodeId } });
+      if (!targetTask) {
+        return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
+      }
+
+      // Desbloqueia o nó selecionado resetando tentativas e status
+      await prisma.taskNode.update({
+        where: { id: nodeId },
+        data: { status: "pending", attempts: 0 },
+      });
+
+      // Libera nós em cascata da mesma sessão que estavam bloqueados
+      const sessionTasks = await prisma.taskNode.findMany({
+        where: { sessionId: targetTask.sessionId },
+      });
+
+      for (const task of sessionTasks) {
+        if (task.status === "blocked") {
+          await prisma.taskNode.update({
+            where: { id: task.id },
+            data: { status: "pending", attempts: 0 },
+          });
+        }
+      }
+
+      const updatedTasks = await prisma.taskNode.findMany({
+        where: { sessionId: targetTask.sessionId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Nó "${targetTask.title}" e nós bloqueados em cascata foram liberados para re-tentativa.`,
+        tasks: updatedTasks,
       });
     }
 
