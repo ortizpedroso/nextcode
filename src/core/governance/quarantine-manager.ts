@@ -192,11 +192,27 @@ export class QuarantineManager {
       fs.mkdirSync(targetProjectRoot, { recursive: true });
     }
 
+    // Purga arquivos com nomes proibidos/inválidos na raiz do projeto (ex: Next.js) que causam shadow de comandos no Windows
+    const invalidRootFiles = ["Next.js", "next.js", "Node.js", "node.js", "React.js", "react.js"];
+    for (const badFile of invalidRootFiles) {
+      const badPath = path.join(targetProjectRoot, badFile);
+      if (fs.existsSync(badPath)) {
+        try {
+          fs.unlinkSync(badPath);
+          console.log(`[QUARANTINE_CLEANUP] Removido arquivo residual de shadow no projeto: ${badPath}`);
+        } catch {}
+      }
+    }
+
     // Garante a cópia de todos os arquivos gerados na quarentena para a pasta do projeto
     const filesInQuarantine = this.listFilesInQuarantine(workspacePath);
     const targetFiles = filesInQuarantine.length > 0 ? filesInQuarantine : filesScope;
 
     for (const fileRel of targetFiles) {
+      // Ignora a promoção se o caminho relativo for um nome de arquivo proibido
+      if (QuarantineManager.isInvalidFilePath(fileRel)) {
+        continue;
+      }
       const sourcePath = path.join(workspacePath, fileRel);
       if (fs.existsSync(sourcePath)) {
         const destPath = path.join(targetProjectRoot, fileRel);
