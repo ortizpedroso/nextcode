@@ -12,10 +12,12 @@ import {
   Copy,
   Check,
   Lock,
+  Terminal,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
 import { PromptBar } from "@/components/session/prompt-bar";
+import { WebTerminal } from "@/components/session/web-terminal";
 
 export interface TaskNode {
   id: string;
@@ -87,6 +89,7 @@ export function Workspace({
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = async (id: string, text: string) => {
@@ -231,6 +234,19 @@ export function Workspace({
               </button>
 
               <button
+                onClick={() => setShowTerminal(!showTerminal)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
+                  showTerminal
+                    ? "bg-[#0066cc] text-white border-blue-600 shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
+                }`}
+                title="Alternar Terminal Web Sandbox"
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                <span>Terminal</span>
+              </button>
+
+              <button
                 onClick={() => setShowDagPanel(!showDagPanel)}
                 className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-200/80 dark:border-slate-700"
                 title="Alternar Painel do Grafo DAG"
@@ -347,6 +363,15 @@ export function Workspace({
                 onSubmit={onCreateDAG}
                 onStop={onStop}
               />
+
+              {/* Terminal Web Sandbox Recolhível */}
+              {showTerminal && (
+                <WebTerminal
+                  sessionId={activeSessionId}
+                  projectId={null}
+                  onClose={() => setShowTerminal(false)}
+                />
+              )}
             </div>
 
             {/* Direita: Painel Lateral DagSidebar (Status Tracker Autônomo) */}
