@@ -34,6 +34,16 @@ export class DualLensAuditor {
     const testFailures: string[] = [];
 
     for (const [filePath, content] of Object.entries(codeContentMap)) {
+      // 0. Validação mecânica estrita para arquivos .json (Linter determinístico)
+      if (filePath.toLowerCase().endsWith(".json")) {
+        try {
+          const cleanJsonText = content.replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path)?.*$/gm, "").trim();
+          JSON.parse(cleanJsonText);
+        } catch (jsonErr: any) {
+          compilationErrors.push(`[JSON SYNTAX ERROR] Estrutura JSON inválida em ${filePath}: ${jsonErr.message}`);
+        }
+      }
+
       // 1. Verificação sintática básica (compilação TypeScript / AST balance checker)
       if (content.includes("eval(") || content.includes("exec(") || content.includes("new Function(")) {
         securityViolations.push(`[OWASP VIOLATION] Uso proibido de eval/exec/Function detectado em ${filePath}`);

@@ -41,7 +41,15 @@ export class QuarantineManager {
       fs.mkdirSync(parentDir, { recursive: true });
     }
 
-    fs.writeFileSync(targetPath, content, "utf-8");
+    let finalContent = content;
+    // Sanitização determinística para arquivos JSON (remove comentários no topo como // file: ...)
+    if (relativeFilePath.toLowerCase().endsWith(".json")) {
+      finalContent = finalContent
+        .replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path)?.*$/gm, "")
+        .trim();
+    }
+
+    fs.writeFileSync(targetPath, finalContent, "utf-8");
     return targetPath;
   }
 
