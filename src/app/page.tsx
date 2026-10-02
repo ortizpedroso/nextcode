@@ -534,6 +534,37 @@ export default function DashboardOrchestrator() {
     await fetchSettings();
   };
 
+  const handleExportSessionJSON = (sessionId: string) => {
+    window.open(`/api/sessions/export-import?sessionId=${sessionId}`, "_blank");
+  };
+
+  const handleImportSessionJSON = async (file: File) => {
+    try {
+      const text = await file.text();
+      const backupJson = JSON.parse(text);
+      const res = await authFetch("/api/sessions/export-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup: backupJson }),
+      });
+      const data = await res.json();
+      if (res.ok && data.session) {
+        await fetchProjects();
+        await fetchAdhocSessions();
+        handleSelectSession(data.session.id);
+        setConsoleLogs((prev) => [
+          ...prev,
+          `[BACKUP] Sessão "${data.session.title}" restaurada a partir do arquivo JSON!`,
+        ]);
+      } else {
+        alert(data.error || "Erro ao importar sessão.");
+      }
+    } catch (err) {
+      console.error("Erro ao importar JSON:", err);
+      alert("Arquivo JSON inválido.");
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {/* Sidebar Reorganizada em 3 Seções */}
@@ -574,6 +605,8 @@ export default function DashboardOrchestrator() {
         onSaveSettings={handleSaveSettings}
         onRefreshProjects={fetchProjects}
         onAttachSessionToProject={handleAttachSessionToProject}
+        onExportSessionJSON={handleExportSessionJSON}
+        onImportSessionJSON={handleImportSessionJSON}
       />
 
       {/* Workspace Principal à Direita */}

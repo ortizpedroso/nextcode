@@ -49,6 +49,8 @@ interface SidebarProps {
   onSaveSettings: (updated: SettingsFormState) => Promise<void>;
   onRefreshProjects?: () => Promise<void>;
   onAttachSessionToProject?: (sessionId: string, projectId: string | null) => Promise<void>;
+  onExportSessionJSON?: (sessionId: string) => void;
+  onImportSessionJSON?: (file: File) => Promise<void>;
 }
 
 export function Sidebar({
@@ -67,6 +69,8 @@ export function Sidebar({
   onSaveSettings,
   onRefreshProjects,
   onAttachSessionToProject,
+  onExportSessionJSON,
+  onImportSessionJSON,
 }: SidebarProps) {
   const { theme, setTheme } = useTheme();
   const [openProjectDialogOpen, setOpenProjectDialogOpen] = useState(false);
@@ -130,13 +134,33 @@ export function Sidebar({
         </div>
 
         {/* Botão em Destaque: + Nova Sessão Ad-hoc */}
-        <button
-          onClick={() => onCreateSession(null)}
-          className="w-full bg-[#0066cc] hover:bg-blue-700 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Nova Sessão Ad-hoc</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onCreateSession(null)}
+            className="flex-1 bg-[#0066cc] hover:bg-blue-700 text-white font-semibold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nova Sessão</span>
+          </button>
+
+          {onImportSessionJSON && (
+            <label className="cursor-pointer p-2 bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors border border-slate-300/60 dark:border-slate-700" title="Restaurar Sessão a partir de Backup JSON">
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && onImportSessionJSON) {
+                    onImportSessionJSON(file);
+                  }
+                  e.target.value = "";
+                }}
+              />
+              <span className="font-mono text-[10px]">Importar</span>
+            </label>
+          )}
+        </div>
 
         {/* Link Principal: Orquestração DAG */}
         <button
