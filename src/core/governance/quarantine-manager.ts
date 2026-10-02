@@ -67,6 +67,31 @@ export class QuarantineManager {
   /**
    * Extrai blocos de código formatados em markdown e grava na quarentena
    */
+  /**
+   * Helper para filtrar nomes proibidos ou inválidos que não representam arquivos de código-fonte
+   */
+  private static isInvalidFilePath(pathStr?: string): boolean {
+    if (!pathStr || typeof pathStr !== "string") return true;
+    const clean = pathStr.trim().replace(/^\\|^\//, "");
+    const lower = clean.toLowerCase();
+
+    // Nomes de frameworks/ferramentas conhecidos que não são caminhos de arquivos
+    const forbidden = [
+      "next.js", "node.js", "react.js", "vue.js", "express.js", "nest.js",
+      "nuxt.js", "vite.js", "angular.js", "ember.js", "gatsby.js", "javascript", "typescript"
+    ];
+    if (forbidden.includes(lower)) return true;
+
+    // URLs e domínios
+    if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) return true;
+    if (lower.endsWith(".com") || lower.endsWith(".org") || lower.endsWith(".net") || lower.endsWith(".dev") || lower.endsWith(".io")) return true;
+
+    return false;
+  }
+
+  /**
+   * Extrai blocos de código formatados em markdown e grava na quarentena
+   */
   public extractAndWriteCodeBlocks(
     taskId: string,
     text: string,
@@ -81,45 +106,61 @@ export class QuarantineManager {
     let index = 0;
 
     while ((match = codeBlockRegex.exec(text)) !== null) {
-      let relativePath = match[1];
+      let relativePath: string | undefined = match[1];
       const codeContent = match[2];
 
-      // Tenta encontrar anotações no próprio topo do código como // file: src/..., // src/..., # path: src/...
+      if (relativePath && QuarantineManager.isInvalidFilePath(relativePath)) {
+        relativePath = undefined;
+      }
+
+      // 1. Procurar declaração explícita no próprio topo do código como // file: src/... ou // filepath: src/...
       if (!relativePath) {
-        // 1. Procurar declaração explícita como // file: src/... ou // filepath: src/...
         const explicitHeaderMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):\s*([^\s\n*]+)/i);
-        if (explicitHeaderMatch) {
+        if (explicitHeaderMatch && !QuarantineManager.isInvalidFilePath(explicitHeaderMatch[1])) {
           relativePath = explicitHeaderMatch[1];
         } else {
-          // 2. Procurar caminho direto em comentário no topo como // src/..., // server/..., // lib/..., // app/...
+          // 2. Procurar caminho direto em comentário no topo como // src/..., // app/..., // lib/...
           const directPathMatch = codeContent.match(/^(?:\/\/|#|\/\*)\s*([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)/i);
-          if (directPathMatch) {
+          if (directPathMatch && !QuarantineManager.isInvalidFilePath(directPathMatch[1]) && (directPathMatch[1].includes("/") || directPathMatch[1].includes("\\"))) {
             relativePath = directPathMatch[1];
           }
         }
       }
 
-      // 3. Procurar em cabeçalhos markdown imediatamente anteriores ao bloco de código
+      // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco (pega o último caminho válido antes do bloco)
+      if (!relativePath) {
+        const textBeforeBlock = text.substring(0, match.index);
+        const allPathsMatch = textBeforeBlock.match(/([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]+)/gi);
+        if (allPathsMatch) {
+          const validPaths = allPathsMatch.filter((p) => !QuarantineManager.isInvalidFilePath(p));
+          if (validPaths.length > 0) {
+            relativePath = validPaths[validPaths.length - 1];
+          }
+        }
+      }
+
+      // 4. Procurar em cabeçalhos markdown imediatamente anteriores ao bloco de código
       if (!relativePath) {
         const textBeforeBlock = text.substring(0, match.index);
         const lastHeadingMatch = textBeforeBlock.match(/(?:###|####|#|\*\*)\s*(?:\[.*\]\s*)?`?([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)`?\s*$/m);
-        if (lastHeadingMatch) {
+        if (lastHeadingMatch && !QuarantineManager.isInvalidFilePath(lastHeadingMatch[1])) {
           relativePath = lastHeadingMatch[1];
         }
       }
 
-      // 4. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice ou primário
+      // 5. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice ou primário
       if (!relativePath) {
-        if (fallbackFilesScope.length > index) {
+        const validFallback = fallbackFilesScope.find(f => !QuarantineManager.isInvalidFilePath(f));
+        if (fallbackFilesScope.length > index && !QuarantineManager.isInvalidFilePath(fallbackFilesScope[index])) {
           relativePath = fallbackFilesScope[index];
-        } else if (fallbackFilesScope.length > 0) {
-          relativePath = fallbackFilesScope[0];
+        } else if (validFallback) {
+          relativePath = validFallback;
         } else {
           relativePath = `src/generated-${index + 1}.ts`;
         }
       }
 
-      if (relativePath && codeContent) {
+      if (relativePath && codeContent && !QuarantineManager.isInvalidFilePath(relativePath)) {
         const cleanPath = relativePath.trim().replace(/^\\|^\//, "");
         this.writeFile(taskId, cleanPath, codeContent);
         codeMap[cleanPath] = codeContent;
@@ -127,9 +168,9 @@ export class QuarantineManager {
       index++;
     }
 
-    // Se nenhum bloco com marcação foi encontrado, mas há texto, salva no escopo primário ou padrão
+    // Se nenhum bloco com marcação foi encontrado, mas há texto, salva no escopo primário válido ou padrão
     if (Object.keys(codeMap).length === 0 && text.trim()) {
-      const primaryScopeFile = fallbackFilesScope[0] || "src/output.ts";
+      const primaryScopeFile = fallbackFilesScope.find(f => !QuarantineManager.isInvalidFilePath(f)) || "src/output.ts";
       this.writeFile(taskId, primaryScopeFile, text);
       codeMap[primaryScopeFile] = text;
     }

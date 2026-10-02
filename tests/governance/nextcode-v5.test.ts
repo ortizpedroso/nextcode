@@ -220,5 +220,18 @@ export const fetchApi = () => true;
       const implNode = decomposed.nodes.find((n: any) => n.role === "developer");
       expect(implNode.filesScope).toEqual(["package.json"]);
     });
+
+    it("deve ignorar Next.js como nome de arquivo e extrair caminhos válidos como src/core/engine.ts", () => {
+      const qm = new QuarantineManager(testQuarantineDir);
+      const text = `Next.js (14.2.0) is outdated
+Crie o arquivo em src/core/engine.ts com o código:
+\`\`\`ts
+export const defaultEngine = {};
+\`\`\`
+`;
+      const codeMap = qm.extractAndWriteCodeBlocks("TASK-TEST-NEXTJS", text, []);
+      expect(codeMap["Next.js"]).toBeUndefined();
+      expect(codeMap["src/core/engine.ts"]).toBe("export const defaultEngine = {};\n");
+    });
   });
 });
