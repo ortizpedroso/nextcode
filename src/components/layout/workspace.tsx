@@ -55,6 +55,7 @@ interface WorkspaceProps {
   onExecuteNode: (nodeId: string) => Promise<void>;
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
+  onInspectQuarantine?: (taskId: string) => void;
   onStop?: () => void;
 }
 
@@ -77,6 +78,7 @@ export function Workspace({
   onExecuteNode,
   onRefreshTasks,
   onRetryNode,
+  onInspectQuarantine,
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
@@ -343,6 +345,7 @@ export function Workspace({
                 onClose={() => setShowDagPanel(false)}
                 onRefreshTasks={onRefreshTasks}
                 onRetryNode={onRetryNode}
+                onInspectQuarantine={onInspectQuarantine}
               />
             )}
           </div>

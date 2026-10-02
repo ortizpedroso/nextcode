@@ -16,6 +16,7 @@ import {
   Copy,
   Check,
   RotateCcw,
+  Eye,
 } from "lucide-react";
 
 interface DagSidebarProps {
@@ -26,6 +27,7 @@ interface DagSidebarProps {
   onClose: () => void;
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
+  onInspectQuarantine?: (taskId: string) => void;
 }
 
 export function DagSidebar({
@@ -36,6 +38,7 @@ export function DagSidebar({
   onClose,
   onRefreshTasks,
   onRetryNode,
+  onInspectQuarantine,
 }: DagSidebarProps) {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
@@ -201,6 +204,16 @@ export function DagSidebar({
                     </button>
                     {task.result}
                   </div>
+                )}
+
+                {(task.result || task.status === "completed" || task.status === "failed") && onInspectQuarantine && (
+                  <button
+                    onClick={() => onInspectQuarantine(task.id)}
+                    className="w-full mt-1 py-1 px-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-[#0066cc] dark:text-blue-400 rounded-lg text-[10px] font-semibold border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Eye className="w-3 h-3 text-[#0066cc] dark:text-blue-400" />
+                    <span>Ver Diff / Quarentena</span>
+                  </button>
                 )}
 
                 {(task.status === "failed" || task.status === "blocked") && onRetryNode && (

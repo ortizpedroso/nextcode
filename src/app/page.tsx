@@ -7,6 +7,7 @@ import { Workspace, TaskNode, SessionMessage } from "@/components/layout/workspa
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
 import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
+import { QuarantineDiffModal } from "@/components/session/quarantine-diff-modal";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -20,6 +21,7 @@ export default function DashboardOrchestrator() {
   const [tasks, setTasks] = useState<TaskNode[]>([]);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
+  const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [tokensSaved, setTokensSaved] = useState<number>(12450);
@@ -580,8 +582,16 @@ export default function DashboardOrchestrator() {
         onExecuteNode={handleExecuteNode}
         onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
         onRetryNode={handleRetryNode}
+        onInspectQuarantine={setInspectTaskId}
         onStop={handleStopProcessing}
       />
+
+      {inspectTaskId && (
+        <QuarantineDiffModal
+          taskId={inspectTaskId}
+          onClose={() => setInspectTaskId(null)}
+        />
+      )}
     </div>
   );
 }
