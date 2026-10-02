@@ -125,18 +125,25 @@ export class DualLensAuditor {
           const importPrefix = impMatch[1];
           const relativeModule = impMatch[2];
 
-          let normalizedImport = importPrefix === "@/" ? `src/${relativeModule}` : relativeModule;
-          normalizedImport = normalizedImport.replace(/^\.\//, "").replace(/^\.\.\//, "");
-          const baseImportPath = normalizedImport.replace(/\.(?:ts|tsx|js|jsx)$/, "");
+          const path = require("path");
+          const fileDir = path.dirname(filePath).replace(/\\/g, "/");
 
-          const candidateKeys = Object.keys(codeContentMap).map((k) => k.replace(/\.(?:ts|tsx|js|jsx)$/, ""));
+          let resolvedPath = "";
+          if (importPrefix === "@/") {
+            resolvedPath = `src/${relativeModule}`;
+          } else {
+            resolvedPath = path.normalize(path.join(fileDir, `${importPrefix}${relativeModule}`)).replace(/\\/g, "/");
+          }
+
+          const baseImportPath = resolvedPath.replace(/\.(?:ts|tsx|js|jsx|css|json)$/, "");
+
+          const candidateKeys = Object.keys(codeContentMap).map((k) => k.replace(/\\/g, "/").replace(/\.(?:ts|tsx|js|jsx|css|json)$/, ""));
           const existsInBatch = candidateKeys.includes(baseImportPath) || candidateKeys.includes(`${baseImportPath}/index`);
 
           if (!existsInBatch && projectRoot) {
             const fs = require("fs");
-            const path = require("path");
             let existsOnDisk = false;
-            const possibleExtensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js"];
+            const possibleExtensions = ["", ".ts", ".tsx", ".js", ".jsx", ".css", ".json", "/index.ts", "/index.tsx", "/index.js"];
             for (const ext of possibleExtensions) {
               if (fs.existsSync(path.join(projectRoot, `${baseImportPath}${ext}`))) {
                 existsOnDisk = true;
@@ -145,7 +152,7 @@ export class DualLensAuditor {
             }
             if (!existsOnDisk) {
               compilationErrors.push(
-                `[MISSING MODULE ERROR] O arquivo ${filePath} importa "${impMatch[0]}", mas o módulo "${baseImportPath}" não existe na quarentena nem no repositório.`
+                `[MISSING MODULE ERROR] O arquivo ${filePath} importa "${impMatch[0]}", mas o módulo "${resolvedPath}" não existe na quarentena nem no repositório.`
               );
             }
           }
