@@ -13,6 +13,9 @@ import { TelemetryModal } from "@/components/session/telemetry-modal";
 import { QuotaModal } from "@/components/session/quota-modal";
 import { SkillProposalModal } from "@/components/session/skill-proposal-modal";
 import { BenchmarkModal } from "@/components/session/benchmark-modal";
+import { McpToolsModal } from "@/components/session/mcp-tools-modal";
+import { CodeSearchModal } from "@/components/session/code-search-modal";
+import { SessionRevisionsModal } from "@/components/session/session-revisions-modal";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -33,6 +36,9 @@ export default function DashboardOrchestrator() {
   const [showQuotaModal, setShowQuotaModal] = useState(false);
   const [showSkillsModal, setShowSkillsModal] = useState(false);
   const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
+  const [showMcpToolsModal, setShowMcpToolsModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showRevisionsModal, setShowRevisionsModal] = useState(false);
   const [canonicalSpec, setCanonicalSpec] = useState("");
   const [isSpecApproved, setIsSpecApproved] = useState(false);
 
@@ -643,6 +649,9 @@ export default function DashboardOrchestrator() {
         onOpenQuotaModal={() => setShowQuotaModal(true)}
         onOpenSkillsModal={() => setShowSkillsModal(true)}
         onOpenBenchmarkModal={() => setShowBenchmarkModal(true)}
+        onOpenMcpToolsModal={() => setShowMcpToolsModal(true)}
+        onOpenSearchModal={() => setShowSearchModal(true)}
+        onOpenRevisionsModal={() => setShowRevisionsModal(true)}
         onStop={handleStopProcessing}
       />
 
@@ -675,6 +684,33 @@ export default function DashboardOrchestrator() {
         <BenchmarkModal
           sessionId={activeSessionId}
           onClose={() => setShowBenchmarkModal(false)}
+        />
+      )}
+
+      {showMcpToolsModal && (
+        <McpToolsModal
+          onClose={() => setShowMcpToolsModal(false)}
+        />
+      )}
+
+      {showSearchModal && (
+        <CodeSearchModal
+          projectId={activeProjectId}
+          onClose={() => setShowSearchModal(false)}
+        />
+      )}
+
+      {showRevisionsModal && activeSessionId && (
+        <SessionRevisionsModal
+          sessionId={activeSessionId}
+          onClose={() => setShowRevisionsModal(false)}
+          onRevisionRestored={async () => {
+            await fetchSessionDetails(activeSessionId);
+            setConsoleLogs((prev) => [
+              ...prev,
+              "[REVISÃO] Estado da sessão e DAG restaurados com sucesso!",
+            ]);
+          }}
         />
       )}
 

@@ -16,6 +16,9 @@ import {
   Activity,
   Zap,
   BarChart3,
+  Wrench,
+  Search,
+  History,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -68,6 +71,9 @@ interface WorkspaceProps {
   onOpenQuotaModal?: () => void;
   onOpenSkillsModal?: () => void;
   onOpenBenchmarkModal?: () => void;
+  onOpenMcpToolsModal?: () => void;
+  onOpenSearchModal?: () => void;
+  onOpenRevisionsModal?: () => void;
   onStop?: () => void;
 }
 
@@ -97,6 +103,9 @@ export function Workspace({
   onOpenQuotaModal,
   onOpenSkillsModal,
   onOpenBenchmarkModal,
+  onOpenMcpToolsModal,
+  onOpenSearchModal,
+  onOpenRevisionsModal,
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
@@ -278,6 +287,33 @@ export function Workspace({
               >
                 <BarChart3 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Benchmark</span>
+              </button>
+
+              <button
+                onClick={onOpenSearchModal}
+                className="px-3 py-1.5 bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-cyan-200 dark:border-cyan-800"
+                title="Busca de Código e Indexação do Projeto"
+              >
+                <Search className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                <span>Busca</span>
+              </button>
+
+              <button
+                onClick={onOpenMcpToolsModal}
+                className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-[#0066cc] dark:text-blue-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-blue-200 dark:border-blue-800"
+                title="Explorer & Testador de Ferramentas MCP JSON-RPC"
+              >
+                <Wrench className="w-3.5 h-3.5 text-[#0066cc] dark:text-blue-400" />
+                <span>MCP Tools</span>
+              </button>
+
+              <button
+                onClick={onOpenRevisionsModal}
+                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-indigo-200 dark:border-indigo-800"
+                title="Histórico de Revisões e Linha do Tempo"
+              >
+                <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Revisões</span>
               </button>
 
               <button
