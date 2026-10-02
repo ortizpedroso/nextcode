@@ -135,6 +135,19 @@ export default function DashboardOrchestrator() {
     fetchSettings();
   }, []);
 
+  // Polling em tempo real: Sincroniza estado das tarefas e mensagens enquanto houver DAG rodando no servidor
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const hasActiveTasks = tasks.some((t) => t.status === "running" || t.status === "pending");
+    if (!hasActiveTasks && !loading) return;
+
+    const interval = setInterval(() => {
+      fetchSessionDetails(activeSessionId);
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [activeSessionId, tasks, loading, fetchSessionDetails]);
+
   const handleSelectSession = async (sessionId: string) => {
     setActiveSessionId(sessionId);
     setActiveView("dag");
