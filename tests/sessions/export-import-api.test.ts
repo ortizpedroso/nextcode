@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import prisma from "@/lib/prisma";
 import { GET, POST } from "@/app/api/sessions/export-import/route";
 import { NextRequest } from "next/server";
@@ -8,23 +8,16 @@ vi.mock("@/core/security/local-auth", () => ({
 }));
 
 describe("API /api/sessions/export-import", () => {
-  let testSessionId: string;
-
-  beforeEach(async () => {
-    // Clear test database
-    await prisma.message.deleteMany({});
-    await prisma.taskNode.deleteMany({});
-    await prisma.session.deleteMany({});
-
+  it("GET — exports session JSON backup correctly", async () => {
     const session = await prisma.session.create({
       data: {
-        title: "Test Export Session",
+        title: "Test Export Session Unique",
         canonicalSpec: "# Spec Test",
         specApproved: true,
         tasks: {
           create: [
             {
-              title: "Task 1",
+              title: "Task 1 Unique",
               role: "architect",
               status: "completed",
               dependencies: "[]",
@@ -35,25 +28,21 @@ describe("API /api/sessions/export-import", () => {
           create: [
             {
               role: "user",
-              content: "Hello NextCode",
+              content: "Hello NextCode Unique",
             },
           ],
         },
       },
     });
 
-    testSessionId = session.id;
-  });
-
-  it("GET — exports session JSON backup correctly", async () => {
-    const req = new NextRequest(`http://localhost/api/sessions/export-import?sessionId=${testSessionId}`);
+    const req = new NextRequest(`http://localhost/api/sessions/export-import?sessionId=${session.id}`);
     const res = await GET(req);
 
     expect(res.status).toBe(200);
     const data = await res.json();
 
     expect(data.version).toBe("5.0");
-    expect(data.session.title).toBe("Test Export Session");
+    expect(data.session.title).toBe("Test Export Session Unique");
     expect(data.tasks.length).toBe(1);
     expect(data.messages.length).toBe(1);
   });
@@ -62,13 +51,13 @@ describe("API /api/sessions/export-import", () => {
     const backupData = {
       version: "5.0",
       session: {
-        title: "Restored Session",
+        title: "Restored Session Unique",
         canonicalSpec: "# Restored Spec",
         specApproved: true,
       },
       tasks: [
         {
-          title: "Restored Task 1",
+          title: "Restored Task 1 Unique",
           role: "developer",
           status: "pending",
           dependencies: "[]",
@@ -77,7 +66,7 @@ describe("API /api/sessions/export-import", () => {
       messages: [
         {
           role: "user",
-          content: "Import test message",
+          content: "Import test message unique",
         },
       ],
     };
@@ -100,6 +89,6 @@ describe("API /api/sessions/export-import", () => {
       where: { sessionId: data.session.id },
     });
     expect(restoredTasks.length).toBe(1);
-    expect(restoredTasks[0].title).toBe("Restored Task 1");
+    expect(restoredTasks[0].title).toBe("Restored Task 1 Unique");
   });
 });

@@ -10,6 +10,9 @@ import { SettingsFormState, CustomProviderItem } from "@/components/settings/set
 import { QuarantineDiffModal } from "@/components/session/quarantine-diff-modal";
 import { CanonicalSpecModal } from "@/components/session/canonical-spec-modal";
 import { TelemetryModal } from "@/components/session/telemetry-modal";
+import { QuotaModal } from "@/components/session/quota-modal";
+import { SkillProposalModal } from "@/components/session/skill-proposal-modal";
+import { BenchmarkModal } from "@/components/session/benchmark-modal";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -27,6 +30,9 @@ export default function DashboardOrchestrator() {
 
   const [showSpecModal, setShowSpecModal] = useState(false);
   const [showTelemetryModal, setShowTelemetryModal] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
+  const [showBenchmarkModal, setShowBenchmarkModal] = useState(false);
   const [canonicalSpec, setCanonicalSpec] = useState("");
   const [isSpecApproved, setIsSpecApproved] = useState(false);
 
@@ -634,6 +640,9 @@ export default function DashboardOrchestrator() {
         onExportAuditReport={handleExportAuditReport}
         onOpenSpecModal={() => setShowSpecModal(true)}
         onOpenTelemetryModal={() => setShowTelemetryModal(true)}
+        onOpenQuotaModal={() => setShowQuotaModal(true)}
+        onOpenSkillsModal={() => setShowSkillsModal(true)}
+        onOpenBenchmarkModal={() => setShowBenchmarkModal(true)}
         onStop={handleStopProcessing}
       />
 
@@ -647,6 +656,25 @@ export default function DashboardOrchestrator() {
       {showTelemetryModal && (
         <TelemetryModal
           onClose={() => setShowTelemetryModal(false)}
+        />
+      )}
+
+      {showQuotaModal && (
+        <QuotaModal
+          onClose={() => setShowQuotaModal(false)}
+        />
+      )}
+
+      {showSkillsModal && (
+        <SkillProposalModal
+          onClose={() => setShowSkillsModal(false)}
+        />
+      )}
+
+      {showBenchmarkModal && activeSessionId && (
+        <BenchmarkModal
+          sessionId={activeSessionId}
+          onClose={() => setShowBenchmarkModal(false)}
         />
       )}
 

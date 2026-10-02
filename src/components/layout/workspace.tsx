@@ -14,6 +14,8 @@ import {
   Lock,
   Terminal,
   Activity,
+  Zap,
+  BarChart3,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -63,6 +65,9 @@ interface WorkspaceProps {
   onExportAuditReport?: () => void;
   onOpenSpecModal?: () => void;
   onOpenTelemetryModal?: () => void;
+  onOpenQuotaModal?: () => void;
+  onOpenSkillsModal?: () => void;
+  onOpenBenchmarkModal?: () => void;
   onStop?: () => void;
 }
 
@@ -89,6 +94,9 @@ export function Workspace({
   onExportAuditReport,
   onOpenSpecModal,
   onOpenTelemetryModal,
+  onOpenQuotaModal,
+  onOpenSkillsModal,
+  onOpenBenchmarkModal,
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
@@ -243,6 +251,33 @@ export function Workspace({
               >
                 <Activity className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>Telemetria</span>
+              </button>
+
+              <button
+                onClick={onOpenQuotaModal}
+                className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-amber-200 dark:border-amber-800"
+                title="Gestão de Cotas e Rate-Limits dos Provedores"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Cotas</span>
+              </button>
+
+              <button
+                onClick={onOpenSkillsModal}
+                className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-purple-200 dark:border-purple-800"
+                title="Propostas de Habilidades Aprendidas (Candidate Skills)"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                <span>Skills</span>
+              </button>
+
+              <button
+                onClick={onOpenBenchmarkModal}
+                className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-emerald-200 dark:border-emerald-800"
+                title="Simulador e Benchmark de Replay de DAG"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Benchmark</span>
               </button>
 
               <button
