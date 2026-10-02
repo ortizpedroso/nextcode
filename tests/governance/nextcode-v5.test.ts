@@ -5,6 +5,7 @@ import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { IncidentReporter } from "@/core/governance/incident-reporter";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
+import { extractFilePathsFromText, SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -208,6 +209,16 @@ export const fetchApi = () => true;
 
       // Limpa os arquivos de teste
       fs.rmSync(testProjectRoot, { recursive: true, force: true });
+    });
+
+    it("deve extrair nomes de arquivos explicitamente citados no prompt do usuário via extractFilePathsFromText", () => {
+      const files = extractFilePathsFromText("Por favor, altere o arquivo package.json e corrija o prisma/schema.prisma");
+      expect(files).toContain("package.json");
+      expect(files).toContain("prisma/schema.prisma");
+
+      const decomposed = SpecDecomposerSkill.decompose("corrija o erro no arquivo package.json");
+      const implNode = decomposed.nodes.find((n: any) => n.role === "developer");
+      expect(implNode.filesScope).toEqual(["package.json"]);
     });
   });
 });

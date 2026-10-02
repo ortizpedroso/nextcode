@@ -9,8 +9,10 @@ import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 
 import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
-
 import { IntakeEngine } from "@/core/intake/intake-engine";
+import { extractFilePathsFromText } from "@/core/skills/spec-decomposer";
+import { QuarantineManager } from "@/core/governance/quarantine-manager";
+import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -191,6 +193,40 @@ export async function POST(request: NextRequest) {
       // Não altera nada quando o contexto foi injetado com sucesso.
       if (!projectContextInjected && contextDiagnostics) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
+      }
+
+      // 6.5 Se a resposta da IA contiver blocos de código e houver um projeto vinculado com caminho local,
+      // extrai e promove fisicamente os arquivos alterados para o disco do usuário!
+      if (ctxProject?.path && fs.existsSync(ctxProject.path) && aiResponseContent.includes("```")) {
+        try {
+          const qm = new QuarantineManager();
+          const taskId = `chat-exec-${Date.now()}`;
+          const promptFiles = extractFilePathsFromText(targetPrompt);
+          const codeMap = qm.extractAndWriteCodeBlocks(taskId, aiResponseContent, promptFiles);
+
+          if (Object.keys(codeMap).length > 0) {
+            const type1Res = DualLensAuditor.validateType1(codeMap);
+            if (type1Res.passed) {
+              const promotedFiles = Object.keys(codeMap);
+              qm.promoteToMainRepo(taskId, ctxProject.path, promotedFiles);
+              console.log(
+                `[CHAT_FILE_PROMOTION] ${promotedFiles.length} arquivo(s) promovido(s) no disco em ${ctxProject.path}:`,
+                promotedFiles
+              );
+              aiResponseContent += `\n\n⚡ **[NextCode Auto-Patch]** ${promotedFiles.length} arquivo(s) atualizado(s) no disco em \`${ctxProject.path}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+            } else {
+              qm.purgeWorkspace(taskId);
+              console.warn(
+                `[CHAT_FILE_PROMOTION] Validação falhou para os arquivos do chat:`,
+                [...type1Res.compilationErrors, ...type1Res.securityViolations]
+              );
+            }
+          } else {
+            qm.purgeWorkspace(taskId);
+          }
+        } catch (patchErr) {
+          console.warn(`[CHAT_FILE_PROMOTION] Erro ao aplicar patch do chat no disco:`, String(patchErr));
+        }
       }
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;

@@ -6,6 +6,19 @@ export interface DecompositionResult {
   summary: string;
 }
 
+export function extractFilePathsFromText(text: string): string[] {
+  const matches = new Set<string>();
+  const regex = /(?:^|\s|`|'|")([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:ts|tsx|js|jsx|json|prisma|md|css|html|env|sql|yml|yaml|config|sh))(?:$|\s|`|'|"|:|,|\.)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null) {
+    const matchedPath = m[1].replace(/^\.\//, "");
+    if (matchedPath && !matchedPath.startsWith("http") && !matchedPath.includes("..")) {
+      matches.add(matchedPath);
+    }
+  }
+  return Array.from(matches);
+}
+
 export class SpecDecomposerSkill {
   /**
    * Skill de decomposição de objetivos em nós encadeados de DAG com dependências explícitas
@@ -13,9 +26,12 @@ export class SpecDecomposerSkill {
   public static decompose(goal: string, scopeContext?: string): DecompositionResult {
     const nodes: DAGNode[] = [];
 
+    const extractedFiles = extractFilePathsFromText(goal);
     const goalLower = goal.toLowerCase();
     let devFilesScope: string[] = [];
-    if (goalLower.includes("asaas") || goalLower.includes("pagamento")) {
+    if (extractedFiles.length > 0) {
+      devFilesScope = extractedFiles;
+    } else if (goalLower.includes("asaas") || goalLower.includes("pagamento")) {
       devFilesScope = ["src/services/asaas.ts", "src/app/api/webhooks/asaas/route.ts"];
     } else if (goalLower.includes("produto") || goalLower.includes("product")) {
       devFilesScope = ["src/app/dashboard/products/page.tsx"];
