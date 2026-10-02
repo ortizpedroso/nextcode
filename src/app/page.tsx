@@ -471,6 +471,38 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  const handleRetryNode = async (nodeId: string) => {
+    setConsoleLogs((prev) => [...prev, `[RETRY] Desbloqueando etapa e liberando fila no servidor...`]);
+    try {
+      const res = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry_node", nodeId }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.tasks) {
+        setTasks(data.tasks);
+        setConsoleLogs((prev) => [
+          ...prev,
+          `[RETRY] ${data.message || "Etapa desbloqueada com sucesso!"} Retomando processador no servidor...`,
+        ]);
+
+        if (activeSessionId) {
+          await authFetch("/api/dag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "process_queue", sessionId: activeSessionId }),
+          });
+          await fetchSessionDetails(activeSessionId);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao desbloquear nó:", err);
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao desbloquear etapa: ${String(err)}`]);
+    }
+  };
+
   const handleSaveSettings = async (updated: SettingsFormState) => {
     setSettingsForm(updated);
     const res = await authFetch("/api/settings", {
@@ -547,6 +579,7 @@ export default function DashboardOrchestrator() {
         onCreateDAG={handleSendMessage}
         onExecuteNode={handleExecuteNode}
         onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
+        onRetryNode={handleRetryNode}
         onStop={handleStopProcessing}
       />
     </div>

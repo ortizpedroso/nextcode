@@ -15,6 +15,7 @@ import {
   Sparkles,
   Copy,
   Check,
+  RotateCcw,
 } from "lucide-react";
 
 interface DagSidebarProps {
@@ -24,6 +25,7 @@ interface DagSidebarProps {
   executingNodeId: string | null;
   onClose: () => void;
   onRefreshTasks: () => Promise<void>;
+  onRetryNode?: (nodeId: string) => Promise<void>;
 }
 
 export function DagSidebar({
@@ -33,6 +35,7 @@ export function DagSidebar({
   executingNodeId,
   onClose,
   onRefreshTasks,
+  onRetryNode,
 }: DagSidebarProps) {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
@@ -198,6 +201,16 @@ export function DagSidebar({
                     </button>
                     {task.result}
                   </div>
+                )}
+
+                {(task.status === "failed" || task.status === "blocked") && onRetryNode && (
+                  <button
+                    onClick={() => onRetryNode(task.id)}
+                    className="w-full mt-1 py-1 px-2 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 rounded-lg text-[10px] font-semibold border border-rose-200 dark:border-rose-800 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                    <span>Desbloquear / Re-tentar Etapa</span>
+                  </button>
                 )}
               </div>
             );
