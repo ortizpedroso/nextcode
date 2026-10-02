@@ -88,6 +88,18 @@ export class DualLensAuditor {
         }
       }
 
+      // 0.7 Validação mecânica para arquivos CSS (.css)
+      if (filePath.toLowerCase().endsWith(".css")) {
+        const cssLines = content.split("\n");
+        for (let i = 0; i < cssLines.length; i++) {
+          const trimmed = cssLines[i].trim();
+          if (trimmed.startsWith("//")) {
+            compilationErrors.push(`[CSS SYNTAX ERROR] Comentário inválido "//" na linha ${i + 1} em ${filePath}. CSS aceita apenas comentários /* ... */.`);
+            break;
+          }
+        }
+      }
+
       // 1. Verificação sintática básica (compilação TypeScript / AST balance checker)
       if (content.includes("eval(") || content.includes("exec(") || content.includes("new Function(")) {
         securityViolations.push(`[OWASP VIOLATION] Uso proibido de eval/exec/Function detectado em ${filePath}`);

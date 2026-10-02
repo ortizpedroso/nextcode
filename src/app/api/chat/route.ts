@@ -16,6 +16,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { extractFilePathsFromText } from "@/core/skills/spec-decomposer";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -206,53 +207,15 @@ export async function POST(request: NextRequest) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
       }
 
-      // 6.5 PROMOÇÃO E EXECUÇÃO VIA ENVIRONMENT WORKSPACE ADAPTER (Local vs Nuvem)
+      // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
       const taskId = `chat-exec-${Date.now()}`;
-      const envAdapter = new EnvironmentWorkspaceAdapter({
+      const zeroEngineRes = ZeroHallucinationEngine.processAndVerifyResponse(
         taskId,
-        projectPath: ctxProject?.path || "",
-      });
-
-      if (aiResponseContent.includes("```")) {
-        try {
-          const qm = new QuarantineManager();
-          const promptFiles = extractFilePathsFromText(targetPrompt);
-          const codeMap = qm.extractAndWriteCodeBlocks(taskId, aiResponseContent, promptFiles);
-
-          if (Object.keys(codeMap).length > 0) {
-            const type1Res = DualLensAuditor.validateType1(codeMap);
-            if (type1Res.passed) {
-              const promotedFiles = Object.keys(codeMap);
-              const writeResult = envAdapter.writeFilesToWorkspace(codeMap);
-
-              if (writeResult.mode === "LOCAL" && ctxProject?.path) {
-                qm.promoteToMainRepo(taskId, ctxProject.path, promotedFiles);
-                console.log(
-                  `[CHAT_FILE_PROMOTION] [LOCAL] ${promotedFiles.length} arquivo(s) promovido(s) no disco em ${ctxProject.path}:`,
-                  promotedFiles
-                );
-                aiResponseContent += `\n\n⚡ **[NextCode Auto-Patch] (Modo Local)** ${promotedFiles.length} arquivo(s) atualizado(s) no disco em \`${ctxProject.path}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
-              } else {
-                console.log(
-                  `[CHAT_FILE_PROMOTION] [NUVEM/QUARENTENA] ${promotedFiles.length} arquivo(s) armazenado(s) em quarentena:`,
-                  promotedFiles
-                );
-                aiResponseContent += `\n\n☁️ **[NextCode Sandbox Artifact] (Modo Nuvem / Quarentena)** ${promotedFiles.length} arquivo(s) gravado(s) no repositório isolado em \`${writeResult.quarantinePath}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
-              }
-            } else {
-              qm.purgeWorkspace(taskId);
-              console.warn(
-                `[CHAT_FILE_PROMOTION] Validação falhou para os arquivos do chat:`,
-                [...type1Res.compilationErrors, ...type1Res.securityViolations]
-              );
-            }
-          } else {
-            qm.purgeWorkspace(taskId);
-          }
-        } catch (patchErr) {
-          console.warn(`[CHAT_FILE_PROMOTION] Erro ao aplicar patch do chat no disco:`, String(patchErr));
-        }
-      }
+        aiResponseContent,
+        targetPrompt,
+        ctxProject?.path || null
+      );
+      aiResponseContent = zeroEngineRes.groundedMessage;
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;
     }
