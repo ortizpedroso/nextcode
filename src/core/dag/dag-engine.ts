@@ -184,7 +184,11 @@ export class DAGEngine {
     const executable: DAGNode[] = [];
 
     for (const node of this.nodes.values()) {
-      if (node.status !== "pending" && node.status !== "standby") {
+      const isRetryable =
+        node.status === "failed" && (node.attempts || 0) < (node.maxAttempts || 3);
+      const isPending = node.status === "pending" || node.status === "standby" || isRetryable;
+
+      if (!isPending) {
         continue;
       }
 
@@ -193,12 +197,17 @@ export class DAGEngine {
         return depNode && depNode.status === "completed";
       });
 
-      const anyDepFailed = node.dependencies.some((depId) => {
+      const anyDepPermanentlyFailed = node.dependencies.some((depId) => {
         const depNode = this.nodes.get(depId);
-        return depNode && (depNode.status === "failed" || depNode.status === "blocked");
+        if (!depNode) return false;
+        if (depNode.status === "blocked") return true;
+        if (depNode.status === "failed" && (depNode.attempts || 0) >= (depNode.maxAttempts || 3)) {
+          return true;
+        }
+        return false;
       });
 
-      if (anyDepFailed) {
+      if (anyDepPermanentlyFailed) {
         node.status = "blocked";
       } else if (allDepsCompleted) {
         executable.push(node);
