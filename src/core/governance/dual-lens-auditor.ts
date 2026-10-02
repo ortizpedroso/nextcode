@@ -34,18 +34,31 @@ export class DualLensAuditor {
     const testFailures: string[] = [];
 
     for (const [filePath, content] of Object.entries(codeContentMap)) {
-      // 1. Verificação sintática básica (compilação TypeScript simulada)
-      if (content.includes("eval(") || content.includes("exec(")) {
-        securityViolations.push(`[OWASP VIOLATION] Uso proibido de eval/exec detectado em ${filePath}`);
+      // 1. Verificação sintática básica (compilação TypeScript / AST balance checker)
+      if (content.includes("eval(") || content.includes("exec(") || content.includes("new Function(")) {
+        securityViolations.push(`[OWASP VIOLATION] Uso proibido de eval/exec/Function detectado em ${filePath}`);
       }
       if (content.includes("process.env.") && (content.includes("SECRET") || content.includes("KEY"))) {
         // Checagem se há chaves hardcoded
-        if (content.includes(" = \"sk-") || content.includes(" = \"AIza")) {
+        if (content.includes(" = \"sk-") || content.includes(" = \"AIza") || content.includes(" = \"ghp_")) {
           securityViolations.push(`[SECRETS LEAK] Chave de API hardcoded detectada em ${filePath}`);
         }
       }
 
-      // 2. Regra de tipagem estrita (Aviso de Clean Code registrado, sem ser bloqueante fatal por si só)
+      // 2. Validação sintática de balanço de escopo (chaves/parênteses/colchetes)
+      const openCurly = (content.match(/\{/g) || []).length;
+      const closeCurly = (content.match(/\}/g) || []).length;
+      const openParen = (content.match(/\(/g) || []).length;
+      const closeParen = (content.match(/\)/g) || []).length;
+
+      if (Math.abs(openCurly - closeCurly) > 0) {
+        compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de chaves ({ }) detectado em ${filePath} (${openCurly} abertas, ${closeCurly} fechadas)`);
+      }
+      if (Math.abs(openParen - closeParen) > 0) {
+        compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de parênteses (( )) detectado em ${filePath} (${openParen} abertos, ${closeParen} fechados)`);
+      }
+
+      // 3. Regra de tipagem estrita (Aviso de Clean Code registrado)
       if (content.includes(": any") && !content.includes("// eslint-disable")) {
         compilationErrors.push(`[CLEAN CODE VIOLATION] Uso proibido do tipo 'any' em ${filePath}`);
       }
