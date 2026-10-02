@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { authFetch } from "@/lib/client-session";
-import { Terminal, Send, X, Play, RefreshCw, Trash2, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Terminal, Send, X, Play, RefreshCw, Trash2, CheckCircle2, ShieldAlert, Radio } from "lucide-react";
 
 interface WebTerminalProps {
   sessionId: string | null;
@@ -25,17 +25,8 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
   const [commandHistoryList, setCommandHistoryList] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [running, setRunning] = useState(false);
+  const [useSseStream, setUseSseStream] = useState(true);
   const terminalRef = useRef<HTMLDivElement | null>(null);
-
-  const SUGGESTIONS = [
-    "npx tsc --noEmit",
-    "npx vitest run",
-    "git status",
-    "git diff",
-    "git log -n 5 --oneline",
-    "npm test",
-    "node -v",
-  ];
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -72,44 +63,131 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
     setCommandHistoryList((prev) => [...prev, targetCmd]);
     setHistoryIndex(-1);
     setRunning(true);
-    try {
-      const res = await authFetch("/api/terminal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          command: targetCmd,
-          sessionId,
-          projectId,
-        }),
-      });
 
-      const data = await res.json();
-      setHistory((prev) => [
-        ...prev,
-        {
-          command: targetCmd,
-          cwd: data.cwd || "workspace",
-          stdout: data.stdout || "",
-          stderr: data.stderr || data.error || data.details || "",
-          success: res.ok && data.success,
-          timestamp: new Date().toLocaleTimeString("pt-BR"),
-        },
-      ]);
-      if (!cmdToRun) setCommand("");
-    } catch (err) {
+    if (!cmdToRun) setCommand("");
+
+    if (useSseStream) {
+      // Execução via SSE Stream Real-Time
+      const timestamp = new Date().toLocaleTimeString("pt-BR");
+      const itemIndex = history.length;
+
       setHistory((prev) => [
         ...prev,
         {
           command: targetCmd,
           cwd: "workspace",
           stdout: "",
-          stderr: String(err),
-          success: false,
-          timestamp: new Date().toLocaleTimeString("pt-BR"),
+          stderr: "",
+          success: true,
+          timestamp,
         },
       ]);
-    } finally {
-      setRunning(false);
+
+      try {
+        const eventSource = new EventSource(
+          `/api/terminal/stream?command=${encodeURIComponent(targetCmd)}`
+        );
+
+        eventSource.addEventListener("log", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(event.data);
+            setHistory((prev) => {
+              const updated = [...prev];
+              const targetItem = { ...updated[itemIndex] };
+
+              if (data.type === "stdout") {
+                targetItem.stdout += data.text;
+              } else if (data.type === "stderr") {
+                targetItem.stderr += data.text;
+              }
+
+              updated[itemIndex] = targetItem;
+              return updated;
+            });
+          } catch {}
+        });
+
+        eventSource.addEventListener("done", (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(event.data);
+            setHistory((prev) => {
+              const updated = [...prev];
+              if (updated[itemIndex]) {
+                updated[itemIndex].success = data.exitCode === 0;
+              }
+              return updated;
+            });
+          } catch {}
+          eventSource.close();
+          setRunning(false);
+        });
+
+        eventSource.addEventListener("error", (err: any) => {
+          setHistory((prev) => {
+            const updated = [...prev];
+            if (updated[itemIndex]) {
+              updated[itemIndex].stderr += `\n[Erro SSE Connection]`;
+              updated[itemIndex].success = false;
+            }
+            return updated;
+          });
+          eventSource.close();
+          setRunning(false);
+        });
+      } catch (err) {
+        setHistory((prev) => [
+          ...prev,
+          {
+            command: targetCmd,
+            cwd: "workspace",
+            stdout: "",
+            stderr: String(err),
+            success: false,
+            timestamp,
+          },
+        ]);
+        setRunning(false);
+      }
+    } else {
+      // Execução síncrona padrão
+      try {
+        const res = await authFetch("/api/terminal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            command: targetCmd,
+            sessionId,
+            projectId,
+          }),
+        });
+
+        const data = await res.json();
+        setHistory((prev) => [
+          ...prev,
+          {
+            command: targetCmd,
+            cwd: data.cwd || "workspace",
+            stdout: data.stdout || "",
+            stderr: data.stderr || data.error || data.details || "",
+            success: res.ok && data.success,
+            timestamp: new Date().toLocaleTimeString("pt-BR"),
+          },
+        ]);
+      } catch (err) {
+        setHistory((prev) => [
+          ...prev,
+          {
+            command: targetCmd,
+            cwd: "workspace",
+            stdout: "",
+            stderr: String(err),
+            success: false,
+            timestamp: new Date().toLocaleTimeString("pt-BR"),
+          },
+        ]);
+      } finally {
+        setRunning(false);
+      }
     }
   };
 
@@ -122,9 +200,18 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
             <Terminal className="w-4 h-4 text-[#0066cc]" />
             <span>Terminal Sandbox Local</span>
           </div>
-          <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded font-mono">
-            Jail Guard Ativo
-          </span>
+          <button
+            onClick={() => setUseSseStream(!useSseStream)}
+            className={`text-[10px] px-2 py-0.5 rounded font-mono flex items-center gap-1 border transition-colors ${
+              useSseStream
+                ? "bg-emerald-950/80 text-emerald-300 border-emerald-800"
+                : "bg-slate-800 text-slate-400 border-slate-700"
+            }`}
+            title="Alternar entre modo SSE Stream em Tempo Real e Resposta Estática"
+          >
+            <Radio className={`w-3 h-3 ${useSseStream ? "text-emerald-400 animate-pulse" : ""}`} />
+            <span>{useSseStream ? "SSE Stream Ativo" : "Modo Estático"}</span>
+          </button>
         </div>
 
         {/* Quick Command Presets */}
@@ -200,9 +287,9 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
         )}
 
         {running && (
-          <div className="flex items-center gap-2 text-blue-400 text-xs animate-pulse">
+          <div className="flex items-center gap-2 text-emerald-400 text-xs animate-pulse">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>Executando comando no ambiente sandbox...</span>
+            <span>Streaming de logs via SSE em tempo real...</span>
           </div>
         )}
       </div>
