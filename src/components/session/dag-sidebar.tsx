@@ -1,7 +1,6 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { TaskNode } from "@/components/layout/workspace";
+import { DagGraphVisualizer } from "@/components/session/dag-graph-visualizer";
 import {
   Layers,
   RefreshCw,
@@ -18,6 +17,8 @@ import {
   RotateCcw,
   Eye,
   Download,
+  List,
+  GitFork,
 } from "lucide-react";
 
 interface DagSidebarProps {
@@ -45,6 +46,7 @@ export function DagSidebar({
 }: DagSidebarProps) {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -136,6 +138,31 @@ export function DagSidebar({
         </div>
 
         <div className="flex items-center gap-1">
+          <div className="flex items-center bg-slate-200/80 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-300/60 dark:border-slate-700">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
+                viewMode === "list"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+              title="Modo Lista"
+            >
+              <List className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => setViewMode("graph")}
+              className={`p-1 rounded text-[10px] font-medium flex items-center gap-1 transition-colors ${
+                viewMode === "graph"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              }`}
+              title="Modo Grafo Visual"
+            >
+              <GitFork className="w-3 h-3" />
+            </button>
+          </div>
+
           {onExportAuditReport && (
             <button
               onClick={onExportAuditReport}
@@ -162,9 +189,14 @@ export function DagSidebar({
         </div>
       </div>
 
-      {/* Lista de Nós da DAG (Status Tracker) */}
+      {/* Lista ou Grafo da DAG */}
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-        {tasks.length === 0 ? (
+        {viewMode === "graph" ? (
+          <DagGraphVisualizer
+            tasks={tasks}
+            onInspectQuarantine={onInspectQuarantine}
+          />
+        ) : tasks.length === 0 ? (
           <div className="p-6 text-center text-slate-400 italic text-[11px] bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800/80">
             <Sparkles className="w-5 h-5 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
             Nenhum nó ativo. Digite um objetivo no prompt para decompor e executar as tarefas automaticamente.
