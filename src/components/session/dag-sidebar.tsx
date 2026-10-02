@@ -17,6 +17,7 @@ import {
   Check,
   RotateCcw,
   Eye,
+  Download,
 } from "lucide-react";
 
 interface DagSidebarProps {
@@ -28,6 +29,7 @@ interface DagSidebarProps {
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
+  onExportAuditReport?: () => void;
 }
 
 export function DagSidebar({
@@ -39,6 +41,7 @@ export function DagSidebar({
   onRefreshTasks,
   onRetryNode,
   onInspectQuarantine,
+  onExportAuditReport,
 }: DagSidebarProps) {
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
@@ -133,6 +136,15 @@ export function DagSidebar({
         </div>
 
         <div className="flex items-center gap-1">
+          {onExportAuditReport && (
+            <button
+              onClick={onExportAuditReport}
+              className="p-1.5 text-[#0066cc] dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/60 rounded-lg transition-colors border border-blue-200 dark:border-blue-800"
+              title="Baixar Relatório de Auditoria de Governança (.md)"
+            >
+              <Download className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={onRefreshTasks}
             className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"

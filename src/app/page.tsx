@@ -505,6 +505,11 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  const handleExportAuditReport = () => {
+    if (!activeSessionId) return;
+    window.open(`/api/governance/export?sessionId=${activeSessionId}&format=markdown`, "_blank");
+  };
+
   const handleSaveSettings = async (updated: SettingsFormState) => {
     setSettingsForm(updated);
     const res = await authFetch("/api/settings", {
@@ -583,6 +588,7 @@ export default function DashboardOrchestrator() {
         onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
         onRetryNode={handleRetryNode}
         onInspectQuarantine={setInspectTaskId}
+        onExportAuditReport={handleExportAuditReport}
         onStop={handleStopProcessing}
       />
 
