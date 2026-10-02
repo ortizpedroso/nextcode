@@ -376,20 +376,20 @@ export default function DashboardOrchestrator() {
         const lowerPrompt = prompt.toLowerCase();
         const hasExecIntent =
           chatData.specApproved ||
-          lowerPrompt.includes("implementar") ||
-          lowerPrompt.includes("implemente") ||
-          lowerPrompt.includes("executar") ||
-          lowerPrompt.includes("execute") ||
-          lowerPrompt.includes("só pare quando") ||
-          lowerPrompt.includes("so pare quando") ||
-          lowerPrompt.includes("aprovo") ||
-          lowerPrompt.includes("aprovar") ||
-          lowerPrompt.includes("iniciar dag") ||
-          lowerPrompt.includes("validar e aprovar") ||
-          lowerPrompt.includes("pode rodar") ||
-          lowerPrompt.includes("pode fazer");
+          isSpecApproved ||
+          /(implementar|implemente|executar|execute|continuar|iniciar|começar|comece|pode|sim|aprovo|aprovar|rodar|fazer|desenvolver|construir|criar|gerar|vamos)/i.test(
+            lowerPrompt
+          );
 
         if (hasExecIntent) {
+          // Garante a liberação da Trava T1 na sessão para autorizar o pipeline de tarefas no servidor
+          await authFetch(`/api/sessions/${targetSessionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ specApproved: true }),
+          }).catch(() => {});
+          setIsSpecApproved(true);
+
           await triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
         }
       }
