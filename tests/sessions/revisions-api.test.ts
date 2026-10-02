@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import prisma from "@/lib/prisma";
 import { GET, POST } from "@/app/api/sessions/revisions/route";
 import { NextRequest } from "next/server";
@@ -8,27 +8,19 @@ vi.mock("@/core/security/local-auth", () => ({
 }));
 
 describe("API /api/sessions/revisions", () => {
-  let testSessionId: string;
-
-  beforeEach(async () => {
-    await prisma.telemetryLog.deleteMany({});
-    await prisma.taskNode.deleteMany({});
-    await prisma.session.deleteMany({});
-
+  it("GET & POST — cria, lista e restaura snapshots de revisão de DAG", async () => {
     const session = await prisma.session.create({
       data: {
-        title: "Revision Test Session",
-        canonicalSpec: "# Initial Spec",
+        title: "Revision Test Session Unique",
+        canonicalSpec: "# Initial Spec Unique",
         tasks: {
-          create: [{ title: "Initial Task", role: "architect" }],
+          create: [{ title: "Initial Task Unique", role: "architect" }],
         },
       },
     });
 
-    testSessionId = session.id;
-  });
+    const testSessionId = session.id;
 
-  it("GET & POST — cria, lista e restaura snapshots de revisão de DAG", async () => {
     // 1. Criar snapshot
     const createReq = new NextRequest("http://localhost/api/sessions/revisions", {
       method: "POST",
