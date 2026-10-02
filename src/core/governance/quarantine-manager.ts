@@ -42,11 +42,20 @@ export class QuarantineManager {
     }
 
     let finalContent = content;
-    // Sanitização determinística para arquivos JSON (remove comentários no topo como // file: ...)
+    // Sanitização determinística para todos os tipos de arquivo (remove comentários de cabeçalho no topo como // file: ...)
+    finalContent = finalContent
+      .replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):?\s*[^\s\n*]+(?:\s*\*\/)?\r?\n?/gi, "")
+      .trim();
+
+    // Se for arquivo JSON, garante remoção de qualquer comentário remanescente
     if (relativeFilePath.toLowerCase().endsWith(".json")) {
       finalContent = finalContent
-        .replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path)?.*$/gm, "")
+        .replace(/^(?:\/\/|#|\/\*).*$/gm, "")
         .trim();
+    }
+
+    if (finalContent) {
+      finalContent += "\n";
     }
 
     fs.writeFileSync(targetPath, finalContent, "utf-8");
@@ -64,9 +73,6 @@ export class QuarantineManager {
     return fs.readFileSync(targetPath, "utf-8");
   }
 
-  /**
-   * Extrai blocos de código formatados em markdown e grava na quarentena
-   */
   /**
    * Helper para filtrar nomes proibidos ou inválidos que não representam arquivos de código-fonte
    */
@@ -127,7 +133,7 @@ export class QuarantineManager {
         }
       }
 
-      // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco (pega o último caminho válido antes do bloco)
+      // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco
       if (!relativePath) {
         const textBeforeBlock = text.substring(0, match.index);
         const allPathsMatch = textBeforeBlock.match(/([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]+)/gi);
@@ -181,13 +187,6 @@ export class QuarantineManager {
           codeMap[cleanPath] = psValue;
         }
       }
-    }
-
-    // Se nenhum bloco com marcação foi encontrado, mas há texto, salva no escopo primário válido ou padrão
-    if (Object.keys(codeMap).length === 0 && text.trim()) {
-      const primaryScopeFile = fallbackFilesScope.find(f => !QuarantineManager.isInvalidFilePath(f)) || "src/output.ts";
-      this.writeFile(taskId, primaryScopeFile, text);
-      codeMap[primaryScopeFile] = text;
     }
 
     return codeMap;

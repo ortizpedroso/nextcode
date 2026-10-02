@@ -88,7 +88,7 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       const filePath = qm.writeFile("TASK-TEST", "src/auth.ts", "export const auth = true;");
 
       expect(fs.existsSync(filePath)).toBe(true);
-      expect(qm.readFile("TASK-TEST", "src/auth.ts")).toBe("export const auth = true;");
+      expect(qm.readFile("TASK-TEST", "src/auth.ts")).toBe("export const auth = true;\n");
     });
 
     it("deve reprovar no Validador Tipo 1 se houver vulnerabilidade ou tipo 'any'", () => {
