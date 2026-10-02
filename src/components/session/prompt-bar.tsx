@@ -46,10 +46,25 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Slash commands state
+  // Slash commands & OmniRoute dynamic models state
   const [skills, setSkills] = useState<SkillItemInfo[]>([]);
+  const [omniModels, setOmniModels] = useState<Array<{ id: string; name: string; provider: string }>>([]);
   const [showSkillsPopup, setShowSkillsPopup] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const fetchOmniModels = useCallback(async () => {
+    try {
+      const res = await fetch("/api/omniroute/models");
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.models)) {
+        setOmniModels(data.models);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchOmniModels();
+  }, [fetchOmniModels]);
 
   const fetchSkills = useCallback(async () => {
     try {
@@ -338,6 +353,15 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
                   <option value="groq">⚡ Groq Cloud (Llama 3.3)</option>
                   <option value="nvidia">🟢 NVIDIA NIM (Llama 3.3)</option>
                   <option value="deepseek">🐋 DeepSeek API Direta</option>
+                  {omniModels.length > 0 && (
+                    <optgroup label="OmniRoute Gateway (350+ Provedores)">
+                      {omniModels.map((om) => (
+                        <option key={om.id} value={`omniroute:${om.id}`}>
+                          🤖 {om.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                   {customProviders.length > 0 && (
                     <optgroup label="Provedores Personalizados">
                       {customProviders.map((cp) => {
