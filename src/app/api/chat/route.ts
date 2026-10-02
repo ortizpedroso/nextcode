@@ -17,13 +17,16 @@ export async function POST(request: NextRequest) {
   if (guard.response) return guard.response;
   try {
     const body = await request.json();
-    const { sessionId, prompt, projectId, modelOverride } = body;
+    const { sessionId, prompt, projectId, modelOverride, attachments } = body;
 
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return NextResponse.json({ error: "Mensagem é obrigatória." }, { status: 400 });
     }
 
-    const targetPrompt = prompt.trim();
+    let targetPrompt = prompt.trim();
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      targetPrompt += `\n\n[ANEXO MULTIMODAL: ${attachments.length} imagem(ns) enviada(s) como contexto visual de interface/diagrama]`;
+    }
     let activeSessionId = sessionId;
 
     // 1. Garante uma sessão ativa

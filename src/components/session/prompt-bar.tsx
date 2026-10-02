@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command, Square } from "lucide-react";
+import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command, Square, Image as ImageIcon, X } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
 import { SkillItemInfo } from "@/app/api/skills/list/route";
 
@@ -9,7 +9,7 @@ interface PromptBarProps {
   loading: boolean;
   customProviders: CustomProviderItem[];
   projectId?: string | null;
-  onSubmit: (prompt: string, modelOverride?: string) => Promise<void>;
+  onSubmit: (prompt: string, modelOverride?: string, attachments?: string[]) => Promise<void>;
   onStop?: () => void;
 }
 
@@ -23,7 +23,28 @@ const BUILTIN_COMMANDS: SkillItemInfo[] = [
 export function PromptBar({ loading, customProviders, projectId, onSubmit, onStop }: PromptBarProps) {
   const [prompt, setPrompt] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>("auto");
+  const [attachments, setAttachments] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith("image/")) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        if (result) {
+          setAttachments((prev) => [...prev, result]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Slash commands state
   const [skills, setSkills] = useState<SkillItemInfo[]>([]);
@@ -90,8 +111,9 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
     e.preventDefault();
     if (!prompt.trim() || loading) return;
     const modelToPass = selectedModel === "auto" ? undefined : selectedModel;
-    await onSubmit(prompt.trim(), modelToPass);
+    await onSubmit(prompt.trim(), modelToPass, attachments.length > 0 ? attachments : undefined);
     setPrompt("");
+    setAttachments([]);
     setShowSkillsPopup(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -266,10 +288,41 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
             />
           </div>
 
-          {/* Linha Inferior: Canto Inferior Esquerdo (Seletor de Provedor + Badge) | Canto Inferior Direito (Botão Enviar / Parar) */}
+          {/* Faixa de Anexos Multimodais */}
+          {attachments.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {attachments.map((imgUrl, idx) => (
+                <div key={idx} className="relative group w-12 h-12 rounded-lg border border-slate-300 dark:border-slate-700 overflow-hidden shrink-0 bg-slate-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imgUrl} alt={`Anexo ${idx + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAttachment(idx)}
+                    className="absolute top-0.5 right-0.5 p-0.5 bg-black/70 hover:bg-rose-600 text-white rounded-full transition-colors"
+                    title="Remover imagem"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Linha Inferior: Canto Inferior Esquerdo (Seletor de Provedor + Anexar Imagem + Badge) */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-200/40 dark:border-slate-800/40 gap-2">
             {/* Canto Inferior Esquerdo: Seletor de Modelo de Provedor */}
             <div className="flex items-center gap-2">
+              <label className="cursor-pointer p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-xl text-xs flex items-center justify-center transition-colors shadow-xs" title="Anexar imagem (Multimodal)">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleImageUpload(e.target.files)}
+                />
+                <ImageIcon className="w-3.5 h-3.5 text-[#0066cc]" />
+              </label>
+
               <div className="relative flex items-center shrink-0">
                 <Cpu className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
                 <select

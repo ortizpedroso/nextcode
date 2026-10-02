@@ -1,14 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/prisma";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import prisma from "@/lib/prisma";
 import { GET, POST } from "@/app/api/sessions/export-import/route";
 import { NextRequest } from "next/server";
+
+vi.mock("@/core/security/local-auth", () => ({
+  requireAuth: vi.fn().mockReturnValue({ response: null }),
+}));
 
 describe("API /api/sessions/export-import", () => {
   let testSessionId: string;
 
   beforeEach(async () => {
     // Clear test database
-    await prisma.sessionMessage.deleteMany({});
+    await prisma.message.deleteMany({});
     await prisma.taskNode.deleteMany({});
     await prisma.session.deleteMany({});
 

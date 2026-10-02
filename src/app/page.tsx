@@ -317,7 +317,7 @@ export default function DashboardOrchestrator() {
   };
 
   // Chat Conversacional Direto com a IA (Sem poluir o chat com notificações técnicas de DAG)
-  const handleSendMessage = async (prompt: string, modelOverride?: string) => {
+  const handleSendMessage = async (prompt: string, modelOverride?: string, attachments?: string[]) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -325,7 +325,7 @@ export default function DashboardOrchestrator() {
     abortControllerRef.current = controller;
 
     setLoading(true);
-    setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..."`]);
+    setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..." ${attachments ? `(${attachments.length} imagem/ns)` : ""}`]);
 
     try {
       // 1. Chamada direta ao endpoint conversacional /api/chat com authFetch e AbortSignal
@@ -337,6 +337,7 @@ export default function DashboardOrchestrator() {
           prompt,
           projectId: activeProjectId,
           modelOverride,
+          attachments,
         }),
         signal: controller.signal,
       });

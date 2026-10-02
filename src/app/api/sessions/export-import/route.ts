@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { localAuthGuard } from "@/lib/local-auth";
+import prisma from "@/lib/prisma";
+import { requireAuth } from "@/core/security/local-auth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -73,8 +73,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = localAuthGuard(req);
-  if (authErr) return authErr;
+  const guard = requireAuth(req);
+  if (guard.response) return guard.response;
 
   try {
     const body = await req.json();
@@ -115,13 +115,13 @@ export async function POST(req: NextRequest) {
 
     // Restaura histórico de mensagens
     if (backupData.messages && backupData.messages.length > 0) {
-      await prisma.sessionMessage.createMany({
+      await prisma.message.createMany({
         data: backupData.messages.map((m: { role: string; content: string; tokens?: number; tier?: string }) => ({
           sessionId: newSession.id,
           role: m.role || "user",
           content: m.content || "",
-          tokens: m.tokens || null,
-          tier: m.tier || null,
+          tokens: m.tokens || 0,
+          tier: m.tier || "fast",
         })),
       });
     }
