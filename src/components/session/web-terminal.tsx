@@ -22,8 +22,20 @@ interface CommandHistoryItem {
 export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps) {
   const [command, setCommand] = useState("");
   const [history, setHistory] = useState<CommandHistoryItem[]>([]);
+  const [commandHistoryList, setCommandHistoryList] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [running, setRunning] = useState(false);
   const terminalRef = useRef<HTMLDivElement | null>(null);
+
+  const SUGGESTIONS = [
+    "npx tsc --noEmit",
+    "npx vitest run",
+    "git status",
+    "git diff",
+    "git log -n 5 --oneline",
+    "npm test",
+    "node -v",
+  ];
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -31,10 +43,34 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
     }
   }, [history, running]);
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (commandHistoryList.length === 0) return;
+      const nextIndex = historyIndex + 1;
+      if (nextIndex < commandHistoryList.length) {
+        setHistoryIndex(nextIndex);
+        setCommand(commandHistoryList[commandHistoryList.length - 1 - nextIndex]);
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const nextIndex = historyIndex - 1;
+        setHistoryIndex(nextIndex);
+        setCommand(commandHistoryList[commandHistoryList.length - 1 - nextIndex]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setCommand("");
+      }
+    }
+  };
+
   const handleRunCommand = async (cmdToRun?: string) => {
     const targetCmd = cmdToRun || command;
     if (!targetCmd.trim()) return;
 
+    setCommandHistoryList((prev) => [...prev, targetCmd]);
+    setHistoryIndex(-1);
     setRunning(true);
     try {
       const res = await authFetch("/api/terminal", {
@@ -184,7 +220,8 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
           type="text"
           value={command}
           onChange={(e) => setCommand(e.target.value)}
-          placeholder="Digite um comando shell (ex: npm test, git status)..."
+          onKeyDown={handleKeyDown}
+          placeholder="Digite um comando shell (seta para cima/baixo navega histórico)..."
           disabled={running}
           className="flex-1 bg-transparent text-xs font-mono text-slate-100 placeholder-slate-500 focus:outline-none"
         />
