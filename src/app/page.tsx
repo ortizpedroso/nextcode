@@ -352,8 +352,8 @@ export default function DashboardOrchestrator() {
           lowerPrompt.includes("pode rodar") ||
           lowerPrompt.includes("pode fazer");
 
-        if (hasExecIntent && !controller.signal.aborted) {
-          await triggerBackgroundDAG(prompt, targetSessionId, modelOverride, controller.signal);
+        if (hasExecIntent) {
+          await triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
         }
       }
     } catch (err: unknown) {
@@ -370,12 +370,11 @@ export default function DashboardOrchestrator() {
     }
   };
 
-  // Execução de DAG autônoma estritamente no painel lateral
+  // Execução de DAG autônoma estritamente no servidor com logs no painel lateral
   const triggerBackgroundDAG = async (
     prompt: string,
     targetSessionId: string,
-    modelOverride?: string,
-    signal?: AbortSignal
+    modelOverride?: string
   ) => {
     try {
       // 1. Assegura a criação dos nós da DAG
@@ -389,7 +388,6 @@ export default function DashboardOrchestrator() {
           projectId: activeProjectId,
           tierOverride: modelOverride,
         }),
-        signal,
       });
 
       const data = await res.json();
@@ -397,83 +395,38 @@ export default function DashboardOrchestrator() {
         setTasks(data.tasks);
         setConsoleLogs((prev) => [
           ...prev,
-          `[DAG AUTÔNOMA] ${data.tasks.length} nós de tarefas prontos no painel. Iniciando execução do pipeline...`,
+          `[DAG AUTÔNOMA] ${data.tasks.length} nós de tarefas prontos no painel. Processador autônomo acionado no servidor...`,
         ]);
       }
 
-      // 2. Loop contínuo de execução dos nós da DAG até 100% de conclusão
-      let isLooping = true;
-      let executedCount = 0;
+      // 2. Dispara o processador de fila de DAG autônomo no Servidor (Server-Side Execution)
+      const procRes = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "process_queue",
+          sessionId: targetSessionId,
+        }),
+      });
 
-      while (isLooping && !signal?.aborted) {
-        // Atualiza o estado atual das tarefas da sessão no banco
-        const refreshRes = await authFetch(`/api/dag?sessionId=${targetSessionId}`, { signal });
-        const refreshData = await refreshRes.json();
-        const currentTasks: TaskNode[] = refreshData.tasks || [];
-        setTasks(currentTasks);
-        if (refreshData.messages) setMessages(refreshData.messages);
-
-        // Encontra o próximo nó com status "pending"
-        const nextPendingNode = currentTasks.find((t) => t.status === "pending");
-        if (!nextPendingNode) {
-          isLooping = false;
-          if (executedCount > 0) {
-            setConsoleLogs((prev) => [
-              ...prev,
-              `[DAG AUTÔNOMA] ✅ Pipeline de tarefas da DAG concluído com sucesso (${executedCount} nós executados, auditados e promovidos)!`,
-            ]);
-          }
-          break;
-        }
-
-        setExecutingNodeId(nextPendingNode.id);
+      const procData = await procRes.json().catch(() => ({}));
+      if (procRes.ok && procData.tasks) {
+        setTasks(procData.tasks);
+        await fetchSessionDetails(targetSessionId);
         setConsoleLogs((prev) => [
           ...prev,
-          `[TELEMETRIA DAG] Executando nó (${executedCount + 1}): "${nextPendingNode.title}" (${nextPendingNode.role})...`,
+          `[DAG AUTÔNOMA] ✅ Pipeline de tarefas processado no servidor (${procData.processedCount || 0} etapas executadas, auditadas e promovidas)!`,
         ]);
-
-        try {
-          const execRes = await authFetch("/api/dag", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "execute_node", nodeId: nextPendingNode.id }),
-            signal,
-          });
-
-          const execData = await execRes.json().catch(() => ({}));
-          if (execRes.ok) {
-            executedCount += 1;
-            setConsoleLogs((prev) => [
-              ...prev,
-              `[TELEMETRIA DAG] Nó "${nextPendingNode.title}" concluído, auditado e promovido para o projeto!`,
-            ]);
-          } else {
-            setConsoleLogs((prev) => [
-              ...prev,
-              `[ERRO DAG] Nó "${nextPendingNode.title}" interrompido: ${execData.details || execData.error || "falha na execução"}`,
-            ]);
-            isLooping = false;
-            break;
-          }
-        } catch (execErr: unknown) {
-          if (execErr instanceof Error && execErr.name === "AbortError") {
-            setConsoleLogs((prev) => [...prev, "[TELEMETRIA DAG] Execução cancelada pelo usuário."]);
-            isLooping = false;
-            break;
-          }
-          setConsoleLogs((prev) => [...prev, `[ERRO DAG] Exceção no nó ${nextPendingNode.id}: ${String(execErr)}`]);
-          isLooping = false;
-          break;
-        } finally {
-          setExecutingNodeId(null);
-        }
+      } else if (!procRes.ok) {
+        setConsoleLogs((prev) => [
+          ...prev,
+          `[AVISO DAG] Processamento no servidor finalizado ou interrompido: ${procData.details || procData.error || "veja o painel de tarefas"}`,
+        ]);
+        await fetchSessionDetails(targetSessionId);
       }
     } catch (dagErr: unknown) {
-      if (dagErr instanceof Error && dagErr.name === "AbortError") {
-        setConsoleLogs((prev) => [...prev, "[DAG AUTÔNOMA] Operação cancelada pelo usuário."]);
-      } else {
-        console.error("Erro na DAG autônoma:", dagErr);
-      }
+      console.error("Erro na DAG autônoma:", dagErr);
+      setConsoleLogs((prev) => [...prev, `[ERRO DAG] Falha de comunicação com o servidor: ${String(dagErr)}`]);
     }
   };
 

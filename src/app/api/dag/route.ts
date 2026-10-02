@@ -374,30 +374,265 @@ DIRETRIZES DE EXECUÇÃO:
         });
       }
 
-      // Avalia dependências dos outros nós na sessão via DAGEngine
-      const updatedSessionTasks = await prisma.taskNode.findMany({
-        where: { sessionId: task.sessionId },
-      });
-
-      const dagNodes: DAGNode[] = updatedSessionTasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        role: t.role,
-        status: t.status as DAGNode["status"],
-        dependencies: JSON.parse(t.dependencies || "[]"),
-        mcpScope: t.mcpScope || undefined,
-        payload: t.payload ? JSON.parse(t.payload) : undefined,
-        result: t.result ? JSON.parse(t.result) : undefined,
-      }));
-
-      const dagEngine = new DAGEngine(dagNodes);
-      const executableNodes = dagEngine.getExecutableNodes();
-
       return NextResponse.json({
         success: true,
         executedTask: updatedTask,
-        nextExecutableNodes: executableNodes,
         promotedPath: promotionTarget,
+      });
+    }
+
+    // Ação 3: Processamento autônomo contínuo da fila de DAG no Servidor
+    if (action === "process_queue" && (sessionId || body.sessionId)) {
+      const targetSessionId = sessionId || body.sessionId;
+      const session = await prisma.session.findUnique({
+        where: { id: targetSessionId },
+        include: { project: true },
+      });
+
+      if (!session) {
+        return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+      }
+
+      if (!session.specApproved) {
+        return NextResponse.json(
+          {
+            error: "Trava T1 Violada (Spec Approval Lock)",
+            details: "A Spec Canônica precisa ser aprovada antes do processamento no servidor.",
+          },
+          { status: 400 }
+        );
+      }
+
+      let processedCount = 0;
+      let isProcessing = true;
+
+      while (isProcessing) {
+        const currentDbTasks = await prisma.taskNode.findMany({
+          where: { sessionId: targetSessionId },
+          orderBy: { createdAt: "asc" },
+        });
+
+        const dagNodes: DAGNode[] = currentDbTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          role: t.role,
+          status: t.status as DAGNode["status"],
+          dependencies: JSON.parse(t.dependencies || "[]"),
+          mcpScope: t.mcpScope || undefined,
+          filesScope: t.filesScope ? JSON.parse(t.filesScope) : [],
+          attempts: t.attempts,
+          maxAttempts: t.maxAttempts,
+        }));
+
+        const dagEngine = new DAGEngine(dagNodes);
+        const executableNodes = dagEngine.getExecutableNodes();
+
+        if (executableNodes.length === 0) {
+          isProcessing = false;
+          break;
+        }
+
+        // Processa o primeiro nó elegível da fila
+        const nodeToExecute = executableNodes[0];
+        const taskDb = currentDbTasks.find((t) => t.id === nodeToExecute.id);
+        if (!taskDb) break;
+
+        // Atualiza estado para 'running'
+        await prisma.taskNode.update({
+          where: { id: taskDb.id },
+          data: { status: "running" },
+        });
+
+        // 1. Contexto do projeto local
+        let projectContextBlock = "";
+        if (session.project && session.project.path) {
+          projectContextBlock = buildProjectContextBlock(session.project) || "";
+        }
+
+        // 2. Skill de instrução
+        let skillInstructionBlock = "";
+        const firstUserMsg = await prisma.message.findFirst({
+          where: { sessionId: targetSessionId, role: "user" },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (firstUserMsg && firstUserMsg.content.startsWith("/")) {
+          const skillRes = resolveSkillOrCommand(
+            firstUserMsg.content,
+            session.project?.path || process.cwd()
+          );
+          if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
+            skillInstructionBlock = skillRes.skillBlock;
+          }
+        }
+
+        // 3. Dispatch via SmartRouter (Timeout resiliente de 90s)
+        const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+        const smartRouter = new SmartRouter();
+
+        const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role}) responsável pela etapa "${taskDb.title}".
+DIRETRIZES DE EXECUÇÃO:
+1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
+2. Para cada arquivo no escopo (${taskDb.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
+\`\`\`typescript
+// file: caminho/relativo/do/arquivo.ts
+<código completo aqui>
+\`\`\`
+3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.`;
+
+        const dispatchMessages: DispatchMessage[] = [
+          { role: "system", content: autonomousWorkerPrompt },
+        ];
+        if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
+        if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
+
+        dispatchMessages.push({
+          role: "user",
+          content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
+        });
+
+        let stepResultText = "";
+        try {
+          const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000;
+          const stepSignal = AbortSignal.timeout(stepTimeoutMs);
+          const dispatchPromise = smartRouter.dispatchWithFallback({
+            messages: dispatchMessages,
+            tier: "fast",
+            geminiKey: readSecret(setting?.geminiKey),
+            groqKey: readSecret((setting as any)?.groqKey),
+            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+            deepseekKey: readSecret((setting as any)?.deepseekKey),
+            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+            omniRouteKey: readSecret(setting?.omniRouteKey),
+            stream: false,
+            signal: stepSignal,
+          });
+
+          const timeoutPromise = new Promise<null>((resolve) => {
+            if (stepSignal.aborted) return resolve(null);
+            stepSignal.addEventListener("abort", () => resolve(null), { once: true });
+          });
+
+          const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
+          if (!dispatchRes) {
+            throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
+          }
+
+          if (dispatchRes) {
+            const resJson = await dispatchRes.response.json().catch(() => ({}));
+            if (resJson.choices?.[0]?.message?.content) {
+              stepResultText = resJson.choices[0].message.content;
+            } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+              stepResultText = resJson.candidates[0].content.parts[0].text;
+            } else {
+              stepResultText = `Etapa "${taskDb.title}" executada pelo motor autônomo.`;
+            }
+          }
+        } catch (err) {
+          stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
+          console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
+        }
+
+        // 4. Quarentena e Auditoria Dupla-Lente
+        const qm = new QuarantineManager();
+        const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
+        const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
+        const type1Res = DualLensAuditor.validateType1(codeContentMap);
+        const type2Res = DualLensAuditor.validateType2(type1Res, taskDb.title, stepResultText, codeContentMap);
+
+        let finalStatus: "completed" | "failed" | "blocked" = "completed";
+        let promotionTarget: string | null = null;
+        const newAttempts = (taskDb.attempts || 0) + 1;
+
+        if (type2Res.verdict === "APPROVED") {
+          finalStatus = "completed";
+          const targetProjectRoot = session.project?.path || process.cwd();
+          qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
+          promotionTarget = targetProjectRoot;
+        } else {
+          qm.purgeWorkspace(taskDb.id);
+          if (newAttempts >= (taskDb.maxAttempts || 3)) {
+            finalStatus = "blocked";
+          } else {
+            finalStatus = "failed";
+          }
+        }
+
+        const mcpRes = {
+          success: type2Res.verdict === "APPROVED",
+          nodeId: taskDb.id,
+          title: taskDb.title,
+          output: stepResultText,
+          auditVerdict: type2Res.verdict,
+          promotedPath: promotionTarget,
+        };
+
+        await prisma.taskNode.update({
+          where: { id: taskDb.id },
+          data: {
+            status: finalStatus,
+            attempts: newAttempts,
+            result: JSON.stringify(mcpRes),
+          },
+        });
+
+        processedCount++;
+
+        TelemetryLogger.log({
+          sessionId: targetSessionId,
+          action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
+          details: { nodeId: taskDb.id, title: taskDb.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
+        });
+
+        // Se o nó falhou definitivamente (blocked), propaga bloqueio
+        if (finalStatus === "blocked") {
+          dagEngine.updateNodeStatus(taskDb.id, "blocked");
+          for (const remainingNode of dagEngine.getNodes()) {
+            if (remainingNode.status === "blocked") {
+              await prisma.taskNode.update({
+                where: { id: remainingNode.id },
+                data: { status: "blocked" },
+              });
+            }
+          }
+        }
+      }
+
+      // Consulta estado final dos nós da sessão
+      const finalSessionTasks = await prisma.taskNode.findMany({
+        where: { sessionId: targetSessionId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const allCompleted = finalSessionTasks.length > 0 && finalSessionTasks.every((t) => t.status === "completed");
+      if (allCompleted) {
+        const completedSummary = finalSessionTasks
+          .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
+          .join("\n");
+
+        const firstUserMsg = await prisma.message.findFirst({
+          where: { sessionId: targetSessionId, role: "user" },
+          orderBy: { createdAt: "asc" },
+        });
+
+        const skillHeader = firstUserMsg?.content.startsWith("/")
+          ? firstUserMsg.content.split(" ")[0]
+          : "/autonomo";
+
+        await prisma.message.create({
+          data: {
+            sessionId: targetSessionId,
+            role: "assistant",
+            content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas no servidor:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${session.project?.path || process.cwd()}\`_`,
+          },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        processedCount,
+        allCompleted,
+        tasks: finalSessionTasks,
       });
     }
 
