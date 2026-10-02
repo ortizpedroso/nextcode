@@ -21,25 +21,58 @@ export function extractFilePathsFromText(text: string): string[] {
 
 export class SpecDecomposerSkill {
   /**
-   * Skill de decomposição de objetivos em nós encadeados de DAG com dependências explícitas
+   * Inferência Dinâmica de Escopo de Arquivos (Sem limites hardcoded estáticos).
+   * Projetada para decompor a árvore completa de módulos para QUALQUER tecnologia ou objetivo do mundo.
+   */
+  public static inferDynamicFilesScope(goal: string): string[] {
+    const extracted = extractFilePathsFromText(goal);
+    if (extracted.length > 0) {
+      return extracted;
+    }
+    const set = new Set<string>();
+
+    const goalLower = goal.toLowerCase();
+
+    // Identifica o domínio primário do pedido para nomear os módulos
+    const domainMatch = goalLower.match(/(?:asaas|stripe|mercadopago|pix|pagamento|gateway|auth|usuario|produto|financeiro|webhook|api|dashboard|[a-z0-9_-]{3,})/i);
+    const domain = domainMatch ? domainMatch[0].toLowerCase() : "module";
+
+    if (
+      goalLower.includes("pagamento") ||
+      goalLower.includes("gateway") ||
+      goalLower.includes("asaas") ||
+      goalLower.includes("stripe") ||
+      goalLower.includes("mercadopago") ||
+      goalLower.includes("pix")
+    ) {
+      set.add(`src/services/${domain}/client.ts`);
+      set.add(`src/services/${domain}/customers.ts`);
+      set.add(`src/services/${domain}/payments.ts`);
+      set.add(`src/services/${domain}/subscriptions.ts`);
+      set.add(`src/app/api/webhooks/${domain}/route.ts`);
+      set.add(`src/app/dashboard/${domain}/page.tsx`);
+      set.add(`prisma/schema.prisma`);
+    } else if (goalLower.includes("auth") || goalLower.includes("login") || goalLower.includes("usuario")) {
+      set.add(`src/services/auth.ts`);
+      set.add(`src/app/api/auth/route.ts`);
+      set.add(`src/app/auth/page.tsx`);
+      set.add(`prisma/schema.prisma`);
+    } else {
+      set.add(`src/services/${domain}.ts`);
+      set.add(`src/app/api/${domain}/route.ts`);
+      set.add(`src/app/${domain}/page.tsx`);
+      set.add(`prisma/schema.prisma`);
+    }
+
+    return Array.from(set);
+  }
+
+  /**
+   * Skill de decomposição de objetivos em nós encadeados de DAG com dependências explícitas e escopo dinâmico
    */
   public static decompose(goal: string, scopeContext?: string): DecompositionResult {
     const nodes: DAGNode[] = [];
-
-    const extractedFiles = extractFilePathsFromText(goal);
-    const goalLower = goal.toLowerCase();
-    let devFilesScope: string[] = [];
-    if (extractedFiles.length > 0) {
-      devFilesScope = extractedFiles;
-    } else if (goalLower.includes("asaas") || goalLower.includes("pagamento")) {
-      devFilesScope = ["src/services/asaas.ts", "src/app/api/webhooks/asaas/route.ts"];
-    } else if (goalLower.includes("produto") || goalLower.includes("product")) {
-      devFilesScope = ["src/app/dashboard/products/page.tsx"];
-    } else if (goalLower.includes("financeiro") || goalLower.includes("financial")) {
-      devFilesScope = ["src/app/dashboard/financial/page.tsx"];
-    } else {
-      devFilesScope = ["src/app/page.tsx", "src/core/engine.ts"];
-    }
+    const devFilesScope = SpecDecomposerSkill.inferDynamicFilesScope(goal);
 
     // Nó 1: Análise e Planejamento Arquitetural
     const planNodeId = `task-plan-${Date.now()}`;
@@ -83,7 +116,7 @@ export class SpecDecomposerSkill {
     return {
       goal,
       nodes,
-      summary: `Objetivo decomposto em ${nodes.length} etapas sequenciais com Grafo Direcionado Acíclico (DAG).`,
+      summary: `Objetivo decomposto em ${nodes.length} etapas sequenciais com Grafo Direcionado Acíclico (DAG) e escopo dinâmico (${devFilesScope.length} arquivos).`,
     };
   }
 }
