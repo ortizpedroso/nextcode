@@ -49,6 +49,8 @@ export async function PATCH(
     if (projectId !== undefined) {
       dataToUpdate.projectId = projectId ? String(projectId).trim() : null;
     }
+    if (body.specApproved !== undefined) dataToUpdate.specApproved = Boolean(body.specApproved);
+    if (body.canonicalSpec !== undefined) dataToUpdate.canonicalSpec = String(body.canonicalSpec);
 
     const updated = await prisma.session.update({
       where: { id },

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  Lock,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -57,6 +58,7 @@ interface WorkspaceProps {
   onRetryNode?: (nodeId: string) => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
+  onOpenSpecModal?: () => void;
   onStop?: () => void;
 }
 
@@ -81,6 +83,7 @@ export function Workspace({
   onRetryNode,
   onInspectQuarantine,
   onExportAuditReport,
+  onOpenSpecModal,
   onStop,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
@@ -217,6 +220,15 @@ export function Workspace({
                   )}
                 </div>
               )}
+
+              <button
+                onClick={onOpenSpecModal}
+                className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-amber-200 dark:border-amber-800"
+                title="Visualizar e Aprovar Especificação Canônica (Trava T1)"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Spec T1</span>
+              </button>
 
               <button
                 onClick={() => setShowDagPanel(!showDagPanel)}

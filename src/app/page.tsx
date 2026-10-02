@@ -8,6 +8,7 @@ import { ProjectFormData } from "@/components/projects/open-project-dialog";
 import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { QuarantineDiffModal } from "@/components/session/quarantine-diff-modal";
+import { CanonicalSpecModal } from "@/components/session/canonical-spec-modal";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -22,6 +23,10 @@ export default function DashboardOrchestrator() {
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
   const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
+
+  const [showSpecModal, setShowSpecModal] = useState(false);
+  const [canonicalSpec, setCanonicalSpec] = useState("");
+  const [isSpecApproved, setIsSpecApproved] = useState(false);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [tokensSaved, setTokensSaved] = useState<number>(12450);
@@ -99,6 +104,8 @@ export default function DashboardOrchestrator() {
         setActiveSessionTitle(data.session.title);
         setActiveProjectName(data.session.project?.name || null);
         setActiveProjectId(data.session.projectId || null);
+        setCanonicalSpec(data.session.canonicalSpec || "");
+        setIsSpecApproved(Boolean(data.session.specApproved));
         setTasks(data.tasks || []);
         // Filtra estritamente para que APENAS mensagens do Usuário e do Assistente sejam exibidas
         const cleanMsgs = (data.messages || []).filter(
@@ -589,6 +596,7 @@ export default function DashboardOrchestrator() {
         onRetryNode={handleRetryNode}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
+        onOpenSpecModal={() => setShowSpecModal(true)}
         onStop={handleStopProcessing}
       />
 
@@ -596,6 +604,30 @@ export default function DashboardOrchestrator() {
         <QuarantineDiffModal
           taskId={inspectTaskId}
           onClose={() => setInspectTaskId(null)}
+        />
+      )}
+
+      {showSpecModal && activeSessionId && (
+        <CanonicalSpecModal
+          sessionId={activeSessionId}
+          specContent={canonicalSpec}
+          specApproved={isSpecApproved}
+          onClose={() => setShowSpecModal(false)}
+          onSpecApproved={async () => {
+            await fetchSessionDetails(activeSessionId);
+            setConsoleLogs((prev) => [
+              ...prev,
+              "[ESPECIFICAÇÃO] Spec Canônica APROVADA e Trava T1 LIBERADA com sucesso!",
+            ]);
+
+            // Dispara o processador de fila no servidor para iniciar a execução da DAG
+            await authFetch("/api/dag", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "process_queue", sessionId: activeSessionId }),
+            });
+            await fetchSessionDetails(activeSessionId);
+          }}
         />
       )}
     </div>
