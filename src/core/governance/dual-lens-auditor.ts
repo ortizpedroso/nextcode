@@ -27,7 +27,8 @@ export class DualLensAuditor {
    */
   public static validateType1(
     codeContentMap: Record<string, string>,
-    mandatoryRules: string[] = []
+    mandatoryRules: string[] = [],
+    projectRoot?: string
   ): ValidationType1Result {
     const compilationErrors: string[] = [];
     const securityViolations: string[] = [];
@@ -82,6 +83,41 @@ export class DualLensAuditor {
       // 3. Regra de tipagem estrita (Aviso de Clean Code registrado)
       if (content.includes(": any") && !content.includes("// eslint-disable")) {
         compilationErrors.push(`[CLEAN CODE VIOLATION] Uso proibido do tipo 'any' em ${filePath}`);
+      }
+
+      // 4. Import Dependency Guard (Verifica se imports locais existem no lote ou no repositório)
+      if (filePath.endsWith(".ts") || filePath.endsWith(".tsx") || filePath.endsWith(".js") || filePath.endsWith(".jsx")) {
+        const importRegex = /import\s+(?:[\s\S]*?\s+from\s+)?['"](@\/|\.\/|\.\.\/)(.*?)['"]/g;
+        let impMatch: RegExpExecArray | null;
+        while ((impMatch = importRegex.exec(content)) !== null) {
+          const importPrefix = impMatch[1];
+          const relativeModule = impMatch[2];
+
+          let normalizedImport = importPrefix === "@/" ? `src/${relativeModule}` : relativeModule;
+          normalizedImport = normalizedImport.replace(/^\.\//, "").replace(/^\.\.\//, "");
+          const baseImportPath = normalizedImport.replace(/\.(?:ts|tsx|js|jsx)$/, "");
+
+          const candidateKeys = Object.keys(codeContentMap).map((k) => k.replace(/\.(?:ts|tsx|js|jsx)$/, ""));
+          const existsInBatch = candidateKeys.includes(baseImportPath) || candidateKeys.includes(`${baseImportPath}/index`);
+
+          if (!existsInBatch && projectRoot) {
+            const fs = require("fs");
+            const path = require("path");
+            let existsOnDisk = false;
+            const possibleExtensions = ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx", "/index.js"];
+            for (const ext of possibleExtensions) {
+              if (fs.existsSync(path.join(projectRoot, `${baseImportPath}${ext}`))) {
+                existsOnDisk = true;
+                break;
+              }
+            }
+            if (!existsOnDisk) {
+              compilationErrors.push(
+                `[MISSING MODULE ERROR] O arquivo ${filePath} importa "${impMatch[0]}", mas o módulo "${baseImportPath}" não existe na quarentena nem no repositório.`
+              );
+            }
+          }
+        }
       }
     }
 

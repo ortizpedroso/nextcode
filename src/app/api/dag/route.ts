@@ -253,6 +253,17 @@ DIRETRIZES DE EXECUÇÃO:
       if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
       if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
 
+      // Auto-Healing Feedback Loop: Se for uma re-tentativa após falha, injeta o erro exato da auditoria anterior
+      if ((task.attempts || 0) > 0 && task.result) {
+        try {
+          const prevRes = JSON.parse(task.result);
+          if (prevRes.auditVerdict !== "APPROVED" || prevRes.rejectionReason) {
+            const feedbackText = `\n\n⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${(task.attempts || 0) + 1}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevRes.rejectionReason || "Erros de compilação/sintaxe"}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`;
+            dispatchMessages.push({ role: "system", content: feedbackText });
+          }
+        } catch {}
+      }
+
       dispatchMessages.push({
         role: "user",
         content: `[EXECUÇÃO DA ETAPA DA DAG: ${task.title}]\nPapel/Função: ${task.role}\nEscopo de Arquivos: ${task.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
@@ -304,12 +315,13 @@ DIRETRIZES DE EXECUÇÃO:
       // 4. Quarentena, Auditoria Cega e Promoção para a Pasta Física do Projeto
       const qm = new QuarantineManager();
       const filesScope: string[] = task.filesScope ? JSON.parse(task.filesScope) : [];
+      const targetProjectRoot = task.session.project?.path || process.cwd();
       
       // Extrai os blocos de código gerados e grava no workspace isolado de quarentena
       const codeContentMap = qm.extractAndWriteCodeBlocks(task.id, stepResultText, filesScope);
       
       // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
-      const type1Res = DualLensAuditor.validateType1(codeContentMap);
+      const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
       const type2Res = DualLensAuditor.validateType2(type1Res, task.title, stepResultText, codeContentMap);
 
       let finalStatus: "completed" | "failed" = "completed";
@@ -317,8 +329,6 @@ DIRETRIZES DE EXECUÇÃO:
 
       if (type2Res.verdict === "APPROVED") {
         finalStatus = "completed";
-        // Resolve o caminho do projeto (ou pasta padrão) e promove o código aprovado
-        const targetProjectRoot = task.session.project?.path || process.cwd();
         qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
         promotionTarget = targetProjectRoot;
       } else {
@@ -499,6 +509,17 @@ DIRETRIZES DE EXECUÇÃO:
           if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
           if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
 
+          // Auto-Healing Feedback Loop: Se for uma re-tentativa após falha, injeta o erro exato da auditoria anterior
+          if ((taskDb.attempts || 0) > 0 && taskDb.result) {
+            try {
+              const prevRes = JSON.parse(taskDb.result);
+              if (prevRes.auditVerdict !== "APPROVED" || prevRes.rejectionReason) {
+                const feedbackText = `\n\n⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${(taskDb.attempts || 0) + 1}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevRes.rejectionReason || "Erros de compilação/sintaxe"}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`;
+                dispatchMessages.push({ role: "system", content: feedbackText });
+              }
+            } catch {}
+          }
+
           dispatchMessages.push({
             role: "user",
             content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
@@ -548,8 +569,9 @@ DIRETRIZES DE EXECUÇÃO:
 
           const qm = new QuarantineManager();
           const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
+          const targetProjectRoot = session.project?.path || process.cwd();
           const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
-          const type1Res = DualLensAuditor.validateType1(codeContentMap);
+          const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
           const type2Res = DualLensAuditor.validateType2(type1Res, taskDb.title, stepResultText, codeContentMap);
 
           let finalStatus: "completed" | "failed" | "blocked" = "completed";
@@ -558,7 +580,6 @@ DIRETRIZES DE EXECUÇÃO:
 
           if (type2Res.verdict === "APPROVED") {
             finalStatus = "completed";
-            const targetProjectRoot = session.project?.path || process.cwd();
             qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
             promotionTarget = targetProjectRoot;
           } else {
