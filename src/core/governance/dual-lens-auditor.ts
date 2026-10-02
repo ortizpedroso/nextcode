@@ -38,7 +38,18 @@ export class DualLensAuditor {
       if (filePath.toLowerCase().endsWith(".json")) {
         try {
           const cleanJsonText = content.replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path)?.*$/gm, "").trim();
-          JSON.parse(cleanJsonText);
+          const parsedJson = JSON.parse(cleanJsonText);
+          if (filePath.toLowerCase().endsWith("package.json") && parsedJson && typeof parsedJson === "object") {
+            const devScript = parsedJson.scripts?.dev;
+            if (typeof devScript === "string") {
+              const cleanDev = devScript.trim().toLowerCase();
+              if (cleanDev.startsWith("src/") || cleanDev.endsWith(".ts") || cleanDev.endsWith(".tsx") || cleanDev.endsWith(".js")) {
+                if (!cleanDev.startsWith("node ") && !cleanDev.startsWith("ts-node ") && !cleanDev.startsWith("next ")) {
+                  compilationErrors.push(`[PACKAGE.JSON ERROR] O script "dev" em ${filePath} é inválido ("${devScript}"). Para projetos Next.js use "next dev".`);
+                }
+              }
+            }
+          }
         } catch (jsonErr: any) {
           compilationErrors.push(`[JSON SYNTAX ERROR] Estrutura JSON inválida em ${filePath}: ${jsonErr.message}`);
         }
