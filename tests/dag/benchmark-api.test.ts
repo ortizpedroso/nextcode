@@ -11,16 +11,13 @@ describe("API /api/dag/benchmark", () => {
   let testSessionId: string;
 
   beforeEach(async () => {
-    await prisma.taskNode.deleteMany({});
-    await prisma.session.deleteMany({});
-
     const session = await prisma.session.create({
       data: {
-        title: "Benchmark Test Session",
+        title: "Benchmark Test Session Unique",
         tasks: {
           create: [
-            { title: "Task 1", role: "developer" },
-            { title: "Task 2", role: "auditor" },
+            { title: "Task 1 Unique", role: "developer" },
+            { title: "Task 2 Unique", role: "auditor" },
           ],
         },
       },
