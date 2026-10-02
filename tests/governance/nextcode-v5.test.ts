@@ -233,5 +233,25 @@ export const defaultEngine = {};
       expect(codeMap["Next.js"]).toBeUndefined();
       expect(codeMap["src/core/engine.ts"]).toBe("export const defaultEngine = {};\n");
     });
+
+    it("deve validar schemas do Prisma e relatar erro em modelos sem chave primária (@id)", () => {
+      const codeMap = {
+        "prisma/schema.prisma": `model User { name String }`
+      };
+      const res = DualLensAuditor.validateType1(codeMap);
+      expect(res.passed).toBe(false);
+      expect(res.compilationErrors.some(e => e.includes("[PRISMA SCHEMA ERROR]"))).toBe(true);
+    });
+
+    it("deve validar que componentes do App Router contêm export default e rotas de API contêm métodos HTTP", () => {
+      const badPage = { "src/app/page.tsx": `const Page = () => null;` };
+      const resPage = DualLensAuditor.validateType1(badPage);
+      expect(resPage.passed).toBe(false);
+      expect(resPage.compilationErrors.some(e => e.includes("[NEXT.JS APP ROUTER ERROR]"))).toBe(true);
+
+      const goodPage = { "src/app/page.tsx": `export default function Page() { return null; }` };
+      const resGood = DualLensAuditor.validateType1(goodPage);
+      expect(resGood.passed).toBe(true);
+    });
   });
 });

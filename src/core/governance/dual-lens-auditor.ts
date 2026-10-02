@@ -56,6 +56,38 @@ export class DualLensAuditor {
         }
       }
 
+      // 0.5 Validação mecânica de schemas do Prisma (.prisma)
+      if (filePath.toLowerCase().endsWith(".prisma")) {
+        const modelMatches = content.matchAll(/model\s+([a-zA-Z0-9_]+)\s*\{([\s\S]*?)\}/g);
+        let hasModels = false;
+        for (const mMatch of modelMatches) {
+          hasModels = true;
+          const modelName = mMatch[1];
+          const modelBody = mMatch[2];
+          if (!modelBody.includes("@id") && !modelBody.includes("@@id")) {
+            compilationErrors.push(`[PRISMA SCHEMA ERROR] O modelo "${modelName}" em ${filePath} não possui chave primária (@id ou @@id).`);
+          }
+        }
+        if (!hasModels && !content.includes("generator") && !content.includes("datasource")) {
+          compilationErrors.push(`[PRISMA SCHEMA ERROR] O arquivo ${filePath} não contém modelos nem configurações válidas do Prisma.`);
+        }
+      }
+
+      // 0.6 Sanitização e Validação do Next.js App Router (page.tsx, layout.tsx, route.ts)
+      const cleanFileLower = filePath.toLowerCase().replace(/\\/g, "/");
+      if (cleanFileLower.includes("app/") || cleanFileLower.startsWith("src/app/")) {
+        if (cleanFileLower.endsWith("page.tsx") || cleanFileLower.endsWith("page.jsx") || cleanFileLower.endsWith("layout.tsx") || cleanFileLower.endsWith("layout.jsx")) {
+          if (!content.includes("export default")) {
+            compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] O componente ${filePath} deve conter uma exportação padrão ("export default function ...").`);
+          }
+        } else if (cleanFileLower.endsWith("route.ts") || cleanFileLower.endsWith("route.js")) {
+          const hasHttpMethod = /export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/i.test(content);
+          if (!hasHttpMethod) {
+            compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] A rota de API ${filePath} deve exportar pelo menos um método HTTP (GET, POST, PUT, DELETE, PATCH).`);
+          }
+        }
+      }
+
       // 1. Verificação sintática básica (compilação TypeScript / AST balance checker)
       if (content.includes("eval(") || content.includes("exec(") || content.includes("new Function(")) {
         securityViolations.push(`[OWASP VIOLATION] Uso proibido de eval/exec/Function detectado em ${filePath}`);
