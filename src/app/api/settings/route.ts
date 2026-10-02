@@ -22,8 +22,15 @@ async function ensureSettingTable() {
         "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    try { await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "groqKey" TEXT;`); } catch {}
-    try { await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "nvidiaKey" TEXT;`); } catch {}
+    const tableInfo = await prisma.$queryRawUnsafe<any[]>(`PRAGMA table_info("Setting")`).catch(() => []);
+    const existingCols = new Set((tableInfo || []).map((c: any) => c.name));
+
+    if (!existingCols.has("groqKey")) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "groqKey" TEXT;`).catch(() => {});
+    }
+    if (!existingCols.has("nvidiaKey")) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "nvidiaKey" TEXT;`).catch(() => {});
+    }
   } catch (e) {
     console.warn("[SETTINGS] Bootstrap de tabela Setting:", e);
   }
