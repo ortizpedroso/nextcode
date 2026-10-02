@@ -71,7 +71,8 @@ export default function DashboardOrchestrator() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch("/api/projects");
+      const res = await authFetch("/api/projects");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.projects) {
         setProjects(data.projects);
@@ -83,7 +84,8 @@ export default function DashboardOrchestrator() {
 
   const fetchAdhocSessions = async () => {
     try {
-      const res = await fetch("/api/sessions?adhocOnly=true");
+      const res = await authFetch("/api/sessions?adhocOnly=true");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.sessions) {
         setAdhocSessions(data.sessions);
@@ -95,7 +97,8 @@ export default function DashboardOrchestrator() {
 
   const fetchCustomProviders = async () => {
     try {
-      const res = await fetch("/api/providers/custom");
+      const res = await authFetch("/api/providers/custom");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.providers) {
         setCustomProviders(data.providers);
@@ -110,7 +113,8 @@ export default function DashboardOrchestrator() {
     if (!targetSessionId) return;
 
     try {
-      const res = await fetch(`/api/dag?sessionId=${targetSessionId}`);
+      const res = await authFetch(`/api/dag?sessionId=${targetSessionId}`);
+      if (!res.ok) return;
       const data = await res.json();
 
       if (data.session) {
@@ -128,13 +132,17 @@ export default function DashboardOrchestrator() {
         setMessages(cleanMsgs);
       }
     } catch (err) {
-      console.error("Erro ao carregar detalhes da sessão:", err);
+      // Falhas temporárias de rede (ex.: re-compilação do dev server) não devem quebrar a UI
+      if (process.env.NODE_ENV === "development") {
+        console.warn("Sincronização temporária de sessão pausada (servidor indisponível ou reconectando).");
+      }
     }
   }, [activeSessionId]);
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch("/api/settings");
+      const res = await authFetch("/api/settings");
+      if (!res.ok) return;
       const data = await res.json();
       setSettingsForm({
         geminiKey: data.geminiKey || "",
