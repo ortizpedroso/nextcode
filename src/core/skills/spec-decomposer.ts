@@ -60,9 +60,20 @@ export class SpecDecomposerSkill {
   /**
    * Skill de decomposição de objetivos em nós encadeados de DAG com dependências explícitas e escopo dinâmico
    */
-  public static decompose(goal: string, scopeContext?: string): DecompositionResult {
+  public static decompose(
+    goal: string,
+    scopeContext?: string,
+    filesScopeOverride?: string[]
+  ): DecompositionResult {
     const nodes: DAGNode[] = [];
-    const devFilesScope = SpecDecomposerSkill.inferDynamicFilesScope(goal);
+    // Prioridade: (1) arquivos_afetados já declarados na Spec Canônica aprovada
+    // pelo usuário (fonte de verdade real, dinâmica por projeto, sem keyword-sniffing);
+    // (2) caminhos de arquivo explícitos no texto do goal; (3) heurística de domínio
+    // como último recurso, quando nenhuma das duas fontes acima existe.
+    const devFilesScope =
+      filesScopeOverride && filesScopeOverride.length > 0
+        ? filesScopeOverride
+        : SpecDecomposerSkill.inferDynamicFilesScope(goal);
 
     // Nó 1: Análise e Planejamento Arquitetural
     const planNodeId = `task-plan-${Date.now()}`;

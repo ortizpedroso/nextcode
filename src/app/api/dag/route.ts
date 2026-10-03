@@ -214,8 +214,20 @@ export async function POST(request: NextRequest) {
       const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
       const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
 
+      // Fonte de verdade real do escopo de arquivos: a Spec Canônica já declara
+      // `arquivos_afetados` (dinâmico por projeto, sem keyword-sniffing). Só cai na
+      // heurística de domínio dentro de SpecDecomposerSkill quando a Spec ainda não
+      // existe ou não os declarou.
+      const sessionForScope = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+        select: { canonicalSpec: true },
+      });
+      const specFilesScope = sessionForScope?.canonicalSpec
+        ? parseSpecDocument(sessionForScope.canonicalSpec)?.arquivosAfetados
+        : undefined;
+
       // Decompõe em nós via SpecDecomposerSkill
-      const { nodes: decomposedNodes } = SpecDecomposerSkill.decompose(targetPrompt);
+      const { nodes: decomposedNodes } = SpecDecomposerSkill.decompose(targetPrompt, undefined, specFilesScope);
 
       // Salva os nós no banco de dados SQLite
       const createdTasks = [];
