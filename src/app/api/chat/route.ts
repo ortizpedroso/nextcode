@@ -52,28 +52,37 @@ export async function POST(request: NextRequest) {
       activeSessionId = session.id;
     }
 
-    // Auto-aprovação inteligente de Spec (Trava T1) se houver comando de execução/implementação
+    // Trava T1: Garante que novas solicitações de Spec travem a sessão até aprovação explícita do usuário
     const lowerPrompt = targetPrompt.toLowerCase();
-    const isExecutionCommand =
-      lowerPrompt.includes("implementar") ||
-      lowerPrompt.includes("implemente") ||
-      lowerPrompt.includes("executar") ||
-      lowerPrompt.includes("execute") ||
-      lowerPrompt.includes("só pare quando") ||
-      lowerPrompt.includes("so pare quando") ||
+    const isNewSpecRequest =
+      lowerPrompt.includes("spec") ||
+      lowerPrompt.includes("quero criar") ||
+      lowerPrompt.includes("crie um") ||
+      lowerPrompt.includes("montar um") ||
+      lowerPrompt.includes("reescreva") ||
+      lowerPrompt.includes("nova spec");
+
+    const isExplicitApproval =
       lowerPrompt.includes("aprovo") ||
       lowerPrompt.includes("aprovar") ||
+      lowerPrompt.includes("aprova a spec") ||
       lowerPrompt.includes("iniciar dag") ||
       lowerPrompt.includes("validar e aprovar") ||
       lowerPrompt.includes("pode rodar") ||
-      lowerPrompt.includes("pode fazer");
+      lowerPrompt.includes("pode executar");
 
-    if (isExecutionCommand) {
+    if (isNewSpecRequest && !isExplicitApproval) {
+      await prisma.session.update({
+        where: { id: activeSessionId },
+        data: { specApproved: false },
+      });
+      console.log(`[CHAT_INTENT] Trava T1 BLOQUEADA na sessão ${activeSessionId} para aguardar aprovação da nova Spec.`);
+    } else if (isExplicitApproval) {
       await prisma.session.update({
         where: { id: activeSessionId },
         data: { specApproved: true },
       });
-      console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por intenção de execução/implementação.`);
+      console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por aprovação do usuário.`);
     }
 
     // 2. Registra mensagem do usuário no banco SQLite (armazenando a entrada tratada com YAML + MD)
