@@ -19,6 +19,7 @@ import {
   Wrench,
   Search,
   History,
+  MoreVertical,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -67,7 +68,7 @@ interface WorkspaceProps {
   onRetryNode?: (nodeId: string) => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
-  onOpenSpecModal?: () => void;
+  onOpenSpecModal?: (content?: string) => void;
   onOpenTelemetryModal?: () => void;
   onOpenQuotaModal?: () => void;
   onOpenSkillsModal?: () => void;
@@ -112,6 +113,19 @@ export function Workspace({
   const [showDagPanel, setShowDagPanel] = useState(true);
   const [showTerminal, setShowTerminal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [showMoreMenu]);
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -246,75 +260,12 @@ export function Workspace({
               )}
 
               <button
-                onClick={onOpenSpecModal}
+                onClick={() => onOpenSpecModal?.()}
                 className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-amber-200 dark:border-amber-800"
                 title="Visualizar e Aprovar Especificação Canônica (Trava T1)"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>Spec T1</span>
-              </button>
-
-              <button
-                onClick={onOpenTelemetryModal}
-                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-indigo-200 dark:border-indigo-800"
-                title="Visualizar Métricas de Telemetria e Incidentes"
-              >
-                <Activity className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Telemetria</span>
-              </button>
-
-              <button
-                onClick={onOpenQuotaModal}
-                className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-amber-200 dark:border-amber-800"
-                title="Gestão de Cotas e Rate-Limits dos Provedores"
-              >
-                <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Cotas</span>
-              </button>
-
-              <button
-                onClick={onOpenSkillsModal}
-                className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-purple-200 dark:border-purple-800"
-                title="Propostas de Habilidades Aprendidas (Candidate Skills)"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-                <span>Skills</span>
-              </button>
-
-              <button
-                onClick={onOpenBenchmarkModal}
-                className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-emerald-200 dark:border-emerald-800"
-                title="Simulador e Benchmark de Replay de DAG"
-              >
-                <BarChart3 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Benchmark</span>
-              </button>
-
-              <button
-                onClick={onOpenSearchModal}
-                className="px-3 py-1.5 bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-cyan-200 dark:border-cyan-800"
-                title="Busca de Código e Indexação do Projeto"
-              >
-                <Search className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                <span>Busca</span>
-              </button>
-
-              <button
-                onClick={onOpenMcpToolsModal}
-                className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-[#0066cc] dark:text-blue-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-blue-200 dark:border-blue-800"
-                title="Explorer & Testador de Ferramentas MCP JSON-RPC"
-              >
-                <Wrench className="w-3.5 h-3.5 text-[#0066cc] dark:text-blue-400" />
-                <span>MCP Tools</span>
-              </button>
-
-              <button
-                onClick={onOpenRevisionsModal}
-                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border border-indigo-200 dark:border-indigo-800"
-                title="Histórico de Revisões e Linha do Tempo"
-              >
-                <History className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Revisões</span>
               </button>
 
               <button
@@ -339,6 +290,46 @@ export function Workspace({
                 <span>Grafo DAG ({tasks.length})</span>
                 {showDagPanel ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
               </button>
+
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  onClick={() => setShowMoreMenu((v) => !v)}
+                  className={`p-1.5 rounded-xl transition-colors border ${
+                    showMoreMenu
+                      ? "bg-[#0066cc] text-white border-blue-600"
+                      : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-slate-700"
+                  }`}
+                  title="Mais ferramentas"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1.5 z-20">
+                    {[
+                      { label: "Telemetria", icon: Activity, onClick: onOpenTelemetryModal, color: "text-indigo-600 dark:text-indigo-400" },
+                      { label: "Cotas", icon: Zap, onClick: onOpenQuotaModal, color: "text-amber-600 dark:text-amber-400" },
+                      { label: "Skills", icon: Sparkles, onClick: onOpenSkillsModal, color: "text-purple-600 dark:text-purple-400" },
+                      { label: "Benchmark", icon: BarChart3, onClick: onOpenBenchmarkModal, color: "text-emerald-600 dark:text-emerald-400" },
+                      { label: "Busca", icon: Search, onClick: onOpenSearchModal, color: "text-cyan-600 dark:text-cyan-400" },
+                      { label: "MCP Tools", icon: Wrench, onClick: onOpenMcpToolsModal, color: "text-[#0066cc] dark:text-blue-400" },
+                      { label: "Revisões", icon: History, onClick: onOpenRevisionsModal, color: "text-indigo-600 dark:text-indigo-400" },
+                    ].map(({ label, icon: Icon, onClick, color }) => (
+                      <button
+                        key={label}
+                        onClick={() => {
+                          onClick?.();
+                          setShowMoreMenu(false);
+                        }}
+                        className="w-full px-3.5 py-2 flex items-center gap-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        <Icon className={`w-3.5 h-3.5 ${color}`} />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
