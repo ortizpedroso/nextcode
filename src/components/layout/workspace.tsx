@@ -20,6 +20,7 @@ import {
   Search,
   History,
   MoreVertical,
+  Network,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
 import { DagSidebar } from "@/components/session/dag-sidebar";
@@ -45,6 +46,15 @@ export interface SessionMessage {
   tokens?: number;
   tier?: string;
   createdAt?: string;
+  graphifySuggestion?: { reasoning: string; projectId: string } | null;
+}
+
+export interface GraphifyRunOutcome {
+  success: boolean;
+  nodes?: number;
+  edges?: number;
+  communities?: number;
+  error?: string;
 }
 
 interface WorkspaceProps {
@@ -77,6 +87,9 @@ interface WorkspaceProps {
   onOpenSearchModal?: () => void;
   onOpenRevisionsModal?: () => void;
   onStop?: () => void;
+  onRunGraphify?: (messageId: string, projectId: string) => void;
+  graphifyRunningMessageId?: string | null;
+  graphifyResults?: Record<string, GraphifyRunOutcome>;
 }
 
 export function Workspace({
@@ -109,6 +122,9 @@ export function Workspace({
   onOpenSearchModal,
   onOpenRevisionsModal,
   onStop,
+  onRunGraphify,
+  graphifyRunningMessageId,
+  graphifyResults,
 }: WorkspaceProps) {
   const [showDagPanel, setShowDagPanel] = useState(true);
   const [showTerminal, setShowTerminal] = useState(false);
@@ -427,6 +443,43 @@ export function Workspace({
                             onOpenSpecModal={onOpenSpecModal}
                             role={msg.role}
                           />
+                          {msg.role === "assistant" && msg.graphifySuggestion && (
+                            <div className="mt-2 p-3 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 text-[11px] space-y-2">
+                              <div className="flex items-center gap-1.5 font-semibold text-indigo-700 dark:text-indigo-300">
+                                <Network className="w-3.5 h-3.5" />
+                                <span>Mapear este projeto com graphify?</span>
+                              </div>
+                              <p className="text-slate-600 dark:text-slate-400">{msg.graphifySuggestion.reasoning}</p>
+                              {graphifyResults?.[msg.id] ? (
+                                graphifyResults[msg.id]!.success ? (
+                                  <p className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                    ✓ Grafo gerado: {graphifyResults[msg.id]!.nodes} nós, {graphifyResults[msg.id]!.edges} arestas,{" "}
+                                    {graphifyResults[msg.id]!.communities} comunidades. Veja graphify-out/GRAPH_REPORT.md no projeto.
+                                  </p>
+                                ) : (
+                                  <p className="text-rose-600 dark:text-rose-400 font-medium">✗ {graphifyResults[msg.id]!.error}</p>
+                                )
+                              ) : (
+                                <button
+                                  onClick={() => onRunGraphify?.(msg.id, msg.graphifySuggestion!.projectId)}
+                                  disabled={graphifyRunningMessageId === msg.id}
+                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                >
+                                  {graphifyRunningMessageId === msg.id ? (
+                                    <>
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      <span>Instalando e rodando...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Network className="w-3.5 h-3.5" />
+                                      <span>Instalar e rodar graphify</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

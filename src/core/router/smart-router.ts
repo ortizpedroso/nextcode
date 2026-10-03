@@ -386,6 +386,59 @@ export class SmartRouter {
   }
 
   /**
+   * Classificador de elegibilidade para a Telemetria "graphify": decide, via LLM barato (mesmo
+   * padrão de classifyComplexity), se o pedido do usuário se beneficiaria de consultar/construir
+   * um grafo de conhecimento do projeto (arquitetura, dependências entre arquivos, módulos
+   * centrais, visão geral de base grande/desconhecida) — em vez de um heurístico de palavras-chave,
+   * que erraria tanto em falsos positivos ("grafo" mencionado sem intenção estrutural) quanto em
+   * negativos (pedidos de arquitetura sem a palavra "grafo"). Retorna null em qualquer falha, para
+   * que o chamador simplesmente não exiba a sugestão em vez de quebrar o fluxo do chat.
+   */
+  public async classifyGraphifyEligibility(
+    task: TaskPayload,
+    dispatchConfig: Omit<DispatchOptions, "messages" | "tier" | "stream" | "modelOverride">
+  ): Promise<{ eligible: boolean; reasoning: string } | null> {
+    const classifierMessages: DispatchMessage[] = [
+      {
+        role: "system",
+        content:
+          'Você decide se uma ferramenta chamada "graphify" ajudaria a responder o pedido do usuário. ' +
+          'O graphify constrói um grafo de conhecimento do código-fonte do projeto (dependências entre ' +
+          'arquivos/módulos, comunidades, módulos centrais "god nodes"). Responda SOMENTE com um JSON de ' +
+          'uma linha, sem markdown e sem texto extra, no formato exato: ' +
+          '{"eligible":true|false,"reasoning":"motivo em até 15 palavras"}. ' +
+          '"eligible":true = o pedido pede visão geral de arquitetura, mapear dependências/módulos, ' +
+          'entender uma base de código grande/desconhecida, ou identificar módulos muito acoplados antes ' +
+          'de uma refatoração ampla. "eligible":false = pergunta pontual sobre um arquivo específico, ' +
+          'pedido de implementação direta, conversa geral, ou qualquer coisa que não exija mapear a base inteira.',
+      },
+      { role: "user", content: task.prompt.slice(0, 4000) },
+    ];
+
+    try {
+      const dispatchRes = await this.dispatchWithFallback({
+        ...dispatchConfig,
+        messages: classifierMessages,
+        tier: "fast",
+        stream: false,
+        signal: AbortSignal.timeout(8000),
+      });
+      const json = await dispatchRes.response.json().catch(() => null);
+      const raw: string =
+        json?.choices?.[0]?.message?.content ??
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        "";
+      const match = raw.match(/\{[^{}]*"eligible"\s*:\s*(true|false)[^{}]*\}/i);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      if (typeof parsed.eligible !== "boolean") return null;
+      return { eligible: parsed.eligible, reasoning: String(parsed.reasoning || "").slice(0, 200) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Roteamento por complexidade real (Opção A da revisão arquitetural): usa o heurístico de
    * palavras-chave apenas como baseline/fallback barato, e tenta sobrepor um veredito real do
    * classificador LLM. Toda decisão (heurística, LLM, concordância/divergência, latência) é

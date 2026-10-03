@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
+import * as path from "path";
 import prisma from "@/lib/prisma";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
@@ -149,7 +151,7 @@ export async function POST(request: NextRequest) {
     ];
     let projectContextInjected = false;
     let contextDiagnostics: string | null = null;
-    let ctxProject: { name: string; path: string | null } | null = null;
+    let ctxProject: { id: string; name: string; path: string | null } | null = null;
     try {
       const sessionForCtx = await prisma.session.findUnique({
         where: { id: activeSessionId },
@@ -230,9 +232,35 @@ export async function POST(request: NextRequest) {
     const activeTier = modelOverride || intent.tier;
     const modelName = intent.actualModelUsed;
 
+    // Telemetria "graphify": dispara em paralelo ao dispatch principal (nunca bloqueia a
+    // resposta do chat) um classificador LLM barato que decide se este pedido se beneficiaria
+    // de consultar/construir um grafo de conhecimento do projeto. Só roda quando há projeto com
+    // pasta local válida, a mensagem não é trivial (mesmo threshold de routeTaskSmart) e a skill
+    // ainda não foi instalada neste projeto — evita repetir a sugestão a cada turno.
+    const graphifyAlreadyInstalled = Boolean(
+      ctxProject?.path && fs.existsSync(path.join(ctxProject.path, ".gemini", "skills", "graphify", "SKILL.md"))
+    );
+    const graphifyEligibilityPromise: Promise<{ eligible: boolean; reasoning: string } | null> =
+      ctxProject?.path && !graphifyAlreadyInstalled && rawAnalysis.estimatedTokens >= 15
+        ? smartRouter
+            .classifyGraphifyEligibility(
+              { prompt: targetPrompt },
+              {
+                geminiKey: readSecret(setting?.geminiKey),
+                groqKey: readSecret((setting as any)?.groqKey),
+                nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+                deepseekKey: readSecret((setting as any)?.deepseekKey),
+                omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+                omniRouteKey: readSecret(setting?.omniRouteKey),
+              }
+            )
+            .catch(() => null)
+        : Promise.resolve(null);
+
     // 6. Geração da Resposta da IA via Cascata de Fallback
     let aiResponseContent = "";
     let effectiveTier = activeTier;
+    let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
 
     const dispatchRes = await smartRouter.dispatchWithFallback({
       messages: dispatchMessages,
@@ -275,6 +303,16 @@ export async function POST(request: NextRequest) {
         makeBlindAuditDispatchFn(smartRouter, setting)
       );
       aiResponseContent = zeroEngineRes.groundedMessage;
+
+      const graphifyEligibility = await graphifyEligibilityPromise;
+      if (graphifyEligibility?.eligible && ctxProject?.id) {
+        graphifySuggestion = { reasoning: graphifyEligibility.reasoning, projectId: ctxProject.id };
+        TelemetryLogger.log({
+          sessionId: activeSessionId,
+          action: "GRAPHIFY_SUGGESTION_SHOWN",
+          details: { reasoning: graphifyEligibility.reasoning, projectId: ctxProject.id },
+        });
+      }
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;
     }
@@ -310,6 +348,7 @@ export async function POST(request: NextRequest) {
         assistantMessage,
         messages: cleanMessages,
         intent,
+        graphifySuggestion,
         tokensSaved: headroomRes.tokensSaved + (preprocessedInput.originalLength - preprocessedInput.processedLength),
         projectContextInjected,
         inputPreprocessorStats: {

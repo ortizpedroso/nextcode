@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { authFetch } from "@/lib/client-session";
 import { Sidebar, ProjectItem, SessionItem } from "@/components/layout/sidebar";
-import { Workspace, TaskNode, SessionMessage } from "@/components/layout/workspace";
+import { Workspace, TaskNode, SessionMessage, GraphifyRunOutcome } from "@/components/layout/workspace";
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
 import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
@@ -46,6 +46,8 @@ export default function DashboardOrchestrator() {
   const [tokensSaved, setTokensSaved] = useState<number>(12450);
   const [loading, setLoading] = useState(false);
   const [executingNodeId, setExecutingNodeId] = useState<string | null>(null);
+  const [graphifyRunningMessageId, setGraphifyRunningMessageId] = useState<string | null>(null);
+  const [graphifyResults, setGraphifyResults] = useState<Record<string, GraphifyRunOutcome>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleStopProcessing = () => {
@@ -366,7 +368,19 @@ export default function DashboardOrchestrator() {
       if (chatRes.ok && chatData.sessionId) {
         const targetSessionId = chatData.sessionId;
         setActiveSessionId(targetSessionId);
-        setMessages(chatData.messages || []);
+
+        // A sugestão de graphify é um campo efêmero (não persistido na tabela Message) retornado
+        // só nesta resposta — anexamos na última mensagem do assistente para o card inline aparecer.
+        const incomingMessages: SessionMessage[] = chatData.messages || [];
+        if (chatData.graphifySuggestion) {
+          for (let i = incomingMessages.length - 1; i >= 0; i--) {
+            if (incomingMessages[i].role === "assistant") {
+              incomingMessages[i] = { ...incomingMessages[i], graphifySuggestion: chatData.graphifySuggestion };
+              break;
+            }
+          }
+        }
+        setMessages(incomingMessages);
         if (chatData.tokensSaved) {
           setTokensSaved((prev) => prev + chatData.tokensSaved);
         }
@@ -402,6 +416,45 @@ export default function DashboardOrchestrator() {
         abortControllerRef.current = null;
         setLoading(false);
       }
+    }
+  };
+
+  // Telemetria "graphify": instala a skill + roda o pipeline (extração AST, sem LLM) no projeto
+  // ativo, acionado pelo botão inline anexado à resposta do chat quando o classificador julgou
+  // o pedido elegível (ver graphifySuggestion em handleSendMessage / /api/chat).
+  const handleRunGraphify = async (messageId: string, projectId: string) => {
+    setGraphifyRunningMessageId(messageId);
+    try {
+      const res = await authFetch("/api/skills/graphify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, sessionId: activeSessionId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGraphifyResults((prev) => ({
+          ...prev,
+          [messageId]: {
+            success: true,
+            nodes: data.result?.nodes,
+            edges: data.result?.edges,
+            communities: data.result?.communities,
+          },
+        }));
+        setConsoleLogs((prev) => [...prev, `[GRAPHIFY] Grafo gerado: ${data.result?.nodes} nós, ${data.result?.edges} arestas.`]);
+      } else {
+        setGraphifyResults((prev) => ({
+          ...prev,
+          [messageId]: { success: false, error: data.error || "Falha desconhecida ao executar o graphify." },
+        }));
+      }
+    } catch (err) {
+      setGraphifyResults((prev) => ({
+        ...prev,
+        [messageId]: { success: false, error: String(err) },
+      }));
+    } finally {
+      setGraphifyRunningMessageId(null);
     }
   };
 
@@ -656,6 +709,9 @@ export default function DashboardOrchestrator() {
         onOpenSearchModal={() => setShowSearchModal(true)}
         onOpenRevisionsModal={() => setShowRevisionsModal(true)}
         onStop={handleStopProcessing}
+        onRunGraphify={handleRunGraphify}
+        graphifyRunningMessageId={graphifyRunningMessageId}
+        graphifyResults={graphifyResults}
       />
 
       {inspectTaskId && (
