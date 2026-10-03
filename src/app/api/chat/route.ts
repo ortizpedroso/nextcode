@@ -257,52 +257,84 @@ export async function POST(request: NextRequest) {
             .catch(() => null)
         : Promise.resolve(null);
 
-    // 6. Geração da Resposta da IA via Cascata de Fallback
+    // 6. Geração da Resposta da IA via Cascata de Fallback, com Auto-Healing Feedback Loop:
+    // mesma lógica do DAG (dag/route.ts) — se a auditoria Anti-Hallucination rejeitar o
+    // código gerado, o erro real é injetado de volta no prompt e a IA tenta de novo em vez
+    // de simplesmente devolver o erro ao usuário e parar.
+    const MAX_AUTO_HEAL_ATTEMPTS = 3;
     let aiResponseContent = "";
     let effectiveTier = activeTier;
     let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
-
-    const dispatchRes = await smartRouter.dispatchWithFallback({
-      messages: dispatchMessages,
-      tier: activeTier === "heavy" ? "heavy" : "fast",
-      modelOverride,
-      geminiKey: readSecret(setting?.geminiKey),
-      groqKey: readSecret((setting as any)?.groqKey),
-      nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-      deepseekKey: readSecret((setting as any)?.deepseekKey),
-      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-      omniRouteKey: readSecret(setting?.omniRouteKey),
-      stream: false,
-    });
-
-    effectiveTier = dispatchRes.tierTag;
+    let zeroEngineRes: Awaited<ReturnType<typeof ZeroHallucinationEngine.processAndVerifyResponse>> | null = null;
 
     try {
-      const resJson = await dispatchRes.response.json().catch(() => ({}));
-      if (resJson.choices?.[0]?.message?.content) {
-        aiResponseContent = resJson.choices[0].message.content;
-      } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-        aiResponseContent = resJson.candidates[0].content.parts[0].text;
-      } else {
-        aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+      for (let attempt = 1; attempt <= MAX_AUTO_HEAL_ATTEMPTS; attempt++) {
+        const attemptMessages = [...dispatchMessages];
+        if (attempt > 1 && zeroEngineRes && !zeroEngineRes.passed) {
+          const prevError =
+            zeroEngineRes.type2Result?.rejectionReason ||
+            [
+              ...zeroEngineRes.auditorResult.compilationErrors,
+              ...zeroEngineRes.auditorResult.securityViolations,
+              ...zeroEngineRes.auditorResult.testFailures,
+            ].join(" | ") ||
+            "Erros de compilação/sintaxe.";
+          attemptMessages.push({
+            role: "system",
+            content: `⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${attempt}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevError}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`,
+          });
+        }
+
+        const dispatchRes = await smartRouter.dispatchWithFallback({
+          messages: attemptMessages,
+          tier: activeTier === "heavy" ? "heavy" : "fast",
+          modelOverride,
+          geminiKey: readSecret(setting?.geminiKey),
+          groqKey: readSecret((setting as any)?.groqKey),
+          nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+          deepseekKey: readSecret((setting as any)?.deepseekKey),
+          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+          omniRouteKey: readSecret(setting?.omniRouteKey),
+          stream: false,
+        });
+
+        effectiveTier = dispatchRes.tierTag;
+
+        const resJson = await dispatchRes.response.json().catch(() => ({}));
+        if (resJson.choices?.[0]?.message?.content) {
+          aiResponseContent = resJson.choices[0].message.content;
+        } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+          aiResponseContent = resJson.candidates[0].content.parts[0].text;
+        } else {
+          aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+        }
+
+        // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
+        // Agora com Validador Tipo 2 (auditoria semântica cega), igual ao DAG: só promove
+        // para o disco se a Lente Cega confirmar que o código implementa o pedido real.
+        const taskId = `chat-exec-${Date.now()}-${attempt}`;
+        zeroEngineRes = await ZeroHallucinationEngine.processAndVerifyResponse(
+          taskId,
+          aiResponseContent,
+          targetPrompt,
+          ctxProject?.path || null,
+          makeBlindAuditDispatchFn(smartRouter, setting)
+        );
+
+        if (zeroEngineRes.passed) break;
       }
+
+      aiResponseContent = zeroEngineRes
+        ? `${zeroEngineRes.groundedMessage}${
+            !zeroEngineRes.passed
+              ? `\n\n_(Após ${MAX_AUTO_HEAL_ATTEMPTS} tentativas automáticas de autocorreção.)_`
+              : ""
+          }`
+        : aiResponseContent;
 
       if (!projectContextInjected && contextDiagnostics) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
       }
-
-      // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
-      // Agora com Validador Tipo 2 (auditoria semântica cega), igual ao DAG: só promove
-      // para o disco se a Lente Cega confirmar que o código implementa o pedido real.
-      const taskId = `chat-exec-${Date.now()}`;
-      const zeroEngineRes = await ZeroHallucinationEngine.processAndVerifyResponse(
-        taskId,
-        aiResponseContent,
-        targetPrompt,
-        ctxProject?.path || null,
-        makeBlindAuditDispatchFn(smartRouter, setting)
-      );
-      aiResponseContent = zeroEngineRes.groundedMessage;
 
       const graphifyEligibility = await graphifyEligibilityPromise;
       if (graphifyEligibility?.eligible && ctxProject?.id) {
