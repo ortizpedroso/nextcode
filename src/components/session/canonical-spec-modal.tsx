@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { authFetch } from "@/lib/client-session";
-import { X, Lock, Unlock, CheckCircle2, FileText, Save, Play } from "lucide-react";
+import { X, Lock, Unlock, CheckCircle2, FileText, Save, Play, Code2 } from "lucide-react";
+import { parseSpecDocument } from "@/core/intake/spec-format";
+import { SpecSummaryCard } from "./spec-summary-card";
 
 interface CanonicalSpecModalProps {
   sessionId: string;
@@ -12,6 +14,16 @@ interface CanonicalSpecModalProps {
   onSpecApproved: () => Promise<void>;
 }
 
+const DEFAULT_SPEC = `---
+titulo: "Especificação pendente"
+status: aguardando_aprovacao
+data: "${new Date().toISOString().split("T")[0]}"
+---
+
+# Especificação pendente
+
+Nenhuma Spec foi gerada ainda nesta sessão. Descreva o projeto no chat para que a IA produza a Spec Canônica.`;
+
 export function CanonicalSpecModal({
   sessionId,
   specContent,
@@ -19,12 +31,12 @@ export function CanonicalSpecModal({
   onClose,
   onSpecApproved,
 }: CanonicalSpecModalProps) {
-  const [content, setContent] = useState(
-    specContent ||
-      `# 📋 Especificação Canônica de Governança (Trava T1)\n\n## 🎯 Objetivos do Projeto\n- [ ] Desenvolver arquitetura modular de alta performance\n- [ ] Garantir 100% de conformidade com OWASP e Clean Code\n\n## 📐 Critérios de Aceite\n1. Código gravado isoladamente na quarentena (.quarantine/)\n2. Validação determinística Tipo 1 e Auditoria Cega Tipo 2\n3. Zero chaves hardcoded e zero vazamento de segredos`
-  );
+  const [content, setContent] = useState(specContent || DEFAULT_SPEC);
   const [saving, setSaving] = useState(false);
   const [isApproved, setIsApproved] = useState(specApproved);
+  const [showFullDoc, setShowFullDoc] = useState(false);
+
+  const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
   const handleApproveAndUnlock = async () => {
     setSaving(true);
@@ -122,19 +134,29 @@ export function CanonicalSpecModal({
           <div className="flex items-center justify-between">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <FileText className="w-4 h-4 text-[#0066cc]" />
-              Documento Canônico de Requisitos (Markdown)
+              {showFullDoc ? "Documento Completo (YAML + Markdown)" : "Resumo da Especificação"}
             </label>
-            <span className="text-[10px] text-slate-400">
-              Edite ou ajuste os critérios de aceite da Spec antes de autorizar a execução no disco
-            </span>
+            <button
+              onClick={() => setShowFullDoc((v) => !v)}
+              className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+            >
+              <Code2 className="w-3 h-3" />
+              {showFullDoc ? "Ver Resumo" : "Editar Documento Completo"}
+            </button>
           </div>
 
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#0066cc] resize-none leading-relaxed"
-            placeholder="Escreva a especificação canônica..."
-          />
+          {showFullDoc || !parsedSpec ? (
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl p-4 font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-[#0066cc] resize-none leading-relaxed"
+              placeholder="Escreva a especificação canônica (YAML Frontmatter + Markdown)..."
+            />
+          ) : (
+            <div className="flex-1 overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+              <SpecSummaryCard spec={parsedSpec} />
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}

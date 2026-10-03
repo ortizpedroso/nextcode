@@ -51,10 +51,15 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res.suggestedAction).toBe("DIRECT_LLM_RESPONSE");
     });
 
-    it("deve exportar o prompt de governança limpo e autônomo sem poluição", () => {
+    it("deve exportar o prompt de governança como YAML estruturado, sem prosa em CAPS nem template de emojis", () => {
       const sysPrompt = IntakeEngine.getGovernanceSystemPrompt();
-      expect(sysPrompt).toContain("RESPOSTAS LIMPAS E EXECUTIVAS");
-      expect(sysPrompt).toContain("GERAÇÃO DIRETA DE PATCHES DE ARQUIVO");
+      expect(sysPrompt).toContain("diretrizes:");
+      expect(sysPrompt).toContain("id: patch_direto");
+      expect(sysPrompt).toContain("id: trava_aprovacao");
+      expect(sysPrompt).toContain("spec_output_format:");
+      // Não deve mais conter o template de emojis que contradizia a regra de "sem cabeçalhos robóticos"
+      expect(sysPrompt).not.toContain("ESTRUTURA RECOMENDADA");
+      expect(sysPrompt).not.toContain("📋");
     });
   });
 

@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { parseSpecDocument } from "@/core/intake/spec-format";
+import { SpecSummaryCard } from "./spec-summary-card";
 import {
   FileText,
   Lock,
@@ -21,7 +23,7 @@ import {
 
 interface SpecMessageRendererProps {
   content: string;
-  onOpenSpecModal?: () => void;
+  onOpenSpecModal?: (content?: string) => void;
   role?: string;
 }
 
@@ -30,8 +32,11 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMess
   const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<"formatted" | "raw">("formatted");
 
-  // Verifica se o texto é uma Spec Canônica NextCode v5
+  const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
+
+  // Verifica se o texto é uma Spec Canônica: formato novo (YAML Frontmatter) ou legado (prosa livre)
   const isSpec =
+    parsedSpec !== null ||
     content.includes("SPEC CANÔNICA") ||
     content.includes("DIRECTIVES & MECHANICAL LOCKS") ||
     content.includes("SPEC-TEMPLATE-NEXTCODE-V5");
@@ -97,7 +102,7 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMess
 
             {onOpenSpecModal && (
               <button
-                onClick={onOpenSpecModal}
+                onClick={() => onOpenSpecModal(content)}
                 className="px-3 py-1 bg-[#0066cc] hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 shadow-sm transition-colors"
               >
                 <Unlock className="w-3.5 h-3.5" />
@@ -124,6 +129,8 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMess
               <pre className="p-4 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-mono whitespace-pre-wrap overflow-x-auto border border-slate-200 dark:border-slate-800 leading-relaxed max-h-[500px]">
                 {content}
               </pre>
+            ) : parsedSpec ? (
+              <SpecSummaryCard spec={parsedSpec} />
             ) : (
               <RenderParsedMarkdown text={content} />
             )}
