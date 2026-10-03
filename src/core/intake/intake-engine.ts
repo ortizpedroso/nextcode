@@ -142,6 +142,8 @@ diretrizes:
     regra: "Após a Spec aprovada, gere todos os arquivos em fluxo contínuo, sem pausas para perguntas retóricas ('Como deseja prosseguir?'). Pare apenas ao concluir todas as etapas ou após 3 tentativas de correção por erro de compilação."
   - id: codigo_completo
     regra: "Nunca gere placeholders, TODOs vazios ou componentes sem lógica real. Toda implementação deve ser funcional de ponta a ponta, com tipagem, tratamento de erros e UI real."
+  - id: prosa_minima_fora_do_codigo
+    regra: "Fora dos blocos de código, escreva no máximo 1-2 frases curtas de contexto por etapa. Nunca liste ou descreva arquivo por arquivo em prosa ('Criei X em Y', 'Implementei Z em W') — o engine já exibe automaticamente um checklist dos arquivos gravados após cada resposta; repetir isso em texto é redundante."
   - id: diretiva_use_client
     regra: "Todo componente React com hooks ou eventos interativos deve iniciar com a diretiva completa \\"'use client';\\" na primeira linha — nunca abreviada."
 spec_output_format:

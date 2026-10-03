@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
 
 describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () => {
@@ -22,6 +25,7 @@ describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () =>
     expect(res.groundedMessage).toContain("Anti-Hallucination Guard");
     expect(res.groundedMessage).toContain("[CSS SYNTAX ERROR]");
     expect(res.groundedMessage).not.toContain("Corrigi com sucesso");
+    expect(res.groundedMessage).not.toContain("```");
   });
 
   it("deve aprovar e promover patches limpos com 0 erros sintáticos", () => {
@@ -45,5 +49,33 @@ export function add(a: number, b: number): number {
     expect(res.promotedFiles).toContain("src/utils/math.ts");
     expect(res.groundedMessage).toContain("Anti-Hallucination Guard");
     expect(res.groundedMessage).toContain("0 Erros");
+  });
+
+  it("nunca repete o conteúdo do código gerado no chat — só prosa curta + checklist de arquivos", () => {
+    const tmpProjectPath = fs.mkdtempSync(path.join(os.tmpdir(), "zero-halluc-test-"));
+    try {
+      const taskId = "test-zero-3";
+      const rawAiResponse = `Implementei o módulo financeiro conforme a Spec.
+\`\`\`typescript
+// file: src/app/dashboard/finance/page.tsx
+export default function FinancialPage() {
+  return <div>{"linha 1"}{"linha 2"}{"linha 3"}</div>;
+}
+\`\`\``;
+
+      const res = ZeroHallucinationEngine.processAndVerifyResponse(
+        taskId,
+        rawAiResponse,
+        "implemente o modulo financeiro",
+        tmpProjectPath
+      );
+
+      expect(res.passed).toBe(true);
+      expect(res.groundedMessage).not.toContain("```");
+      expect(res.groundedMessage).not.toContain("linha 1");
+      expect(res.groundedMessage).toContain("- ✅ `src/app/dashboard/finance/page.tsx`");
+    } finally {
+      fs.rmSync(tmpProjectPath, { recursive: true, force: true });
+    }
   });
 });

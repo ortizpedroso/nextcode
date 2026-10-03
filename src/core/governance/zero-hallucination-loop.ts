@@ -18,6 +18,18 @@ export interface ZeroHallucinationExecutionResult {
   workspaceResult?: WorkspaceWriteResult;
 }
 
+/**
+ * Remove os blocos de código ```...``` do texto exibido no chat. O conteúdo já foi
+ * extraído e gravado em disco pelo QuarantineManager — repeti-lo na conversa só poluía
+ * a resposta com centenas de linhas que o usuário não precisa ler para saber o que mudou.
+ */
+function stripCodeBlocks(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export class ZeroHallucinationEngine {
   /**
    * Valida, executa e ancora (grounding) a resposta da IA com prova empírica de compilação antes de entregar ao usuário.
@@ -75,13 +87,10 @@ export class ZeroHallucinationEngine {
         ...type1Res.testFailures,
       ];
 
-      // Remove frases triunfantes e selos de conclusão falsa quando o patch falha na quarentena
-      let sanitizedAiText = cleanResponse
-        .replace(/⚡\s*\[Skill[^\]]*\]\s*—\s*Execução Autônoma Concluída!/gi, "")
-        .replace(/^(?:Corrigi|Corrigido|Sucesso|Apliquei|Atualizei|Resolvi|O arquivo|O erro)[\s\S]*?(?=```)/gi, "")
-        .trim();
-
-      const groundedMessage = `${sanitizedAiText ? `${sanitizedAiText}\n\n` : ""}⚠️ **[NextCode Anti-Hallucination Guard]** O patch proposto pela IA falhou na verificação de sintaxe/compilação e **NÃO** foi promovido para o disco:\n\n${allErrors.map((e) => `- \`${e}\``).join("\n")}`;
+      // Descarta inteiramente a prosa da IA: ela está relatando uma alteração que foi
+      // rejeitada, então suas alegações de sucesso não são confiáveis. O usuário recebe
+      // apenas o relatório determinístico do que falhou e por quê (sem o dump de código).
+      const groundedMessage = `⚠️ **[NextCode Anti-Hallucination Guard]** Falha na verificação de sintaxe/compilação — nada foi promovido para o disco:\n\n${allErrors.map((e) => `- ❌ ${e}`).join("\n")}`;
 
       return {
         passed: false,
@@ -100,19 +109,25 @@ export class ZeroHallucinationEngine {
 
     const workspaceResult = envAdapter.writeFilesToWorkspace(codeMap);
 
+    // Checklist curto por arquivo em vez de repetir o conteúdo gerado na conversa —
+    // o código já está no disco; o chat só precisa confirmar o que foi feito.
+    const checklist = promotedFiles.map((f) => `- ✅ \`${f}\``).join("\n");
+
     let executionBadge = "";
     if (workspaceResult.mode === "LOCAL" && projectPath) {
       qm.promoteToMainRepo(taskId, projectPath, promotedFiles);
-      executionBadge = `\n\n⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** ${promotedFiles.length} arquivo(s) auditado(s), validados e salvos no disco em \`${projectPath}\`: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+      executionBadge = `⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no disco:\n${checklist}`;
     } else {
-      executionBadge = `\n\n☁️ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Nuvem / Quarentena)** ${promotedFiles.length} arquivo(s) auditado(s) e salvos no workspace isolado: ${promotedFiles.map((f) => `\`${f}\``).join(", ")}`;
+      executionBadge = `☁️ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Nuvem / Quarentena)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no workspace isolado:\n${checklist}`;
     }
+
+    const strippedProse = stripCodeBlocks(cleanResponse);
 
     return {
       passed: true,
       promotedFiles,
       auditorResult: type1Res,
-      groundedMessage: `${cleanResponse}${executionBadge}`,
+      groundedMessage: `${strippedProse ? `${strippedProse}\n\n` : ""}${executionBadge}`,
       workspaceResult,
     };
   }
