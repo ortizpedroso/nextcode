@@ -101,18 +101,27 @@ export async function POST(request: NextRequest) {
       lowerPrompt.includes("pode rodar") ||
       lowerPrompt.includes("pode executar");
 
+    let specApprovedNow: boolean;
     if (isNewSpecRequest && !isExplicitApproval) {
       await prisma.session.update({
         where: { id: activeSessionId },
         data: { specApproved: false },
       });
+      specApprovedNow = false;
       console.log(`[CHAT_INTENT] Trava T1 BLOQUEADA na sessão ${activeSessionId} para aguardar aprovação da nova Spec.`);
     } else if (isExplicitApproval) {
       await prisma.session.update({
         where: { id: activeSessionId },
         data: { specApproved: true },
       });
+      specApprovedNow = true;
       console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por aprovação do usuário.`);
+    } else {
+      const sessionForLock = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+        select: { specApproved: true },
+      });
+      specApprovedNow = sessionForLock?.specApproved ?? false;
     }
 
     // 2. Registra mensagem do usuário no banco SQLite (armazenando a entrada tratada com YAML + MD)
@@ -307,6 +316,18 @@ export async function POST(request: NextRequest) {
           aiResponseContent = resJson.candidates[0].content.parts[0].text;
         } else {
           aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+        }
+
+        // Trava T1 (enforcement): mesma trava já aplicada ao executor /autonomo (dag/route.ts)
+        // — aqui ela cobria só a escrita da flag no banco, mas nunca bloqueava a promoção de
+        // código no chat direto. Se a Spec Canônica não foi aprovada, qualquer bloco de código
+        // retornado pela IA é descartado antes de chegar ao ZeroHallucinationEngine: nada é
+        // extraído, auditado ou gravado em disco. Isso não bloqueia retomada do loop de
+        // auto-healing, pois não é um erro de compilação — é uma decisão de política.
+        if (!specApprovedNow && aiResponseContent.includes("```")) {
+          zeroEngineRes = null;
+          aiResponseContent = `⚠️ **[NextCode Anti-Hallucination Guard] Trava T1 Violada (Spec Approval Lock)** — nada foi promovido para o disco:\n\nA Spec Canônica precisa ser aprovada pelo usuário (botão "Aprovar Spec Canônica" ou aprovação explícita no chat) antes de qualquer alteração ser escrita no projeto.`;
+          break;
         }
 
         // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
