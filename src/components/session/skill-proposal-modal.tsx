@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/client-session";
-import { Sparkles, CheckCircle2, XCircle, X, RefreshCw, FileCode2, Plus } from "lucide-react";
+import { Sparkles, CheckCircle2, XCircle, X, RefreshCw, FileCode2, Plus, Bug } from "lucide-react";
 
 interface CandidateProposal {
   id: string;
@@ -11,7 +11,7 @@ interface CandidateProposal {
   triggerPattern: string;
   sampleContent: string;
   status: "pending" | "approved" | "rejected" | "disabled";
-  source?: "learned" | "github";
+  source?: "learned" | "github" | "bug_pattern";
   sourceUrl?: string | null;
   commitSha?: string | null;
   riskFlags?: string | null;
@@ -129,6 +129,11 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
                           GITHUB
                         </span>
                       )}
+                      {item.source === "bug_pattern" && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800">
+                          BUG RECORRENTE
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">{item.description}</p>
                     {item.sourceUrl && (
@@ -196,8 +201,17 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
                       disabled={actingId === item.id}
                       className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm disabled:opacity-50"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Aprovação 1-Clique</span>
+                      {item.source === "bug_pattern" ? (
+                        <>
+                          <Bug className="w-3.5 h-3.5" />
+                          <span>Reconhecer (não instala nada)</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Aprovação 1-Clique</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 )}

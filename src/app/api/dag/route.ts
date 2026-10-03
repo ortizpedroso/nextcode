@@ -15,7 +15,15 @@ import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-audi
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
+import { buildErrorSignature } from "@/core/telemetry/error-signature";
+import { SkillMiner } from "@/core/telemetry/skill-miner";
 import type { Setting } from "@prisma/client";
+
+/** Minera telemetria em plano de fundo após cada execução de nó — nunca bloqueia a resposta. */
+function mineTelemetryInBackground(): void {
+  SkillMiner.analyzeAndPropose().catch((err) => console.error("[SkillMiner] analyzeAndPropose falhou:", err));
+  SkillMiner.detectRecurringBugs().catch((err) => console.error("[SkillMiner] detectRecurringBugs falhou:", err));
+}
 
 /**
  * Item 8 (Spec-vs-disco): compara os `arquivos_afetados` declarados na Spec Canônica
@@ -422,9 +430,29 @@ DIRETRIZES DE EXECUÇÃO:
         // Item 7: conecta o TerminalExecutionEngine à resposta da IA — mesma prova empírica
         // real (type-check pós-promoção) usada no pipeline do chat (ver zero-hallucination-loop.ts).
         empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
+        if (empiricalBuildResult && !empiricalBuildResult.success) {
+          const firstErrorLine =
+            `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
+              .split("\n")
+              .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+          TelemetryLogger.log({
+            sessionId: task.sessionId,
+            action: "EMPIRICAL_BUILD_FAILED",
+            details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+          });
+        }
       } else {
         finalStatus = "failed";
         qm.purgeWorkspace(task.id);
+
+        TelemetryLogger.log({
+          sessionId: task.sessionId,
+          action: "AUDIT_REJECTED",
+          details: {
+            errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
+            sample: type2Res.rejectionReason || "",
+          },
+        });
       }
 
       const mcpRes = {
@@ -458,6 +486,7 @@ DIRETRIZES DE EXECUÇÃO:
           promotedPath: promotionTarget,
         },
       });
+      mineTelemetryInBackground();
 
       // Checa se todos os nós da sessão foram concluídos
       const sessionTasks = await prisma.taskNode.findMany({
@@ -718,6 +747,15 @@ DIRETRIZES DE EXECUÇÃO:
             } else {
               finalStatus = "failed";
             }
+
+            TelemetryLogger.log({
+              sessionId: targetSessionId,
+              action: "AUDIT_REJECTED",
+              details: {
+                errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
+                sample: type2Res.rejectionReason || "",
+              },
+            });
           }
 
           const mcpRes = {
@@ -749,6 +787,7 @@ DIRETRIZES DE EXECUÇÃO:
               promotedPath: promotionTarget,
             },
           });
+          mineTelemetryInBackground();
 
           return { id: taskDb.id, finalStatus };
         };

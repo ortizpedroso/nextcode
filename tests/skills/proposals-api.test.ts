@@ -136,6 +136,30 @@ describe("API /api/skills/proposals", () => {
     expect(disableRes.status).toBe(400);
   });
 
+  it("aprova proposta source=bug_pattern apenas reconhece o bug — nunca escreve skill em disco", async () => {
+    const proposal = await prisma.candidateSkillProposal.create({
+      data: {
+        name: "bug-type2-divergencia",
+        description: "Erro recorrente detectado 3x no próprio NextCode (AUDIT_REJECTED).",
+        triggerPattern: "(detecção automática — não é uma skill executável)",
+        sampleContent: "Falha no Validador Tipo 1: [SYNTAX ERROR] ...",
+        status: "pending",
+        source: "bug_pattern",
+      },
+    });
+
+    const approveReq = new NextRequest("http://localhost/api/skills/proposals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve", id: proposal.id }),
+    });
+    const approveRes = await POST(approveReq);
+    expect(approveRes.status).toBe(200);
+    const approveData = await approveRes.json();
+    expect(approveData.proposal.status).toBe("approved");
+    expect(approveData.proposal.installedPath).toBeNull();
+  });
+
   it("POST /api/skills/install-github (quarantine gate) — não grava em disco, cria proposta pendente com source=github", async () => {
     const mockContent = `---
 name: imported-reviewer

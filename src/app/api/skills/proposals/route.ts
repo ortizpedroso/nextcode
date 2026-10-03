@@ -56,6 +56,21 @@ export async function POST(req: NextRequest) {
       const proposal = await prisma.candidateSkillProposal.findUnique({ where: { id } });
       if (!proposal) return NextResponse.json({ error: "Proposta não encontrada" }, { status: 404 });
 
+      if (proposal.source === "bug_pattern") {
+        // Não é uma skill: é um alerta de erro recorrente no próprio NextCode. Aprovar aqui
+        // só confirma "reconhecido, vamos corrigir" — nunca escreve nada em disco.
+        const updated = await prisma.candidateSkillProposal.update({
+          where: { id },
+          data: { status: "approved" },
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: `Bug recorrente '${proposal.name}' reconhecido. Nenhum arquivo foi escrito em disco — isso é um alerta, não uma skill.`,
+          proposal: updated,
+        });
+      }
+
       let skillFilePath: string;
 
       if (proposal.source === "github") {

@@ -11,6 +11,17 @@ import { EnvironmentWorkspaceAdapter, WorkspaceWriteResult } from "../execution/
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
 import { extractFilePathsFromText } from "../skills/spec-decomposer";
 import { stripErrorLogLines } from "../intake/input-preprocessor";
+import { TelemetryLogger } from "../telemetry/telemetry-logger";
+import { buildErrorSignature } from "../telemetry/error-signature";
+import { SkillMiner } from "../telemetry/skill-miner";
+
+/** Minera telemetria em plano de fundo (retrabalho recorrente -> proposta de skill; erro
+ * recorrente do próprio NextCode -> proposta de bug_pattern). Nunca bloqueia a resposta ao
+ * usuário: falhas aqui são só logadas no console. */
+function mineTelemetryInBackground(): void {
+  SkillMiner.analyzeAndPropose().catch((err) => console.error("[SkillMiner] analyzeAndPropose falhou:", err));
+  SkillMiner.detectRecurringBugs().catch((err) => console.error("[SkillMiner] detectRecurringBugs falhou:", err));
+}
 
 export interface ZeroHallucinationExecutionResult {
   passed: boolean;
@@ -120,6 +131,16 @@ export class ZeroHallucinationEngine {
       // apenas o relatório determinístico do que falhou e por quê (sem o dump de código).
       const groundedMessage = `⚠️ **[NextCode Anti-Hallucination Guard]** Falha na verificação de sintaxe/compilação — nada foi promovido para o disco:\n\n${allErrors.map((e) => `- ❌ ${e}`).join("\n")}`;
 
+      TelemetryLogger.log({
+        sessionId: taskId,
+        action: "AUDIT_REJECTED",
+        details: {
+          errorSignature: buildErrorSignature("type1", allErrors[0] || "erro desconhecido"),
+          sample: allErrors.slice(0, 3).join(" | "),
+        },
+      });
+      mineTelemetryInBackground();
+
       return {
         passed: false,
         promotedFiles: [],
@@ -145,6 +166,16 @@ export class ZeroHallucinationEngine {
       const groundedMessage = `⚠️ **[NextCode Anti-Hallucination Guard]** Auditoria semântica (Tipo 2) reprovou a alteração — nada foi promovido para o disco:\n\n${
         type2Res.rejectionReason || "Divergência entre o código gerado e o pedido original."
       }\n\n${type2Res.lens1BlindReport}\n\n${type2Res.lens2CrossVerification}`;
+
+      TelemetryLogger.log({
+        sessionId: taskId,
+        action: "AUDIT_REJECTED",
+        details: {
+          errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
+          sample: type2Res.rejectionReason || "",
+        },
+      });
+      mineTelemetryInBackground();
 
       return {
         passed: false,
@@ -181,12 +212,27 @@ export class ZeroHallucinationEngine {
       empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(projectPath);
       if (empiricalBuildResult) {
         executionBadge += formatEmpiricalBuildBadge(empiricalBuildResult);
+        if (!empiricalBuildResult.success) {
+          const firstErrorLine =
+            `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
+              .split("\n")
+              .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+          TelemetryLogger.log({
+            sessionId: taskId,
+            action: "EMPIRICAL_BUILD_FAILED",
+            details: {
+              errorSignature: buildErrorSignature("build", firstErrorLine),
+              sample: firstErrorLine,
+            },
+          });
+        }
       }
     } else {
       executionBadge = `☁️ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Nuvem / Quarentena)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no workspace isolado:\n${checklist}`;
     }
 
     const strippedProse = stripCodeBlocks(cleanResponse);
+    mineTelemetryInBackground();
 
     return {
       passed: true,
