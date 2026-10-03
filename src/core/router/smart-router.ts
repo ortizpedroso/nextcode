@@ -994,7 +994,10 @@ export class SmartRouter {
             generationConfig: { temperature: 0.7 },
           });
 
-          let geminiRes = await fetch(geminiUrl, {
+          // Anti-SSRF: mesmo o host do Gemini sendo fixo, toda saída HTTP do router passa
+          // pelo safeFetch (validação pós-DNS + sem redirect), como Groq/NVIDIA/OmniRoute.
+          // O Response é devolvido intacto, então o streaming SSE continua funcionando.
+          let geminiRes = await safeFetch(geminiUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: geminiBody,
@@ -1005,7 +1008,7 @@ export class SmartRouter {
           if (geminiRes.status === 503 || geminiRes.status === 429) {
             console.warn(`[ROUTER] Gemini Direto (${cleanModel}) retornou HTTP ${geminiRes.status} (pico de demanda). Re-tentando em 1.2s...`);
             await new Promise((resolve) => setTimeout(resolve, 1200));
-            geminiRes = await fetch(geminiUrl, {
+            geminiRes = await safeFetch(geminiUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: geminiBody,

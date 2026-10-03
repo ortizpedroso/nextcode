@@ -1,3 +1,5 @@
+import { safeFetch } from "../security/safe-fetch";
+
 const FAST_MODEL_FALLBACK = process.env.GEMINI_FAST_MODEL || "gemini-1.5-flash";
 
 let cachedModels: string[] | null = null;
@@ -12,7 +14,11 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
   }
 
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`);
+    // Anti-SSRF + timeout: mesma política de saída HTTP do SmartRouter (antes fetch nativo sem timeout).
+    const res = await safeFetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`,
+      { timeoutMs: 10000 }
+    );
     if (res.ok) {
       const data = await res.json();
       const models: Array<{ name: string; supportedGenerationMethods?: string[]; supportedActions?: string[] }> = data.models || [];
