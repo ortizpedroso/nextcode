@@ -18,6 +18,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
+import { isExplicitSpecApproval, isNewSpecRequest } from "@/core/intake/approval-intent";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import type { Setting } from "@prisma/client";
 
@@ -86,26 +87,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Trava T1: Garante que novas solicitações de Spec travem a sessão até aprovação explícita do usuário
-    const lowerPrompt = targetPrompt.toLowerCase();
-    const isNewSpecRequest =
-      lowerPrompt.includes("spec") ||
-      lowerPrompt.includes("quero criar") ||
-      lowerPrompt.includes("crie um") ||
-      lowerPrompt.includes("montar um") ||
-      lowerPrompt.includes("reescreva") ||
-      lowerPrompt.includes("nova spec");
-
-    const isExplicitApproval =
-      lowerPrompt.includes("aprovo") ||
-      lowerPrompt.includes("aprovar") ||
-      lowerPrompt.includes("aprova a spec") ||
-      lowerPrompt.includes("iniciar dag") ||
-      lowerPrompt.includes("validar e aprovar") ||
-      lowerPrompt.includes("pode rodar") ||
-      lowerPrompt.includes("pode executar");
+    // Palavra inteira + negação + pergunta (ver approval-intent.ts) — substring liberava a
+    // trava com "não vou aprovar" e a re-travava com "aspecto"/"especial".
+    const isNewSpec = isNewSpecRequest(targetPrompt);
+    const isExplicitApproval = isExplicitSpecApproval(targetPrompt);
 
     let specApprovedNow: boolean;
-    if (isNewSpecRequest && !isExplicitApproval) {
+    if (isNewSpec && !isExplicitApproval) {
       await prisma.session.update({
         where: { id: activeSessionId },
         data: { specApproved: false },
