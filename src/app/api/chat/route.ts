@@ -18,6 +18,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
+import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import type { Setting } from "@prisma/client";
 
 /** Adapta o SmartRouter (tier fast, mesmas chaves BYOK já resolvidas na requisição) para o formato de dispatchFn que o DualLensAuditor espera — mesmo padrão usado em dag/route.ts, mantendo o auditor desacoplado dos provedores. */
@@ -278,30 +279,38 @@ export async function POST(request: NextRequest) {
     let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
     let zeroEngineRes: Awaited<ReturnType<typeof ZeroHallucinationEngine.processAndVerifyResponse>> | null = null;
 
+    // Motivo exato da rejeição de uma tentativa — alimenta o feedback da próxima tentativa e,
+    // ao esgotar o ciclo, o relatório direcionado ao humano (Trava T6).
+    const describeChatFailure = (res: NonNullable<typeof zeroEngineRes>): string => {
+      const empiricalErrorLines =
+        res.empiricalBuildResult && !res.empiricalBuildResult.success
+          ? `${res.empiricalBuildResult.stdout}\n${res.empiricalBuildResult.stderr}`
+              .split("\n")
+              .filter((l) => l.includes("error TS"))
+              .slice(0, 5)
+              .join(" | ") || "Falha no type-check real do projeto pós-promoção (sem linha 'error TS' na saída)."
+          : "";
+      // A prova empírica só roda depois de Tipo 1+Tipo 2 aprovarem, então quando ela
+      // falha é o motivo real da rejeição — vem antes dos erros do auditor, que nesse
+      // caso só podem conter avisos não fatais ([CLEAN CODE VIOLATION]).
+      return (
+        empiricalErrorLines ||
+        res.type2Result?.rejectionReason ||
+        [
+          ...res.auditorResult.compilationErrors,
+          ...res.auditorResult.securityViolations,
+          ...res.auditorResult.testFailures,
+        ].join(" | ") ||
+        "Erros de compilação/sintaxe."
+      );
+    };
+    const chatFailureHistory: FailureAttemptRecord[] = [];
+
     try {
       for (let attempt = 1; attempt <= MAX_AUTO_HEAL_ATTEMPTS; attempt++) {
         const attemptMessages = [...dispatchMessages];
         if (attempt > 1 && zeroEngineRes && !zeroEngineRes.passed) {
-          const empiricalErrorLines =
-            zeroEngineRes.empiricalBuildResult && !zeroEngineRes.empiricalBuildResult.success
-              ? `${zeroEngineRes.empiricalBuildResult.stdout}\n${zeroEngineRes.empiricalBuildResult.stderr}`
-                  .split("\n")
-                  .filter((l) => l.includes("error TS"))
-                  .slice(0, 5)
-                  .join(" | ") || "Falha no type-check real do projeto pós-promoção (sem linha 'error TS' na saída)."
-              : "";
-          // A prova empírica só roda depois de Tipo 1+Tipo 2 aprovarem, então quando ela
-          // falha é o motivo real da rejeição — vem antes dos erros do auditor, que nesse
-          // caso só podem conter avisos não fatais ([CLEAN CODE VIOLATION]).
-          const prevError =
-            empiricalErrorLines ||
-            zeroEngineRes.type2Result?.rejectionReason ||
-            [
-              ...zeroEngineRes.auditorResult.compilationErrors,
-              ...zeroEngineRes.auditorResult.securityViolations,
-              ...zeroEngineRes.auditorResult.testFailures,
-            ].join(" | ") ||
-            "Erros de compilação/sintaxe.";
+          const prevError = describeChatFailure(zeroEngineRes);
           attemptMessages.push({
             role: "system",
             content: `⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${attempt}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevError}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`,
@@ -357,12 +366,41 @@ export async function POST(request: NextRequest) {
         );
 
         if (zeroEngineRes.passed) break;
+        chatFailureHistory.push({
+          attemptNumber: attempt,
+          rejectionReason: describeChatFailure(zeroEngineRes),
+          filesScope: zeroEngineRes.promotedFiles,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Trava T6 (D-RANHO): ciclo de autocorreção esgotado → reporta ao humano com o relatório
+      // direcionado ao erro (causa, erro exato de cada tentativa, se se repetiu, o que fazer),
+      // em vez de só "(Após 3 tentativas...)".
+      const healingExhausted =
+        zeroEngineRes !== null && !zeroEngineRes.passed && chatFailureHistory.length >= MAX_AUTO_HEAL_ATTEMPTS;
+      if (healingExhausted) {
+        TelemetryLogger.log({
+          sessionId: activeSessionId,
+          action: "CHAT_AUTO_HEAL_EXHAUSTED_HUMAN_NOTIFIED",
+          details: { attempts: chatFailureHistory.length },
+        });
       }
 
       aiResponseContent = zeroEngineRes
         ? `${zeroEngineRes.groundedMessage}${
-            !zeroEngineRes.passed
-              ? `\n\n_(Após ${MAX_AUTO_HEAL_ATTEMPTS} tentativas automáticas de autocorreção.)_`
+            healingExhausted
+              ? `\n\n---\n\n🛑 **Autocorreção esgotada após ${chatFailureHistory.length} tentativas — intervenção humana necessária.**\n\n${IncidentReporter.generateIncidentReport(
+                  `chat-${activeSessionId}`,
+                  targetPrompt.length > 60 ? `${targetPrompt.slice(0, 60)}...` : targetPrompt,
+                  "chat",
+                  chatFailureHistory,
+                  {
+                    maxAttempts: MAX_AUTO_HEAL_ATTEMPTS,
+                    unblockHint:
+                      "ajuste o pedido ou a Spec Canônica conforme a ação acima e envie a mensagem novamente — um novo ciclo de tentativas começa do zero.",
+                  }
+                )}`
               : ""
           }`
         : aiResponseContent;

@@ -45,6 +45,89 @@ function appendFailureAttempt(existingHistoryJson: string | null | undefined, re
 }
 
 /**
+ * Trava T6 (D-RANHO): propaga em cascata o bloqueio de nós falhados definitivamente para
+ * todos os dependentes (diretos e transitivos) ainda pendentes da sessão e persiste o novo
+ * status no banco. Antes, o bloqueio ficava só na memória do DAGEngine (process_queue) ou
+ * nem era propagado (execute_node), e os dependentes continuavam "pending" no SQLite.
+ */
+async function cascadeBlockedNodes(sessionId: string): Promise<string[]> {
+  const sessionTasks = await prisma.taskNode.findMany({ where: { sessionId } });
+  const knownIds = new Set(sessionTasks.map((t) => t.id));
+  const engine = new DAGEngine(
+    sessionTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      role: t.role,
+      status: t.status as DAGNode["status"],
+      dependencies: (JSON.parse(t.dependencies || "[]") as string[]).filter((depId) => knownIds.has(depId)),
+      attempts: t.attempts,
+      maxAttempts: t.maxAttempts,
+    }))
+  );
+  const newlyBlocked = engine.propagateBlockState();
+  for (const blockedId of newlyBlocked) {
+    await prisma.taskNode.update({ where: { id: blockedId }, data: { status: "blocked" } });
+  }
+  return newlyBlocked;
+}
+
+/**
+ * Trava T6 (D-RANHO): quando um nó esgota o ciclo de tentativas automáticas (maxAttempts,
+ * padrão 3) a engine para de tentar sozinha e REPORTA AO HUMANO — publica no chat da sessão
+ * o relatório de incidente direcionado ao erro (causa classificada, erro exato, se se repetiu,
+ * ação recomendada, dependentes bloqueados). Antes o relatório só ficava no JSON `result` do
+ * nó, sem nenhum aviso visível na conversa.
+ */
+async function reportBlockedNodeToHuman(sessionId: string, nodeId: string): Promise<void> {
+  const sessionTasks = await prisma.taskNode.findMany({ where: { sessionId } });
+  const node = sessionTasks.find((t) => t.id === nodeId);
+  if (!node) return;
+
+  const blockedDependents: string[] = [];
+  const seen = new Set([nodeId]);
+  const queue = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const t of sessionTasks) {
+      if (seen.has(t.id)) continue;
+      const deps: string[] = JSON.parse(t.dependencies || "[]");
+      if (deps.includes(current)) {
+        seen.add(t.id);
+        queue.push(t.id);
+        if (t.status === "blocked") blockedDependents.push(t.title);
+      }
+    }
+  }
+
+  let history: FailureAttemptRecord[] = [];
+  try {
+    history = JSON.parse(node.failureHistory || "[]");
+  } catch {
+    history = [];
+  }
+
+  const report = IncidentReporter.generateIncidentReport(node.id, node.title, node.cluster, history, {
+    maxAttempts: node.maxAttempts,
+    blockedDependents,
+  });
+
+  await prisma.message.create({
+    data: {
+      sessionId,
+      role: "assistant",
+      content: `🛑 **Etapa "${node.title}" bloqueada após ${history.length} tentativa(s) automática(s) — intervenção humana necessária.**
+
+${report}`,
+    },
+  });
+  TelemetryLogger.log({
+    sessionId,
+    action: "NODE_BLOCKED_HUMAN_NOTIFIED",
+    details: { nodeId, attempts: history.length, blockedDependents },
+  });
+}
+
+/**
  * Item 8 (Spec-vs-disco): compara os `arquivos_afetados` declarados na Spec Canônica
  * aprovada contra o que de fato existe em disco no diretório do projeto. Isso cobre o caso
  * em que a DAG termina (sem mais nós executáveis) mas algum arquivo prometido na Spec nunca
@@ -320,6 +403,42 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Trava T6 (D-RANHO): o botão "Executar nó" não pode furar o limite de tentativas nem
+      // a ordem da DAG. Só executa nós que o próprio DAGEngine consideraria executáveis:
+      // pendentes (ou "failed" com tentativas restantes) e com todas as dependências concluídas.
+      // Nó "blocked" só volta ao ciclo via retry_node (desbloqueio humano explícito).
+      const maxAttemptsGuard = task.maxAttempts || 3;
+      const isRetryableFailure = task.status === "failed" && task.attempts < maxAttemptsGuard;
+      if (!(task.status === "pending" || task.status === "standby" || isRetryableFailure)) {
+        return NextResponse.json(
+          {
+            error: "Trava T6 (D-RANHO): nó não executável",
+            details:
+              task.status === "blocked" || task.status === "failed"
+                ? `O nó atingiu o limite de ${maxAttemptsGuard} tentativas e está bloqueado. Use "Re-tentar" para liberá-lo explicitamente.`
+                : `O nó está com status "${task.status}" e não pode ser executado novamente.`,
+          },
+          { status: 409 }
+        );
+      }
+      const depIds: string[] = JSON.parse(task.dependencies || "[]");
+      if (depIds.length > 0) {
+        const deps = await prisma.taskNode.findMany({
+          where: { id: { in: depIds } },
+          select: { title: true, status: true },
+        });
+        const pendingDeps = deps.filter((d) => d.status !== "completed");
+        if (pendingDeps.length > 0) {
+          return NextResponse.json(
+            {
+              error: "Dependências não concluídas",
+              details: `Conclua antes: ${pendingDeps.map((d) => `"${d.title}" (${d.status})`).join(", ")}.`,
+            },
+            { status: 409 }
+          );
+        }
+      }
+
       // Atualiza estado para 'running'
       await prisma.taskNode.update({
         where: { id: nodeId },
@@ -549,7 +668,7 @@ DIRETRIZES DE EXECUÇÃO:
           });
           if (finalStatus === "blocked") {
             const history: FailureAttemptRecord[] = JSON.parse(newFailureHistory);
-            incidentReportMarkdown = IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, history);
+            incidentReportMarkdown = IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, history, { maxAttempts });
           }
         }
 
@@ -575,7 +694,9 @@ DIRETRIZES DE EXECUÇÃO:
         });
         const incidentReportMarkdown =
           finalStatus === "blocked"
-            ? IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, JSON.parse(newFailureHistory))
+            ? IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, JSON.parse(newFailureHistory), {
+                maxAttempts,
+              })
             : undefined;
         mcpRes = {
           success: false,
@@ -612,6 +733,11 @@ DIRETRIZES DE EXECUÇÃO:
         },
       });
       mineTelemetryInBackground();
+
+      if (finalStatus === "blocked") {
+        await cascadeBlockedNodes(task.sessionId);
+        await reportBlockedNodeToHuman(task.sessionId, task.id);
+      }
 
       // Checa se todos os nós da sessão foram concluídos
       const sessionTasks = await prisma.taskNode.findMany({
@@ -732,6 +858,15 @@ DIRETRIZES DE EXECUÇÃO:
             }),
           },
         });
+      }
+
+      // Nós bloqueados antes desta chamada (ex.: recuperação de "zumbis" acima) ainda podem
+      // ter dependentes "pending" no banco — getExecutableNodes só os bloqueia em memória.
+      await cascadeBlockedNodes(targetSessionId);
+      for (const stale of staleRunningTasks) {
+        if ((stale.attempts || 0) + 1 >= (stale.maxAttempts || 3)) {
+          await reportBlockedNodeToHuman(targetSessionId, stale.id);
+        }
       }
 
       let processedCount = 0;
@@ -990,7 +1125,8 @@ DIRETRIZES DE EXECUÇÃO:
                   taskDb.id,
                   taskDb.title,
                   taskDb.cluster,
-                  history
+                  history,
+                  { maxAttempts: taskDb.maxAttempts || 3 }
                 );
               }
             }
@@ -1065,18 +1201,11 @@ DIRETRIZES DE EXECUÇÃO:
         const batchResults = await Promise.all(tasksToExecute.map((t) => executeNodeInQueue(t)));
         processedCount += batchResults.length;
 
-        // Propaga bloqueio em cascata se algum nó do lote falhou definitivamente
-        for (const res of batchResults) {
-          if (res.finalStatus === "blocked") {
-            dagEngine.updateNodeStatus(res.id, "blocked");
-            for (const remainingNode of dagEngine.getNodes()) {
-              if (remainingNode.status === "blocked") {
-                await prisma.taskNode.update({
-                  where: { id: remainingNode.id },
-                  data: { status: "blocked" },
-                });
-              }
-            }
+        // Propaga bloqueio em cascata (persistido) se algum nó do lote falhou definitivamente
+        if (batchResults.some((res) => res.finalStatus === "blocked")) {
+          await cascadeBlockedNodes(targetSessionId);
+          for (const res of batchResults) {
+            if (res.finalStatus === "blocked") await reportBlockedNodeToHuman(targetSessionId, res.id);
           }
         }
       }

@@ -538,6 +538,8 @@ export default function DashboardOrchestrator() {
         const refreshRes = await authFetch(`/api/dag?sessionId=${activeSessionId}`);
         const refreshData = await refreshRes.json();
         if (refreshData.tasks) setTasks(refreshData.tasks);
+      } else {
+        setConsoleLogs((prev) => [...prev, `[BLOQUEADO] ${data.error || "Execução recusada"}: ${data.details || ""}`]);
       }
     } catch (err) {
       setConsoleLogs((prev) => [...prev, `[ERRO] Falha na execução do nó: ${String(err)}`]);

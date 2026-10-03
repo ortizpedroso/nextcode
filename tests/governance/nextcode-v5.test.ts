@@ -260,6 +260,28 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(node.status).toBe("blocked");
     });
 
+    it("Trava T6: 'blocked' informado diretamente propaga em cascata para dependentes transitivos", () => {
+      const engine = new DAGEngine([
+        { id: "A", title: "A", role: "w", status: "failed", dependencies: [], attempts: 3, maxAttempts: 3 },
+        { id: "B", title: "B", role: "w", status: "pending", dependencies: ["A"] },
+        { id: "C", title: "C", role: "w", status: "pending", dependencies: ["B"] },
+        { id: "D", title: "D", role: "w", status: "pending", dependencies: [] },
+      ]);
+      engine.updateNodeStatus("A", "blocked");
+      expect(engine.getNode("B")?.status).toBe("blocked");
+      expect(engine.getNode("C")?.status).toBe("blocked");
+      expect(engine.getNode("D")?.status).toBe("pending");
+    });
+
+    it("Trava T6: 'failed' com tentativas restantes NÃO bloqueia dependentes", () => {
+      const engine = new DAGEngine([
+        { id: "A", title: "A", role: "w", status: "failed", dependencies: [], attempts: 1, maxAttempts: 3 },
+        { id: "B", title: "B", role: "w", status: "pending", dependencies: ["A"] },
+      ]);
+      expect(engine.propagateBlockState()).toEqual([]);
+      expect(engine.getNode("B")?.status).toBe("pending");
+    });
+
     it("deve compilar o Relatório de Incidente de Evolução ao bloquear a tarefa", () => {
       const report = IncidentReporter.generateIncidentReport(
         "TASK-FAIL-101",

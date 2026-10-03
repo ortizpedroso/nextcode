@@ -240,33 +240,47 @@ export class DAGEngine {
       const maxAtt = node.maxAttempts || 3;
       if (node.attempts >= maxAtt) {
         node.status = "blocked";
-        this.propagateBlockState();
       }
+    }
+
+    // Trava T6: o bloqueio precisa chegar aos dependentes também quando o chamador já
+    // informa "blocked" diretamente (process_queue/execute_node decidem o limite por conta
+    // própria) — antes a cascata só disparava pelo caminho "failed" acima.
+    if (node.status === "blocked") {
+      this.propagateBlockState();
     }
 
     return node;
   }
 
   /**
-   * Propaga o estado 'blocked' para nós que dependem de tarefas que falharam
+   * Propaga o estado 'blocked' para nós pendentes que dependem (direta ou transitivamente) de
+   * tarefas falhadas DEFINITIVAMENTE — "blocked" ou "failed" sem tentativas restantes. Um
+   * "failed" ainda elegível para retry não bloqueia ninguém (mesma regra de getExecutableNodes).
+   * Retorna os IDs que passaram a "blocked" nesta chamada, para o chamador persistir.
    */
-  private propagateBlockState(): void {
+  public propagateBlockState(): string[] {
+    const newlyBlocked: string[] = [];
     let changed = true;
     while (changed) {
       changed = false;
       for (const node of this.nodes.values()) {
         if (node.status === "pending" || node.status === "standby") {
-          const hasFailedOrBlockedDep = node.dependencies.some((depId) => {
+          const hasPermanentlyFailedDep = node.dependencies.some((depId) => {
             const depNode = this.nodes.get(depId);
-            return depNode && (depNode.status === "failed" || depNode.status === "blocked");
+            if (!depNode) return false;
+            if (depNode.status === "blocked") return true;
+            return depNode.status === "failed" && (depNode.attempts || 0) >= (depNode.maxAttempts || 3);
           });
-          if (hasFailedOrBlockedDep) {
+          if (hasPermanentlyFailedDep) {
             node.status = "blocked";
+            newlyBlocked.push(node.id);
             changed = true;
           }
         }
       }
     }
+    return newlyBlocked;
   }
 }
 
