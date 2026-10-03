@@ -8,8 +8,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { normalizeScopePath } from "./dual-lens-auditor";
 
+interface PromotionSnapshotEntry {
+  destPath: string;
+  previous: Buffer | null;
+  promoted: Buffer;
+}
+
 export class QuarantineManager {
   private baseQuarantineDir: string;
+  private promotionSnapshots = new Map<string, PromotionSnapshotEntry[]>();
 
   constructor(baseDir: string = path.join(process.cwd(), ".quarantine")) {
     this.baseQuarantineDir = baseDir;
@@ -58,6 +65,16 @@ export class QuarantineManager {
       fs.mkdirSync(parentDir, { recursive: true });
     }
 
+    fs.writeFileSync(targetPath, QuarantineManager.sanitizeContent(relativeFilePath, content), "utf-8");
+    return targetPath;
+  }
+
+  /**
+   * Sanitização determinística aplicada ao conteúdo antes de ir para a quarentena. Pública e
+   * pura para que o MESMO conteúdo final seja o auditado (Tipo 1/Tipo 2) e o promovido (Trava
+   * T4) — antes a auditoria via o texto bruto da IA e o disco recebia a versão modificada.
+   */
+  public static sanitizeContent(relativeFilePath: string, content: string): string {
     let finalContent = content;
     // Sanitização determinística para todos os tipos de arquivo (remove comentários de cabeçalho no topo como // file: ...)
     finalContent = finalContent
@@ -83,21 +100,16 @@ export class QuarantineManager {
         .trim();
     }
 
-    // Auto-correção mecânica para Next.js App Router (page.tsx e route.ts)
-    if (cleanRelPath.includes("app/") || cleanRelPath.startsWith("src/app/")) {
-      if ((cleanRelPath.endsWith("page.tsx") || cleanRelPath.endsWith("page.jsx") || cleanRelPath.endsWith("layout.tsx") || cleanRelPath.endsWith("layout.jsx")) && !finalContent.includes("export default")) {
-        finalContent += "\n\nexport default function Page() {\n  return <main className=\"p-6\"><h1>Página Gerada</h1></main>;\n}\n";
-      } else if ((cleanRelPath.endsWith("route.ts") || cleanRelPath.endsWith("route.js")) && !/export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/i.test(finalContent)) {
-        finalContent += "\n\nexport async function POST(request: Request) {\n  return Response.json({ success: true, message: \"Endpoint de API operacional\" });\n}\n";
-      }
-    }
+    // Trava T4: NÃO injeta mais stubs (page.tsx com "Página Gerada" / route.ts com POST que
+    // responde success:true) quando a IA esquece o export obrigatório. Esses stubs mascaravam a
+    // falha e iam para o disco sem passar por nenhuma lente. Agora o Tipo 1 reprova o arquivo
+    // (export default / método HTTP ausente) e o erro real volta para o loop de autocorreção.
 
     if (finalContent) {
       finalContent += "\n";
     }
 
-    fs.writeFileSync(targetPath, finalContent, "utf-8");
-    return targetPath;
+    return finalContent;
   }
 
   /**
@@ -234,7 +246,7 @@ export class QuarantineManager {
       if (relativePath && codeContent && !QuarantineManager.isInvalidFilePath(relativePath)) {
         const cleanPath = relativePath.trim().replace(/^\\|^\//, "");
         this.writeFile(taskId, cleanPath, codeContent);
-        codeMap[cleanPath] = codeContent;
+        codeMap[cleanPath] = QuarantineManager.sanitizeContent(cleanPath, codeContent);
       }
       index++;
     }
@@ -249,7 +261,7 @@ export class QuarantineManager {
         if (psPath && !QuarantineManager.isInvalidFilePath(psPath)) {
           const cleanPath = psPath.trim().replace(/^\\|^\//, "");
           this.writeFile(taskId, cleanPath, psValue);
-          codeMap[cleanPath] = psValue;
+          codeMap[cleanPath] = QuarantineManager.sanitizeContent(cleanPath, psValue);
         }
       }
     }
@@ -291,6 +303,10 @@ export class QuarantineManager {
       (f) => allowedScope.size === 0 || allowedScope.has(normalizeScopePath(f))
     );
 
+    // Trava T4: snapshot do estado anterior de cada destino, para desfazer a promoção caso a
+    // prova empírica (type-check real) reprove o projeto mesclado (ver rollbackPromotion).
+    const snapshot: PromotionSnapshotEntry[] = [];
+
     for (const fileRel of targetFiles) {
       // Ignora a promoção se o caminho relativo for um nome de arquivo proibido
       if (QuarantineManager.isInvalidFilePath(fileRel)) {
@@ -309,13 +325,43 @@ export class QuarantineManager {
         if (!fs.existsSync(destDir)) {
           fs.mkdirSync(destDir, { recursive: true });
         }
+        snapshot.push({
+          destPath,
+          previous: fs.existsSync(destPath) ? fs.readFileSync(destPath) : null,
+          promoted: fs.readFileSync(sourcePath),
+        });
         fs.copyFileSync(sourcePath, destPath);
       }
     }
+    this.promotionSnapshots.set(taskId, snapshot);
 
     // Limpa a quarentena após promoção bem-sucedida
     fs.rmSync(workspacePath, { recursive: true, force: true });
     return true;
+  }
+
+  /**
+   * Trava T4: desfaz a última promoção da tarefa — restaura o conteúdo anterior de cada
+   * arquivo sobrescrito e remove os que não existiam antes. Retorna os destinos restaurados.
+   */
+  public rollbackPromotion(taskId: string): string[] {
+    const snapshot = this.promotionSnapshots.get(taskId) || [];
+    for (const entry of snapshot) {
+      if (entry.previous === null) {
+        if (fs.existsSync(entry.destPath)) fs.unlinkSync(entry.destPath);
+      } else {
+        fs.writeFileSync(entry.destPath, entry.previous);
+      }
+    }
+    return snapshot.map((e) => e.destPath);
+  }
+
+  /** Reaplica a última promoção desfeita por rollbackPromotion (mesmo conteúdo auditado). */
+  public reapplyPromotion(taskId: string): void {
+    for (const entry of this.promotionSnapshots.get(taskId) || []) {
+      fs.mkdirSync(path.dirname(entry.destPath), { recursive: true });
+      fs.writeFileSync(entry.destPath, entry.promoted);
+    }
   }
 
   /**

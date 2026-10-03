@@ -11,6 +11,7 @@ describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () =>
 \`\`\`css
 // file: src/app/globals.css
 @tailwind base;
+// comentário de linha não é CSS válido
 \`\`\``;
 
     const res = await ZeroHallucinationEngine.processAndVerifyResponse(

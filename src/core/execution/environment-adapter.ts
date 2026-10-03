@@ -53,8 +53,14 @@ export class EnvironmentWorkspaceAdapter {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
+    const resolvedBase = path.resolve(targetDir);
     for (const [relativePath, content] of Object.entries(filesMap)) {
-      const targetFilePath = path.join(targetDir, relativePath);
+      // SEGURANÇA (Trava T4): mesmo critério de QuarantineManager.resolveContained — caminho
+      // vindo de LLM nunca pode escapar do workspace via "..", caminho absoluto etc.
+      const targetFilePath = path.resolve(resolvedBase, relativePath);
+      if (!targetFilePath.startsWith(resolvedBase + path.sep)) {
+        throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
+      }
       TerminalExecutionEngine.writeFile(targetFilePath, content);
       writtenFiles.push(relativePath);
     }

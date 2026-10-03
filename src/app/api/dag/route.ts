@@ -18,6 +18,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
+import { promoteWithEmpiricalGate, firstBuildErrorLine } from "@/core/governance/empirical-gate";
 import type { Setting } from "@prisma/client";
 
 /** Minera telemetria em plano de fundo após cada execução de nó — nunca bloqueia a resposta. */
@@ -444,6 +445,7 @@ DIRETRIZES DE EXECUÇÃO:
       let finalStatus: "completed" | "failed" | "blocked" = "completed";
       let promotionTarget: string | null = null;
       let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
+      let empiricalFailureLine: string | undefined;
       let mcpRes: Record<string, unknown>;
       let newFailureHistory: string | undefined;
 
@@ -485,21 +487,29 @@ DIRETRIZES DE EXECUÇÃO:
 
         if (type2Res.verdict === "APPROVED") {
           finalStatus = "completed";
-          qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
-          promotionTarget = targetProjectRoot;
-
-          // Item 7: conecta o TerminalExecutionEngine à resposta da IA — mesma prova empírica
-          // real (type-check pós-promoção) usada no pipeline do chat (ver zero-hallucination-loop.ts).
-          empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
-          if (empiricalBuildResult && !empiricalBuildResult.success) {
-            const firstErrorLine =
-              `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
-                .split("\n")
-                .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+          // Trava T4: promove com prova empírica real (type-check do projeto mesclado) e
+          // desfaz a promoção se ela introduzir erros novos — antes o nó virava "failed" mas o
+          // código quebrado permanecia no repositório principal.
+          const gate = await promoteWithEmpiricalGate(qm, task.id, targetProjectRoot, filesScope);
+          empiricalBuildResult = gate.buildResult;
+          promotionTarget = gate.rolledBack ? null : targetProjectRoot;
+          if (gate.preexistingFailure) {
+            TelemetryLogger.log({
+              sessionId: task.sessionId,
+              action: "EMPIRICAL_BUILD_PREEXISTING_FAILURE",
+              details: { nodeId: task.id },
+            });
+          }
+          if (!gate.passed && empiricalBuildResult) {
+            empiricalFailureLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
             TelemetryLogger.log({
               sessionId: task.sessionId,
               action: "EMPIRICAL_BUILD_FAILED",
-              details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+              details: {
+                errorSignature: buildErrorSignature("build", empiricalFailureLine),
+                sample: empiricalFailureLine,
+                rolledBack: gate.rolledBack,
+              },
             });
             // Item (B): antes o nó ficava "completed" mesmo com o type-check real do projeto
             // quebrado — a DAG avançava sobre uma base inválida sem nenhum sinal de retry.
@@ -519,14 +529,9 @@ DIRETRIZES DE EXECUÇÃO:
           });
         }
 
-        const empiricalFailureReason =
-          finalStatus !== "completed" && empiricalBuildResult && !empiricalBuildResult.success
-            ? `Verificação empírica (type-check real pós-promoção) falhou: ${
-                `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
-                  .split("\n")
-                  .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção"
-              }`
-            : undefined;
+        const empiricalFailureReason = empiricalFailureLine
+          ? `Verificação empírica (type-check real pós-promoção) falhou — promoção desfeita: ${empiricalFailureLine}`
+          : undefined;
 
         const rejectionReason =
           empiricalFailureReason || (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason : undefined);
@@ -929,27 +934,30 @@ DIRETRIZES DE EXECUÇÃO:
 
             if (type2Res.verdict === "APPROVED") {
               finalStatus = "completed";
-              qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
-              promotionTarget = targetProjectRoot;
-
-              // Item (B): até aqui, process_queue (lote em massa) era o único dos 3 caminhos
-              // de execução que nem chamava a verificação empírica (type-check real pós-
-              // promoção) — execute_node e o chat já faziam essa prova. Sem isso, um nó
-              // processado em lote podia ser promovido com o build real quebrado e nunca
-              // sinalizar retry, diferente dos outros dois caminhos.
-              empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
-              if (empiricalBuildResult && !empiricalBuildResult.success) {
-                const firstErrorLine =
-                  `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
-                    .split("\n")
-                    .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+              // Trava T4: mesma prova empírica com rollback do execute_node (ver acima).
+              const gate = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr);
+              empiricalBuildResult = gate.buildResult;
+              promotionTarget = gate.rolledBack ? null : targetProjectRoot;
+              if (gate.preexistingFailure) {
+                TelemetryLogger.log({
+                  sessionId: targetSessionId,
+                  action: "EMPIRICAL_BUILD_PREEXISTING_FAILURE",
+                  details: { nodeId: taskDb.id },
+                });
+              }
+              if (!gate.passed && empiricalBuildResult) {
+                const firstErrorLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
                 TelemetryLogger.log({
                   sessionId: targetSessionId,
                   action: "EMPIRICAL_BUILD_FAILED",
-                  details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+                  details: {
+                    errorSignature: buildErrorSignature("build", firstErrorLine),
+                    sample: firstErrorLine,
+                    rolledBack: gate.rolledBack,
+                  },
                 });
                 finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
-                rejectionReason = `Verificação empírica (type-check real pós-promoção) falhou: ${firstErrorLine}`;
+                rejectionReason = `Verificação empírica (type-check real pós-promoção) falhou — promoção desfeita: ${firstErrorLine}`;
               }
             } else {
               qm.purgeWorkspace(taskDb.id);

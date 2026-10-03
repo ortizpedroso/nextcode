@@ -8,12 +8,13 @@
 import { QuarantineManager } from "./quarantine-manager";
 import { DualLensAuditor, ValidationType1Result, ValidationType2Result, LLMDispatchFn } from "./dual-lens-auditor";
 import { EnvironmentWorkspaceAdapter, WorkspaceWriteResult } from "../execution/environment-adapter";
-import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
+import { CommandResult } from "../execution/terminal-execution-engine";
 import { extractFilePathsFromText } from "../skills/spec-decomposer";
 import { stripErrorLogLines } from "../intake/input-preprocessor";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import { buildErrorSignature } from "../telemetry/error-signature";
 import { SkillMiner } from "../telemetry/skill-miner";
+import { promoteWithEmpiricalGate, firstBuildErrorLine } from "./empirical-gate";
 
 /** Minera telemetria em plano de fundo (retrabalho recorrente -> proposta de skill; erro
  * recorrente do próprio NextCode -> proposta de bug_pattern). Nunca bloqueia a resposta ao
@@ -208,55 +209,61 @@ export class ZeroHallucinationEngine {
       projectPath: projectPath || "",
     });
 
-    const workspaceResult = envAdapter.writeFilesToWorkspace(codeMap);
-
     // Checklist curto por arquivo em vez de repetir o conteúdo gerado na conversa —
     // o código já está no disco; o chat só precisa confirmar o que foi feito.
     const checklist = promotedFiles.map((f) => `- ✅ \`${f}\``).join("\n");
 
     let executionBadge = "";
     let empiricalBuildResult: CommandResult | null = null;
-    if (workspaceResult.mode === "LOCAL" && projectPath) {
-      qm.promoteToMainRepo(taskId, projectPath, promotedFiles);
-      executionBadge = `⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no disco:\n${checklist}`;
+    let empiricalPassed = true;
+    let workspaceResult: WorkspaceWriteResult;
+    if (envAdapter.getMode() === "LOCAL" && projectPath) {
+      // Trava T4: em modo local a ÚNICA escrita no projeto é a promoção da quarentena (o
+      // conteúdo auditado). Antes o adapter gravava o texto bruto no projeto antes da
+      // promoção, e a prova empírica só reportava a falha — o código quebrado ficava no disco.
+      // Agora a promoção é desfeita quando o type-check real acusa erros novos.
+      const gate = await promoteWithEmpiricalGate(qm, taskId, projectPath, promotedFiles);
+      empiricalBuildResult = gate.buildResult;
+      empiricalPassed = gate.passed;
+      workspaceResult = {
+        mode: "LOCAL",
+        writtenFiles: gate.rolledBack ? [] : promotedFiles,
+        targetPath: projectPath,
+      };
 
-      // Item 7: conecta o TerminalExecutionEngine à resposta da IA — roda uma prova
-      // empírica real (type-check do projeto já com os arquivos mesclados) além das
-      // checagens estáticas Tipo 1/Tipo 2. Só reporta; não desfaz a promoção, pois
-      // o Tipo 1+Tipo 2 já aprovaram os arquivos isoladamente.
-      empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(projectPath);
+      if (gate.rolledBack) {
+        executionBadge = `⚠️ **[NextCode Anti-Hallucination Guard] (Modo Local)** — o type-check real do projeto reprovou a alteração e a promoção foi DESFEITA; nenhum dos ${promotedFiles.length} arquivo(s) permaneceu no disco.`;
+      } else {
+        executionBadge = `⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no disco:\n${checklist}`;
+      }
       if (empiricalBuildResult) {
         executionBadge += formatEmpiricalBuildBadge(empiricalBuildResult);
-        if (!empiricalBuildResult.success) {
-          const firstErrorLine =
-            `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
-              .split("\n")
-              .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+        if (gate.preexistingFailure) {
+          executionBadge += `\n\nℹ️ _Os erros acima já existiam no projeto antes desta alteração — ela não introduziu nenhum erro novo._`;
+        }
+        if (!gate.passed) {
+          const firstErrorLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
           TelemetryLogger.log({
             sessionId: taskId,
             action: "EMPIRICAL_BUILD_FAILED",
             details: {
               errorSignature: buildErrorSignature("build", firstErrorLine),
               sample: firstErrorLine,
+              rolledBack: gate.rolledBack,
             },
           });
         }
       }
     } else {
+      workspaceResult = envAdapter.writeFilesToWorkspace(codeMap);
       executionBadge = `☁️ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Nuvem / Quarentena)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no workspace isolado:\n${checklist}`;
     }
 
     const strippedProse = stripCodeBlocks(cleanResponse);
     mineTelemetryInBackground();
 
-    // Item (B): a verificação empírica (type-check real pós-promoção) agora afeta o
-    // veredito final. Antes, `passed` era sempre `true` aqui mesmo quando o build real
-    // falhava — o chamador (loop de auto-healing no chat/route.ts) nunca via o build
-    // quebrado como motivo de retry, e o usuário recebia "sucesso" com um aviso solto no
-    // meio do texto. Não desfaz a promoção (Tipo 1+Tipo 2 já aprovaram os arquivos
-    // isoladamente) — só reporta corretamente que a etapa não passou de ponta a ponta.
-    const empiricalPassed = empiricalBuildResult ? empiricalBuildResult.success : true;
-
+    // Item (B): a verificação empírica (type-check real pós-promoção) afeta o veredito final —
+    // o loop de auto-healing no chat/route.ts vê o build quebrado como motivo de retry.
     return {
       passed: empiricalPassed,
       promotedFiles,
