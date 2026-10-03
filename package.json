@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "npx tsx scripts/dev-server.ts",
-    "start": "node scripts/start-dynamic.js --start",
-    "find-port": "node scripts/find-port-env.js",
-    "docker:up": "node scripts/find-port-env.js && docker compose up --build -d",
+    "start": "npx tsx scripts/dev-server.ts --start",
+    "find-port": "npx tsx scripts/find-port-env.ts",
+    "docker:up": "npx tsx scripts/find-port-env.ts && docker compose up --build -d",
     "build": "npx prisma generate && next build",
     "lint": "next lint",
     "db:push": "npx prisma db push",

@@ -1,55 +1,21 @@
-import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
+import { findFreePort } from "./port-utils";
 
-function testListen(port: number, host: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
+// "npm run dev" → next dev; "npm start" (--start) → next start sobre o build existente.
+// Antes "npm start" apontava para scripts/start-dynamic.js, removido junto com os .js
+// compilados (4bc901e) sem uma fonte .ts equivalente — o comando estava quebrado.
+const isStart = process.argv.slice(2).includes("--start");
 
-    server.once("error", () => resolve(false));
-    server.once("listening", () => {
-      server.close(() => resolve(true));
-    });
-
-    try {
-      server.listen(port, host);
-    } catch {
-      resolve(false);
-    }
-  });
-}
-
-async function isPortAvailable(port: number): Promise<boolean> {
-  const ipv4Ok = await testListen(port, "0.0.0.0");
-  if (!ipv4Ok) return false;
-
-  const ipv6Ok = await testListen(port, "::");
-  if (!ipv6Ok) return false;
-
-  const localhostOk = await testListen(port, "127.0.0.1");
-  if (!localhostOk) return false;
-
-  return true;
-}
-
-async function findFreePort(startPort: number = 3001, maxPort: number = 3099): Promise<number> {
-  for (let port = startPort; port <= maxPort; port++) {
-    const available = await isPortAvailable(port);
-    if (available) {
-      return port;
-    }
-  }
-  throw new Error(`Nenhuma porta livre encontrada na faixa ${startPort}-${maxPort}`);
-}
-
-async function startDevServer() {
+async function startServer() {
   const basePort = parseInt(process.env.PORT || "3001", 10);
 
   try {
-    // 1. Limpa o diretório .next para evitar conflitos entre manifestos de build de produção e ambiente de dev
+    // 1. Limpa o diretório .next para evitar conflitos entre manifestos de build de produção e ambiente de dev.
+    // No modo --start o .next É o build a ser servido, então não pode ser apagado.
     const nextDir = path.join(process.cwd(), ".next");
-    if (fs.existsSync(nextDir)) {
+    if (!isStart && fs.existsSync(nextDir)) {
       try {
         const entries = fs.readdirSync(nextDir);
         for (const entry of entries) {
@@ -58,6 +24,10 @@ async function startDevServer() {
       } catch (err) {
         console.warn("[NextCode] Aviso ao limpar o cache .next:", err);
       }
+    }
+    if (isStart && !fs.existsSync(path.join(nextDir, "BUILD_ID"))) {
+      console.error('[NextCode] Nenhum build encontrado em .next — rode "npm run build" antes de "npm start".');
+      process.exit(1);
     }
 
     // 2. Aloca porta disponível
@@ -69,11 +39,12 @@ async function startDevServer() {
     // de confiança, então expor em 0.0.0.0 (padrão do Next) publicaria o bootstrap
     // de auth na rede local. Defina NEXTCODE_DEV_HOST para ouvir em outra interface.
     const devHost = process.env.NEXTCODE_DEV_HOST || "127.0.0.1";
+    const nextCommand = isStart ? "start" : "dev";
     const isWin = process.platform === "win32";
     const command = isWin ? "cmd.exe" : "npx";
     const args = isWin
-      ? ["/c", "npx", "next", "dev", "-p", String(freePort), "-H", devHost]
-      : ["next", "dev", "-p", String(freePort), "-H", devHost];
+      ? ["/c", "npx", "next", nextCommand, "-p", String(freePort), "-H", devHost]
+      : ["next", nextCommand, "-p", String(freePort), "-H", devHost];
 
     const child = spawn(command, args, {
       stdio: "inherit",
@@ -81,7 +52,7 @@ async function startDevServer() {
     });
 
     child.on("error", (err) => {
-      console.error("[NextCode] Erro ao iniciar servidor de desenvolvimento:", err);
+      console.error(`[NextCode] Erro ao iniciar servidor (next ${nextCommand}):`, err);
       process.exit(1);
     });
 
@@ -94,4 +65,4 @@ async function startDevServer() {
   }
 }
 
-startDevServer();
+startServer();
