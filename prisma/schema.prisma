@@ -125,7 +125,16 @@ model CandidateSkillProposal {
   description    String
   triggerPattern String
   sampleContent  String
-  status         String   @default("pending") // 'pending' | 'approved' | 'rejected'
+  status         String   @default("pending") // 'pending' | 'approved' | 'rejected' | 'disabled'
+  source         String   @default("learned") // 'learned' (minerada de telemetria) | 'github' (importada via URL de terceiros)
+  sourceUrl      String? // URL original informada pelo operador (source=github)
+  resolvedUrl    String? // URL raw efetivamente usada no fetch (branch resolvida)
+  commitSha      String? // SHA do commit pineado no momento da revisão, quando resolvível (best-effort)
+  contentHash    String? // sha256 do conteúdo revisado — permite detectar drift se o arquivo de origem mudar depois
+  detectedType   String? // 'google' | 'claude' | 'cursor' | 'codex' | 'generic'
+  targetPath     String? // diretório base (projeto) onde a skill será/foi gravada
+  installedPath  String? // caminho final no disco após approve (fonte da verdade para o gate de governança)
+  riskFlags      String? // JSON array de sinais heurísticos não-bloqueantes encontrados no conteúdo (prompt injection, etc.)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }

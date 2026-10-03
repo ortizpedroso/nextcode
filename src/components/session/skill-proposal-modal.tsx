@@ -10,7 +10,11 @@ interface CandidateProposal {
   description: string;
   triggerPattern: string;
   sampleContent: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "disabled";
+  source?: "learned" | "github";
+  sourceUrl?: string | null;
+  commitSha?: string | null;
+  riskFlags?: string | null;
   createdAt: string;
 }
 
@@ -42,7 +46,7 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
     fetchProposals();
   }, []);
 
-  const handleAction = async (id: string, action: "approve" | "reject") => {
+  const handleAction = async (id: string, action: "approve" | "reject" | "disable" | "enable") => {
     setActingId(id);
     try {
       const res = await authFetch("/api/skills/proposals", {
@@ -99,31 +103,79 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
               Nenhuma proposta de skill pendente ou registrada. As habilidades descobertas pela inteligência aparecerão aqui para aprovação com 1-clique.
             </div>
           ) : (
-            proposals.map((item) => (
+            proposals.map((item) => {
+              const flags: string[] = (() => {
+                try {
+                  const parsed = item.riskFlags ? JSON.parse(item.riskFlags) : [];
+                  return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                  return [];
+                }
+              })();
+
+              return (
               <div
                 key={item.id}
                 className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 bg-slate-50/50 dark:bg-slate-950/50 space-y-2 text-xs"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <span className="font-bold text-slate-900 dark:text-white font-mono">
-                      /{item.name}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-900 dark:text-white font-mono">
+                        /{item.name}
+                      </span>
+                      {item.source === "github" && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 border border-sky-300 dark:border-sky-800">
+                          GITHUB
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-500 mt-0.5">{item.description}</p>
+                    {item.sourceUrl && (
+                      <a
+                        href={item.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline break-all"
+                      >
+                        {item.sourceUrl}
+                      </a>
+                    )}
+                    {item.commitSha && (
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                        commit: {item.commitSha.slice(0, 12)}
+                      </p>
+                    )}
                   </div>
 
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${
                       item.status === "approved"
                         ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800"
                         : item.status === "rejected"
                         ? "bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800"
+                        : item.status === "disabled"
+                        ? "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700"
                         : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800 animate-pulse"
                     }`}
                   >
                     {item.status.toUpperCase()}
                   </span>
                 </div>
+
+                {flags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {flags.map((flag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 border border-orange-300 dark:border-orange-800"
+                        title={flag}
+                      >
+                        ⚠ {flag.split(":")[0]}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div className="bg-slate-900 text-slate-200 p-2.5 rounded-lg font-mono text-[10px] max-h-24 overflow-y-auto whitespace-pre-wrap">
                   {item.sampleContent}
@@ -149,8 +201,31 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
                     </button>
                   </div>
                 )}
+
+                {item.source === "github" && (item.status === "approved" || item.status === "disabled") && (
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => handleAction(item.id, item.status === "approved" ? "disable" : "enable")}
+                      disabled={actingId === item.id}
+                      className="px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border border-slate-300 dark:border-slate-700 disabled:opacity-50"
+                    >
+                      {item.status === "approved" ? (
+                        <>
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Desativar Skill</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Reativar Skill</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

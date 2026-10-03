@@ -43,7 +43,7 @@ export function CandidateSkillCard() {
       const res = await authFetch("/api/skills/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proposalId, action }),
+        body: JSON.stringify({ id: proposalId, action }),
       });
       const data = await res.json();
       if (data.success) {

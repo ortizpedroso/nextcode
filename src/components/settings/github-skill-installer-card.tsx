@@ -28,6 +28,7 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
     skillName: string;
     detectedType: string;
     message: string;
+    riskFlags?: string[];
   } | null>(null);
 
   const [skills, setSkills] = useState<SkillItemInfo[]>([]);
@@ -77,11 +78,13 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
           skillName: data.skillName,
           detectedType: data.detectedType,
           message: data.message,
+          riskFlags: Array.isArray(data.riskFlags) ? data.riskFlags : [],
         });
         setGithubUrl("");
-        await fetchInstalledSkills();
+        // Nada é gravado em disco ainda — a skill só aparecerá na lista abaixo após
+        // aprovação explícita na fila de revisão (quarantine gate).
       } else {
-        setError(data.details || data.error || "Erro ao instalar skill do GitHub.");
+        setError(data.details || data.error || "Erro ao importar skill do GitHub.");
       }
     } catch {
       setError("Falha na comunicação ao tentar instalar a skill.");
@@ -142,7 +145,7 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
               Instalador de Habilidades & Skills via GitHub
             </h4>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Cole o link de um repositório ou arquivo do GitHub. O NextCode detecta automaticamente se é do Google, Claude, Cursor ou Codex.
+              Cole o link de um repositório ou arquivo do GitHub. O conteúdo é analisado e enviado para revisão antes de ser ativado — nada é gravado em disco sem aprovação explícita.
             </p>
           </div>
         </div>
@@ -172,12 +175,12 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
               {loading ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Baixando...</span>
+                  <span>Analisando...</span>
                 </>
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Baixar & Instalar</span>
+                  <span>Enviar para Revisão</span>
                 </>
               )}
             </button>
@@ -185,16 +188,32 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
         </div>
       </form>
 
-      {/* Notificação de Sucesso */}
+      {/* Notificação: enviado para revisão (quarantine gate) */}
       {successResult && (
-        <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5 text-xs">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 flex items-start gap-2.5 text-xs">
+          <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-bold">{successResult.message}</div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-emerald-700 dark:text-emerald-400">Formato Detectado:</span>
+              <span className="text-[11px] text-amber-700 dark:text-amber-400">Formato Detectado:</span>
               {renderTypeBadge(successResult.detectedType)}
             </div>
+            {successResult.riskFlags && successResult.riskFlags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {successResult.riskFlags.map((flag, idx) => (
+                  <span
+                    key={idx}
+                    className="px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 border border-orange-300 dark:border-orange-800"
+                    title={flag}
+                  >
+                    ⚠ {flag.split(":")[0]}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80">
+              Revise e aprove em "Propostas de Skills" para ativá-la.
+            </p>
           </div>
         </div>
       )}

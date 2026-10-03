@@ -124,12 +124,24 @@ export function parseSkillContent(content: string, filenameHint: string = ""): {
 }
 
 import { safeFetch } from "@/core/security/safe-fetch";
+import * as crypto from "crypto";
 
-export async function installSkillFromGithub(opts: {
-  url: string;
-  projectPath?: string | null;
-}): Promise<InstalledSkillResult> {
-  const candidateUrls = getGithubRawCandidateUrls(opts.url);
+export interface FetchedSkillResult {
+  responseText: string;
+  successfulUrl: string;
+  parsed: ReturnType<typeof parseSkillContent>;
+  contentHash: string;
+  commitSha: string | null;
+  riskFlags: string[];
+}
+
+/**
+ * Busca e interpreta o conteúdo de uma skill de terceiros SEM gravar nada em disco.
+ * Usada pelo fluxo de revisão (quarantine gate): a instalação via GitHub agora passa
+ * por aqui + cria uma CandidateSkillProposal pendente, em vez de ativar a skill na hora.
+ */
+export async function fetchSkillFromGithub(url: string): Promise<FetchedSkillResult> {
+  const candidateUrls = getGithubRawCandidateUrls(url);
 
   let responseText = "";
   let successfulUrl = "";
@@ -175,12 +187,83 @@ export async function installSkillFromGithub(opts: {
     throw new Error(`Não foi possível baixar o conteúdo do GitHub (HTTP ${lastHttpStatus || "erro"}). Verifique a URL informada.`);
   }
 
-  const filenameHint = path.basename(successfulUrl || opts.url);
+  const filenameHint = path.basename(successfulUrl || url);
   const parsed = parseSkillContent(responseText, filenameHint);
+  const contentHash = crypto.createHash("sha256").update(responseText).digest("hex");
+  const commitSha = await resolvePinnedCommitSha(successfulUrl);
+  const riskFlags = scanSkillContentForRisks(responseText);
 
-  const baseDir = opts.projectPath && opts.projectPath.trim()
-    ? opts.projectPath.trim()
-    : process.cwd();
+  return { responseText, successfulUrl, parsed, contentHash, commitSha, riskFlags };
+}
+
+/**
+ * Melhor esforço: resolve a URL raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
+ * para o SHA do commit atual da branch, via API pública do GitHub. Serve apenas de
+ * registro de auditoria (qual versão exata foi revisada) — nunca bloqueia o fluxo se
+ * a API falhar (rate limit, repo privado, URL de Gist, etc.).
+ */
+export async function resolvePinnedCommitSha(rawUrl: string): Promise<string | null> {
+  const match = rawUrl.match(/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\//);
+  if (!match) return null;
+  const [, owner, repo, branch] = match;
+  try {
+    const res = await safeFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${branch}`, {
+      headers: {
+        "User-Agent": "NextCode-Skill-Installer/1.0",
+        Accept: "application/vnd.github.v3+json",
+      },
+      timeoutMs: 5000,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data?.sha === "string" ? data.sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Varredura heurística e NÃO-BLOQUEANTE do conteúdo de uma skill de terceiros. Serve só
+ * para dar sinal ao humano que vai revisar/aprovar — nunca impede a instalação por si só,
+ * pois o conteúdo legítimo de skills frequentemente menciona esses termos de forma inócua.
+ */
+export function scanSkillContentForRisks(content: string): string[] {
+  const flags: string[] = [];
+
+  if (/ignore\s+(all\s+|any\s+)?(previous|above|prior)\s+instructions?/i.test(content)) {
+    flags.push("possible-prompt-injection: tenta sobrescrever instruções anteriores");
+  }
+  if (/(reveal|print|show|exfiltrate|dump)\s+(your\s+)?(system prompt|api[\s_-]?key|master[\s_-]?key|token|secret)/i.test(content)) {
+    flags.push("possible-secret-exfiltration: solicita revelar segredos/chaves/tokens");
+  }
+  if (/\b(NEXTCODE_MASTER_KEY|NEXTCODE_AUTH_TOKEN|process\.env\[)\b/.test(content)) {
+    flags.push("references-env-secrets: referencia nomes de variáveis de ambiente sensíveis do próprio projeto");
+  }
+  if (/[A-Za-z0-9+/]{200,}={0,2}/.test(content)) {
+    flags.push("large-base64-blob: contém um bloco longo codificado em base64");
+  }
+  if (/(curl|iwr|invoke-webrequest)[^\n]{0,80}\|\s*(sh|bash|iex|powershell)/i.test(content)) {
+    flags.push("remote-code-execution-pattern: baixa e executa script remoto diretamente");
+  }
+  if (/https?:\/\/(webhook\.site|ngrok\.io|requestbin\.com|pastebin\.com)/i.test(content)) {
+    flags.push("suspicious-outbound-url: referencia domínio comum de exfiltração/teste de SSRF");
+  }
+
+  return flags;
+}
+
+export interface WrittenSkillResult {
+  installedPath: string;
+  targetPath: string;
+}
+
+/** Grava em disco o conteúdo já revisado/aprovado de uma skill (fetch e aprovação já concluídos). */
+export function writeParsedSkillToDisk(
+  parsed: ReturnType<typeof parseSkillContent>,
+  responseText: string,
+  baseDirInput?: string | null
+): WrittenSkillResult {
+  const baseDir = baseDirInput && baseDirInput.trim() ? baseDirInput.trim() : process.cwd();
 
   let targetSubdir = "";
   let targetFilename = "";
@@ -208,12 +291,28 @@ export async function installSkillFromGithub(opts: {
 
   fs.writeFileSync(finalFilePath, finalContent, "utf8");
 
+  return { installedPath: finalFilePath, targetPath: baseDir };
+}
+
+/**
+ * Atalho de instalação imediata (busca + grava), mantido para compatibilidade com
+ * chamadores que não precisam do fluxo de revisão (ex.: testes, uso programático direto).
+ * A rota HTTP de instalação (/api/skills/install-github) NÃO usa mais esta função —
+ * ela passa pelo quarantine gate via fetchSkillFromGithub + proposta pendente de aprovação.
+ */
+export async function installSkillFromGithub(opts: {
+  url: string;
+  projectPath?: string | null;
+}): Promise<InstalledSkillResult> {
+  const { responseText, parsed } = await fetchSkillFromGithub(opts.url);
+  const { installedPath } = writeParsedSkillToDisk(parsed, responseText, opts.projectPath);
+
   return {
     success: true,
     detectedType: parsed.detectedType,
     skillName: parsed.skillName,
     description: parsed.description,
-    installedPath: finalFilePath,
+    installedPath,
     message: `Skill "${parsed.skillName}" do formato ${parsed.detectedType.toUpperCase()} instalada com sucesso!`,
   };
 }

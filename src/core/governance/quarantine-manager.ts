@@ -30,12 +30,28 @@ export class QuarantineManager {
   }
 
   /**
+   * SEGURANÇA: resolve `relativePath` dentro de `baseDir` e garante que o resultado não
+   * escapa de `baseDir` via traversal ("..", caminho absoluto, etc). `relativePath` pode
+   * vir de conteúdo gerado por LLM (blocos de código/markdown) ou de filesScope fornecido
+   * pelo chamador — nenhum dos dois é confiável. Lança erro em vez de escrever/ler fora
+   * do diretório de quarentena ou do projeto de destino.
+   */
+  private static resolveContained(baseDir: string, relativePath: string): string {
+    const resolvedBase = path.resolve(baseDir);
+    const resolvedTarget = path.resolve(resolvedBase, relativePath);
+    if (resolvedTarget !== resolvedBase && !resolvedTarget.startsWith(resolvedBase + path.sep)) {
+      throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
+    }
+    return resolvedTarget;
+  }
+
+  /**
    * Grava um arquivo dentro do escopo de quarentena da tarefa
    */
   public writeFile(taskId: string, relativeFilePath: string, content: string): string {
     const workspacePath = path.join(this.baseQuarantineDir, taskId);
-    const targetPath = path.join(workspacePath, relativeFilePath);
-    
+    const targetPath = QuarantineManager.resolveContained(workspacePath, relativeFilePath);
+
     const parentDir = path.dirname(targetPath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
@@ -87,7 +103,13 @@ export class QuarantineManager {
    * Lê um arquivo gravado no workspace da quarentena
    */
   public readFile(taskId: string, relativeFilePath: string): string | null {
-    const targetPath = path.join(this.baseQuarantineDir, taskId, relativeFilePath);
+    const workspacePath = path.join(this.baseQuarantineDir, taskId);
+    let targetPath: string;
+    try {
+      targetPath = QuarantineManager.resolveContained(workspacePath, relativeFilePath);
+    } catch {
+      return null;
+    }
     if (!fs.existsSync(targetPath)) {
       return null;
     }
@@ -248,9 +270,15 @@ export class QuarantineManager {
       if (QuarantineManager.isInvalidFilePath(fileRel)) {
         continue;
       }
-      const sourcePath = path.join(workspacePath, fileRel);
+      let sourcePath: string;
+      let destPath: string;
+      try {
+        sourcePath = QuarantineManager.resolveContained(workspacePath, fileRel);
+        destPath = QuarantineManager.resolveContained(targetProjectRoot, fileRel);
+      } catch {
+        continue; // path traversal: ignora o arquivo em vez de escrever fora do projeto
+      }
       if (fs.existsSync(sourcePath)) {
-        const destPath = path.join(targetProjectRoot, fileRel);
         const destDir = path.dirname(destPath);
         if (!fs.existsSync(destDir)) {
           fs.mkdirSync(destDir, { recursive: true });
