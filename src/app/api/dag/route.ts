@@ -413,69 +413,92 @@ DIRETRIZES DE EXECUÇÃO:
       }
 
       // 4. Quarentena, Auditoria Cega e Promoção para a Pasta Física do Projeto
-      const qm = new QuarantineManager();
-      const filesScope: string[] = task.filesScope ? JSON.parse(task.filesScope) : [];
-      const targetProjectRoot = task.session.project?.path || process.cwd();
-      
-      // Extrai os blocos de código gerados e grava no workspace isolado de quarentena
-      const codeContentMap = qm.extractAndWriteCodeBlocks(task.id, stepResultText, filesScope);
-      
-      // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
-      const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
-      const type2Res = await DualLensAuditor.validateType2(
-        type1Res,
-        buildBriefMarkdown(task),
-        stepResultText,
-        codeContentMap,
-        makeBlindAuditDispatchFn(smartRouter, setting)
-      );
-
+      //
+      // Tudo a partir daqui roda sob try/catch: o nó já foi marcado "running" no banco
+      // (acima) e, sem essa rede, qualquer exceção não prevista (fs, parsing, auditor,
+      // build) escapava direto para o catch do POST e deixava o nó travado em "running"
+      // para sempre — getExecutableNodes() não considera "running" retomável, e nada no
+      // front-end re-chama process_queue sozinho (só re-busca o estado via GET). Era
+      // exatamente o "fica ali eternamente" sem botão de retry (UI só mostra retry para
+      // failed/blocked).
       let finalStatus: "completed" | "failed" = "completed";
       let promotionTarget: string | null = null;
       let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
+      let mcpRes: Record<string, unknown>;
 
-      if (type2Res.verdict === "APPROVED") {
-        finalStatus = "completed";
-        qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
-        promotionTarget = targetProjectRoot;
+      try {
+        const qm = new QuarantineManager();
+        const filesScope: string[] = task.filesScope ? JSON.parse(task.filesScope) : [];
+        const targetProjectRoot = task.session.project?.path || process.cwd();
 
-        // Item 7: conecta o TerminalExecutionEngine à resposta da IA — mesma prova empírica
-        // real (type-check pós-promoção) usada no pipeline do chat (ver zero-hallucination-loop.ts).
-        empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
-        if (empiricalBuildResult && !empiricalBuildResult.success) {
-          const firstErrorLine =
-            `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
-              .split("\n")
-              .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+        // Extrai os blocos de código gerados e grava no workspace isolado de quarentena
+        const codeContentMap = qm.extractAndWriteCodeBlocks(task.id, stepResultText, filesScope);
+
+        // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
+        const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
+        const type2Res = await DualLensAuditor.validateType2(
+          type1Res,
+          buildBriefMarkdown(task),
+          stepResultText,
+          codeContentMap,
+          makeBlindAuditDispatchFn(smartRouter, setting)
+        );
+
+        if (type2Res.verdict === "APPROVED") {
+          finalStatus = "completed";
+          qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
+          promotionTarget = targetProjectRoot;
+
+          // Item 7: conecta o TerminalExecutionEngine à resposta da IA — mesma prova empírica
+          // real (type-check pós-promoção) usada no pipeline do chat (ver zero-hallucination-loop.ts).
+          empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
+          if (empiricalBuildResult && !empiricalBuildResult.success) {
+            const firstErrorLine =
+              `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
+                .split("\n")
+                .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+            TelemetryLogger.log({
+              sessionId: task.sessionId,
+              action: "EMPIRICAL_BUILD_FAILED",
+              details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+            });
+          }
+        } else {
+          finalStatus = "failed";
+          qm.purgeWorkspace(task.id);
+
           TelemetryLogger.log({
             sessionId: task.sessionId,
-            action: "EMPIRICAL_BUILD_FAILED",
-            details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+            action: "AUDIT_REJECTED",
+            details: {
+              errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
+              sample: type2Res.rejectionReason || "",
+            },
           });
         }
-      } else {
+
+        mcpRes = {
+          success: type2Res.verdict === "APPROVED",
+          nodeId: task.id,
+          title: task.title,
+          output: stepResultText,
+          auditVerdict: type2Res.verdict,
+          auditMethod: type2Res.method,
+          promotedPath: promotionTarget,
+          empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
+        };
+      } catch (err) {
         finalStatus = "failed";
-        qm.purgeWorkspace(task.id);
-
-        TelemetryLogger.log({
-          sessionId: task.sessionId,
-          action: "AUDIT_REJECTED",
-          details: {
-            errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
-            sample: type2Res.rejectionReason || "",
-          },
-        });
+        mcpRes = {
+          success: false,
+          nodeId: task.id,
+          title: task.title,
+          output: stepResultText,
+          auditVerdict: "ERROR",
+          rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+        };
+        console.error(`[DAG_NODE_CRASH] Nó "${task.title}" travou após 'running':`, err);
       }
-
-      const mcpRes = {
-        success: type2Res.verdict === "APPROVED",
-        nodeId: task.id,
-        title: task.title,
-        output: stepResultText,
-        auditVerdict: type2Res.verdict,
-        promotedPath: promotionTarget,
-        empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
-      };
 
       // Atualiza estado do nó no SQLite
       const updatedTask = await prisma.taskNode.update({
@@ -493,8 +516,8 @@ DIRETRIZES DE EXECUÇÃO:
         details: {
           nodeId: task.id,
           title: task.title,
-          verdict: type2Res.verdict,
-          auditMethod: type2Res.method,
+          verdict: (mcpRes as any).auditVerdict,
+          auditMethod: (mcpRes as any).auditMethod,
           promotedPath: promotionTarget,
         },
       });
@@ -571,6 +594,35 @@ DIRETRIZES DE EXECUÇÃO:
           },
           { status: 400 }
         );
+      }
+
+      // Recuperação de nós "zumbis": um crash/restart do processo entre a escrita de
+      // "running" e a escrita do status final (ver try/catch em executeNodeInQueue abaixo)
+      // deixa o nó travado em "running" para sempre, invisível para getExecutableNodes()
+      // e sem botão de retry na UI. Qualquer nó "running" há mais tempo que o timeout de
+      // uma etapa + margem é tratado como órfão e devolvido ao ciclo normal de retry/bloqueio.
+      const staleThresholdMs = (Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000) + 30000;
+      const staleRunningTasks = await prisma.taskNode.findMany({
+        where: {
+          sessionId: targetSessionId,
+          status: "running",
+          updatedAt: { lt: new Date(Date.now() - staleThresholdMs) },
+        },
+      });
+      for (const stale of staleRunningTasks) {
+        const staleAttempts = (stale.attempts || 0) + 1;
+        await prisma.taskNode.update({
+          where: { id: stale.id },
+          data: {
+            status: staleAttempts >= (stale.maxAttempts || 3) ? "blocked" : "failed",
+            attempts: staleAttempts,
+            result: JSON.stringify({
+              success: false,
+              auditVerdict: "ERROR",
+              rejectionReason: "Nó recuperado após travar em 'running' (processo provavelmente interrompido).",
+            }),
+          },
+        });
       }
 
       let processedCount = 0;
@@ -731,53 +783,70 @@ DIRETRIZES DE EXECUÇÃO:
             console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
           }
 
-          const qm = new QuarantineManager();
-          const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
-          const targetProjectRoot = session.project?.path || process.cwd();
-          const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
-          const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
-          const type2Res = await DualLensAuditor.validateType2(
-            type1Res,
-            buildBriefMarkdown(taskDb),
-            stepResultText,
-            codeContentMap,
-            makeBlindAuditDispatchFn(smartRouter, setting)
-          );
-
+          // Mesma rede de segurança do execute_node (ver comentário acima dele): o nó já
+          // está "running" no banco, e sem try/catch aqui uma exceção não prevista
+          // (fs/parsing/auditor/build) rejeita a Promise, derruba o Promise.all do lote
+          // inteiro e deixa o nó travado em "running" para sempre — sem retry automático
+          // (getExecutableNodes não retoma "running") nem botão manual (UI só mostra
+          // retry para failed/blocked).
           let finalStatus: "completed" | "failed" | "blocked" = "completed";
           let promotionTarget: string | null = null;
           const newAttempts = (taskDb.attempts || 0) + 1;
+          let mcpRes: Record<string, unknown>;
 
-          if (type2Res.verdict === "APPROVED") {
-            finalStatus = "completed";
-            qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
-            promotionTarget = targetProjectRoot;
-          } else {
-            qm.purgeWorkspace(taskDb.id);
-            if (newAttempts >= (taskDb.maxAttempts || 3)) {
-              finalStatus = "blocked";
+          try {
+            const qm = new QuarantineManager();
+            const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
+            const targetProjectRoot = session.project?.path || process.cwd();
+            const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
+            const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
+            const type2Res = await DualLensAuditor.validateType2(
+              type1Res,
+              buildBriefMarkdown(taskDb),
+              stepResultText,
+              codeContentMap,
+              makeBlindAuditDispatchFn(smartRouter, setting)
+            );
+
+            if (type2Res.verdict === "APPROVED") {
+              finalStatus = "completed";
+              qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
+              promotionTarget = targetProjectRoot;
             } else {
-              finalStatus = "failed";
+              qm.purgeWorkspace(taskDb.id);
+              finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+
+              TelemetryLogger.log({
+                sessionId: targetSessionId,
+                action: "AUDIT_REJECTED",
+                details: {
+                  errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
+                  sample: type2Res.rejectionReason || "",
+                },
+              });
             }
 
-            TelemetryLogger.log({
-              sessionId: targetSessionId,
-              action: "AUDIT_REJECTED",
-              details: {
-                errorSignature: buildErrorSignature("type2", type2Res.rejectionReason || "divergência semântica"),
-                sample: type2Res.rejectionReason || "",
-              },
-            });
+            mcpRes = {
+              success: type2Res.verdict === "APPROVED",
+              nodeId: taskDb.id,
+              title: taskDb.title,
+              output: stepResultText,
+              auditVerdict: type2Res.verdict,
+              auditMethod: type2Res.method,
+              promotedPath: promotionTarget,
+            };
+          } catch (err) {
+            finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+            mcpRes = {
+              success: false,
+              nodeId: taskDb.id,
+              title: taskDb.title,
+              output: stepResultText,
+              auditVerdict: "ERROR",
+              rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+            };
+            console.error(`[DAG_NODE_CRASH] Nó "${taskDb.title}" travou após 'running':`, err);
           }
-
-          const mcpRes = {
-            success: type2Res.verdict === "APPROVED",
-            nodeId: taskDb.id,
-            title: taskDb.title,
-            output: stepResultText,
-            auditVerdict: type2Res.verdict,
-            promotedPath: promotionTarget,
-          };
 
           await prisma.taskNode.update({
             where: { id: taskDb.id },
@@ -794,8 +863,8 @@ DIRETRIZES DE EXECUÇÃO:
             details: {
               nodeId: taskDb.id,
               title: taskDb.title,
-              verdict: type2Res.verdict,
-              auditMethod: type2Res.method,
+              verdict: (mcpRes as any).auditVerdict,
+              auditMethod: (mcpRes as any).auditMethod,
               promotedPath: promotionTarget,
             },
           });
