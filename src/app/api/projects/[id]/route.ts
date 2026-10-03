@@ -83,7 +83,7 @@ export async function DELETE(
       });
     }
 
-    // 3. Exclusão de arquivos físicos com tratamento de exceção (resiliente a locks no Windows)
+    // 3. Exclusão de arquivos físicos com tratamento de exceção e retries forçados no Windows
     let physicalDeleted = false;
     let physicalWarning: string | null = null;
 
@@ -101,13 +101,35 @@ export async function DELETE(
           resolvedPath === parentProjectsDir;
 
         if (!isCriticalSystemPath && fs.existsSync(resolvedPath)) {
-          fs.rmSync(resolvedPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-          physicalDeleted = true;
-          console.log(`[PROJECT_DELETE] Pasta física removida com sucesso do computador: "${resolvedPath}"`);
+          // Método 1: fs.rmSync nativo do Node com retries
+          try {
+            fs.rmSync(resolvedPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+          } catch {
+            // Método 2 (Windows Fallback): Limpa atributos de somente-leitura e executa remoção forçada de sistema
+            if (process.platform === "win32") {
+              const { execSync } = await import("child_process");
+              try {
+                execSync(`cmd.exe /c "attrib -r /s /d \\"${resolvedPath}\\*.*\\""`, { stdio: "ignore" });
+                execSync(`cmd.exe /c "rd /s /q \\"${resolvedPath}\\""`, { stdio: "ignore" });
+              } catch {
+                try {
+                  execSync(`powershell -Command "Remove-Item -Path \\"${resolvedPath}\\" -Recurse -Force"`, { stdio: "ignore" });
+                } catch {}
+              }
+            }
+          }
+
+          physicalDeleted = !fs.existsSync(resolvedPath);
+          if (physicalDeleted) {
+            console.log(`[PROJECT_DELETE] Pasta física removida com sucesso do computador: "${resolvedPath}"`);
+          } else {
+            console.warn(`[PROJECT_DELETE] Aviso: Alguns arquivos da pasta física "${resolvedPath}" podem estar em uso.`);
+            physicalWarning = `A pasta física continha arquivos em uso pelo SO e não pôde ser inteiramente removida.`;
+          }
         }
       } catch (fsErr) {
-        console.warn(`[PROJECT_DELETE] Aviso: Não foi possível apagar pasta física no disco: ${String(fsErr)}`);
-        physicalWarning = `A pasta local não pôde ser apagada do disco (${String(fsErr)})`;
+        console.warn(`[PROJECT_DELETE] Exceção ao apagar pasta física: ${String(fsErr)}`);
+        physicalWarning = `Falha ao excluir pasta local (${String(fsErr)})`;
       }
     }
 
