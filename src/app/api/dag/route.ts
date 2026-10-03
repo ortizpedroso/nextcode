@@ -17,12 +17,30 @@ import { parseSpecDocument } from "@/core/intake/spec-format";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
+import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import type { Setting } from "@prisma/client";
 
 /** Minera telemetria em plano de fundo após cada execução de nó — nunca bloqueia a resposta. */
 function mineTelemetryInBackground(): void {
   SkillMiner.analyzeAndPropose().catch((err) => console.error("[SkillMiner] analyzeAndPropose falhou:", err));
   SkillMiner.detectRecurringBugs().catch((err) => console.error("[SkillMiner] detectRecurringBugs falhou:", err));
+}
+
+/**
+ * Trava T6 (D-RANHO): acumula cada tentativa rejeitada de um nó em `failureHistory` — sem
+ * isso, `result` (campo único, sobrescrito a cada tentativa) perdia o histórico das rejeições
+ * anteriores e o IncidentReporter nunca tinha dados reais para citar quando o nó atingia o
+ * limite de tentativas e era bloqueado.
+ */
+function appendFailureAttempt(existingHistoryJson: string | null | undefined, record: FailureAttemptRecord): string {
+  let history: FailureAttemptRecord[] = [];
+  try {
+    history = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+  } catch {
+    history = [];
+  }
+  history.push(record);
+  return JSON.stringify(history);
 }
 
 /**
@@ -421,10 +439,18 @@ DIRETRIZES DE EXECUÇÃO:
       // front-end re-chama process_queue sozinho (só re-busca o estado via GET). Era
       // exatamente o "fica ali eternamente" sem botão de retry (UI só mostra retry para
       // failed/blocked).
-      let finalStatus: "completed" | "failed" = "completed";
+      let finalStatus: "completed" | "failed" | "blocked" = "completed";
       let promotionTarget: string | null = null;
       let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
       let mcpRes: Record<string, unknown>;
+      let newFailureHistory: string | undefined;
+
+      // Trava T6 (D-RANHO): se esta tentativa falhar, ela já atinge o limite de tentativas
+      // do nó? Decide "failed" (segue elegível para retry) vs "blocked" (bloqueio mecânico +
+      // cascata para dependentes, ver DAGEngine.propagateBlockState) — este caminho
+      // (execução de um único nó via botão "Executar nó") nunca aplicava esse limite.
+      const maxAttempts = task.maxAttempts || 3;
+      const wouldReachBlockThreshold = task.attempts + 1 >= maxAttempts;
 
       try {
         const qm = new QuarantineManager();
@@ -475,10 +501,10 @@ DIRETRIZES DE EXECUÇÃO:
             });
             // Item (B): antes o nó ficava "completed" mesmo com o type-check real do projeto
             // quebrado — a DAG avançava sobre uma base inválida sem nenhum sinal de retry.
-            finalStatus = "failed";
+            finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
           }
         } else {
-          finalStatus = "failed";
+          finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
           qm.purgeWorkspace(task.id);
 
           TelemetryLogger.log({
@@ -492,13 +518,33 @@ DIRETRIZES DE EXECUÇÃO:
         }
 
         const empiricalFailureReason =
-          finalStatus === "failed" && empiricalBuildResult && !empiricalBuildResult.success
+          finalStatus !== "completed" && empiricalBuildResult && !empiricalBuildResult.success
             ? `Verificação empírica (type-check real pós-promoção) falhou: ${
                 `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
                   .split("\n")
                   .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção"
               }`
             : undefined;
+
+        const rejectionReason =
+          empiricalFailureReason || (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason : undefined);
+
+        // Trava T6 (D-RANHO): acumula o histórico de tentativas rejeitadas e, ao atingir o
+        // limite (status "blocked"), gera o relatório de incidente citando esse histórico —
+        // sem isso o IncidentReporter nunca tinha dados reais para citar.
+        let incidentReportMarkdown: string | undefined;
+        if (finalStatus === "failed" || finalStatus === "blocked") {
+          newFailureHistory = appendFailureAttempt(task.failureHistory, {
+            attemptNumber: task.attempts + 1,
+            rejectionReason: rejectionReason || "Falha não especificada.",
+            filesScope,
+            timestamp: new Date().toISOString(),
+          });
+          if (finalStatus === "blocked") {
+            const history: FailureAttemptRecord[] = JSON.parse(newFailureHistory);
+            incidentReportMarkdown = IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, history);
+          }
+        }
 
         mcpRes = {
           success: finalStatus === "completed",
@@ -509,10 +555,21 @@ DIRETRIZES DE EXECUÇÃO:
           auditMethod: type2Res.method,
           promotedPath: promotionTarget,
           empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
-          rejectionReason: empiricalFailureReason || (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason : undefined),
+          rejectionReason,
+          incidentReport: incidentReportMarkdown,
         };
       } catch (err) {
-        finalStatus = "failed";
+        finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
+        newFailureHistory = appendFailureAttempt(task.failureHistory, {
+          attemptNumber: task.attempts + 1,
+          rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+          filesScope: task.filesScope ? JSON.parse(task.filesScope) : [],
+          timestamp: new Date().toISOString(),
+        });
+        const incidentReportMarkdown =
+          finalStatus === "blocked"
+            ? IncidentReporter.generateIncidentReport(task.id, task.title, task.cluster, JSON.parse(newFailureHistory))
+            : undefined;
         mcpRes = {
           success: false,
           nodeId: task.id,
@@ -520,6 +577,7 @@ DIRETRIZES DE EXECUÇÃO:
           output: stepResultText,
           auditVerdict: "ERROR",
           rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+          incidentReport: incidentReportMarkdown,
         };
         console.error(`[DAG_NODE_CRASH] Nó "${task.title}" travou após 'running':`, err);
       }
@@ -529,8 +587,9 @@ DIRETRIZES DE EXECUÇÃO:
         where: { id: nodeId },
         data: {
           status: finalStatus,
-          attempts: finalStatus === "failed" ? task.attempts + 1 : task.attempts,
+          attempts: finalStatus === "failed" || finalStatus === "blocked" ? task.attempts + 1 : task.attempts,
           result: JSON.stringify(mcpRes),
+          ...(newFailureHistory ? { failureHistory: newFailureHistory } : {}),
         },
       });
 
@@ -635,15 +694,34 @@ DIRETRIZES DE EXECUÇÃO:
       });
       for (const stale of staleRunningTasks) {
         const staleAttempts = (stale.attempts || 0) + 1;
+        const staleStatus: "failed" | "blocked" = staleAttempts >= (stale.maxAttempts || 3) ? "blocked" : "failed";
+        const staleRejectionReason = "Nó recuperado após travar em 'running' (processo provavelmente interrompido).";
+        const staleFailureHistory = appendFailureAttempt(stale.failureHistory, {
+          attemptNumber: staleAttempts,
+          rejectionReason: staleRejectionReason,
+          filesScope: stale.filesScope ? JSON.parse(stale.filesScope) : [],
+          timestamp: new Date().toISOString(),
+        });
+        const staleIncidentReport =
+          staleStatus === "blocked"
+            ? IncidentReporter.generateIncidentReport(
+                stale.id,
+                stale.title,
+                stale.cluster,
+                JSON.parse(staleFailureHistory)
+              )
+            : undefined;
         await prisma.taskNode.update({
           where: { id: stale.id },
           data: {
-            status: staleAttempts >= (stale.maxAttempts || 3) ? "blocked" : "failed",
+            status: staleStatus,
             attempts: staleAttempts,
+            failureHistory: staleFailureHistory,
             result: JSON.stringify({
               success: false,
               auditVerdict: "ERROR",
-              rejectionReason: "Nó recuperado após travar em 'running' (processo provavelmente interrompido).",
+              rejectionReason: staleRejectionReason,
+              incidentReport: staleIncidentReport,
             }),
           },
         });
@@ -818,6 +896,7 @@ DIRETRIZES DE EXECUÇÃO:
           let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
           const newAttempts = (taskDb.attempts || 0) + 1;
           let mcpRes: Record<string, unknown>;
+          let newFailureHistory: string | undefined;
 
           try {
             const qm = new QuarantineManager();
@@ -844,6 +923,8 @@ DIRETRIZES DE EXECUÇÃO:
               });
             }
 
+            let rejectionReason: string | undefined;
+
             if (type2Res.verdict === "APPROVED") {
               finalStatus = "completed";
               qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
@@ -866,10 +947,12 @@ DIRETRIZES DE EXECUÇÃO:
                   details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
                 });
                 finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+                rejectionReason = `Verificação empírica (type-check real pós-promoção) falhou: ${firstErrorLine}`;
               }
             } else {
               qm.purgeWorkspace(taskDb.id);
               finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+              rejectionReason = type2Res.rejectionReason || "Divergência semântica.";
 
               TelemetryLogger.log({
                 sessionId: targetSessionId,
@@ -881,6 +964,27 @@ DIRETRIZES DE EXECUÇÃO:
               });
             }
 
+            // Trava T6 (D-RANHO): acumula o histórico de tentativas rejeitadas e, ao atingir
+            // o limite ("blocked"), gera o relatório de incidente citando esse histórico.
+            let incidentReportMarkdown: string | undefined;
+            if (finalStatus === "failed" || finalStatus === "blocked") {
+              newFailureHistory = appendFailureAttempt(taskDb.failureHistory, {
+                attemptNumber: newAttempts,
+                rejectionReason: rejectionReason || "Falha não especificada.",
+                filesScope: filesScopeArr,
+                timestamp: new Date().toISOString(),
+              });
+              if (finalStatus === "blocked") {
+                const history: FailureAttemptRecord[] = JSON.parse(newFailureHistory);
+                incidentReportMarkdown = IncidentReporter.generateIncidentReport(
+                  taskDb.id,
+                  taskDb.title,
+                  taskDb.cluster,
+                  history
+                );
+              }
+            }
+
             mcpRes = {
               success: finalStatus === "completed",
               nodeId: taskDb.id,
@@ -890,9 +994,26 @@ DIRETRIZES DE EXECUÇÃO:
               auditMethod: type2Res.method,
               promotedPath: promotionTarget,
               empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
+              rejectionReason,
+              incidentReport: incidentReportMarkdown,
             };
           } catch (err) {
             finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+            newFailureHistory = appendFailureAttempt(taskDb.failureHistory, {
+              attemptNumber: newAttempts,
+              rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+              filesScope: taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [],
+              timestamp: new Date().toISOString(),
+            });
+            const incidentReportMarkdown =
+              finalStatus === "blocked"
+                ? IncidentReporter.generateIncidentReport(
+                    taskDb.id,
+                    taskDb.title,
+                    taskDb.cluster,
+                    JSON.parse(newFailureHistory)
+                  )
+                : undefined;
             mcpRes = {
               success: false,
               nodeId: taskDb.id,
@@ -900,6 +1021,7 @@ DIRETRIZES DE EXECUÇÃO:
               output: stepResultText,
               auditVerdict: "ERROR",
               rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
+              incidentReport: incidentReportMarkdown,
             };
             console.error(`[DAG_NODE_CRASH] Nó "${taskDb.title}" travou após 'running':`, err);
           }
@@ -910,6 +1032,7 @@ DIRETRIZES DE EXECUÇÃO:
               status: finalStatus,
               attempts: newAttempts,
               result: JSON.stringify(mcpRes),
+              ...(newFailureHistory ? { failureHistory: newFailureHistory } : {}),
             },
           });
 
@@ -1017,10 +1140,12 @@ DIRETRIZES DE EXECUÇÃO:
         return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
       }
 
-      // Desbloqueia o nó selecionado resetando tentativas e status
+      // Desbloqueia o nó selecionado resetando tentativas, status e o histórico de falhas
+      // (Trava T6 - D-RANHO): um novo ciclo de tentativas começa limpo, sem o relatório de
+      // incidente da rodada anterior.
       await prisma.taskNode.update({
         where: { id: nodeId },
-        data: { status: "pending", attempts: 0 },
+        data: { status: "pending", attempts: 0, failureHistory: "[]" },
       });
 
       // Libera nós em cascata da mesma sessão que estavam bloqueados
@@ -1032,7 +1157,7 @@ DIRETRIZES DE EXECUÇÃO:
         if (task.status === "blocked") {
           await prisma.taskNode.update({
             where: { id: task.id },
-            data: { status: "pending", attempts: 0 },
+            data: { status: "pending", attempts: 0, failureHistory: "[]" },
           });
         }
       }

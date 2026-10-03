@@ -92,6 +92,7 @@ model TaskNode {
   mcpScope       String?  // Ferramentas MCP escopadas para este nó
   payload        String?  // JSON string contendo entrada / contexto do nó
   result         String?  // JSON string contendo saída / resultado da execução
+  failureHistory String   @default("[]") // JSON Array de FailureAttemptRecord (Trava T6 - D-RANHO)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
