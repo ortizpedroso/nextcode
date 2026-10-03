@@ -8,8 +8,8 @@ describe("UniversalDocsFetcher — Dynamic Primary Source Scoring", () => {
     expect(resDocs.isPrimary).toBe(true);
 
     const resNpm = UniversalDocsFetcher.scoreUrlAuthority("https://www.npmjs.com/package/express");
-    expect(resNpm.isPrimary).toBe(false); // 40 pontos (pacote)
-    expect(resNpm.score).toBe(40);
+    expect(resNpm.isPrimary).toBe(true); // 10 base + 40 pacote = 50
+    expect(resNpm.score).toBe(50);
 
     const resGithub = UniversalDocsFetcher.scoreUrlAuthority("https://github.com/prisma/prisma/readme");
     expect(resGithub.score).toBeGreaterThanOrEqual(50);
