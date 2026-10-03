@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
-import { writeSecret } from "@/core/security/crypto";
+import { writeSecret, MasterKeyMissingError } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 
 export async function GET() {
@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, provider });
   } catch (error) {
+    if (error instanceof MasterKeyMissingError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     return NextResponse.json(
       { error: "Falha ao salvar provedor customizado", details: String(error) },
       { status: 500 }

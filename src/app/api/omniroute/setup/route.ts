@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import { safeFetch } from "@/core/security/safe-fetch";
-import { readSecret, writeSecret } from "@/core/security/crypto";
+import { readSecret, writeSecret, MasterKeyMissingError } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
@@ -272,6 +272,9 @@ export async function POST(req: NextRequest) {
           "(ex.: 'docker compose up -d omniroute').",
     });
   } catch (error) {
+    if (error instanceof MasterKeyMissingError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     return NextResponse.json(
       { success: false, error: "Falha ao provisionar OmniRoute Local", details: String(error) },
       { status: 500 }

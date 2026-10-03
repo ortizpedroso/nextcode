@@ -88,6 +88,22 @@ describe("crypto.ts — AES-256-GCM em repouso", () => {
     warn.mockRestore();
   });
 
+  it("produção sem NEXTCODE_MASTER_KEY: encryptSecret/writeSecret falham fechado (nunca texto plano)", async () => {
+    delete process.env.NEXTCODE_MASTER_KEY;
+    delete process.env.NEXTCODE_MASTER_KEYS;
+    (process.env as Record<string, string>).NODE_ENV = "production";
+    const c = await loadCrypto();
+    expect(c.isSecretEncryptionEnabled()).toBe(false);
+    expect(() => c.encryptSecret("sk-segredo")).toThrow(c.MasterKeyMissingError);
+    expect(() => c.writeSecret("sk-segredo")).toThrow(/NEXTCODE_MASTER_KEY/);
+  });
+
+  it("isSecretEncryptionEnabled reflete a presença da chave mestra", async () => {
+    process.env.NEXTCODE_MASTER_KEY = Buffer.alloc(32, 12).toString("base64");
+    const c = await loadCrypto();
+    expect(c.isSecretEncryptionEnabled()).toBe(true);
+  });
+
   it("valores legados texto-plano passam por decryptSecret/readSecret sem erro", async () => {
     process.env.NEXTCODE_MASTER_KEY = Buffer.alloc(32, 4).toString("base64");
     const c = await loadCrypto();

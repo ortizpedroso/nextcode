@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { authFetch } from "@/lib/client-session";
 import {
   Key,
+  AlertTriangle,
   Server,
   Sliders,
   HelpCircle,
@@ -79,6 +80,8 @@ export function SettingsDialog({
   const [formData, setFormData] = useState<SettingsFormState>(settings);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ provider: string; ok: boolean; message: string } | null>(null);
+  // null = ainda não consultado; false = sem NEXTCODE_MASTER_KEY (chaves seriam gravadas em texto plano).
+  const [secretsEncryptionEnabled, setSecretsEncryptionEnabled] = useState<boolean | null>(null);
 
   // Provedores Customizados State
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
@@ -134,6 +137,16 @@ export function SettingsDialog({
     }
   };
 
+  const fetchSecretsEncryptionStatus = async () => {
+    try {
+      const res = await authFetch("/api/settings");
+      const data = await res.json();
+      if (typeof data.secretsEncryptionEnabled === "boolean") setSecretsEncryptionEnabled(data.secretsEncryptionEnabled);
+    } catch (err) {
+      console.error("Erro ao consultar status de criptografia das chaves:", err);
+    }
+  };
+
   const fetchRbacRoles = async () => {
     try {
       const res = await authFetch("/api/auth/roles");
@@ -174,6 +187,7 @@ export function SettingsDialog({
       fetchCustomProviders();
       fetchMcpServers();
       fetchRbacRoles();
+      fetchSecretsEncryptionStatus();
     }
   }, [isOpen, settings]);
 
@@ -441,17 +455,35 @@ export function SettingsDialog({
             )}
 
             {/* ABA 1: BYOK NATIVO COM TESTES INLINE */}
+            {activeTab === "keys" && secretsEncryptionEnabled === false && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>
+                  <strong>NEXTCODE_MASTER_KEY não configurada:</strong> as chaves salvas aqui ficam em texto plano no
+                  banco SQLite. Defina a variável no <code>.env</code> e reinicie o servidor (em produção o salvamento é
+                  recusado).
+                </span>
+              </div>
+            )}
             {activeTab === "keys" && (
               <ByokTab
                 settings={formData}
                 onUpdateSettings={setFormData}
                 onSave={async () => {
-                  await onSave(formData);
-                  setTestResult({
-                    provider: "Configurações BYOK",
-                    ok: true,
-                    message: "Chaves salvas com sucesso no banco de dados!",
-                  });
+                  try {
+                    await onSave(formData);
+                    setTestResult({
+                      provider: "Configurações BYOK",
+                      ok: true,
+                      message: "Chaves salvas com sucesso no banco de dados!",
+                    });
+                  } catch (err) {
+                    setTestResult({
+                      provider: "Configurações BYOK",
+                      ok: false,
+                      message: err instanceof Error ? err.message : String(err),
+                    });
+                  }
                 }}
               />
             )}

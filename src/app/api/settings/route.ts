@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
-import { writeSecret, readSecret, isEncrypted } from "@/core/security/crypto";
+import {
+  writeSecret,
+  readSecret,
+  isEncrypted,
+  isSecretEncryptionEnabled,
+  MasterKeyMissingError,
+} from "@/core/security/crypto";
 
 async function ensureSettingTable() {
   try {
@@ -91,6 +97,8 @@ export async function GET() {
       hasGroqKey: Boolean(setting.groqKey),
       hasNvidiaKey: Boolean(setting.nvidiaKey),
       hasOmniRouteKey: Boolean(setting.omniRouteKey),
+      // false = chaves novas seriam gravadas em texto plano (sem NEXTCODE_MASTER_KEY) — a UI avisa.
+      secretsEncryptionEnabled: isSecretEncryptionEnabled(),
       updatedAt: setting.updatedAt,
     });
   } catch (error) {
@@ -236,6 +244,9 @@ export async function POST(request: NextRequest) {
       updatedAt: updated.updatedAt,
     });
   } catch (error) {
+    if (error instanceof MasterKeyMissingError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     return NextResponse.json(
       { error: "Falha ao salvar configurações BYOK", details: String(error) },
       { status: 500 }

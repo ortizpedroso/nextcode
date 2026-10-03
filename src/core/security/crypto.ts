@@ -71,6 +71,22 @@ function getAllMasterKeys(): Buffer[] {
   return keys;
 }
 
+/** Segredo não pode ser gravado: produção sem NEXTCODE_MASTER_KEY(S) configurada. */
+export class MasterKeyMissingError extends Error {
+  constructor() {
+    super(
+      "NEXTCODE_MASTER_KEY não está configurada — em produção nenhuma chave de API é gravada em texto plano. " +
+        "Defina NEXTCODE_MASTER_KEY (ou NEXTCODE_MASTER_KEYS) no .env e reinicie o servidor."
+    );
+    this.name = "MasterKeyMissingError";
+  }
+}
+
+/** true quando há chave mestra ativa, ou seja, segredos novos serão gravados cifrados. */
+export function isSecretEncryptionEnabled(): boolean {
+  return getMasterKey() !== null;
+}
+
 /** Chave ATIVA para cifrar dados novos. null = sem NEXTCODE_MASTER_KEY configurada (falha fechada: ver encryptSecret). */
 function getMasterKey(): Buffer | null {
   const keys = getConfiguredMasterKeys();
@@ -109,8 +125,12 @@ export function isEncrypted(value?: string | null): boolean {
 export function encryptSecret(plaintext: string): string {
   const master = getMasterKey();
   if (!master) {
-    // Sem chave mestra configurada: mantém comportamento legado (não quebra o app),
-    // mas loga advertência clara.
+    // Em produção a ausência da chave mestra é falha fechada: nenhum segredo vai para o
+    // banco em texto plano. Fora de produção mantém o legado (não quebra o dev local),
+    // com advertência no console e na UI (GET /api/settings → secretsEncryptionEnabled).
+    if (process.env.NODE_ENV === "production") {
+      throw new MasterKeyMissingError();
+    }
     console.warn(
       "[SECURITY] NEXTCODE_MASTER_KEY ausente — chave gravada em TEXTO PLANO. Defina a variável no .env."
     );
