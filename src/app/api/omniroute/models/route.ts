@@ -2,13 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { resolveOmniRouteUrl } from "@/core/router/smart-router";
 import { requireAuth } from "@/core/security/local-auth";
+import { readSecret } from "@/core/security/crypto";
+import prisma from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {
-    const omniUrl = resolveOmniRouteUrl(process.env.OMNIROUTE_URL);
+    const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
+    const omniUrl = resolveOmniRouteUrl(setting?.omniRouteUrl || process.env.OMNIROUTE_URL);
     // Remove /chat/completions se presente para obter a base URL do gateway (ex: http://localhost:20128/v1)
     const baseUrl = omniUrl.replace(/\/chat\/completions\/?$/, "").replace(/\/+$/, "");
     const modelsEndpoint = `${baseUrl}/models`;
+
+    // FIX: o OmniRoute exige API key em /v1/models — sem Authorization este fetch
+    // sempre recebia 401 e caía no fallback estático de 8 modelos, mesmo com o
+    // gateway saudável e autenticado (o seletor de modelo nunca refletia a lista real).
+    const apiKey = readSecret(setting?.omniRouteKey) || process.env.OMNIROUTE_KEY || undefined;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
@@ -19,6 +27,7 @@ export async function GET(req: NextRequest) {
         signal: controller.signal,
         headers: {
           Accept: "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
       });
 

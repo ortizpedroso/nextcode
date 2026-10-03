@@ -127,4 +127,27 @@ Texto do objetivo.`;
     expect(parseSpecDocument("# Apenas um título\n\nSem frontmatter nenhum.")).toBeNull();
     expect(parseSpecDocument("")).toBeNull();
   });
+
+  it("interpreta 'stack' emitido como escalar único separado por vírgulas (desvio comum do LLM)", () => {
+    const doc = `---
+titulo: "Gateway de Pagamento"
+status: "aguardando_aprovacao"
+data: "2026-10-03"
+stack: "Next.js App Router, TypeScript, Tailwind CSS, Prisma ORM, SQLite"
+---
+
+# Gateway de Pagamento
+
+Objetivo.`;
+
+    const parsed = parseSpecDocument(doc);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.stack).toEqual([
+      "Next.js App Router",
+      "TypeScript",
+      "Tailwind CSS",
+      "Prisma ORM",
+      "SQLite",
+    ]);
+  });
 });

@@ -145,7 +145,7 @@ diretrizes:
   - id: diretiva_use_client
     regra: "Todo componente React com hooks ou eventos interativos deve iniciar com a diretiva completa \\"'use client';\\" na primeira linha — nunca abreviada."
 spec_output_format:
-  frontmatter: "YAML com titulo, status, data, stack, modulos (lista de {id, nome, resumo}), entidades (lista de {nome, campos: [{nome, tipo}]}), rotas (lista de {caminho, descricao}, opcional para apps com páginas), arquivos_afetados, notas_implementacao (lista curta de avisos técnicos não-óbvios, opcional)"
+  frontmatter: "YAML com titulo, status, data, stack (lista de strings, uma por tecnologia — NUNCA uma única string separada por vírgulas), modulos (lista de {id, nome, resumo}), entidades (lista de {nome, campos: [{nome, tipo}]}), rotas (lista de {caminho, descricao}, opcional para apps com páginas), arquivos_afetados, notas_implementacao (lista curta de avisos técnicos não-óbvios, opcional)"
   corpo: "Markdown enxuto: um H1 com o título e 1-2 parágrafos de objetivo. Sem headers decorativos repetidos ou emojis de seção."
 ---
 

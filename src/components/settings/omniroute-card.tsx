@@ -14,6 +14,7 @@ import {
   XCircle,
   Globe,
   Save,
+  ExternalLink,
 } from "lucide-react";
 
 export function OmniRouteCard() {
@@ -48,10 +49,28 @@ export function OmniRouteCard() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        setFeedbackMsg("Configuração salva e cifrada. Revalidando conexão...");
         setKeyDraft("");
         setHasSavedKey(true);
-        checkStatus();
+        // Valida a chave NOVA de fato contra o gateway em vez de só dizer "salvo" —
+        // sem isso o usuário só descobria que a chave estava errada no próximo refresh manual.
+        setFeedbackMsg("Configuração salva e cifrada. Validando contra o gateway...");
+        const healthRes = await authFetch("/api/omniroute/health", { method: "POST" });
+        const health = await healthRes.json().catch(() => ({}));
+        if (health.keyValid) {
+          setStatus("connected");
+          setLatencyMs(health.latencyMs ?? null);
+          setFeedbackMsg(`Chave validada — OmniRoute conectado (${health.latencyMs ?? "?"}ms).`);
+        } else if (health.status === "connected_unauthorized") {
+          setStatus("error");
+          setFeedbackMsg(
+            "Chave salva, mas o gateway respondeu 401 (Unauthorized) — confira se copiou a chave certa do Dashboard do OmniRoute."
+          );
+        } else {
+          setStatus("disconnected");
+          setFeedbackMsg(health.message || "Chave salva, mas o gateway não respondeu na porta configurada.");
+        }
+        if (health.endpoint) setEndpoint(health.endpoint);
+        if (typeof health.isPrimaryRoute === "boolean") setIsPrimaryRoute(health.isPrimaryRoute);
       } else {
         setFeedbackMsg(data?.error || `Falha ao salvar (HTTP ${res.status}).`);
       }
@@ -243,10 +262,22 @@ export function OmniRouteCard() {
 
       {/* Configuração manual: URL + API Key do OmniRoute */}
       <div className="bg-white/70 dark:bg-slate-950/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/80 space-y-2">
-        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-          <Globe className="w-3.5 h-3.5 text-[#0066cc]" />
-          Conexão manual (URL + API Key gerada no painel do OmniRoute)
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Globe className="w-3.5 h-3.5 text-[#0066cc]" />
+            Conexão manual (URL + API Key gerada no painel do OmniRoute)
+          </p>
+          <a
+            href="http://localhost:20128"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 text-[10px] font-bold flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors"
+            title="Abre o Dashboard do OmniRoute para gerar/rotacionar a API Key"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Gerar nova chave
+          </a>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"

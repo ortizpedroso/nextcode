@@ -208,8 +208,15 @@ export function parseSpecDocument(content: string): ParsedSpec | null {
   const [, frontmatter, body] = match;
   const [root] = parseYamlMapping(toYamlLines(frontmatter), 0, 0);
 
+  // Defensivo: LLMs às vezes emitem uma lista como escalar único separado por
+  // vírgulas (ex.: stack: "Next.js, Prisma, Tailwind") em vez de sequência YAML.
+  // Sem isso, a seção some silenciosamente da UI em vez de aparecer vazia.
   const asStringList = (v: YamlValue | undefined): string[] =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string")
+      : typeof v === "string"
+        ? v.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
 
   const modulos: SpecModule[] = Array.isArray(root.modulos)
     ? (root.modulos as Record<string, YamlValue>[]).map((m) => ({
