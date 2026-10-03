@@ -73,12 +73,19 @@ export class DualLensAuditor {
         declaredModelAccessors.add(m[1].charAt(0).toLowerCase() + m[1].slice(1));
       }
     };
+    // Se o lote reescreve o próprio schema.prisma, ele é a fonte de verdade: somar com a
+    // versão em disco deixaria passar código que ainda usa um modelo removido/renomeado.
+    let batchReplacesDiskSchema = false;
     for (const [batchPath, batchContent] of Object.entries(codeContentMap)) {
-      if (batchPath.toLowerCase().endsWith(".prisma")) {
+      const normalizedBatchPath = batchPath.replace(/\\/g, "/").toLowerCase();
+      if (normalizedBatchPath.endsWith(".prisma")) {
         collectModelAccessors(batchContent);
+        if (normalizedBatchPath === "schema.prisma" || normalizedBatchPath.endsWith("prisma/schema.prisma")) {
+          batchReplacesDiskSchema = true;
+        }
       }
     }
-    if (projectRoot) {
+    if (projectRoot && !batchReplacesDiskSchema) {
       const diskSchemaPath = require("path").join(projectRoot, "prisma", "schema.prisma");
       try {
         if (require("fs").existsSync(diskSchemaPath)) {
@@ -282,10 +289,14 @@ export class DualLensAuditor {
     "success",
   ];
 
-  private static workerClaimedSuccess(workerExecutionReport: string, filesInScope: string[]): boolean {
+  /**
+   * Alegação textual de conclusão do worker. Só olha o relatório — antes também retornava
+   * true sempre que havia arquivo extraído, o que tornava a alegação constante e a Lente 2
+   * (divergência) praticamente incapaz de detectar o worker subestimando o resultado.
+   */
+  private static workerClaimedSuccess(workerExecutionReport: string): boolean {
     const textLower = workerExecutionReport.toLowerCase();
-    const hasSuccessKeywords = DualLensAuditor.SUCCESS_KEYWORDS.some((k) => textLower.includes(k));
-    return hasSuccessKeywords || filesInScope.length > 0;
+    return DualLensAuditor.SUCCESS_KEYWORDS.some((k) => textLower.includes(k));
   }
 
   /**
@@ -297,23 +308,23 @@ export class DualLensAuditor {
    * houve comparação real contra o Brief.
    */
   private static heuristicFallback(workerExecutionReport: string, filesInScope: string[]): ValidationType2Result {
-    const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport, filesInScope);
+    const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport);
 
-    let verdict: "APPROVED" | "REJECTED" = "APPROVED";
-    let rejectionReason: string | undefined;
-    if (!claimedSuccess) {
-      verdict = "REJECTED";
-      rejectionReason = "Nenhum arquivo de código foi gerado e o relatório não indicou conclusão autônoma.";
-    }
+    // Trava T5: sem a Lente Cega não houve verificação semântica nenhuma — o fallback NUNCA
+    // aprova. Antes ele aprovava sempre que algum arquivo fosse extraído, então qualquer
+    // timeout/queda do auditor LLM virava aprovação automática. Rejeitar aqui faz o nó/chat
+    // entrar no ciclo normal de retry (e, persistindo, no bloqueio D-RANHO da Trava T6).
+    const verdict = "REJECTED" as const;
+    const rejectionReason =
+      "Auditoria cega (Tipo 2) indisponível — o auditor LLM não respondeu um veredito válido, então não houve verificação semântica do código contra o Brief e nada foi promovido.";
 
-    const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (FALLBACK HEURÍSTICO)]
-- Arquivos auditados no escopo: ${filesInScope.join(", ")}
-- Conformidade mecânica: PASS
-- AVISO: nenhum classificador LLM disponível/responsivo nesta execução — este veredito NÃO leu o conteúdo do código contra o Brief, apenas verificou alegação textual de sucesso e presença de arquivos extraídos.`;
+    const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (INDISPONÍVEL)]
+- Arquivos no escopo: ${filesInScope.join(", ")}
+- AVISO: nenhum classificador LLM disponível/responsivo nesta execução — o código NÃO foi lido contra o Brief, portanto não pode ser aprovado.`;
 
     const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
 - Relatório do Worker alega conclusão: ${claimedSuccess ? "SIM" : "NÃO"}
-- Veredito da Auditoria (heurística, sem leitura semântica): ${verdict}`;
+- Veredito da Auditoria: ${verdict} (sem leitura semântica)`;
 
     return {
       verdict,
@@ -391,8 +402,8 @@ export class DualLensAuditor {
    * worker e reporta explicitamente qualquer divergência (sinal direto de alucinação).
    *
    * Sem `dispatchFn` (ou se o LLM falhar/timeout/responder algo não-parseável), cai no
-   * fallback heurístico antigo — nunca quebra o pipeline, mas o resultado vem marcado com
-   * method: "heuristic_fallback" para deixar claro que não houve verificação semântica real.
+   * fallback heurístico, que REJEITA (method: "heuristic_fallback") — sem leitura semântica
+   * real não há aprovação; a falha entra no ciclo normal de retry/bloqueio.
    */
   public static async validateType2(
     type1Result: ValidationType1Result,
@@ -424,7 +435,7 @@ export class DualLensAuditor {
       );
 
       if (blindVerdict) {
-        const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport, filesInScope);
+        const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport);
         const verdict: "APPROVED" | "REJECTED" = blindVerdict.implemented ? "APPROVED" : "REJECTED";
         const divergence = claimedSuccess !== blindVerdict.implemented;
 

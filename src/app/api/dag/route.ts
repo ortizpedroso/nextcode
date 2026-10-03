@@ -100,7 +100,9 @@ function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | n
         omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
         omniRouteKey: readSecret(setting?.omniRouteKey),
         stream: false,
-        signal: AbortSignal.timeout(10000),
+        // Trava T5: sem veredito da Lente Cega nada é aprovado — 10s derrubava auditorias em
+        // provedores lentos e virava rejeição; limite configurável via BLIND_AUDIT_TIMEOUT_MS.
+        signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
       });
       const json = await res.response.json().catch(() => null);
       return (

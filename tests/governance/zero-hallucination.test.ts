@@ -28,6 +28,11 @@ describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () =>
     expect(res.groundedMessage).not.toContain("```");
   });
 
+  // Trava T5: sem veredito da Lente Cega nada é promovido — os testes de promoção fornecem
+  // um auditor cego que aprova.
+  const approvingBlindAudit = async () =>
+    JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok" });
+
   it("deve aprovar e promover patches limpos com 0 erros sintáticos", async () => {
     const tmpProjectPath = fs.mkdtempSync(path.join(os.tmpdir(), "zero-halluc-test-"));
     try {
@@ -44,7 +49,8 @@ export function add(a: number, b: number): number {
         taskId,
         rawAiResponse,
         "crie a funcao add",
-        tmpProjectPath
+        tmpProjectPath,
+        approvingBlindAudit
       );
 
       expect(res.passed).toBe(true);
@@ -72,7 +78,8 @@ export default function FinancialPage() {
         taskId,
         rawAiResponse,
         "implemente o modulo financeiro",
-        tmpProjectPath
+        tmpProjectPath,
+        approvingBlindAudit
       );
 
       expect(res.passed).toBe(true);

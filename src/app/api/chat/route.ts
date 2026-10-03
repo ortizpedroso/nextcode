@@ -34,7 +34,9 @@ function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | n
         omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
         omniRouteKey: readSecret(setting?.omniRouteKey),
         stream: false,
-        signal: AbortSignal.timeout(10000),
+        // Trava T5: sem veredito da Lente Cega nada é aprovado — 10s derrubava auditorias em
+        // provedores lentos e virava rejeição; limite configurável via BLIND_AUDIT_TIMEOUT_MS.
+        signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
       });
       const json = await res.response.json().catch(() => null);
       return (
@@ -286,16 +288,19 @@ export async function POST(request: NextRequest) {
                   .split("\n")
                   .filter((l) => l.includes("error TS"))
                   .slice(0, 5)
-                  .join(" | ")
+                  .join(" | ") || "Falha no type-check real do projeto pós-promoção (sem linha 'error TS' na saída)."
               : "";
+          // A prova empírica só roda depois de Tipo 1+Tipo 2 aprovarem, então quando ela
+          // falha é o motivo real da rejeição — vem antes dos erros do auditor, que nesse
+          // caso só podem conter avisos não fatais ([CLEAN CODE VIOLATION]).
           const prevError =
+            empiricalErrorLines ||
             zeroEngineRes.type2Result?.rejectionReason ||
             [
               ...zeroEngineRes.auditorResult.compilationErrors,
               ...zeroEngineRes.auditorResult.securityViolations,
               ...zeroEngineRes.auditorResult.testFailures,
             ].join(" | ") ||
-            empiricalErrorLines ||
             "Erros de compilação/sintaxe.";
           attemptMessages.push({
             role: "system",

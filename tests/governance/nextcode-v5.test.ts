@@ -108,7 +108,7 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res1.compilationErrors.length).toBeGreaterThan(0);
     });
 
-    it("deve aprovar no Validador Tipo 2 (fallback heurístico) quando o código está limpo e o worker reporta sucesso", async () => {
+    it("Trava T5: o fallback heurístico (sem Lente Cega) NUNCA aprova, mesmo com código limpo e worker alegando sucesso", async () => {
       const codeMap = {
         "src/good.ts": "export const sum = (a: number, b: number): number => a + b;",
       };
@@ -123,9 +123,9 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
         codeMap
       );
 
-      expect(res2.verdict).toBe("APPROVED");
+      expect(res2.verdict).toBe("REJECTED");
       expect(res2.method).toBe("heuristic_fallback");
-      expect(res2.lens1BlindReport).toContain("Conformidade mecânica: PASS");
+      expect(res2.rejectionReason).toContain("indisponível");
     });
 
     it("deve usar a Lente 1 (LLM) real quando um dispatchFn é fornecido e confiar no veredito dela, não no texto do worker", async () => {
@@ -176,7 +176,7 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res2.rejectionReason).toContain("Integração com Asaas");
     });
 
-    it("deve cair no fallback heurístico se o dispatchFn falhar ou retornar lixo não-parseável", async () => {
+    it("deve cair no fallback heurístico (que rejeita) se o dispatchFn falhar ou retornar lixo não-parseável", async () => {
       const codeMap = {
         "src/good.ts": "export const sum = (a: number, b: number): number => a + b;",
       };
@@ -193,7 +193,29 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       );
 
       expect(res2.method).toBe("heuristic_fallback");
-      expect(res2.verdict).toBe("APPROVED");
+      expect(res2.verdict).toBe("REJECTED");
+    });
+
+    it("schema.prisma do lote substitui o do disco no guard de alucinação de modelo Prisma", () => {
+      const projectRoot = path.join(testQuarantineDir, "prisma-guard-project");
+      fs.mkdirSync(path.join(projectRoot, "prisma"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectRoot, "prisma", "schema.prisma"),
+        "model Transaction {\n  id String @id\n}\nmodel User {\n  id String @id\n}\n"
+      );
+
+      // Lote reescreve o schema removendo "Transaction", mas o código ainda o usa.
+      const codeMap = {
+        "prisma/schema.prisma": "model User {\n  id String @id\n}\n",
+        "src/repo.ts": "export const list = () => prisma.transaction.findMany();",
+      };
+      const res = DualLensAuditor.validateType1(codeMap, [], projectRoot);
+      expect(res.passed).toBe(false);
+      expect(res.compilationErrors.join(" ")).toContain('prisma.transaction.');
+
+      // Sem schema no lote, o do disco continua sendo a fonte e "transaction" é válido.
+      const resDisk = DualLensAuditor.validateType1({ "src/repo.ts": codeMap["src/repo.ts"] }, [], projectRoot);
+      expect(resDisk.passed).toBe(true);
     });
   });
 
