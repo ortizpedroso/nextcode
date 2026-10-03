@@ -6,6 +6,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { normalizeScopePath } from "./dual-lens-auditor";
 
 export class QuarantineManager {
   private baseQuarantineDir: string;
@@ -282,9 +283,13 @@ export class QuarantineManager {
       }
     }
 
-    // Garante a cópia de todos os arquivos gerados na quarentena para a pasta do projeto
-    const filesInQuarantine = this.listFilesInQuarantine(workspacePath);
-    const targetFiles = filesInQuarantine.length > 0 ? filesInQuarantine : filesScope;
+    // Trava T2: só promove arquivos da quarentena que estão no files_scope informado. Antes,
+    // tudo o que estivesse na quarentena era copiado e o escopo só era usado se ela estivesse
+    // vazia — um "// file: outro/caminho.ts" do worker chegava ao projeto sem restrição.
+    const allowedScope = new Set(filesScope.map(normalizeScopePath));
+    const targetFiles = this.listFilesInQuarantine(workspacePath).filter(
+      (f) => allowedScope.size === 0 || allowedScope.has(normalizeScopePath(f))
+    );
 
     for (const fileRel of targetFiles) {
       // Ignora a promoção se o caminho relativo for um nome de arquivo proibido

@@ -463,7 +463,7 @@ DIRETRIZES DE EXECUÇÃO:
         const codeContentMap = qm.extractAndWriteCodeBlocks(task.id, stepResultText, filesScope);
 
         // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
-        const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
+        const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot, filesScope);
         const type2Res = await DualLensAuditor.validateType2(
           type1Res,
           buildBriefMarkdown(task),
@@ -905,7 +905,7 @@ DIRETRIZES DE EXECUÇÃO:
             const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
             const targetProjectRoot = session.project?.path || process.cwd();
             const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
-            const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
+            const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot, filesScopeArr);
             const type2Res = await DualLensAuditor.validateType2(
               type1Res,
               buildBriefMarkdown(taskDb),

@@ -7,6 +7,8 @@
  *     - Lente 2 (Verificação Cruzada): Compara o relatório de auditoria cego com o relatório do worker e emite APPROVED ou REJECTED.
  */
 
+import { BriefBuilder } from "../brief/brief-builder";
+
 export interface ValidationType1Result {
   passed: boolean;
   compilationErrors: string[];
@@ -48,6 +50,11 @@ export type LLMDispatchFn = (
   messages: { role: "system" | "user"; content: string }[]
 ) => Promise<string | null>;
 
+/** Normaliza um caminho relativo para comparação de escopo (separador, "./" e "/" iniciais). */
+export function normalizeScopePath(p: string): string {
+  return p.trim().replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
+}
+
 export class DualLensAuditor {
   /**
    * Validador Tipo 1: Execução Determinística e Mecânica (Zero Token Cost)
@@ -55,11 +62,31 @@ export class DualLensAuditor {
   public static validateType1(
     codeContentMap: Record<string, string>,
     mandatoryRules: string[] = [],
-    projectRoot?: string
+    projectRoot?: string,
+    allowedFilesScope?: string[]
   ): ValidationType1Result {
     const compilationErrors: string[] = [];
     const securityViolations: string[] = [];
     const testFailures: string[] = [];
+
+    // Trava T2 (Strict Files Scope): quando o chamador declara o files_scope do nó (DAG), todo
+    // arquivo gerado fora dele invalida a tentativa — antes o escopo era só um fallback de
+    // nomeação na extração e o worker podia gravar qualquer caminho via "// file: ...".
+    if (allowedFilesScope) {
+      const scopeCheck = BriefBuilder.validateScope(allowedFilesScope);
+      if (!scopeCheck.isValid) {
+        securityViolations.push(scopeCheck.error!);
+      } else {
+        const allowed = new Set(allowedFilesScope.map(normalizeScopePath));
+        for (const filePath of Object.keys(codeContentMap)) {
+          if (!allowed.has(normalizeScopePath(filePath))) {
+            securityViolations.push(
+              `[TRAVA T2 VIOLADA] ${filePath} está fora do files_scope declarado (${allowedFilesScope.join(", ")}).`
+            );
+          }
+        }
+      }
+    }
 
     // Pré-passo: coleta todos os modelos Prisma realmente declarados (lote atual +
     // schema.prisma em disco, quando projectRoot é fornecido) para o guard de alucinação
