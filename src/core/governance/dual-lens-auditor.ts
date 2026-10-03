@@ -63,9 +63,12 @@ export class DualLensAuditor {
     codeContentMap: Record<string, string>,
     mandatoryRules: string[] = [],
     projectRoot?: string,
-    allowedFilesScope?: string[]
+    allowedFilesScope?: string[],
+    extractionIssues: string[] = []
   ): ValidationType1Result {
-    const compilationErrors: string[] = [];
+    // Destino ambíguo/duplicado na extração (QuarantineManager.extractionIssues) é erro fatal:
+    // o código pode ter ido para o arquivo errado ou sido descartado por sobrescrita.
+    const compilationErrors: string[] = [...extractionIssues];
     const securityViolations: string[] = [];
     const testFailures: string[] = [];
 

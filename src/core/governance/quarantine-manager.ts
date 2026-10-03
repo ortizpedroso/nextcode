@@ -17,6 +17,8 @@ interface PromotionSnapshotEntry {
 export class QuarantineManager {
   private baseQuarantineDir: string;
   private promotionSnapshots = new Map<string, PromotionSnapshotEntry[]>();
+  /** Problemas da última extração (destino ambíguo/duplicado) — entram no Tipo 1 como erro fatal. */
+  public extractionIssues: string[] = [];
 
   constructor(baseDir: string = path.join(process.cwd(), ".quarantine")) {
     this.baseQuarantineDir = baseDir;
@@ -171,10 +173,18 @@ export class QuarantineManager {
   public extractAndWriteCodeBlocks(
     taskId: string,
     text: string,
-    fallbackFilesScope: string[] = []
+    fallbackFilesScope: string[] = [],
+    options: { strictPaths?: boolean } = {}
   ): Record<string, string> {
     const codeMap: Record<string, string> = {};
+    this.extractionIssues = [];
     const workspacePath = this.prepareWorkspace(taskId);
+    // Trava T2: com mais de um arquivo no escopo, adivinhar o destino de um bloco sem caminho
+    // declarado (texto anterior, heading, índice do escopo) pode gravar o código no arquivo
+    // errado — e esse arquivo errado está DENTRO do escopo, então a checagem de escopo não
+    // pega. No modo estrito (DAG, onde o worker é obrigado a usar "// file:"), o bloco é
+    // recusado e o motivo vai para extractionIssues em vez de ser adivinhado.
+    const refuseGuessing = Boolean(options.strictPaths) && fallbackFilesScope.length > 1;
 
     // Regex para encontrar blocos de código ```lang ... ``` (lang capturado separadamente
     // para decidir se o bloco pode ter o destino ADIVINHADO ou exige caminho explícito)
@@ -209,7 +219,11 @@ export class QuarantineManager {
       // Blocos de instrução/log (bash, shell, powershell, texto puro...) só viram arquivo
       // com caminho EXPLÍCITO (passos 1/2 acima). Sem isso, ficam de fora — permanecem só
       // como prosa explicativa no chat, nunca adivinhados via passos 3/4/5 abaixo.
-      if (!relativePath && !isInstructionLang) {
+      if (!relativePath && !isInstructionLang && refuseGuessing) {
+        this.extractionIssues.push(
+          `[AMBIGUOUS FILE PATH] O bloco de código #${index + 1} (${lang || "sem linguagem"}) não declara o arquivo de destino ("// file: caminho/do/arquivo") e o files_scope tem ${fallbackFilesScope.length} arquivos — o destino seria adivinhado. Declare o caminho no topo de cada bloco.`
+        );
+      } else if (!relativePath && !isInstructionLang) {
         // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco
         const textBeforeBlock = text.substring(0, match.index);
         const allPathsMatch = textBeforeBlock.match(/([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]+)/gi);
@@ -245,8 +259,16 @@ export class QuarantineManager {
 
       if (relativePath && codeContent && !QuarantineManager.isInvalidFilePath(relativePath)) {
         const cleanPath = relativePath.trim().replace(/^\\|^\//, "");
-        this.writeFile(taskId, cleanPath, codeContent);
-        codeMap[cleanPath] = QuarantineManager.sanitizeContent(cleanPath, codeContent);
+        if (Object.prototype.hasOwnProperty.call(codeMap, cleanPath)) {
+          // Dois blocos com o mesmo destino: o segundo sobrescreveria o primeiro em silêncio
+          // (comum quando o destino foi deduzido do último caminho citado no texto).
+          this.extractionIssues.push(
+            `[DUPLICATE FILE PATH] Os blocos de código resolveram para o mesmo arquivo "${cleanPath}" — o bloco #${index + 1} sobrescreveria um bloco anterior. Envie cada arquivo uma única vez, com "// file: caminho" no topo.`
+          );
+        } else {
+          this.writeFile(taskId, cleanPath, codeContent);
+          codeMap[cleanPath] = QuarantineManager.sanitizeContent(cleanPath, codeContent);
+        }
       }
       index++;
     }

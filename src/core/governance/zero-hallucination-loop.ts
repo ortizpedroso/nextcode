@@ -116,7 +116,7 @@ export class ZeroHallucinationEngine {
     }
 
     // 1. Executa a Auditoria Mecânica / Determinística Tipo 1
-    const type1Res = DualLensAuditor.validateType1(codeMap, [], projectPath || undefined);
+    const type1Res = DualLensAuditor.validateType1(codeMap, [], projectPath || undefined, undefined, qm.extractionIssues);
 
     // 2. Se a validação FALHAR: Invalida a alegação da IA e exibe o erro real de compilação (Grounding Enforcement)
     if (!type1Res.passed) {

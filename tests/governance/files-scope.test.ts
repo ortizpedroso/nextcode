@@ -39,4 +39,53 @@ describe("Trava T2 — files_scope estrito", () => {
       cleanup();
     }
   });
+
+  it("modo estrito: bloco sem '// file:' com escopo de vários arquivos é recusado, não adivinhado", () => {
+    const { qm, cleanup } = makeProject();
+    try {
+      const scope = ["src/components/Button.tsx", "src/hooks/useButton.ts"];
+      const codeMap = qm.extractAndWriteCodeBlocks(
+        "T-AMBIG",
+        "```typescript\n// file: src/components/Button.tsx\nexport const B = 1;\n```\n```typescript\nexport const semCaminho = 2;\n```",
+        scope,
+        { strictPaths: true }
+      );
+      expect(Object.keys(codeMap)).toEqual(["src/components/Button.tsx"]);
+      expect(qm.extractionIssues.join(" ")).toContain("[AMBIGUOUS FILE PATH]");
+
+      const res = DualLensAuditor.validateType1(codeMap, [], undefined, scope, qm.extractionIssues);
+      expect(res.passed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("modo estrito com escopo de 1 arquivo continua usando esse arquivo como destino", () => {
+    const { qm, cleanup } = makeProject();
+    try {
+      const codeMap = qm.extractAndWriteCodeBlocks("T-ONE", "```typescript\nexport const x = 1;\n```", ["src/x.ts"], {
+        strictPaths: true,
+      });
+      expect(Object.keys(codeMap)).toEqual(["src/x.ts"]);
+      expect(qm.extractionIssues).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("dois blocos com o mesmo destino não se sobrescrevem em silêncio (também fora do modo estrito)", () => {
+    const { qm, cleanup } = makeProject();
+    try {
+      const codeMap = qm.extractAndWriteCodeBlocks(
+        "T-DUP",
+        "Arquivo src/a.ts:\n```typescript\nexport const v1 = 1;\n```\n```typescript\nexport const v2 = 2;\n```",
+        []
+      );
+      expect(codeMap["src/a.ts"]).toContain("v1");
+      expect(qm.extractionIssues.join(" ")).toContain("[DUPLICATE FILE PATH]");
+      expect(DualLensAuditor.validateType1(codeMap, [], undefined, undefined, qm.extractionIssues).passed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
 });

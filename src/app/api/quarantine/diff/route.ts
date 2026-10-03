@@ -37,7 +37,11 @@ export async function GET(request: NextRequest) {
 
     // Extrai o mapa de arquivos gerados a partir do resultado da tarefa
     const qm = new QuarantineManager();
-    const generatedCodeMap = qm.extractAndWriteCodeBlocks(`${task.id}-preview`, outputText, filesScope);
+    // Mesma extração estrita da DAG (Trava T2): a prévia mostra exatamente o que seria promovido.
+    const generatedCodeMap = qm.extractAndWriteCodeBlocks(`${task.id}-preview`, outputText, filesScope, {
+      strictPaths: true,
+    });
+    const extractionIssues = qm.extractionIssues;
     qm.purgeWorkspace(`${task.id}-preview`);
 
     const projectRoot = task.session.project?.path || process.cwd();
@@ -73,6 +77,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       taskId: task.id,
       taskTitle: task.title,
+      extractionIssues,
       role: task.role,
       status: task.status,
       auditVerdict,
