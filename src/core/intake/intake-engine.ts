@@ -122,18 +122,24 @@ DIRETRIZES IMUTÁVEIS DE GOVERNANÇA E COMUNICAÇÃO:
 ## 🎯 1. VISÃO GERAL & PROPOSTA DE VALOR
 [Descrição do produto, público-alvo e modelo de negócio]
 
-## 🚀 2. MÓDULOS FUNCIONAIS & REGRAS DE NEGÓCIO
+## 💻 2. STACK TECNOLÓGICA & INFRAESTRUTURA
+- **Frontend & UI:** Next.js (App Router, React 19, TypeScript estrito, Tailwind CSS, Lucide React)
+- **Backend & APIs:** Next.js Route Handlers / Server Actions, Zod validation
+- **Banco de Dados & ORM:** SQLite / PostgreSQL com Prisma ORM
+- **Segurança & Integrações:** JWT com \`token_version\`, Criptografia AES-256-GCM em repouso, Integrações HTTP seguras (anti-SSRF)
+
+## 🚀 3. MÓDULOS FUNCIONAIS & REGRAS DE NEGÓCIO
 - **M1 ([Nome do Módulo]):** [Descrição executiva e fluxos de negócio]
 - **M2 (Relatórios & Analytics):** [Métricas financeiras, pagamentos, pendentes, inadimplentes]
 
-## 🛡️ 3. ARQUITETURA, SEGURANÇA & INTEGRAÇÕES
+## 🛡️ 4. ARQUITETURA, SEGURANÇA & INTEGRAÇÕES
 - **Autenticação & Multi-tenancy:** [Segregação por conta/usuário]
 - **Integração Bancária/Gateway:** [Orquestração transparente Asaas API v3 via subcontas/webhooks]
 
-## 🗄️ 4. ENTIDADES DE DADOS & DOMÍNIO
+## 🗄️ 5. ENTIDADES DE DADOS & DOMÍNIO
 - Descreva conceitualmente os modelos (ex: User, Subaccount, Customer, Payment, Subscription) sem código Prisma bruto.
 
-## 🔒 5. ESCOPO DE EXECUÇÃO E ARQUIVOS AFETADOS
+## 🔒 6. ESCOPO DE EXECUÇÃO E ARQUIVOS AFETADOS
 - Liste os módulos/arquivos afetados em tópicos legíveis sem código JSON bruto.
 --- FIM DA ESTRUTURA RECOMENDADA ---
 
@@ -162,26 +168,35 @@ DIRETRIZES IMUTÁVEIS DE GOVERNANÇA E COMUNICAÇÃO:
 
 ## 🎯 1. VISÃO GERAL & PROPOSTA DE VALOR
 - **Objetivo do Sistema:** ${rawPrompt}
-- **PúblicO-Alvo & Casos de Uso:** Autônomos, prestadores de serviços, lojas virtuais e empresas SaaS de diversos ramos.
+- **Público-Alvo & Casos de Uso:** Autônomos, prestadores de serviços, lojas virtuais e empresas SaaS de diversos ramos.
 
 ---
 
-## 🚀 2. MÓDULOS FUNCIONAIS & REGRAS DE NEGÓCIO
-- **M1 (Engine de Integamação & Gateway):** Comunicação transparente via API bancária (Asaas v3), com criação automática de subcontas e liquidação de recebíveis.
+## 💻 2. STACK TECNOLÓGICA & INFRAESTRUTURA
+- **Framework & Runtime:** Next.js (App Router, React 19, TypeScript estrito)
+- **Estilização & Componentes:** Tailwind CSS, Lucide React icons
+- **Banco de Dados & ORM:** SQLite / PostgreSQL com Prisma ORM
+- **Segurança & Sessões:** JWT com \`token_version\`, Criptografia **AES-256-GCM** em repouso
+- **Gateway & APIs Externas:** Asaas API v3 (Subcontas automatizadas, Pix, Boleto, Cartão) e Webhooks
+
+---
+
+## 🚀 3. MÓDULOS FUNCIONAIS & REGRAS DE NEGÓCIO
+- **M1 (Engine de Integração & Gateway):** Comunicação transparente via API bancária (Asaas v3), com criação automática de subcontas e liquidação de recebíveis.
 - **M2 (Dashboard de Gestão White-Label):** Painel customizável para acompanhamento em tempo real de vendas, faturamento total e controle financeiro.
 - **M3 (Relatórios & Analytics Completo):** Geração de relatórios detalhados com filtros por status (pagamentos confirmados, pendentes e inadimplentes) e período.
 - **M4 (Webhooks & Conciliação em Tempo Real):** Ingestão automática de notificações bancárias de liquidação, estorno e inadimplência.
 
 ---
 
-## 🛡️ 3. ARQUITETURA, SEGURANÇA & INTEGRAÇÃO
+## 🛡️ 4. ARQUITETURA, SEGURANÇA & INTEGRAÇÃO
 - **Multi-tenancy e Isolamento:** Cada usuário gerencia seus recebíveis de forma totalmente transparente e isolada.
 - **Segurança & Criptografia:** Credenciais e chaves bancárias mantidas sob criptografia de dados em repouso (**AES-256-GCM**).
 - **Validação de Payload:** Sanitização rigorosa contra SSRF e ataques OWASP Top 10.
 
 ---
 
-## 🗄️ 4. DOMÍNIO DE DADOS (ENTIDADES PRINCIPAIS)
+## 🗄️ 5. DOMÍNIO DE DADOS (ENTIDADES PRINCIPAIS)
 - **User:** Perfil do cliente contratante / autônomo.
 - **Subaccount:** Dados da subconta bancária vinculada e chaves de liquidação.
 - **Customer:** Clientes finais dos autônomos/lojas virtuais.
@@ -189,7 +204,7 @@ DIRETRIZES IMUTÁVEIS DE GOVERNANÇA E COMUNICAÇÃO:
 
 ---
 
-## 🔒 5. ESCOPO DE ARQUIVOS AFETADOS
+## 🔒 6. ESCOPO DE ARQUIVOS AFETADOS
 - Mapeamento e criação dos modelos no banco de dados (\`prisma/schema.prisma\`).
 - Serviços de integração bancária (\`src/services/asaas.ts\`).
 - Endpoints de Webhook e relatórios (\`src/app/api/webhooks/route.ts\`, \`src/app/api/reports/route.ts\`).
