@@ -75,7 +75,18 @@ export class DualLensAuditor {
 
       // 0.6 Sanitização e Validação do Next.js App Router (page.tsx, layout.tsx, route.ts)
       const cleanFileLower = filePath.toLowerCase().replace(/\\/g, "/");
-      if (cleanFileLower.includes("app/") || cleanFileLower.startsWith("src/app/")) {
+      if (cleanFileLower.includes("app/") || cleanFileLower.startsWith("src/app/") || cleanFileLower.includes("components/")) {
+        // Validação da diretiva 'use client' vs erros de digitação como 'client'
+        if (content.match(/^\s*['"]client['"];?/m)) {
+          compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] Diretiva de cliente malformada em ${filePath} ("'client'" em vez de "'use client'").`);
+        }
+        if (cleanFileLower.endsWith(".tsx") || cleanFileLower.endsWith(".jsx")) {
+          const usesHooks = /\b(useState|useEffect|useContext|useRef|useCallback|useMemo|useReducer|useTransition|useDeferredValue|useFormStatus|useActionState)\b/.test(content);
+          const hasUseClient = /^\s*['"]use client['"];?/m.test(content);
+          if (usesHooks && !hasUseClient) {
+            compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] O componente ${filePath} utiliza React Hooks mas não declara "'use client'" no topo.`);
+          }
+        }
         if (cleanFileLower.endsWith("page.tsx") || cleanFileLower.endsWith("page.jsx") || cleanFileLower.endsWith("layout.tsx") || cleanFileLower.endsWith("layout.jsx")) {
           if (!content.includes("export default")) {
             compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] O componente ${filePath} deve conter uma exportação padrão ("export default function ...").`);

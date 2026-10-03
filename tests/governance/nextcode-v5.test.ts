@@ -253,5 +253,30 @@ export const defaultEngine = {};
       const resGood = DualLensAuditor.validateType1(goodPage);
       expect(resGood.passed).toBe(true);
     });
+
+    it("deve auto-corrigir erros de digitação 'client' para 'use client' e auto-inserir em componentes com hooks", () => {
+      const qm = new QuarantineManager(testQuarantineDir);
+      
+      // Teste 1: 'client' typo corrigido para 'use client'
+      qm.prepareWorkspace("TASK-CLIENT-TYPO");
+      qm.writeFile("TASK-CLIENT-TYPO", "src/components/button.tsx", "'client';\nimport { useState } from 'react';\nexport default function Btn() { const [x] = useState(0); return null; }");
+      const content1 = qm.readFile("TASK-CLIENT-TYPO", "src/components/button.tsx");
+      expect(content1).toContain("'use client';");
+      expect(content1).not.toContain("'client';");
+
+      // Teste 2: Componente com useState sem diretiva ganha 'use client' automaticamente
+      qm.prepareWorkspace("TASK-HOOK-NO-CLIENT");
+      qm.writeFile("TASK-HOOK-NO-CLIENT", "src/app/dashboard/page.tsx", "import { useState } from 'react';\nexport default function Dash() { const [s] = useState(1); return null; }");
+      const content2 = qm.readFile("TASK-HOOK-NO-CLIENT", "src/app/dashboard/page.tsx");
+      expect(content2?.startsWith("'use client';")).toBe(true);
+
+      // Teste 3: DualLensAuditor detecta 'client' malformado caso chegue cru
+      const badMap = {
+        "src/app/test/page.tsx": "'client';\nexport default function Test() { return null; }"
+      };
+      const auditRes = DualLensAuditor.validateType1(badMap);
+      expect(auditRes.passed).toBe(false);
+      expect(auditRes.compilationErrors.some(e => e.includes("Diretiva de cliente malformada"))).toBe(true);
+    });
   });
 });

@@ -366,23 +366,33 @@ DIRETRIZES DE EXECUÇÃO:
         where: { sessionId: task.sessionId },
       });
 
-      const allCompleted = sessionTasks.every((t) => t.status === "completed");
+      const allCompleted = sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
       if (allCompleted) {
-        const completedSummary = sessionTasks
-          .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
-          .join("\n");
-
-        const skillHeader = firstUserMsg?.content.startsWith("/")
-          ? firstUserMsg.content.split(" ")[0]
-          : "/autonomo";
-
-        await prisma.message.create({
-          data: {
+        const existingCompletionMsg = await prisma.message.findFirst({
+          where: {
             sessionId: task.sessionId,
             role: "assistant",
-            content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${task.session.project?.path || process.cwd()}\`_`,
+            content: { contains: "Execução Autônoma Concluída!" },
           },
         });
+
+        if (!existingCompletionMsg) {
+          const completedSummary = sessionTasks
+            .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
+            .join("\n");
+
+          const skillHeader = firstUserMsg?.content.startsWith("/")
+            ? firstUserMsg.content.split(" ")[0]
+            : "/autonomo";
+
+          await prisma.message.create({
+            data: {
+              sessionId: task.sessionId,
+              role: "assistant",
+              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${task.session.project?.path || process.cwd()}\`_`,
+            },
+          });
+        }
       }
 
       return NextResponse.json({
@@ -645,26 +655,36 @@ DIRETRIZES DE EXECUÇÃO:
 
       const allCompleted = finalSessionTasks.length > 0 && finalSessionTasks.every((t) => t.status === "completed");
       if (allCompleted) {
-        const completedSummary = finalSessionTasks
-          .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
-          .join("\n");
-
-        const firstUserMsg = await prisma.message.findFirst({
-          where: { sessionId: targetSessionId, role: "user" },
-          orderBy: { createdAt: "asc" },
-        });
-
-        const skillHeader = firstUserMsg?.content.startsWith("/")
-          ? firstUserMsg.content.split(" ")[0]
-          : "/autonomo";
-
-        await prisma.message.create({
-          data: {
+        const existingCompletionMsg = await prisma.message.findFirst({
+          where: {
             sessionId: targetSessionId,
             role: "assistant",
-            content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas no servidor:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${session.project?.path || process.cwd()}\`_`,
+            content: { contains: "Execução Autônoma Concluída!" },
           },
         });
+
+        if (!existingCompletionMsg) {
+          const completedSummary = finalSessionTasks
+            .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
+            .join("\n");
+
+          const firstUserMsg = await prisma.message.findFirst({
+            where: { sessionId: targetSessionId, role: "user" },
+            orderBy: { createdAt: "asc" },
+          });
+
+          const skillHeader = firstUserMsg?.content.startsWith("/")
+            ? firstUserMsg.content.split(" ")[0]
+            : "/autonomo";
+
+          await prisma.message.create({
+            data: {
+              sessionId: targetSessionId,
+              role: "assistant",
+              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas no servidor:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${session.project?.path || process.cwd()}\`_`,
+            },
+          });
+        }
       }
 
       return NextResponse.json({

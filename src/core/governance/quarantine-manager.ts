@@ -47,6 +47,18 @@ export class QuarantineManager {
       .replace(/^(?:\/\/|#|\/\*)\s*(?:file|filepath|path):?\s*[^\s\n*]+(?:\s*\*\/)?\r?\n?/gi, "")
       .trim();
 
+    // Auto-correção mecânica para diretivas 'client' malformadas ('client' -> 'use client')
+    finalContent = finalContent.replace(/^['"]client['"];?/gm, "'use client';");
+
+    const cleanRelPath = relativeFilePath.toLowerCase().replace(/\\/g, "/");
+    const isReactComponent = cleanRelPath.endsWith(".tsx") || cleanRelPath.endsWith(".jsx") || cleanRelPath.endsWith(".js") || cleanRelPath.endsWith(".ts");
+    const hasReactHooks = /\b(useState|useEffect|useContext|useRef|useCallback|useMemo|useReducer|useTransition|useDeferredValue|useFormStatus|useActionState)\b/.test(finalContent);
+    const hasUseClient = /^\s*['"]use client['"];?/m.test(finalContent);
+
+    if (isReactComponent && hasReactHooks && !hasUseClient) {
+      finalContent = `'use client';\n\n${finalContent}`;
+    }
+
     // Se for arquivo JSON, garante remoção de qualquer comentário remanescente
     if (relativeFilePath.toLowerCase().endsWith(".json")) {
       finalContent = finalContent
@@ -55,7 +67,6 @@ export class QuarantineManager {
     }
 
     // Auto-correção mecânica para Next.js App Router (page.tsx e route.ts)
-    const cleanRelPath = relativeFilePath.toLowerCase().replace(/\\/g, "/");
     if (cleanRelPath.includes("app/") || cleanRelPath.startsWith("src/app/")) {
       if ((cleanRelPath.endsWith("page.tsx") || cleanRelPath.endsWith("page.jsx") || cleanRelPath.endsWith("layout.tsx") || cleanRelPath.endsWith("layout.jsx")) && !finalContent.includes("export default")) {
         finalContent += "\n\nexport default function Page() {\n  return <main className=\"p-6\"><h1>Página Gerada</h1></main>;\n}\n";
