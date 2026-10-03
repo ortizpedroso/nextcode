@@ -380,24 +380,14 @@ export default function DashboardOrchestrator() {
         await fetchProjects();
         await fetchAdhocSessions();
 
-        // 2. Dispara a DAG em background se a Spec estiver aprovada ou houver comando de execução
-        const lowerPrompt = prompt.toLowerCase();
-        const hasExecIntent =
-          chatData.specApproved ||
-          isSpecApproved ||
-          /(implementar|implemente|executar|execute|continuar|iniciar|começar|comece|pode|sim|aprovo|aprovar|rodar|fazer|desenvolver|construir|criar|gerar|vamos)/i.test(
-            lowerPrompt
-          );
+        // 2. Dispara a DAG em background SOMENTE se a Trava T1 já estiver genuinamente liberada
+        // (aprovação explícita via modal "Aprovar Spec Canônica" ou palavra-chave de aprovação
+        // detectada pelo /api/chat). Nunca inferir aprovação por heurística de palavras comuns
+        // do prompt do usuário ("criar", "fazer", "pode", "sim" etc. aparecem em qualquer pedido
+        // normal e isso permitia executar a DAG sem o usuário jamais ter aprovado a Spec).
+        setIsSpecApproved(Boolean(chatData.specApproved));
 
-        if (hasExecIntent) {
-          // Garante a liberação da Trava T1 na sessão para autorizar o pipeline de tarefas no servidor
-          await authFetch(`/api/sessions/${targetSessionId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ specApproved: true }),
-          }).catch(() => {});
-          setIsSpecApproved(true);
-
+        if (chatData.specApproved) {
           await triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
         }
       }
@@ -652,7 +642,12 @@ export default function DashboardOrchestrator() {
         onRetryNode={handleRetryNode}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
-        onOpenSpecModal={() => setShowSpecModal(true)}
+        onOpenSpecModal={(content) => {
+          // Usa a Spec real escrita pela IA na conversa (se o clique partiu de uma mensagem),
+          // em vez de deixar o modal reabrir com o estado antigo/desincronizado em canonicalSpec.
+          if (content) setCanonicalSpec(content);
+          setShowSpecModal(true);
+        }}
         onOpenTelemetryModal={() => setShowTelemetryModal(true)}
         onOpenQuotaModal={() => setShowQuotaModal(true)}
         onOpenSkillsModal={() => setShowSkillsModal(true)}

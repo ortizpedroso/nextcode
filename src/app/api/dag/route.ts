@@ -111,11 +111,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Auto-liberação de Trava T1 na criação da DAG
-      await prisma.session.update({
-        where: { id: activeSessionId },
-        data: { specApproved: true },
-      });
+      // Trava T1: criar/decompor os nós da DAG NUNCA aprova a Spec por si só — os nós ficam
+      // "pending" até o usuário aprovar explicitamente (modal) ou o /api/chat detectar aprovação
+      // por palavra-chave. A execução real (execute_node / process_queue) já valida
+      // session.specApproved antes de gravar qualquer arquivo em disco.
 
       // Consulta chaves para classificação do SmartRouter
       const setting = await prisma.setting.findUnique({ where: { id: "default" } });
@@ -218,18 +217,20 @@ export async function POST(request: NextRequest) {
 
       // 2. Resolve skill ativada na sessão
       let skillInstructionBlock = "";
+      let skillInstructionUntrusted = false;
       const firstUserMsg = await prisma.message.findFirst({
         where: { sessionId: task.sessionId, role: "user" },
         orderBy: { createdAt: "asc" },
       });
 
       if (firstUserMsg && firstUserMsg.content.startsWith("/")) {
-        const skillRes = resolveSkillOrCommand(
+        const skillRes = await resolveSkillOrCommand(
           firstUserMsg.content,
           task.session.project?.path || process.cwd()
         );
         if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
           skillInstructionBlock = skillRes.skillBlock;
+          skillInstructionUntrusted = Boolean(skillRes.untrustedSource);
         }
       }
 
@@ -251,7 +252,10 @@ DIRETRIZES DE EXECUÇÃO:
         { role: "system", content: autonomousWorkerPrompt },
       ];
       if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
-      if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
+      // SEGURANÇA: conteúdo de skill instalada (terceiros) vai como "user", não "system" — ver skill-resolver.ts.
+      if (skillInstructionBlock) {
+        dispatchMessages.push({ role: skillInstructionUntrusted ? "user" : "system", content: skillInstructionBlock });
+      }
 
       // Auto-Healing Feedback Loop: Se for uma re-tentativa após falha, injeta o erro exato da auditoria anterior
       if ((task.attempts || 0) > 0 && task.result) {
@@ -485,18 +489,20 @@ DIRETRIZES DE EXECUÇÃO:
           }
 
           let skillInstructionBlock = "";
+          let skillInstructionUntrusted = false;
           const firstUserMsg = await prisma.message.findFirst({
             where: { sessionId: targetSessionId, role: "user" },
             orderBy: { createdAt: "asc" },
           });
 
           if (firstUserMsg && firstUserMsg.content.startsWith("/")) {
-            const skillRes = resolveSkillOrCommand(
+            const skillRes = await resolveSkillOrCommand(
               firstUserMsg.content,
               session.project?.path || process.cwd()
             );
             if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
               skillInstructionBlock = skillRes.skillBlock;
+              skillInstructionUntrusted = Boolean(skillRes.untrustedSource);
             }
           }
 
@@ -517,7 +523,10 @@ DIRETRIZES DE EXECUÇÃO:
             { role: "system", content: autonomousWorkerPrompt },
           ];
           if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
-          if (skillInstructionBlock) dispatchMessages.push({ role: "system", content: skillInstructionBlock });
+          // SEGURANÇA: conteúdo de skill instalada (terceiros) vai como "user", não "system" — ver skill-resolver.ts.
+          if (skillInstructionBlock) {
+            dispatchMessages.push({ role: skillInstructionUntrusted ? "user" : "system", content: skillInstructionBlock });
+          }
 
           // Auto-Healing Feedback Loop: Se for uma re-tentativa após falha, injeta o erro exato da auditoria anterior
           if ((taskDb.attempts || 0) > 0 && taskDb.result) {
