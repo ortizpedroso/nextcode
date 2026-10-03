@@ -45,6 +45,16 @@ export class SandboxedTerminalSkill {
     /curl[^|;&]*\|\s*(ba)?sh|wget[^|;&]*\|\s*(ba)?sh/i, // pipe-to-shell remoto
   ];
 
+  /** Verifica um comando contra a blacklist sem executá-lo. Retorna o motivo do bloqueio, ou null se liberado. */
+  public static checkBlacklist(command: string): string | null {
+    for (const pattern of SandboxedTerminalSkill.BLACKLIST_PATTERNS) {
+      if (pattern.test(command)) {
+        return "COMANDO BLOQUEADO POR POLÍTICA DE SEGURANÇA (POTENCIALMENTE DESTRUTIVO OU DE ESCAPE).";
+      }
+    }
+    return null;
+  }
+
   private static isDockerHost(): boolean {
     try {
       return (
@@ -65,19 +75,18 @@ export class SandboxedTerminalSkill {
     timeoutMs: number = 30000
   ): Promise<TerminalExecutionResult> {
     // 1. Verificação da lista de bloqueio de segurança (Blacklist)
-    for (const pattern of SandboxedTerminalSkill.BLACKLIST_PATTERNS) {
-      if (pattern.test(command)) {
-        console.warn(`[SANDBOX] Comando bloqueado pela política de segurança: ${command.slice(0, 120)}`);
-        return {
-          success: false,
-          command,
-          stdout: "",
-          stderr: "COMANDO BLOQUEADO POR POLÍTICA DE SEGURANÇA (POTENCIALMENTE DESTRUTIVO OU DE ESCAPE).",
-          exitCode: 1,
-          prunedOutput: "Comando destrutivo/escape detectado e bloqueado pela Sandbox do NextCode.",
-          error: "Comando bloqueado por segurança.",
-        };
-      }
+    const blockReason = SandboxedTerminalSkill.checkBlacklist(command);
+    if (blockReason) {
+      console.warn(`[SANDBOX] Comando bloqueado pela política de segurança: ${command.slice(0, 120)}`);
+      return {
+        success: false,
+        command,
+        stdout: "",
+        stderr: blockReason,
+        exitCode: 1,
+        prunedOutput: "Comando destrutivo/escape detectado e bloqueado pela Sandbox do NextCode.",
+        error: "Comando bloqueado por segurança.",
+      };
     }
 
     // 2. Dentro do container NextCode: executa num sub-container efêmero endurecido

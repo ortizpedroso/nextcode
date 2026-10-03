@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import { spawn } from "child_process";
+import { SandboxedTerminalSkill } from "@/core/skills/sandboxed-terminal";
+import prisma from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   const authErr = requireAuth(req);
@@ -8,10 +10,22 @@ export async function GET(req: NextRequest) {
 
   const searchParams = req.nextUrl.searchParams;
   const command = searchParams.get("command") || searchParams.get("cmd");
-  const cwd = searchParams.get("cwd") || process.cwd();
+  // cwd é resolvido via projectId (caminho confiável vindo do banco), igual às
+  // demais rotas de terminal — nunca aceito como path livre vindo do cliente.
+  const projectId = searchParams.get("projectId");
+  let cwd = process.cwd();
+  if (projectId) {
+    const proj = await prisma.project.findUnique({ where: { id: projectId } });
+    if (proj?.path) cwd = proj.path;
+  }
 
   if (!command) {
     return NextResponse.json({ error: "Parâmetro 'command' é obrigatório" }, { status: 400 });
+  }
+
+  const blockReason = SandboxedTerminalSkill.checkBlacklist(command);
+  if (blockReason) {
+    return NextResponse.json({ error: "Comando Proibido (Jail Guard)", details: blockReason }, { status: 403 });
   }
 
   const stream = new ReadableStream({

@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
-import { exec } from "child_process";
-import * as util from "util";
-import * as path from "path";
-
-const execAsync = util.promisify(exec);
+import { SandboxedTerminalSkill } from "@/core/skills/sandboxed-terminal";
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -21,26 +17,17 @@ export async function POST(request: NextRequest) {
 
     const trimmedCmd = command.trim();
 
-    // Trava de Segurança Antidestrutiva (Jail Guard)
-    const dangerousPatterns = [
-      /rm\s+-rf\s+\//i,
-      /format\s+[c-z]:/i,
-      /shutdown/i,
-      /mkfs/i,
-      /dd\s+if=/i,
-      /:(){:|:&};:/i, // Fork bomb
-    ];
-
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(trimmedCmd)) {
-        return NextResponse.json(
-          {
-            error: "Comando Proibido (Jail Guard)",
-            details: "O comando digitado contém instruções potencialmente destrutivas e foi bloqueado pelo sistema de governança.",
-          },
-          { status: 403 }
-        );
-      }
+    // Trava de Segurança Antidestrutiva (Jail Guard) — blacklist compartilhada
+    // com as demais rotas de terminal (ver SandboxedTerminalSkill).
+    const blockReason = SandboxedTerminalSkill.checkBlacklist(trimmedCmd);
+    if (blockReason) {
+      return NextResponse.json(
+        {
+          error: "Comando Proibido (Jail Guard)",
+          details: blockReason,
+        },
+        { status: 403 }
+      );
     }
 
     // Resolve o diretório de execução (pasta do projeto ou diretório atual)
@@ -60,25 +47,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Executa o comando com timeout de 15s e limite de buffer de 2MB
-    const { stdout, stderr } = await execAsync(trimmedCmd, {
-      cwd: executionCwd,
-      timeout: 15000,
-      maxBuffer: 2 * 1024 * 1024,
-      env: { ...process.env, FORCE_COLOR: "0" },
-    }).catch((err: any) => {
-      return {
-        stdout: err.stdout || "",
-        stderr: err.stderr || err.message || "Erro de execução de comando",
-      };
-    });
+    // Executa o comando com timeout de 15s e limite de buffer de 2MB (via sandbox compartilhada)
+    const result = await SandboxedTerminalSkill.execute(trimmedCmd, executionCwd, 15000);
 
     return NextResponse.json({
-      success: true,
+      success: result.success,
       command: trimmedCmd,
       cwd: executionCwd,
-      stdout: stdout || "",
-      stderr: stderr || "",
+      stdout: result.stdout || "",
+      stderr: result.stderr || "",
     });
   } catch (error) {
     return NextResponse.json(

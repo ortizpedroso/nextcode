@@ -43,8 +43,14 @@ export async function GET(request: NextRequest) {
     const projectRoot = task.session.project?.path || process.cwd();
     const fileDiffs = [];
 
+    const resolvedProjectRoot = path.resolve(projectRoot);
     for (const [filePath, newContent] of Object.entries(generatedCodeMap)) {
-      const fullPath = path.join(projectRoot, filePath);
+      // SEGURANÇA: filePath vem de conteúdo gerado por LLM (extractAndWriteCodeBlocks); garante
+      // que a leitura de diff não escape de projectRoot via path traversal ("../../etc/...").
+      const fullPath = path.resolve(resolvedProjectRoot, filePath);
+      if (fullPath !== resolvedProjectRoot && !fullPath.startsWith(resolvedProjectRoot + path.sep)) {
+        continue;
+      }
       const existsInProject = fs.existsSync(fullPath);
       let existingContent = "";
 

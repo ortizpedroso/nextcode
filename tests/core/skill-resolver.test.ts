@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { resolveSkillOrCommand, findSkillContent } from "@/core/skills/skill-resolver";
+import prisma from "@/lib/prisma";
 
 let tmpDir = "";
 
@@ -43,34 +44,56 @@ describe("skill-resolver — findSkillContent", () => {
 });
 
 describe("skill-resolver — resolveSkillOrCommand", () => {
-  it("ignora prompts comuns que não começam com /", () => {
-    const res = resolveSkillOrCommand("Criar uma API em Node", tmpDir);
+  it("ignora prompts comuns que não começam com /", async () => {
+    const res = await resolveSkillOrCommand("Criar uma API em Node", tmpDir);
     expect(res.isSkillOrCommand).toBe(false);
   });
 
-  it("resolve comando embutido /plan", () => {
-    const res = resolveSkillOrCommand("/plan Refatorar módulo de autenticação", tmpDir);
+  it("resolve comando embutido /plan", async () => {
+    const res = await resolveSkillOrCommand("/plan Refatorar módulo de autenticação", tmpDir);
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("plan");
     expect(res.userRequest).toBe("Refatorar módulo de autenticação");
     expect(res.skillBlock).toContain("EXECUÇÃO DE COMANDO: /plan");
   });
 
-  it("resolve comando embutido /goal", () => {
-    const res = resolveSkillOrCommand("/goal Criar SaaS de automação", tmpDir);
+  it("resolve comando embutido /goal", async () => {
+    const res = await resolveSkillOrCommand("/goal Criar SaaS de automação", tmpDir);
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("goal");
     expect(res.userRequest).toBe("Criar SaaS de automação");
     expect(res.skillBlock).toContain("EXECUÇÃO DE COMANDO: /goal");
   });
 
-  it("resolve skill personalizada instalada /my-code-reviewer com pedido do usuário", () => {
-    const res = resolveSkillOrCommand("/my-code-reviewer revise este arquivo index.ts", tmpDir);
+  it("resolve skill personalizada instalada /my-code-reviewer com pedido do usuário", async () => {
+    const res = await resolveSkillOrCommand("/my-code-reviewer revise este arquivo index.ts", tmpDir);
     expect(res.isSkillOrCommand).toBe(true);
     expect(res.commandName).toBe("my-code-reviewer");
     expect(res.userRequest).toBe("revise este arquivo index.ts");
     expect(res.skillBlock).toContain("EXECUÇÃO ATIVA DA SKILL: /my-code-reviewer");
     expect(res.skillBlock).toContain("SOLID");
     expect(res.skillBlock).toContain("RELATÓRIO DE RESULTADOS & EXCEÇÕES");
+  });
+
+  it("bloqueia execução quando a skill github foi desativada pelo operador", async () => {
+    const proposal = await prisma.candidateSkillProposal.create({
+      data: {
+        name: "my-code-reviewer",
+        description: "Skill de teste para revisão",
+        triggerPattern: "/my-code-reviewer",
+        sampleContent: "Siga as regras de clean code e SOLID.",
+        status: "disabled",
+        source: "github",
+        installedPath: path.join(tmpDir, ".gemini", "skills", "my-code-reviewer", "SKILL.md"),
+      },
+    });
+
+    try {
+      const res = await resolveSkillOrCommand("/my-code-reviewer revise este arquivo index.ts", tmpDir);
+      expect(res.isSkillOrCommand).toBe(true);
+      expect(res.skillBlock).toContain("BLOQUEADA PELO OPERADOR");
+    } finally {
+      await prisma.candidateSkillProposal.delete({ where: { id: proposal.id } });
+    }
   });
 });

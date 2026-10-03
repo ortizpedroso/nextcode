@@ -19,6 +19,7 @@ import crypto from "crypto";
 // Token da sessão local
 // ---------------------------------------------------------------------------
 let runtimeToken: string | null = null;
+let bootstrapTokenIssued = false;
 
 export function getRuntimeToken(): string {
   const envToken = (process.env.NEXTCODE_AUTH_TOKEN || "").trim();
@@ -28,6 +29,21 @@ export function getRuntimeToken(): string {
     console.log("[AUTH] Token de sessão local gerado. Rotas mutativas exigem header X-Nextcode-Token.");
   }
   return runtimeToken;
+}
+
+/**
+ * O token gerado em runtime (sem NEXTCODE_AUTH_TOKEN fixo) só pode ser entregue
+ * UMA vez pelo bootstrap público (POST /api/auth/session) — o Host header do
+ * request é forjável pelo cliente e não deve ser a única barreira. Depois do
+ * primeiro uso, a rota de bootstrap passa a recusar novas entregas.
+ */
+export function canIssueBootstrapToken(): boolean {
+  if ((process.env.NEXTCODE_AUTH_TOKEN || "").trim()) return false; // token fixo: bootstrap desativado
+  return !bootstrapTokenIssued;
+}
+
+export function markBootstrapTokenIssued(): void {
+  bootstrapTokenIssued = true;
 }
 
 export function verifyToken(candidate?: string | null): boolean {

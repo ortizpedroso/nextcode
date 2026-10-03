@@ -1,4 +1,5 @@
-import { exec, execSync } from "child_process";
+import { execSync } from "child_process";
+import { SandboxedTerminalSkill } from "../skills/sandboxed-terminal";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -21,7 +22,6 @@ export class TerminalExecutionEngine {
   ): Promise<CommandResult> {
     const startTime = Date.now();
 
-    // Sanitização de comando básico para segurança
     const sanitizedCmd = command.trim();
     if (!sanitizedCmd) {
       return {
@@ -33,30 +33,17 @@ export class TerminalExecutionEngine {
       };
     }
 
-    return new Promise((resolve) => {
-      exec(
-        sanitizedCmd,
-        {
-          cwd,
-          timeout: timeoutMs,
-          maxBuffer: 10 * 1024 * 1024, // 10MB
-          env: { ...process.env },
-        },
-        (error, stdout, stderr) => {
-          const executionTimeMs = Date.now() - startTime;
-          const exitCode = error ? error.code ?? 1 : 0;
-          const success = exitCode === 0;
-
-          resolve({
-            success,
-            exitCode: typeof exitCode === "number" ? exitCode : 1,
-            stdout: stdout.trim(),
-            stderr: stderr.trim(),
-            executionTimeMs,
-          });
-        }
-      );
-    });
+    // Toda execução de comando (incluindo a acionada por tool-calls do agente a
+    // partir de saída de LLM, potencialmente influenciada por conteúdo não
+    // confiável) passa pela blacklist/jail compartilhada do SandboxedTerminalSkill.
+    const result = await SandboxedTerminalSkill.execute(sanitizedCmd, cwd, timeoutMs);
+    return {
+      success: result.success,
+      exitCode: result.exitCode,
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim(),
+      executionTimeMs: Date.now() - startTime,
+    };
   }
 
   /**

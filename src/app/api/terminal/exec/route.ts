@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
-import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
+import { SandboxedTerminalSkill } from "@/core/skills/sandboxed-terminal";
 import prisma from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
@@ -23,14 +23,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await TerminalExecutionEngine.runCommand(command, targetCwd, timeoutMs || 30000);
+    const startedAt = Date.now();
+    const result = await SandboxedTerminalSkill.execute(command, targetCwd, timeoutMs || 30000);
 
     return NextResponse.json({
       success: result.success,
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
-      executionTimeMs: result.executionTimeMs,
+      executionTimeMs: Date.now() - startedAt,
       cwd: targetCwd,
     });
   } catch (error) {

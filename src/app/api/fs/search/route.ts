@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
+import { requireAuth } from "@/core/security/local-auth";
 
 const IGNORED_DIRS = new Set([
   "node_modules",
@@ -14,7 +15,11 @@ const IGNORED_DIRS = new Set([
   "coverage",
 ]);
 
+// Lê conteúdo de arquivos do projeto (potencialmente segredos) — exige o mesmo
+// token local das demais rotas de filesystem (list-dirs, validate-path).
 export async function GET(req: NextRequest) {
+  const guard = requireAuth(req);
+  if (guard.response) return guard.response;
   try {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get("query");
@@ -65,7 +70,9 @@ export async function GET(req: NextRequest) {
             walk(fullPath);
           }
         } else if (entry.isFile()) {
-          // Filtra por extensões relevantes de código/texto
+          // Filtra por extensões relevantes de código/texto. Dotfiles (.env, .npmrc,
+          // credenciais de git, chaves .pem, etc.) NUNCA são lidos por esta busca,
+          // mesmo autenticada — não há caso de uso legítimo para isso aqui.
           const ext = path.extname(entry.name).toLowerCase();
           const allowedExts = [
             ".ts",
@@ -79,10 +86,9 @@ export async function GET(req: NextRequest) {
             ".html",
             ".py",
             ".sh",
-            ".env",
           ];
 
-          if (!allowedExts.includes(ext) && !entry.name.startsWith(".")) continue;
+          if (entry.name.startsWith(".") || !allowedExts.includes(ext)) continue;
 
           try {
             const content = fs.readFileSync(fullPath, "utf-8");

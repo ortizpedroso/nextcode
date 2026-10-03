@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       if (!snapshotId) return NextResponse.json({ error: "ID do snapshot é obrigatório" }, { status: 400 });
 
       const log = await prisma.telemetryLog.findUnique({ where: { id: snapshotId } });
-      if (!log || !log.details) {
+      if (!log || !log.details || log.sessionId !== sessionId) {
         return NextResponse.json({ error: "Snapshot de revisão não encontrado" }, { status: 404 });
       }
 

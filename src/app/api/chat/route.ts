@@ -155,10 +155,18 @@ export async function POST(request: NextRequest) {
     // 4.6 RESOLUÇÃO E INJEÇÃO DE SKILLS DE IA (/skill-name [pedido])
     try {
       const targetDir = ctxProject?.path && fs.existsSync(ctxProject.path) ? ctxProject.path : process.cwd();
-      const skillRes = resolveSkillOrCommand(targetPrompt, targetDir);
+      const skillRes = await resolveSkillOrCommand(targetPrompt, targetDir);
       if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
-        dispatchMessages.unshift({ role: "system", content: skillRes.skillBlock });
-        console.log(`[SKILL_INJECTOR] Skill "/${skillRes.commandName}" injetada com sucesso no contexto!`);
+        // SEGURANÇA: blocos de skills built-in (/plan, /goal, /help) são texto fixo do
+        // próprio sistema e podem ir como role:"system" (confiança máxima). Já o conteúdo
+        // de skills instaladas (untrustedSource) é DADO de um arquivo de terceiros — vai
+        // como role:"user" para não herdar a autoridade máxima do system prompt, mitigando
+        // prompt injection via skill instalada maliciosa (ver skill-resolver.ts).
+        dispatchMessages.unshift({
+          role: skillRes.untrustedSource ? "user" : "system",
+          content: skillRes.skillBlock,
+        });
+        console.log(`[SKILL_INJECTOR] Skill "/${skillRes.commandName}" injetada com sucesso no contexto! (untrusted=${Boolean(skillRes.untrustedSource)})`);
       }
     } catch (skillErr) {
       console.warn("[SKILL_INJECTOR] Falha ao resolver skill:", String(skillErr));

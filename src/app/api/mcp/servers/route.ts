@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
+import { safeFetch } from "@/core/security/safe-fetch";
 import prisma from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
@@ -41,13 +42,10 @@ export async function POST(request: NextRequest) {
 
       if (server.url) {
         try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 3000);
-          const res = await fetch(server.url, { signal: controller.signal }).catch(() => null);
-          clearTimeout(timer);
-
+          const res = await safeFetch(server.url, { timeoutMs: 3000 }).catch(() => null);
           pingSuccess = Boolean(res && (res.ok || res.status === 404 || res.status === 405));
-        } catch {
+        } catch (err) {
+          // SsrfError ou falha de rede: trata como servidor inacessível (não propaga URL/erro interno).
           pingSuccess = false;
         }
       }

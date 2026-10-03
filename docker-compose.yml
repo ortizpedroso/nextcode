@@ -5,7 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: nextcode-app
     ports:
-      - "3001:3001"
+      # Vinculado só a loopback: a app assume "localhost" como fronteira de confiança
+      # (ver local-auth.ts). Expor em 0.0.0.0 publicaria o token de auth na rede.
+      - "127.0.0.1:3001:3001"
     depends_on:
       - omniroute
     volumes:

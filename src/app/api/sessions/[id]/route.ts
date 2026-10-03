@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 
+// GET fica aberto para a UI local, como as demais rotas de leitura (ver sessions/route.ts).
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -36,9 +38,11 @@ export async function GET(
 }
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -72,9 +76,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const guard = requireAuth(request);
+  if (guard.response) return guard.response;
   try {
     const { id } = await params;
     await prisma.session.delete({ where: { id } });

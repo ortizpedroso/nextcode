@@ -31,10 +31,8 @@ function deriveKey(raw: string): Buffer {
   return crypto.pbkdf2Sync(raw, "nextcode-master-key-salt-v1", 100000, KEY_LEN, "sha256");
 }
 
-/** Lista ordenada de chaves-mestras derivadas. Índice 0 = ativa para escrita. */
-const DEFAULT_STABLE_MASTER_KEY = "nextcode-master-key-v5-stable-local-32b";
-
-function getAllMasterKeys(): Buffer[] {
+/** Lista ordenada de chaves-mestras CONFIGURADAS via ambiente. Índice 0 = ativa para escrita. */
+function getConfiguredMasterKeys(): Buffer[] {
   const multi = (process.env.NEXTCODE_MASTER_KEYS || "").trim();
   const single = (process.env.NEXTCODE_MASTER_KEY || "").trim();
   const sources = multi
@@ -42,10 +40,7 @@ function getAllMasterKeys(): Buffer[] {
     : single
       ? [single]
       : [];
-  if (sources.length === 0 && !process.env.VITEST && process.env.NODE_ENV !== "test") {
-    sources.push(DEFAULT_STABLE_MASTER_KEY);
-  }
-  const cacheKey = sources.join("|");
+  const cacheKey = `cfg:${sources.join("|")}`;
   const cached = keyCache.get(cacheKey);
   if (cached) return cached;
   const keys = sources.map(deriveKey);
@@ -53,8 +48,32 @@ function getAllMasterKeys(): Buffer[] {
   return keys;
 }
 
+/**
+ * SEGURANÇA: esta chave era usada como fallback silencioso de ESCRITA quando
+ * nenhuma NEXTCODE_MASTER_KEY estava configurada — como está hardcoded no
+ * código-fonte, qualquer leitor do repositório podia decifrar os segredos
+ * "cifrados" com ela (confidencialidade falsa). Mantida AQUI apenas como
+ * último recurso de LEITURA, para não travar a decifragem de segredos já
+ * gravados sob essa chave antes desta correção. Nunca é usada para cifrar
+ * dados novos — ver getMasterKey()/encryptSecret().
+ */
+const LEGACY_DEFAULT_KEY = "nextcode-master-key-v5-stable-local-32b";
+
+function getAllMasterKeys(): Buffer[] {
+  const configured = getConfiguredMasterKeys();
+  if (configured.length > 0) return configured;
+  if (process.env.VITEST || process.env.NODE_ENV === "test") return [];
+  const cacheKey = "legacy-fallback";
+  const cached = keyCache.get(cacheKey);
+  if (cached) return cached;
+  const keys = [deriveKey(LEGACY_DEFAULT_KEY)];
+  keyCache.set(cacheKey, keys);
+  return keys;
+}
+
+/** Chave ATIVA para cifrar dados novos. null = sem NEXTCODE_MASTER_KEY configurada (falha fechada: ver encryptSecret). */
 function getMasterKey(): Buffer | null {
-  const keys = getAllMasterKeys();
+  const keys = getConfiguredMasterKeys();
   return keys.length > 0 ? keys[0] : null;
 }
 

@@ -65,11 +65,15 @@ async function startDevServer() {
 
     console.log(`\x1b[32m\x1b[1m[NextCode] Porta ${freePort} alocada com sucesso. Acesse: http://localhost:${freePort}\x1b[0m\n`);
 
+    // Vincula a loopback por padrão: local-auth.ts trata "localhost" como fronteira
+    // de confiança, então expor em 0.0.0.0 (padrão do Next) publicaria o bootstrap
+    // de auth na rede local. Defina NEXTCODE_DEV_HOST para ouvir em outra interface.
+    const devHost = process.env.NEXTCODE_DEV_HOST || "127.0.0.1";
     const isWin = process.platform === "win32";
     const command = isWin ? "cmd.exe" : "npx";
     const args = isWin
-      ? ["/c", "npx", "next", "dev", "-p", String(freePort)]
-      : ["next", "dev", "-p", String(freePort)];
+      ? ["/c", "npx", "next", "dev", "-p", String(freePort), "-H", devHost]
+      : ["next", "dev", "-p", String(freePort), "-H", devHost];
 
     const child = spawn(command, args, {
       stdio: "inherit",
