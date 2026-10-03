@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as fs from "fs";
+import * as path from "path";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
@@ -9,8 +11,82 @@ import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
-import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { parseSpecDocument } from "@/core/intake/spec-format";
+import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
+import type { Setting } from "@prisma/client";
+
+/**
+ * Item 8 (Spec-vs-disco): compara os `arquivos_afetados` declarados na Spec Canônica
+ * aprovada contra o que de fato existe em disco no diretório do projeto. Isso cobre o caso
+ * em que a DAG termina (sem mais nós executáveis) mas algum arquivo prometido na Spec nunca
+ * chegou a ser gerado/promovido por nenhum nó — algo que o status "completed" por nó não
+ * detecta, pois cada nó só sabe sobre o próprio filesScope, não sobre a Spec como um todo.
+ * Retorna null quando não há Spec estruturada para comparar (formato antigo/prosa livre),
+ * para não transformar ausência de dado em falso-bloqueio.
+ */
+function checkSpecCompletenessOnDisk(
+  canonicalSpec: string | null | undefined,
+  projectPath: string | null | undefined
+): { complete: boolean; declaredFiles: string[]; missingFiles: string[] } | null {
+  if (!canonicalSpec) return null;
+  const parsed = parseSpecDocument(canonicalSpec);
+  if (!parsed || parsed.arquivosAfetados.length === 0) return null;
+
+  const basePath = projectPath || process.cwd();
+  const declaredFiles = parsed.arquivosAfetados;
+  const missingFiles = declaredFiles.filter((f) => !fs.existsSync(path.join(basePath, f)));
+
+  return { complete: missingFiles.length === 0, declaredFiles, missingFiles };
+}
+
+/**
+ * Reconstrói o Brief real da etapa (não apenas o título curto) a partir do payload salvo
+ * pelo SpecDecomposerSkill (`{ goal, context, step }`). Sem isso, a Lente 1 (Auditor Cego)
+ * não teria o objetivo original para comparar contra o código — só um rótulo genérico como
+ * "Desenvolvimento dos Componentes e APIs", insuficiente para qualquer verificação semântica.
+ */
+function buildBriefMarkdown(task: { title: string; role?: string | null; filesScope?: string | null; payload?: string | null }): string {
+  let goal = "";
+  try {
+    const parsed = task.payload ? JSON.parse(task.payload) : null;
+    if (parsed && typeof parsed.goal === "string") goal = parsed.goal;
+  } catch {
+    /* payload ausente/malformado: segue apenas com o título */
+  }
+  return `# Etapa: ${task.title}\n\n## Objetivo original (Brief)\n${
+    goal || "(objetivo detalhado não disponível — avalie apenas pelo título da etapa)"
+  }\n\n## Escopo de arquivos esperado\n${task.filesScope || "[]"}`;
+}
+
+/** Adapta o SmartRouter (tier fast, mesmas chaves BYOK já resolvidas na etapa) para o formato de dispatchFn que o DualLensAuditor espera, mantendo o auditor desacoplado dos provedores. */
+function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null): LLMDispatchFn {
+  return async (messages) => {
+    try {
+      const res = await smartRouter.dispatchWithFallback({
+        messages,
+        tier: "fast",
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+        stream: false,
+        signal: AbortSignal.timeout(10000),
+      });
+      const json = await res.response.json().catch(() => null);
+      return (
+        json?.choices?.[0]?.message?.content ??
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        null
+      );
+    } catch {
+      return null;
+    }
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -326,15 +402,26 @@ DIRETRIZES DE EXECUÇÃO:
       
       // Executa a Auditoria em Duas Lentes (Tipo 1 Mecânico + Tipo 2 Auditor Cego)
       const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
-      const type2Res = DualLensAuditor.validateType2(type1Res, task.title, stepResultText, codeContentMap);
+      const type2Res = await DualLensAuditor.validateType2(
+        type1Res,
+        buildBriefMarkdown(task),
+        stepResultText,
+        codeContentMap,
+        makeBlindAuditDispatchFn(smartRouter, setting)
+      );
 
       let finalStatus: "completed" | "failed" = "completed";
       let promotionTarget: string | null = null;
+      let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
 
       if (type2Res.verdict === "APPROVED") {
         finalStatus = "completed";
         qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
         promotionTarget = targetProjectRoot;
+
+        // Item 7: conecta o TerminalExecutionEngine à resposta da IA — mesma prova empírica
+        // real (type-check pós-promoção) usada no pipeline do chat (ver zero-hallucination-loop.ts).
+        empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
       } else {
         finalStatus = "failed";
         qm.purgeWorkspace(task.id);
@@ -347,6 +434,7 @@ DIRETRIZES DE EXECUÇÃO:
         output: stepResultText,
         auditVerdict: type2Res.verdict,
         promotedPath: promotionTarget,
+        empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
       };
 
       // Atualiza estado do nó no SQLite
@@ -362,7 +450,13 @@ DIRETRIZES DE EXECUÇÃO:
       TelemetryLogger.log({
         sessionId: task.sessionId,
         action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
-        details: { nodeId: task.id, title: task.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
+        details: {
+          nodeId: task.id,
+          title: task.title,
+          verdict: type2Res.verdict,
+          auditMethod: type2Res.method,
+          promotedPath: promotionTarget,
+        },
       });
 
       // Checa se todos os nós da sessão foram concluídos
@@ -371,6 +465,8 @@ DIRETRIZES DE EXECUÇÃO:
       });
 
       const allCompleted = sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
+      const specCompleteness = checkSpecCompletenessOnDisk(task.session.canonicalSpec, task.session.project?.path);
+
       if (allCompleted) {
         const existingCompletionMsg = await prisma.message.findFirst({
           where: {
@@ -389,11 +485,18 @@ DIRETRIZES DE EXECUÇÃO:
             ? firstUserMsg.content.split(" ")[0]
             : "/autonomo";
 
+          const completenessBlock =
+            specCompleteness && !specCompleteness.complete
+              ? `\n\n⚠️ **Spec vs. disco: ${specCompleteness.missingFiles.length} arquivo(s) declarado(s) na Spec não foram encontrados no projeto:**\n${specCompleteness.missingFiles
+                  .map((f) => `- ❌ \`${f}\``)
+                  .join("\n")}`
+              : "";
+
           await prisma.message.create({
             data: {
               sessionId: task.sessionId,
               role: "assistant",
-              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${task.session.project?.path || process.cwd()}\`_`,
+              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${task.session.project?.path || process.cwd()}\`_${completenessBlock}`,
             },
           });
         }
@@ -403,6 +506,7 @@ DIRETRIZES DE EXECUÇÃO:
         success: true,
         executedTask: updatedTask,
         promotedPath: promotionTarget,
+        specCompleteness,
       });
     }
 
@@ -591,7 +695,13 @@ DIRETRIZES DE EXECUÇÃO:
           const targetProjectRoot = session.project?.path || process.cwd();
           const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr);
           const type1Res = DualLensAuditor.validateType1(codeContentMap, [], targetProjectRoot);
-          const type2Res = DualLensAuditor.validateType2(type1Res, taskDb.title, stepResultText, codeContentMap);
+          const type2Res = await DualLensAuditor.validateType2(
+            type1Res,
+            buildBriefMarkdown(taskDb),
+            stepResultText,
+            codeContentMap,
+            makeBlindAuditDispatchFn(smartRouter, setting)
+          );
 
           let finalStatus: "completed" | "failed" | "blocked" = "completed";
           let promotionTarget: string | null = null;
@@ -631,7 +741,13 @@ DIRETRIZES DE EXECUÇÃO:
           TelemetryLogger.log({
             sessionId: targetSessionId,
             action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
-            details: { nodeId: taskDb.id, title: taskDb.title, verdict: type2Res.verdict, promotedPath: promotionTarget },
+            details: {
+              nodeId: taskDb.id,
+              title: taskDb.title,
+              verdict: type2Res.verdict,
+              auditMethod: type2Res.method,
+              promotedPath: promotionTarget,
+            },
           });
 
           return { id: taskDb.id, finalStatus };
@@ -663,6 +779,12 @@ DIRETRIZES DE EXECUÇÃO:
       });
 
       const allCompleted = finalSessionTasks.length > 0 && finalSessionTasks.every((t) => t.status === "completed");
+
+      // Item 8: Verificação de completude Spec-vs-disco. Roda sempre que a fila para de ter
+      // nós executáveis (concluída ou bloqueada), para também sinalizar lacunas mesmo em
+      // cenários de bloqueio parcial, não só no caminho feliz de 100% completo.
+      const specCompleteness = checkSpecCompletenessOnDisk(session.canonicalSpec, session.project?.path);
+
       if (allCompleted) {
         const existingCompletionMsg = await prisma.message.findFirst({
           where: {
@@ -686,11 +808,18 @@ DIRETRIZES DE EXECUÇÃO:
             ? firstUserMsg.content.split(" ")[0]
             : "/autonomo";
 
+          const completenessBlock =
+            specCompleteness && !specCompleteness.complete
+              ? `\n\n⚠️ **Spec vs. disco: ${specCompleteness.missingFiles.length} arquivo(s) declarado(s) na Spec não foram encontrados no projeto:**\n${specCompleteness.missingFiles
+                  .map((f) => `- ❌ \`${f}\``)
+                  .join("\n")}`
+              : "";
+
           await prisma.message.create({
             data: {
               sessionId: targetSessionId,
               role: "assistant",
-              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas no servidor:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${session.project?.path || process.cwd()}\`_`,
+              content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas no servidor:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${session.project?.path || process.cwd()}\`_${completenessBlock}`,
             },
           });
         }
@@ -701,6 +830,7 @@ DIRETRIZES DE EXECUÇÃO:
         processedCount,
         allCompleted,
         tasks: finalSessionTasks,
+        specCompleteness,
       });
     }
 

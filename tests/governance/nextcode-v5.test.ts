@@ -6,6 +6,7 @@ import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { IncidentReporter } from "@/core/governance/incident-reporter";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import { extractFilePathsFromText, SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
+import { stripErrorLogLines } from "@/core/intake/input-preprocessor";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -107,14 +108,15 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res1.compilationErrors.length).toBeGreaterThan(0);
     });
 
-    it("deve aprovar no Validador Tipo 2 Auditor Cego quando o código está limpo e o worker reporta sucesso", () => {
+    it("deve aprovar no Validador Tipo 2 (fallback heurístico) quando o código está limpo e o worker reporta sucesso", async () => {
       const codeMap = {
         "src/good.ts": "export const sum = (a: number, b: number): number => a + b;",
       };
       const res1 = DualLensAuditor.validateType1(codeMap);
       expect(res1.passed).toBe(true);
 
-      const res2 = DualLensAuditor.validateType2(
+      // Sem dispatchFn: cai explicitamente no fallback heurístico (sem leitura semântica real).
+      const res2 = await DualLensAuditor.validateType2(
         res1,
         "# Brief Test",
         "Tarefa concluída com sucesso e testes validados.",
@@ -122,7 +124,76 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       );
 
       expect(res2.verdict).toBe("APPROVED");
+      expect(res2.method).toBe("heuristic_fallback");
       expect(res2.lens1BlindReport).toContain("Conformidade mecânica: PASS");
+    });
+
+    it("deve usar a Lente 1 (LLM) real quando um dispatchFn é fornecido e confiar no veredito dela, não no texto do worker", async () => {
+      const codeMap = {
+        "src/good.ts": "export const sum = (a: number, b: number): number => a + b;",
+      };
+      const res1 = DualLensAuditor.validateType1(codeMap);
+
+      const dispatchFn = async () =>
+        JSON.stringify({ implemented: true, missingRequirements: [], justification: "Soma implementada conforme Brief." });
+
+      const res2 = await DualLensAuditor.validateType2(
+        res1,
+        "# Brief Test\nImplemente uma função de soma.",
+        "Não sei se terminei tudo certo.",
+        codeMap,
+        dispatchFn
+      );
+
+      expect(res2.method).toBe("llm_blind");
+      expect(res2.verdict).toBe("APPROVED");
+    });
+
+    it("deve REJEITAR via Lente 1 (LLM) mesmo quando o worker alega sucesso, se o código real não implementa o Brief (detecção de alucinação)", async () => {
+      const codeMap = {
+        "src/empty.ts": "export const placeholder = true;",
+      };
+      const res1 = DualLensAuditor.validateType1(codeMap);
+
+      const dispatchFn = async () =>
+        JSON.stringify({
+          implemented: false,
+          missingRequirements: ["Integração com Asaas", "Webhook de pagamento"],
+          justification: "Arquivo apenas contém um placeholder, nenhuma lógica do Brief foi implementada.",
+        });
+
+      const res2 = await DualLensAuditor.validateType2(
+        res1,
+        "# Brief Test\nImplemente a integração completa com o gateway Asaas e o webhook de pagamento.",
+        "Concluído com sucesso! Implementação finalizada.",
+        codeMap,
+        dispatchFn
+      );
+
+      expect(res2.method).toBe("llm_blind");
+      expect(res2.verdict).toBe("REJECTED");
+      expect(res2.lens2CrossVerification).toContain("Divergência detectada: SIM");
+      expect(res2.rejectionReason).toContain("Integração com Asaas");
+    });
+
+    it("deve cair no fallback heurístico se o dispatchFn falhar ou retornar lixo não-parseável", async () => {
+      const codeMap = {
+        "src/good.ts": "export const sum = (a: number, b: number): number => a + b;",
+      };
+      const res1 = DualLensAuditor.validateType1(codeMap);
+
+      const brokenDispatchFn = async () => "isso não é JSON válido";
+
+      const res2 = await DualLensAuditor.validateType2(
+        res1,
+        "# Brief Test",
+        "Tarefa concluída com sucesso.",
+        codeMap,
+        brokenDispatchFn
+      );
+
+      expect(res2.method).toBe("heuristic_fallback");
+      expect(res2.verdict).toBe("APPROVED");
     });
   });
 
@@ -237,6 +308,42 @@ export const defaultEngine = {};
       const codeMap = qm.extractAndWriteCodeBlocks("TASK-TEST-NEXTJS", text, []);
       expect(codeMap["Next.js"]).toBeUndefined();
       expect(codeMap["src/core/engine.ts"]).toBe("export const defaultEngine = {};\n");
+    });
+
+    it("REGRESSÃO (incidente gatewaynovo): nunca promove bloco bash/shell/texto a arquivo sem caminho explícito, nem inventa 'generated-N.ts'", () => {
+      const qm = new QuarantineManager(testQuarantineDir);
+      const text = `Infraestrutura criada com sucesso.
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+`;
+      const codeMap = qm.extractAndWriteCodeBlocks("TASK-REGRESSION-BASH", text, []);
+      expect(Object.keys(codeMap)).toHaveLength(0);
+      expect(codeMap["src/generated-1.ts"]).toBeUndefined();
+    });
+
+    it("bloco bash COM caminho explícito ainda pode ser gravado (ex.: script de deploy intencional)", () => {
+      const qm = new QuarantineManager(testQuarantineDir);
+      const text = `\`\`\`bash filepath="scripts/deploy.sh"
+#!/bin/bash
+npm run build
+\`\`\`
+`;
+      const codeMap = qm.extractAndWriteCodeBlocks("TASK-REGRESSION-BASH-EXPLICIT", text, []);
+      expect(codeMap["scripts/deploy.sh"]).toContain("npm run build");
+    });
+
+    it("não deriva fallbackFilesScope de linhas com cara de stacktrace colado pelo usuário", () => {
+      const rawUserPrompt = `Deu esse erro ao rodar o projeto:
+TypeError: Cannot read properties of undefined
+    at Object.<anonymous> (src/generated-2.ts:4:1)
+    at Module._compile (node:internal/modules/cjs/loader:1105:14)
+corrija isso`;
+      const cleaned = stripErrorLogLines(rawUserPrompt);
+      const files = extractFilePathsFromText(cleaned);
+      expect(files).not.toContain("src/generated-2.ts");
     });
 
     it("deve validar schemas do Prisma e relatar erro em modelos sem chave primária (@id)", () => {

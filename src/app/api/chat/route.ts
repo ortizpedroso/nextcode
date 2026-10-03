@@ -13,10 +13,38 @@ import { IntakeEngine } from "@/core/intake/intake-engine";
 import { InputPreprocessorEngine } from "@/core/intake/input-preprocessor";
 import { EnvironmentWorkspaceAdapter } from "@/core/execution/environment-adapter";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
-import { extractFilePathsFromText } from "@/core/skills/spec-decomposer";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
-import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
+import type { Setting } from "@prisma/client";
+
+/** Adapta o SmartRouter (tier fast, mesmas chaves BYOK já resolvidas na requisição) para o formato de dispatchFn que o DualLensAuditor espera — mesmo padrão usado em dag/route.ts, mantendo o auditor desacoplado dos provedores. */
+function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null): LLMDispatchFn {
+  return async (messages) => {
+    try {
+      const res = await smartRouter.dispatchWithFallback({
+        messages,
+        tier: "fast",
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+        stream: false,
+        signal: AbortSignal.timeout(10000),
+      });
+      const json = await res.response.json().catch(() => null);
+      return (
+        json?.choices?.[0]?.message?.content ??
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        null
+      );
+    } catch {
+      return null;
+    }
+  };
+}
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -185,7 +213,18 @@ export async function POST(request: NextRequest) {
     };
 
     const smartRouter = new SmartRouter();
-    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
+    const rawAnalysis = await smartRouter.routeTaskSmart(
+      { prompt: targetPrompt },
+      {
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+      },
+      activeSessionId
+    );
     const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
 
     const activeTier = modelOverride || intent.tier;
@@ -225,12 +264,15 @@ export async function POST(request: NextRequest) {
       }
 
       // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
+      // Agora com Validador Tipo 2 (auditoria semântica cega), igual ao DAG: só promove
+      // para o disco se a Lente Cega confirmar que o código implementa o pedido real.
       const taskId = `chat-exec-${Date.now()}`;
-      const zeroEngineRes = ZeroHallucinationEngine.processAndVerifyResponse(
+      const zeroEngineRes = await ZeroHallucinationEngine.processAndVerifyResponse(
         taskId,
         aiResponseContent,
         targetPrompt,
-        ctxProject?.path || null
+        ctxProject?.path || null,
+        makeBlindAuditDispatchFn(smartRouter, setting)
       );
       aiResponseContent = zeroEngineRes.groundedMessage;
     } catch (err) {

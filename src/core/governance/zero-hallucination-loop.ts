@@ -6,16 +6,41 @@
  */
 
 import { QuarantineManager } from "./quarantine-manager";
-import { DualLensAuditor, ValidationType1Result } from "./dual-lens-auditor";
+import { DualLensAuditor, ValidationType1Result, ValidationType2Result, LLMDispatchFn } from "./dual-lens-auditor";
 import { EnvironmentWorkspaceAdapter, WorkspaceWriteResult } from "../execution/environment-adapter";
+import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
 import { extractFilePathsFromText } from "../skills/spec-decomposer";
+import { stripErrorLogLines } from "../intake/input-preprocessor";
 
 export interface ZeroHallucinationExecutionResult {
   passed: boolean;
   promotedFiles: string[];
   auditorResult: ValidationType1Result;
+  type2Result?: ValidationType2Result;
   groundedMessage: string;
   workspaceResult?: WorkspaceWriteResult;
+  empiricalBuildResult?: CommandResult | null;
+}
+
+/** Monta um bloco curto (não um dump) com o resultado real do type-check pós-promoção. */
+function formatEmpiricalBuildBadge(result: CommandResult): string {
+  if (result.success) {
+    return "\n\n🔧 _Verificação empírica adicional (type-check real do projeto): ✅ sem erros._";
+  }
+  const errorLines = `${result.stdout}\n${result.stderr}`
+    .split("\n")
+    .filter((l) => l.includes("error TS"))
+    .slice(0, 5);
+  return `\n\n⚠️ **Verificação empírica adicional (type-check real do projeto) encontrou problemas após a promoção:**\n${
+    errorLines.length > 0
+      ? errorLines.map((l) => `- ❌ ${l.trim()}`).join("\n")
+      : "- ❌ Comando de type-check falhou (ver logs do servidor)."
+  }`;
+}
+
+/** Monta um Brief mínimo a partir do pedido bruto do usuário no chat — o pipeline de chat não tem a decomposição rica em Goal/Context que o DAG gera via SpecDecomposerSkill, então o próprio prompt serve de proxy para a Lente 1 (Cega) comparar contra o código real gerado. */
+function buildChatBriefMarkdown(userPrompt: string): string {
+  return `# Pedido original do usuário (chat)\n\n${userPrompt.slice(0, 4000)}`;
 }
 
 /**
@@ -34,12 +59,13 @@ export class ZeroHallucinationEngine {
   /**
    * Valida, executa e ancora (grounding) a resposta da IA com prova empírica de compilação antes de entregar ao usuário.
    */
-  public static processAndVerifyResponse(
+  public static async processAndVerifyResponse(
     taskId: string,
     rawAiResponse: string,
     userPrompt: string,
-    projectPath: string | null
-  ): ZeroHallucinationExecutionResult {
+    projectPath: string | null,
+    dispatchFn?: LLMDispatchFn
+  ): Promise<ZeroHallucinationExecutionResult> {
     let cleanResponse = rawAiResponse;
 
     if (!rawAiResponse.includes("```")) {
@@ -57,7 +83,9 @@ export class ZeroHallucinationEngine {
     }
 
     const qm = new QuarantineManager();
-    const promptFiles = extractFilePathsFromText(userPrompt);
+    // Nunca deriva nomes de arquivo de linhas com cara de stacktrace/log colado pelo
+    // usuário — só do texto "limpo" do pedido (ver stripErrorLogLines).
+    const promptFiles = extractFilePathsFromText(stripErrorLogLines(userPrompt));
     const codeMap = qm.extractAndWriteCodeBlocks(taskId, rawAiResponse, promptFiles);
 
     if (Object.keys(codeMap).length === 0) {
@@ -100,7 +128,34 @@ export class ZeroHallucinationEngine {
       };
     }
 
-    // 3. Se a validação PASSSAR: Promove fisicamente e anexa o selo de verificação empírica
+    // 3. Validador Tipo 2 (Semântico / Auditor Cego): só promove se a Lente Cega confirmar,
+    // lendo o Brief real (proxy = prompt do usuário) e o código gerado — a mesma trava que
+    // o DAG já aplica. Sem isso, o chat promovia para o disco só com base na checagem
+    // mecânica do Tipo 1, o que foi exatamente a falha que permitiu o caso gatewaynovo.
+    const type2Res = await DualLensAuditor.validateType2(
+      type1Res,
+      buildChatBriefMarkdown(userPrompt),
+      rawAiResponse,
+      codeMap,
+      dispatchFn
+    );
+
+    if (type2Res.verdict !== "APPROVED") {
+      qm.purgeWorkspace(taskId);
+      const groundedMessage = `⚠️ **[NextCode Anti-Hallucination Guard]** Auditoria semântica (Tipo 2) reprovou a alteração — nada foi promovido para o disco:\n\n${
+        type2Res.rejectionReason || "Divergência entre o código gerado e o pedido original."
+      }\n\n${type2Res.lens1BlindReport}\n\n${type2Res.lens2CrossVerification}`;
+
+      return {
+        passed: false,
+        promotedFiles: [],
+        auditorResult: type1Res,
+        type2Result: type2Res,
+        groundedMessage,
+      };
+    }
+
+    // 4. Se as duas validações PASSAREM: Promove fisicamente e anexa o selo de verificação empírica
     const promotedFiles = Object.keys(codeMap);
     const envAdapter = new EnvironmentWorkspaceAdapter({
       taskId,
@@ -114,9 +169,19 @@ export class ZeroHallucinationEngine {
     const checklist = promotedFiles.map((f) => `- ✅ \`${f}\``).join("\n");
 
     let executionBadge = "";
+    let empiricalBuildResult: CommandResult | null = null;
     if (workspaceResult.mode === "LOCAL" && projectPath) {
       qm.promoteToMainRepo(taskId, projectPath, promotedFiles);
       executionBadge = `⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no disco:\n${checklist}`;
+
+      // Item 7: conecta o TerminalExecutionEngine à resposta da IA — roda uma prova
+      // empírica real (type-check do projeto já com os arquivos mesclados) além das
+      // checagens estáticas Tipo 1/Tipo 2. Só reporta; não desfaz a promoção, pois
+      // o Tipo 1+Tipo 2 já aprovaram os arquivos isoladamente.
+      empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(projectPath);
+      if (empiricalBuildResult) {
+        executionBadge += formatEmpiricalBuildBadge(empiricalBuildResult);
+      }
     } else {
       executionBadge = `☁️ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Nuvem / Quarentena)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no workspace isolado:\n${checklist}`;
     }
@@ -127,8 +192,10 @@ export class ZeroHallucinationEngine {
       passed: true,
       promotedFiles,
       auditorResult: type1Res,
+      type2Result: type2Res,
       groundedMessage: `${strippedProse ? `${strippedProse}\n\n` : ""}${executionBadge}`,
       workspaceResult,
+      empiricalBuildResult,
     };
   }
 }

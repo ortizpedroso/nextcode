@@ -19,7 +19,25 @@ export interface ValidationType2Result {
   lens1BlindReport: string;
   lens2CrossVerification: string;
   rejectionReason?: string;
+  /**
+   * "llm_blind": a Lente 1 leu o código real e comparou contra o Brief via LLM (verificação semântica genuína).
+   * "heuristic_fallback": nenhum dispatchFn foi fornecido ou o LLM falhou/não respondeu JSON válido — o
+   * veredito caiu de volta no heurístico antigo (apenas checa se houve alegação de sucesso / arquivos extraídos).
+   * "n/a": Tipo 1 já reprovou, então a Lente 2 nem chegou a ser avaliada.
+   */
+  method: "llm_blind" | "heuristic_fallback" | "n/a";
 }
+
+export interface BlindAuditVerdict {
+  implemented: boolean;
+  missingRequirements: string[];
+  justification: string;
+}
+
+/** Função de despacho LLM injetada pelo chamador (desacopla o auditor do SmartRouter/provedores). */
+export type LLMDispatchFn = (
+  messages: { role: "system" | "user"; content: string }[]
+) => Promise<string | null>;
 
 export class DualLensAuditor {
   /**
@@ -194,15 +212,139 @@ export class DualLensAuditor {
     };
   }
 
+  private static readonly SUCCESS_KEYWORDS = [
+    "concluído",
+    "concluido",
+    "sucesso",
+    "executado",
+    "gerado",
+    "criado",
+    "implementado",
+    "finished",
+    "created",
+    "done",
+    "success",
+  ];
+
+  private static workerClaimedSuccess(workerExecutionReport: string, filesInScope: string[]): boolean {
+    const textLower = workerExecutionReport.toLowerCase();
+    const hasSuccessKeywords = DualLensAuditor.SUCCESS_KEYWORDS.some((k) => textLower.includes(k));
+    return hasSuccessKeywords || filesInScope.length > 0;
+  }
+
   /**
-   * Validador Tipo 2: Auditoria Cega Semântica em Duas Lentes (Dual Lens Auditor)
+   * Fallback heurístico (comportamento antigo, NÃO é verificação semântica real): apenas
+   * confere se o Worker alegou sucesso em texto livre e/ou se algum arquivo chegou a ser
+   * extraído. Usado quando nenhum dispatchFn é fornecido ou quando a Lente 1 (LLM) falha/
+   * não responde JSON válido — nunca bloqueia o pipeline, mas o resultado é explicitamente
+   * marcado com method: "heuristic_fallback" para quem consome o veredito saber que não
+   * houve comparação real contra o Brief.
    */
-  public static validateType2(
+  private static heuristicFallback(workerExecutionReport: string, filesInScope: string[]): ValidationType2Result {
+    const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport, filesInScope);
+
+    let verdict: "APPROVED" | "REJECTED" = "APPROVED";
+    let rejectionReason: string | undefined;
+    if (!claimedSuccess) {
+      verdict = "REJECTED";
+      rejectionReason = "Nenhum arquivo de código foi gerado e o relatório não indicou conclusão autônoma.";
+    }
+
+    const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (FALLBACK HEURÍSTICO)]
+- Arquivos auditados no escopo: ${filesInScope.join(", ")}
+- Conformidade mecânica: PASS
+- AVISO: nenhum classificador LLM disponível/responsivo nesta execução — este veredito NÃO leu o conteúdo do código contra o Brief, apenas verificou alegação textual de sucesso e presença de arquivos extraídos.`;
+
+    const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
+- Relatório do Worker alega conclusão: ${claimedSuccess ? "SIM" : "NÃO"}
+- Veredito da Auditoria (heurística, sem leitura semântica): ${verdict}`;
+
+    return {
+      verdict,
+      lens1BlindReport,
+      lens2CrossVerification,
+      rejectionReason,
+      method: "heuristic_fallback",
+    };
+  }
+
+  /**
+   * Lente 1 real: envia ao LLM APENAS o Brief original e o conteúdo real dos arquivos gerados
+   * (NUNCA o relatório do worker) e pede um veredito independente sobre se o código de fato
+   * implementa o que foi pedido. Isso é o que torna a auditoria "cega" de verdade — antes, a
+   * Lente 1 nunca lia o código nem o Brief, só respondia PASS incondicionalmente.
+   */
+  private static async runBlindLens(
+    briefMarkdown: string,
+    codeContentMap: Record<string, string>,
+    dispatchFn: LLMDispatchFn
+  ): Promise<BlindAuditVerdict | null> {
+    const MAX_FILE_CHARS = 2500;
+    const MAX_TOTAL_CHARS = 9000;
+    let budget = MAX_TOTAL_CHARS;
+    const fileBlocks: string[] = [];
+    for (const [filePath, content] of Object.entries(codeContentMap)) {
+      if (budget <= 0) break;
+      const truncated = content.slice(0, Math.min(MAX_FILE_CHARS, budget));
+      fileBlocks.push(`--- ${filePath} ---\n${truncated}`);
+      budget -= truncated.length;
+    }
+
+    const messages: { role: "system" | "user"; content: string }[] = [
+      {
+        role: "system",
+        content:
+          "Você é um Auditor Cego de código. Você NÃO viu nenhum relatório de execução do worker, apenas o " +
+          "Brief original e o conteúdo real dos arquivos gerados abaixo. Sua única tarefa é verificar, com base " +
+          "EXCLUSIVAMENTE na lógica real do código (nunca em nomes de arquivo, comentários ou alegações), se os " +
+          "requisitos do Brief foram de fato implementados. Responda SOMENTE com um JSON de uma linha, sem " +
+          'markdown e sem texto extra, no formato exato: {"implemented":true|false,"missingRequirements":' +
+          '["..."],"justification":"motivo em até 40 palavras"}.',
+      },
+      {
+        role: "user",
+        content: `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, 3000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}`,
+      },
+    ];
+
+    try {
+      const raw = await dispatchFn(messages);
+      if (!raw) return null;
+      const match = raw.match(/\{[\s\S]*?"implemented"\s*:\s*(?:true|false)[\s\S]*?\}/i);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      if (typeof parsed.implemented !== "boolean") return null;
+      return {
+        implemented: parsed.implemented,
+        missingRequirements: Array.isArray(parsed.missingRequirements)
+          ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
+          : [],
+        justification: String(parsed.justification || "").slice(0, 300),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Validador Tipo 2: Auditoria Cega Semântica em Duas Lentes (Dual Lens Auditor).
+   *
+   * Lente 1 (Cega): se `dispatchFn` for fornecido, lê o Brief + o código real gerado via LLM
+   * e emite um veredito independente de implementação — sem nunca ver o relatório do worker.
+   * Lente 2 (Verificação Cruzada): confronta esse veredito independente com a alegação do
+   * worker e reporta explicitamente qualquer divergência (sinal direto de alucinação).
+   *
+   * Sem `dispatchFn` (ou se o LLM falhar/timeout/responder algo não-parseável), cai no
+   * fallback heurístico antigo — nunca quebra o pipeline, mas o resultado vem marcado com
+   * method: "heuristic_fallback" para deixar claro que não houve verificação semântica real.
+   */
+  public static async validateType2(
     type1Result: ValidationType1Result,
     briefMarkdown: string,
     workerExecutionReport: string,
-    codeContentMap: Record<string, string>
-  ): ValidationType2Result {
+    codeContentMap: Record<string, string>,
+    dispatchFn?: LLMDispatchFn
+  ): Promise<ValidationType2Result> {
     // Se o Validador Tipo 1 falhou, o Validador Tipo 2 nem é processado (Economia de tokens)
     if (!type1Result.passed) {
       return {
@@ -214,51 +356,53 @@ export class DualLensAuditor {
           ...type1Result.securityViolations,
           ...type1Result.testFailures,
         ].join("; ")}`,
+        method: "n/a",
       };
     }
 
-    // Lente 1 (Avaliação Cega): Analisa se os critérios de aceite do Brief foram contemplados
     const filesInScope = Object.keys(codeContentMap);
-    const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA]
-- Arquivos auditados no escopo: ${filesInScope.join(", ")}
-- Conformidade mecânica: PASS
-- Análise de contrato: Código atende ao escopo delimitado sem viés de relatórios externos.`;
 
-    // Lente 2 (Verificação Cruzada): Confronta as alegações do Worker com os arquivos extraídos da Quarentena
-    const textLower = workerExecutionReport.toLowerCase();
-    const hasSuccessKeywords =
-      textLower.includes("concluído") ||
-      textLower.includes("concluido") ||
-      textLower.includes("sucesso") ||
-      textLower.includes("executado") ||
-      textLower.includes("gerado") ||
-      textLower.includes("criado") ||
-      textLower.includes("implementado") ||
-      textLower.includes("finished") ||
-      textLower.includes("created") ||
-      textLower.includes("done") ||
-      textLower.includes("success");
+    if (dispatchFn) {
+      const blindVerdict = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn).catch(
+        () => null
+      );
 
-    const hasExtractedFiles = filesInScope.length > 0;
-    const workerClaimedSuccess = hasSuccessKeywords || hasExtractedFiles;
+      if (blindVerdict) {
+        const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport, filesInScope);
+        const verdict: "APPROVED" | "REJECTED" = blindVerdict.implemented ? "APPROVED" : "REJECTED";
+        const divergence = claimedSuccess !== blindVerdict.implemented;
 
-    let verdict: "APPROVED" | "REJECTED" = "APPROVED";
-    let rejectionReason: string | undefined = undefined;
+        const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (LLM)]
+- Arquivos auditados: ${filesInScope.join(", ")}
+- Veredito independente: ${blindVerdict.implemented ? "IMPLEMENTADO" : "NÃO IMPLEMENTADO"}
+- Justificativa: ${blindVerdict.justification}${
+          blindVerdict.missingRequirements.length
+            ? `\n- Requisitos ausentes: ${blindVerdict.missingRequirements.join("; ")}`
+            : ""
+        }`;
 
-    if (!workerClaimedSuccess) {
-      verdict = "REJECTED";
-      rejectionReason = "Nenhum arquivo de código foi gerado e o relatório não indicou conclusão autônoma.";
+        const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
+- Relatório do Worker alega conclusão: ${claimedSuccess ? "SIM" : "NÃO"}
+- Veredito independente da Lente Cega: ${blindVerdict.implemented ? "SIM" : "NÃO"}
+- Divergência detectada: ${divergence ? "SIM — alegação do worker não confere com a leitura real do código" : "NÃO"}`;
+
+        return {
+          verdict,
+          lens1BlindReport,
+          lens2CrossVerification,
+          rejectionReason:
+            verdict === "REJECTED"
+              ? `Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: ${blindVerdict.justification}${
+                  blindVerdict.missingRequirements.length
+                    ? ` | Pendências: ${blindVerdict.missingRequirements.join("; ")}`
+                    : ""
+                }`
+              : undefined,
+          method: "llm_blind",
+        };
+      }
     }
 
-    const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
-- Relatório do Worker alega conclusão: ${workerClaimedSuccess ? "SIM" : "NÃO"}
-- Veredito da Auditoria Cega: ${verdict}`;
-
-    return {
-      verdict,
-      lens1BlindReport,
-      lens2CrossVerification,
-      rejectionReason,
-    };
+    return DualLensAuditor.heuristicFallback(workerExecutionReport, filesInScope);
   }
 }

@@ -77,6 +77,38 @@ export class TerminalExecutionEngine {
   }
 
   /**
+   * Verificação empírica real pós-promoção: roda o type-check do TypeScript no projeto já
+   * com os arquivos novos mesclados em disco. O Tipo 1 (DualLensAuditor) só analisa cada
+   * arquivo isoladamente via regex/parsing estático — não pega problemas que só aparecem na
+   * interação entre arquivos (ex.: import quebrado em outro módulo que consome o arquivo
+   * novo, assinatura de função incompatível com um chamador existente). Retorna null quando
+   * o projeto não tem tsconfig.json (nada para verificar), em vez de forçar um comando que
+   * falharia por motivo não relacionado à alteração.
+   */
+  public static async verifyProjectBuild(
+    projectPath: string,
+    timeoutMs: number = 60000
+  ): Promise<CommandResult | null> {
+    if (!projectPath || !fs.existsSync(path.join(projectPath, "tsconfig.json"))) {
+      return null;
+    }
+
+    // Usa o binário `tsc` do próprio NextCode (via resolução de módulo Node) em vez de
+    // `npx tsc`, que tentaria baixar o TypeScript da internet quando o projeto-alvo (ex.: um
+    // diretório recém-criado pela IA) ainda não tem node_modules próprio.
+    let tscCommand = "npx tsc --noEmit";
+    try {
+      const tsPackageJsonPath = require.resolve("typescript/package.json");
+      const tscBinPath = path.join(path.dirname(tsPackageJsonPath), "bin", "tsc");
+      tscCommand = `node "${tscBinPath}" --noEmit`;
+    } catch {
+      /* fallback para npx se a resolução local falhar */
+    }
+
+    return TerminalExecutionEngine.runCommand(tscCommand, projectPath, timeoutMs);
+  }
+
+  /**
    * Interrompe processos que estejam ocupando uma determinada porta local (ex: 3000).
    */
   public static killProcessOnPort(port: number): boolean {

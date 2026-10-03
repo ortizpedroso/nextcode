@@ -4,6 +4,24 @@
  * em um formato otimizado em Markdown com YAML Frontmatter sanitizado antes de enviar à LLM.
  */
 
+import { extractFilePathsFromText } from "../shared/file-path-extractor";
+
+/**
+ * Remove linhas com cara de log de erro/stacktrace de um texto (ex.: prompt bruto do
+ * usuário). Usada ANTES de rodar heurísticas de "quais arquivos esse texto menciona" —
+ * sem isso, nomes de arquivo citados dentro de um stacktrace colado pelo usuário (ex.:
+ * "at Object.<anonymous> (src/generated-2.ts:4:1)") eram tratados como destino real de
+ * gravação, fazendo a IA escrever blocos de instrução/erro por cima de arquivos existentes
+ * ou criar arquivos sintéticos sem relação com o pedido real.
+ */
+export function stripErrorLogLines(text: string): string {
+  const LOG_LINE_PATTERN = /^\s*(?:⨯|at\s+|Syntax error:|TypeError:|Failed to compile|Module not found:|Build Error|webpack-internal:\/\/)/i;
+  return text
+    .split("\n")
+    .filter((line) => !LOG_LINE_PATTERN.test(line))
+    .join("\n");
+}
+
 export interface ProcessedInput {
   yamlFrontmatter: string;
   markdownBody: string;
@@ -131,10 +149,11 @@ export class InputPreprocessorEngine {
       );
     }
 
-    // 5. Extração de Caminhos de Arquivo Declarados
-    const filePathRegex = /(?:[a-zA-Z0-9_\-\.\/]+\/)?([a-zA-Z0-9_\-\.]+\.(?:tsx?|jsx?|json|css|scss|prisma|md|env|yml|yaml|sql|ps1|sh|bat))/gi;
-    const fileMatches = cleaned.match(filePathRegex) || [];
-    const detectedFiles = Array.from(new Set(fileMatches)).filter(
+    // 5. Extração de Caminhos de Arquivo Declarados (extrator canônico compartilhado com o
+    // SpecDecomposerSkill — exige fronteira de palavra/aspas antes do caminho, o que evita
+    // capturar trechos de stacktrace de build como "webpack-internal:///.../src/app/page.tsx"
+    // como se fossem um arquivo-alvo real mencionado pelo usuário).
+    const detectedFiles = extractFilePathsFromText(cleaned).filter(
       (f) => !f.startsWith("http://") && !f.startsWith("https://") && !f.includes("webpack-internal")
     );
 

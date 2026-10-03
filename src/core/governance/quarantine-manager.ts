@@ -139,6 +139,20 @@ export class QuarantineManager {
   }
 
   /**
+   * Tags de linguagem que indicam INSTRUÇÃO/SAÍDA (comando de terminal, log, texto livre),
+   * nunca conteúdo de um arquivo de código-fonte. Sem essa lista, um bloco ```bash\nnpm
+   * install\nnpm run dev\n``` explicativo era tratado como candidato a arquivo igual a um
+   * bloco ```typescript``` real — e, combinado com o fallback cego (ver nota abaixo), acabava
+   * gravado como se fosse um .ts de verdade. Aqui ele só é promovido a arquivo se vier com
+   * um caminho EXPLÍCITO (atributo do fence ou cabeçalho "// file: ..." dentro do bloco) —
+   * nunca por adivinhação de contexto.
+   */
+  private static readonly NON_FILE_LANGS = new Set([
+    "bash", "sh", "shell", "zsh", "powershell", "ps1", "cmd", "bat",
+    "console", "text", "plaintext", "txt", "log", "output", "diff", "",
+  ]);
+
+  /**
    * Extrai blocos de código formatados em markdown e grava na quarentena
    */
   public extractAndWriteCodeBlocks(
@@ -149,14 +163,17 @@ export class QuarantineManager {
     const codeMap: Record<string, string> = {};
     const workspacePath = this.prepareWorkspace(taskId);
 
-    // Regex para encontrar blocos de código ```lang ... ```
-    const codeBlockRegex = /```(?:[a-zA-Z0-9_-]+)?(?:\s+(?:file|path|filepath)="?([^"\n\s]+)"?)?\n([\s\S]*?)```/g;
+    // Regex para encontrar blocos de código ```lang ... ``` (lang capturado separadamente
+    // para decidir se o bloco pode ter o destino ADIVINHADO ou exige caminho explícito)
+    const codeBlockRegex = /```([a-zA-Z0-9_-]*)(?:\s+(?:file|path|filepath)="?([^"\n\s]+)"?)?\n([\s\S]*?)```/g;
     let match: RegExpExecArray | null;
     let index = 0;
 
     while ((match = codeBlockRegex.exec(text)) !== null) {
-      let relativePath: string | undefined = match[1];
-      const codeContent = match[2];
+      const lang = (match[1] || "").toLowerCase();
+      let relativePath: string | undefined = match[2];
+      const codeContent = match[3];
+      const isInstructionLang = QuarantineManager.NON_FILE_LANGS.has(lang);
 
       if (relativePath && QuarantineManager.isInvalidFilePath(relativePath)) {
         relativePath = undefined;
@@ -176,8 +193,11 @@ export class QuarantineManager {
         }
       }
 
-      // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco
-      if (!relativePath) {
+      // Blocos de instrução/log (bash, shell, powershell, texto puro...) só viram arquivo
+      // com caminho EXPLÍCITO (passos 1/2 acima). Sem isso, ficam de fora — permanecem só
+      // como prosa explicativa no chat, nunca adivinhados via passos 3/4/5 abaixo.
+      if (!relativePath && !isInstructionLang) {
+        // 3. Procurar menções a caminhos de arquivos no texto imediatamente anterior ao bloco
         const textBeforeBlock = text.substring(0, match.index);
         const allPathsMatch = textBeforeBlock.match(/([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]+)/gi);
         if (allPathsMatch) {
@@ -186,26 +206,27 @@ export class QuarantineManager {
             relativePath = validPaths[validPaths.length - 1];
           }
         }
-      }
 
-      // 4. Procurar em cabeçalhos markdown imediatamente anteriores ao bloco de código
-      if (!relativePath) {
-        const textBeforeBlock = text.substring(0, match.index);
-        const lastHeadingMatch = textBeforeBlock.match(/(?:###|####|#|\*\*)\s*(?:\[.*\]\s*)?`?([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)`?\s*$/m);
-        if (lastHeadingMatch && !QuarantineManager.isInvalidFilePath(lastHeadingMatch[1])) {
-          relativePath = lastHeadingMatch[1];
+        // 4. Procurar em cabeçalhos markdown imediatamente anteriores ao bloco de código
+        if (!relativePath) {
+          const lastHeadingMatch = textBeforeBlock.match(/(?:###|####|#|\*\*)\s*(?:\[.*\]\s*)?`?([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)`?\s*$/m);
+          if (lastHeadingMatch && !QuarantineManager.isInvalidFilePath(lastHeadingMatch[1])) {
+            relativePath = lastHeadingMatch[1];
+          }
         }
-      }
 
-      // 5. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao índice ou primário
-      if (!relativePath) {
-        const validFallback = fallbackFilesScope.find(f => !QuarantineManager.isInvalidFilePath(f));
-        if (fallbackFilesScope.length > index && !QuarantineManager.isInvalidFilePath(fallbackFilesScope[index])) {
-          relativePath = fallbackFilesScope[index];
-        } else if (validFallback) {
-          relativePath = validFallback;
-        } else {
-          relativePath = `src/generated-${index + 1}.ts`;
+        // 5. Se ainda não identificou o caminho, usa o fallbackFilesScope correspondente ao
+        // índice ou o primeiro válido. NUNCA inventa um nome sintético (ex.: "generated-N.ts")
+        // — se não há nenhum sinal real de destino, o bloco simplesmente NÃO é promovido a
+        // arquivo. Escrever em um caminho inventado foi o que causou o incidente em que um
+        // bloco de instrução ("npm install / npm run dev") virou um .ts fantasma no disco.
+        if (!relativePath) {
+          if (fallbackFilesScope.length > index && !QuarantineManager.isInvalidFilePath(fallbackFilesScope[index])) {
+            relativePath = fallbackFilesScope[index];
+          } else {
+            const validFallback = fallbackFilesScope.find((f) => !QuarantineManager.isInvalidFilePath(f));
+            if (validFallback) relativePath = validFallback;
+          }
         }
       }
 

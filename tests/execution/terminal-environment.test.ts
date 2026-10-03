@@ -3,6 +3,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { EnvironmentWorkspaceAdapter } from "@/core/execution/environment-adapter";
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 
 describe("TerminalExecutionEngine & EnvironmentWorkspaceAdapter", () => {
   it("deve executar comandos simples no SO via TerminalExecutionEngine", async () => {
@@ -34,5 +35,51 @@ describe("TerminalExecutionEngine & EnvironmentWorkspaceAdapter", () => {
 
     expect(adapter.getMode()).toBe("CLOUD_QUARANTINE");
     expect(adapter.getEffectiveWorkspacePath()).toContain(".quarantine");
+  });
+
+  describe("verifyProjectBuild (item 7 — prova empírica real pós-promoção)", () => {
+    it("retorna null quando o projeto não tem tsconfig.json (nada para verificar)", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-build-verify-"));
+      try {
+        const result = await TerminalExecutionEngine.verifyProjectBuild(tmpDir);
+        expect(result).toBeNull();
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }, 20000);
+
+    it("reporta sucesso quando o type-check real do projeto passa sem erros", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-build-verify-"));
+      try {
+        fs.writeFileSync(
+          path.join(tmpDir, "tsconfig.json"),
+          JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } })
+        );
+        fs.writeFileSync(path.join(tmpDir, "ok.ts"), "export const ok: number = 1;\n");
+
+        const result = await TerminalExecutionEngine.verifyProjectBuild(tmpDir, 30000);
+        expect(result).not.toBeNull();
+        expect(result!.success).toBe(true);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }, 35000);
+
+    it("reporta falha quando o type-check real do projeto encontra um erro de tipo", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-build-verify-"));
+      try {
+        fs.writeFileSync(
+          path.join(tmpDir, "tsconfig.json"),
+          JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } })
+        );
+        fs.writeFileSync(path.join(tmpDir, "broken.ts"), "const x: number = 'não é um número';\n");
+
+        const result = await TerminalExecutionEngine.verifyProjectBuild(tmpDir, 30000);
+        expect(result).not.toBeNull();
+        expect(result!.success).toBe(false);
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }, 35000);
   });
 });

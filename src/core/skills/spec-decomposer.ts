@@ -1,4 +1,5 @@
 import { DAGNode } from "../dag/dag-engine";
+import { extractFilePathsFromText } from "../shared/file-path-extractor";
 
 export interface DecompositionResult {
   goal: string;
@@ -6,18 +7,7 @@ export interface DecompositionResult {
   summary: string;
 }
 
-export function extractFilePathsFromText(text: string): string[] {
-  const matches = new Set<string>();
-  const regex = /(?:^|\s|`|'|")([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)*\.(?:ts|tsx|js|jsx|json|prisma|md|css|html|env|sql|yml|yaml|config|sh))(?:$|\s|`|'|"|:|,|\.)/gi;
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(text)) !== null) {
-    const matchedPath = m[1].replace(/^\.\//, "");
-    if (matchedPath && !matchedPath.startsWith("http") && !matchedPath.includes("..")) {
-      matches.add(matchedPath);
-    }
-  }
-  return Array.from(matches);
-}
+export { extractFilePathsFromText };
 
 export class SpecDecomposerSkill {
   /**

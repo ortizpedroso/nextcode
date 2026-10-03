@@ -37,6 +37,7 @@ export interface PruneResult {
 
 import { safeFetch } from "../security/safe-fetch";
 import { isComboOnCooldown, markComboExhausted } from "./quota-tracker";
+import { TelemetryLogger } from "../telemetry/telemetry-logger";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
   // FIX DEFINITIVO (porta morta): normaliza qualquer URL apontando para a porta 8080
@@ -332,6 +333,135 @@ export class SmartRouter {
       reasoning,
       estimatedTokens: tokenEstimate,
       fallbackTriggered: false,
+    };
+  }
+
+  /**
+   * Classificador REAL de complexidade: uma chamada curta ao modelo FAST (o mais barato já
+   * configurado) pedindo um veredito fast/heavy com base no SIGNIFICADO do pedido — não em
+   * substring matching. Custo marginal = 1 chamada barata; nunca usa o modelo HEAVY para
+   * classificar (isso anularia a economia que o próprio tiering existe para gerar).
+   * Retorna null em qualquer falha/timeout/resposta não-parseável, para que o chamador caia
+   * de volta no heurístico sem quebrar o fluxo principal do chat.
+   */
+  public async classifyComplexity(
+    task: TaskPayload,
+    dispatchConfig: Omit<DispatchOptions, "messages" | "tier" | "stream" | "modelOverride">
+  ): Promise<{ tier: ModelTier; reasoning: string } | null> {
+    const classifierMessages: DispatchMessage[] = [
+      {
+        role: "system",
+        content:
+          'Você é um classificador de complexidade de tarefas de engenharia de software. ' +
+          'Responda SOMENTE com um JSON de uma linha, sem markdown e sem texto extra, no formato ' +
+          'exato: {"tier":"fast"|"heavy","reasoning":"motivo em até 15 palavras"}. ' +
+          '"heavy" = exige raciocínio arquitetural, múltiplos arquivos/módulos, segurança, ' +
+          'migração de schema/dados ou lógica não-trivial. ' +
+          '"fast" = pergunta direta, ajuste pontual, formatação, explicação ou conversa.',
+      },
+      { role: "user", content: task.prompt.slice(0, 4000) },
+    ];
+
+    try {
+      const dispatchRes = await this.dispatchWithFallback({
+        ...dispatchConfig,
+        messages: classifierMessages,
+        tier: "fast",
+        stream: false,
+        signal: AbortSignal.timeout(8000),
+      });
+      const json = await dispatchRes.response.json().catch(() => null);
+      const raw: string =
+        json?.choices?.[0]?.message?.content ??
+        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        "";
+      const match = raw.match(/\{[^{}]*"tier"\s*:\s*"(fast|heavy)"[^{}]*\}/i);
+      if (!match) return null;
+      const parsed = JSON.parse(match[0]);
+      if (parsed.tier !== "fast" && parsed.tier !== "heavy") return null;
+      return { tier: parsed.tier, reasoning: String(parsed.reasoning || "").slice(0, 200) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Roteamento por complexidade real (Opção A da revisão arquitetural): usa o heurístico de
+   * palavras-chave apenas como baseline/fallback barato, e tenta sobrepor um veredito real do
+   * classificador LLM. Toda decisão (heurística, LLM, concordância/divergência, latência) é
+   * registrada via TelemetryLogger — essa é a telemetria-base para, no futuro, treinar um
+   * roteador aprendido (Opção C) a partir de dados reais em vez de heurística ou só um LLM.
+   * Mensagens triviais (<15 tokens estimados) pulam a chamada extra: o ganho de precisão não
+   * compensa gastar uma chamada de rede num "oi"/"ok".
+   */
+  public async routeTaskSmart(
+    task: TaskPayload,
+    dispatchConfig: Omit<DispatchOptions, "messages" | "tier" | "stream" | "modelOverride">,
+    sessionId?: string
+  ): Promise<IntentAnalysis & { classifiedBy: "heuristic_trivial" | "heuristic_fallback" | "llm" }> {
+    const heuristic = this.routeTask(task);
+
+    if (heuristic.estimatedTokens < 15) {
+      TelemetryLogger.log({
+        sessionId,
+        action: "router.complexity_decision",
+        details: {
+          method: "heuristic_trivial",
+          heuristicTier: heuristic.tier,
+          finalTier: heuristic.tier,
+          estimatedTokens: heuristic.estimatedTokens,
+        },
+      });
+      return { ...heuristic, classifiedBy: "heuristic_trivial" };
+    }
+
+    const startedAt = Date.now();
+    const llmResult = await this.classifyComplexity(task, dispatchConfig).catch(() => null);
+    const latencyMs = Date.now() - startedAt;
+
+    if (!llmResult) {
+      TelemetryLogger.log({
+        sessionId,
+        action: "router.complexity_decision",
+        details: {
+          method: "heuristic_fallback",
+          heuristicTier: heuristic.tier,
+          finalTier: heuristic.tier,
+          estimatedTokens: heuristic.estimatedTokens,
+          latencyMs,
+        },
+        durationMs: latencyMs,
+      });
+      return { ...heuristic, classifiedBy: "heuristic_fallback" };
+    }
+
+    const finalTier = llmResult.tier;
+    const agree = finalTier === heuristic.tier;
+    const targetModel = finalTier === "heavy" ? "claude-3-7-sonnet" : FAST_MODEL;
+
+    TelemetryLogger.log({
+      sessionId,
+      action: "router.complexity_decision",
+      details: {
+        method: "llm",
+        heuristicTier: heuristic.tier,
+        llmTier: finalTier,
+        finalTier,
+        agree,
+        llmReasoning: llmResult.reasoning,
+        estimatedTokens: heuristic.estimatedTokens,
+        latencyMs,
+      },
+      durationMs: latencyMs,
+    });
+
+    return {
+      ...heuristic,
+      tier: finalTier,
+      targetModel,
+      actualModelUsed: targetModel,
+      reasoning: `${llmResult.reasoning} (classificador LLM; heurística sugeria "${heuristic.tier}", ${agree ? "concordância" : "divergência"})`,
+      classifiedBy: "llm",
     };
   }
 
