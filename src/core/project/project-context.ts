@@ -202,7 +202,13 @@ export function formatProjectContext(snapshot: ProjectSnapshot): string {
   parts.push(`\n--- Estrutura de arquivos ---\n${snapshot.tree.join("\n")}`);
   parts.push("</project_context>");
   parts.push(
-    "\nInstrução: as perguntas do usuário podem se referir a 'o projeto'. Use o contexto acima para responder com conhecimento real dos arquivos. Se faltar informação, peça para abrir arquivos específicos pelo caminho."
+    "\nREGRAS ESTRITAS DE ARQUITETURA E COMPILAÇÃO NEXTCODE:\n" +
+    "- As perguntas do usuário podem se referir a 'o projeto'. Use o contexto do projeto acima para responder com conhecimento real.\n" +
+    "- Next.js App Router (page.tsx / layout.tsx): TODO arquivo de página/layout DEVE exportar uma função padrão (`export default function Page()`).\n" +
+    "- Rotas de API (route.ts / route.js): TODO arquivo de rota DEVE exportar pelo menos um método HTTP (`export async function GET`, `POST`, etc.).\n" +
+    "- Arquivos CSS (.css): NUNCA use `//` para comentários. Use estritamente `/* ... */`.\n" +
+    "- Resposta Executiva: Apresente respostas limpas, organizadas e estratégicas (padrão Claude/Gemini), sem repetir logs de sistema ou JSONs brutos da IDE.\n" +
+    "- Se faltar informação, solicite abrir arquivos específicos pelo caminho."
   );
 
   let text = parts.join("\n");

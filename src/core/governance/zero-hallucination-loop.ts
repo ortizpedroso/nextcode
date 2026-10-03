@@ -75,8 +75,9 @@ export class ZeroHallucinationEngine {
         ...type1Res.testFailures,
       ];
 
-      // Remove frases triunfantes alucinadas da IA (ex: "Corrigi com sucesso") e substitui por aviso real
-      const sanitizedAiText = cleanResponse
+      // Remove frases triunfantes e selos de conclusão falsa quando o patch falha na quarentena
+      let sanitizedAiText = cleanResponse
+        .replace(/⚡\s*\[Skill[^\]]*\]\s*—\s*Execução Autônoma Concluída!/gi, "")
         .replace(/^(?:Corrigi|Corrigido|Sucesso|Apliquei|Atualizei|Resolvi|O arquivo|O erro)[\s\S]*?(?=```)/gi, "")
         .trim();
 
