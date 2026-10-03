@@ -52,6 +52,34 @@ export class DualLensAuditor {
     const securityViolations: string[] = [];
     const testFailures: string[] = [];
 
+    // Pré-passo: coleta todos os modelos Prisma realmente declarados (lote atual +
+    // schema.prisma em disco, quando projectRoot é fornecido) para o guard de alucinação
+    // de modelo abaixo (0.8). Só ativa o guard quando existe pelo menos uma fonte de schema
+    // para comparar — sem isso, ausência de dado se tornaria falso-positivo.
+    const declaredModelAccessors = new Set<string>();
+    let hasSchemaSource = false;
+    const collectModelAccessors = (schemaContent: string) => {
+      hasSchemaSource = true;
+      for (const m of schemaContent.matchAll(/model\s+([a-zA-Z0-9_]+)\s*\{/g)) {
+        declaredModelAccessors.add(m[1].charAt(0).toLowerCase() + m[1].slice(1));
+      }
+    };
+    for (const [batchPath, batchContent] of Object.entries(codeContentMap)) {
+      if (batchPath.toLowerCase().endsWith(".prisma")) {
+        collectModelAccessors(batchContent);
+      }
+    }
+    if (projectRoot) {
+      const diskSchemaPath = require("path").join(projectRoot, "prisma", "schema.prisma");
+      try {
+        if (require("fs").existsSync(diskSchemaPath)) {
+          collectModelAccessors(require("fs").readFileSync(diskSchemaPath, "utf-8"));
+        }
+      } catch {
+        // Leitura do schema em disco falhou — segue sem essa fonte, sem quebrar a auditoria.
+      }
+    }
+
     for (const [filePath, content] of Object.entries(codeContentMap)) {
       // 0. Validação mecânica estrita para arquivos .json (Linter determinístico)
       if (filePath.toLowerCase().endsWith(".json")) {
@@ -197,6 +225,25 @@ export class DualLensAuditor {
               );
             }
           }
+        }
+      }
+
+      // 4.5 Prisma Model Hallucination Guard: detecta "prisma.<model>." cujo modelo não
+      // está declarado em nenhum schema.prisma (lote atual ou disco) — causa raiz do caso
+      // original (prisma.transaction.* sem nenhum "model Transaction" declarado em lugar
+      // nenhum). "$"-prefixados (ex.: prisma.$transaction) são métodos do Client, não modelos,
+      // e não casam com a classe de caracteres do regex abaixo.
+      if (hasSchemaSource && (filePath.endsWith(".ts") || filePath.endsWith(".tsx"))) {
+        const prismaUsageRegex = /\bprisma\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\./g;
+        const alreadyReported = new Set<string>();
+        let usageMatch: RegExpExecArray | null;
+        while ((usageMatch = prismaUsageRegex.exec(content)) !== null) {
+          const accessor = usageMatch[1];
+          if (declaredModelAccessors.has(accessor) || alreadyReported.has(accessor)) continue;
+          alreadyReported.add(accessor);
+          compilationErrors.push(
+            `[PRISMA MODEL HALLUCINATION] ${filePath} usa "prisma.${accessor}." mas nenhum modelo correspondente a "${accessor}" está declarado em schema.prisma.`
+          );
         }
       }
     }

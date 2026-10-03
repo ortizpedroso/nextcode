@@ -234,8 +234,16 @@ export class ZeroHallucinationEngine {
     const strippedProse = stripCodeBlocks(cleanResponse);
     mineTelemetryInBackground();
 
+    // Item (B): a verificação empírica (type-check real pós-promoção) agora afeta o
+    // veredito final. Antes, `passed` era sempre `true` aqui mesmo quando o build real
+    // falhava — o chamador (loop de auto-healing no chat/route.ts) nunca via o build
+    // quebrado como motivo de retry, e o usuário recebia "sucesso" com um aviso solto no
+    // meio do texto. Não desfaz a promoção (Tipo 1+Tipo 2 já aprovaram os arquivos
+    // isoladamente) — só reporta corretamente que a etapa não passou de ponta a ponta.
+    const empiricalPassed = empiricalBuildResult ? empiricalBuildResult.success : true;
+
     return {
-      passed: true,
+      passed: empiricalPassed,
       promotedFiles,
       auditorResult: type1Res,
       type2Result: type2Res,

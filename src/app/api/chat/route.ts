@@ -280,6 +280,14 @@ export async function POST(request: NextRequest) {
       for (let attempt = 1; attempt <= MAX_AUTO_HEAL_ATTEMPTS; attempt++) {
         const attemptMessages = [...dispatchMessages];
         if (attempt > 1 && zeroEngineRes && !zeroEngineRes.passed) {
+          const empiricalErrorLines =
+            zeroEngineRes.empiricalBuildResult && !zeroEngineRes.empiricalBuildResult.success
+              ? `${zeroEngineRes.empiricalBuildResult.stdout}\n${zeroEngineRes.empiricalBuildResult.stderr}`
+                  .split("\n")
+                  .filter((l) => l.includes("error TS"))
+                  .slice(0, 5)
+                  .join(" | ")
+              : "";
           const prevError =
             zeroEngineRes.type2Result?.rejectionReason ||
             [
@@ -287,6 +295,7 @@ export async function POST(request: NextRequest) {
               ...zeroEngineRes.auditorResult.securityViolations,
               ...zeroEngineRes.auditorResult.testFailures,
             ].join(" | ") ||
+            empiricalErrorLines ||
             "Erros de compilação/sintaxe.";
           attemptMessages.push({
             role: "system",

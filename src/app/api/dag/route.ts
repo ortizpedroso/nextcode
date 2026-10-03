@@ -462,6 +462,9 @@ DIRETRIZES DE EXECUÇÃO:
               action: "EMPIRICAL_BUILD_FAILED",
               details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
             });
+            // Item (B): antes o nó ficava "completed" mesmo com o type-check real do projeto
+            // quebrado — a DAG avançava sobre uma base inválida sem nenhum sinal de retry.
+            finalStatus = "failed";
           }
         } else {
           finalStatus = "failed";
@@ -477,8 +480,17 @@ DIRETRIZES DE EXECUÇÃO:
           });
         }
 
+        const empiricalFailureReason =
+          finalStatus === "failed" && empiricalBuildResult && !empiricalBuildResult.success
+            ? `Verificação empírica (type-check real pós-promoção) falhou: ${
+                `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
+                  .split("\n")
+                  .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção"
+              }`
+            : undefined;
+
         mcpRes = {
-          success: type2Res.verdict === "APPROVED",
+          success: finalStatus === "completed",
           nodeId: task.id,
           title: task.title,
           output: stepResultText,
@@ -486,6 +498,7 @@ DIRETRIZES DE EXECUÇÃO:
           auditMethod: type2Res.method,
           promotedPath: promotionTarget,
           empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
+          rejectionReason: empiricalFailureReason || (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason : undefined),
         };
       } catch (err) {
         finalStatus = "failed";
@@ -791,6 +804,7 @@ DIRETRIZES DE EXECUÇÃO:
           // retry para failed/blocked).
           let finalStatus: "completed" | "failed" | "blocked" = "completed";
           let promotionTarget: string | null = null;
+          let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
           const newAttempts = (taskDb.attempts || 0) + 1;
           let mcpRes: Record<string, unknown>;
 
@@ -812,6 +826,25 @@ DIRETRIZES DE EXECUÇÃO:
               finalStatus = "completed";
               qm.promoteToMainRepo(taskDb.id, targetProjectRoot, filesScopeArr);
               promotionTarget = targetProjectRoot;
+
+              // Item (B): até aqui, process_queue (lote em massa) era o único dos 3 caminhos
+              // de execução que nem chamava a verificação empírica (type-check real pós-
+              // promoção) — execute_node e o chat já faziam essa prova. Sem isso, um nó
+              // processado em lote podia ser promovido com o build real quebrado e nunca
+              // sinalizar retry, diferente dos outros dois caminhos.
+              empiricalBuildResult = await TerminalExecutionEngine.verifyProjectBuild(targetProjectRoot);
+              if (empiricalBuildResult && !empiricalBuildResult.success) {
+                const firstErrorLine =
+                  `${empiricalBuildResult.stdout}\n${empiricalBuildResult.stderr}`
+                    .split("\n")
+                    .find((l) => l.includes("error TS")) || "falha no type-check pós-promoção";
+                TelemetryLogger.log({
+                  sessionId: targetSessionId,
+                  action: "EMPIRICAL_BUILD_FAILED",
+                  details: { errorSignature: buildErrorSignature("build", firstErrorLine), sample: firstErrorLine },
+                });
+                finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
+              }
             } else {
               qm.purgeWorkspace(taskDb.id);
               finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
@@ -827,13 +860,14 @@ DIRETRIZES DE EXECUÇÃO:
             }
 
             mcpRes = {
-              success: type2Res.verdict === "APPROVED",
+              success: finalStatus === "completed",
               nodeId: taskDb.id,
               title: taskDb.title,
               output: stepResultText,
               auditVerdict: type2Res.verdict,
               auditMethod: type2Res.method,
               promotedPath: promotionTarget,
+              empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
             };
           } catch (err) {
             finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
