@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { SandboxedTerminalSkill } from "@/core/skills/sandboxed-terminal";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -21,6 +22,12 @@ export async function POST(request: NextRequest) {
     // com as demais rotas de terminal (ver SandboxedTerminalSkill).
     const blockReason = SandboxedTerminalSkill.checkBlacklist(trimmedCmd);
     if (blockReason) {
+      // Trava T3: comando bloqueado antes de chegar à sandbox também entra na trilha de auditoria.
+      TelemetryLogger.log({
+        sessionId: typeof sessionId === "string" ? sessionId : undefined,
+        action: "TERMINAL_COMMAND_BLOCKED",
+        details: { command: trimmedCmd.slice(0, 2000), reason: blockReason },
+      });
       return NextResponse.json(
         {
           error: "Comando Proibido (Jail Guard)",
@@ -48,7 +55,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Executa o comando com timeout de 15s e limite de buffer de 2MB (via sandbox compartilhada)
-    const result = await SandboxedTerminalSkill.execute(trimmedCmd, executionCwd, 15000);
+    const result = await SandboxedTerminalSkill.execute(
+      trimmedCmd,
+      executionCwd,
+      15000,
+      typeof sessionId === "string" ? sessionId : undefined
+    );
 
     return NextResponse.json({
       success: result.success,

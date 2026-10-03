@@ -1,5 +1,6 @@
 import { exec, execFile } from "child_process";
 import { ContextPruner } from "../headroom/context-pruner";
+import { TelemetryLogger } from "../telemetry/telemetry-logger";
 
 export interface TerminalExecutionResult {
   success: boolean;
@@ -72,7 +73,25 @@ export class SandboxedTerminalSkill {
   public static async execute(
     command: string,
     cwd: string = process.cwd(),
-    timeoutMs: number = 30000
+    timeoutMs: number = 30000,
+    sessionId?: string
+  ): Promise<TerminalExecutionResult> {
+    const startedAt = Date.now();
+    const result = await SandboxedTerminalSkill.executeUnlogged(command, cwd, timeoutMs);
+    // Trava T3 (Audit Trail): todo comando executado (ou bloqueado) fica registrado no SQLite.
+    TelemetryLogger.log({
+      sessionId,
+      action: result.error === "Comando bloqueado por segurança." ? "TERMINAL_COMMAND_BLOCKED" : "TERMINAL_COMMAND_EXECUTED",
+      details: { command: command.slice(0, 2000), cwd, success: result.success, exitCode: result.exitCode },
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  }
+
+  private static async executeUnlogged(
+    command: string,
+    cwd: string,
+    timeoutMs: number
   ): Promise<TerminalExecutionResult> {
     // 1. Verificação da lista de bloqueio de segurança (Blacklist)
     const blockReason = SandboxedTerminalSkill.checkBlacklist(command);
