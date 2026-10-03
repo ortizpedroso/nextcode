@@ -182,7 +182,11 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       };
       const res1 = DualLensAuditor.validateType1(codeMap);
 
-      const brokenDispatchFn = async () => "isso não é JSON válido";
+      let calls = 0;
+      const brokenDispatchFn = async () => {
+        calls++;
+        return "isso não é JSON válido";
+      };
 
       const res2 = await DualLensAuditor.validateType2(
         res1,
@@ -194,6 +198,24 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
 
       expect(res2.method).toBe("heuristic_fallback");
       expect(res2.verdict).toBe("REJECTED");
+      expect(calls).toBe(2); // uma nova chamada ao auditor antes de desistir
+    });
+
+    it("Trava T5: falha momentânea da Lente Cega é recuperada na nova chamada, sem gastar tentativa do nó", async () => {
+      const codeMap = { "src/good.ts": "export const sum = (a: number, b: number): number => a + b;" };
+      const res1 = DualLensAuditor.validateType1(codeMap);
+
+      let calls = 0;
+      const flakyDispatchFn = async () => {
+        calls++;
+        if (calls === 1) throw new Error("timeout");
+        return JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok" });
+      };
+
+      const res2 = await DualLensAuditor.validateType2(res1, "# Brief", "feito", codeMap, flakyDispatchFn);
+      expect(calls).toBe(2);
+      expect(res2.method).toBe("llm_blind");
+      expect(res2.verdict).toBe("APPROVED");
     });
 
     it("schema.prisma do lote substitui o do disco no guard de alucinação de modelo Prisma", () => {

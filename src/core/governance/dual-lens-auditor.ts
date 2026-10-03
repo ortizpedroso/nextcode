@@ -305,6 +305,9 @@ export class DualLensAuditor {
     };
   }
 
+  /** Chamadas à Lente Cega antes de cair no fallback (que rejeita). */
+  private static readonly BLIND_LENS_MAX_CALLS = 2;
+
   private static readonly SUCCESS_KEYWORDS = [
     "concluído",
     "concluido",
@@ -346,7 +349,7 @@ export class DualLensAuditor {
     // entrar no ciclo normal de retry (e, persistindo, no bloqueio D-RANHO da Trava T6).
     const verdict = "REJECTED" as const;
     const rejectionReason =
-      "Auditoria cega (Tipo 2) indisponível — o auditor LLM não respondeu um veredito válido, então não houve verificação semântica do código contra o Brief e nada foi promovido.";
+      "Auditoria cega (Tipo 2) indisponível — o auditor LLM não respondeu um veredito válido (nem na nova chamada), então não houve verificação semântica do código contra o Brief e nada foi promovido.";
 
     const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (INDISPONÍVEL)]
 - Arquivos no escopo: ${filesInScope.join(", ")}
@@ -460,9 +463,15 @@ export class DualLensAuditor {
     const filesInScope = Object.keys(codeContentMap);
 
     if (dispatchFn) {
-      const blindVerdict = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn).catch(
-        () => null
-      );
+      // Sem veredito da Lente Cega o fallback rejeita — então uma instabilidade momentânea do
+      // provedor (timeout, JSON truncado) custaria uma tentativa inteira do nó, com nova
+      // geração do worker. Uma nova chamada só ao auditor é muito mais barata.
+      let blindVerdict: BlindAuditVerdict | null = null;
+      for (let call = 1; call <= DualLensAuditor.BLIND_LENS_MAX_CALLS && !blindVerdict; call++) {
+        blindVerdict = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn).catch(
+          () => null
+        );
+      }
 
       if (blindVerdict) {
         const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport);
