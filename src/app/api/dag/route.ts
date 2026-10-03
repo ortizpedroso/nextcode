@@ -444,6 +444,17 @@ DIRETRIZES DE EXECUÇÃO:
           makeBlindAuditDispatchFn(smartRouter, setting)
         );
 
+        if (type2Res.divergenceDetected) {
+          TelemetryLogger.log({
+            sessionId: task.sessionId,
+            action: "WORKER_SELF_REPORT_DIVERGENCE",
+            details: {
+              errorSignature: buildErrorSignature("divergence", `nodeId=${task.id}|verdict=${type2Res.verdict}`),
+              sample: type2Res.lens2CrossVerification,
+            },
+          });
+        }
+
         if (type2Res.verdict === "APPROVED") {
           finalStatus = "completed";
           qm.promoteToMainRepo(task.id, targetProjectRoot, filesScope);
@@ -821,6 +832,17 @@ DIRETRIZES DE EXECUÇÃO:
               codeContentMap,
               makeBlindAuditDispatchFn(smartRouter, setting)
             );
+
+            if (type2Res.divergenceDetected) {
+              TelemetryLogger.log({
+                sessionId: targetSessionId,
+                action: "WORKER_SELF_REPORT_DIVERGENCE",
+                details: {
+                  errorSignature: buildErrorSignature("divergence", `nodeId=${taskDb.id}|verdict=${type2Res.verdict}`),
+                  sample: type2Res.lens2CrossVerification,
+                },
+              });
+            }
 
             if (type2Res.verdict === "APPROVED") {
               finalStatus = "completed";

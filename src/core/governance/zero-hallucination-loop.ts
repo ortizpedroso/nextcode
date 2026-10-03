@@ -161,6 +161,21 @@ export class ZeroHallucinationEngine {
       dispatchFn
     );
 
+    // Sinal de telemetria (não afeta o verdict, que já é decidido só pela Lente Cega):
+    // a IA alegou um resultado (sucesso/falha) desalinhado com a leitura real do código.
+    // Divergência recorrente do mesmo worker/modelo é o próprio padrão de alucinação que
+    // esta trava existe para flagar, mesmo quando o código final acaba aprovado.
+    if (type2Res.divergenceDetected) {
+      TelemetryLogger.log({
+        sessionId: taskId,
+        action: "WORKER_SELF_REPORT_DIVERGENCE",
+        details: {
+          errorSignature: buildErrorSignature("divergence", `verdict=${type2Res.verdict}`),
+          sample: type2Res.lens2CrossVerification,
+        },
+      });
+    }
+
     if (type2Res.verdict !== "APPROVED") {
       qm.purgeWorkspace(taskId);
       const groundedMessage = `⚠️ **[NextCode Anti-Hallucination Guard]** Auditoria semântica (Tipo 2) reprovou a alteração — nada foi promovido para o disco:\n\n${

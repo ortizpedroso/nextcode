@@ -26,6 +26,15 @@ export interface ValidationType2Result {
    * "n/a": Tipo 1 já reprovou, então a Lente 2 nem chegou a ser avaliada.
    */
   method: "llm_blind" | "heuristic_fallback" | "n/a";
+  /**
+   * true quando a alegação do worker (claimedSuccess) diverge do veredito independente da
+   * Lente Cega (blindVerdict.implemented) — só é calculável no método "llm_blind". O verdict
+   * final já é decidido exclusivamente pela Lente Cega (a única leitura real do código), então
+   * essa divergência nunca muda o resultado — ela é sinal de telemetria: um worker que relata
+   * conclusão de forma recorrentemente desalinhada da realidade do código é o próprio padrão de
+   * alucinação que esta trava existe para detectar, mesmo quando o código final acaba aprovado.
+   */
+  divergenceDetected?: boolean;
 }
 
 export interface BlindAuditVerdict {
@@ -446,6 +455,7 @@ export class DualLensAuditor {
                 }`
               : undefined,
           method: "llm_blind",
+          divergenceDetected: divergence,
         };
       }
     }
