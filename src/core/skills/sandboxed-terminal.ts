@@ -141,13 +141,22 @@ export class SandboxedTerminalSkill {
     });
   }
 
+  /**
+   * No Windows, roda via powershell.exe explícito (-Command) em vez do cmd.exe
+   * padrão do child_process.exec — parsing de argumentos mais seguro que o cmd
+   * (sem as armadilhas clássicas de aspas/escape do cmd.exe) e saída consistente
+   * com o resto da stack (Settings, testes manuais). Em hosts POSIX (ex.: dentro
+   * do container do runInJail) continua via /bin/sh padrão do exec.
+   */
   private static runLocal(
     command: string,
     cwd: string,
     timeoutMs: number
   ): Promise<TerminalExecutionResult> {
+    const options = { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 };
+
     return new Promise((resolve) => {
-      exec(command, { cwd, timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      const onDone = (error: { message: string; code?: number | string | null } | null, stdout: string, stderr: string) => {
         const fullOutput = (stdout + "\n" + stderr).trim();
         const prunedOutput = ContextPruner.prune(fullOutput, {
           maxLines: 80,
@@ -160,7 +169,7 @@ export class SandboxedTerminalSkill {
             command,
             stdout,
             stderr,
-            exitCode: error.code || 1,
+            exitCode: typeof error.code === "number" ? error.code : 1,
             prunedOutput,
             error: error.message,
           });
@@ -174,7 +183,13 @@ export class SandboxedTerminalSkill {
             prunedOutput,
           });
         }
-      });
+      };
+
+      if (process.platform === "win32") {
+        execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], options, onDone);
+      } else {
+        exec(command, options, onDone);
+      }
     });
   }
 }
