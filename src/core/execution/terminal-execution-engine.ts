@@ -109,6 +109,60 @@ export class TerminalExecutionEngine {
   }
 
   /**
+   * ESLint real nos arquivos promovidos, com o ESLint e a configuração do PRÓPRIO projeto.
+   * Retorna os erros (severity 2) como chaves sem linha/coluna (`[ESLINT] arquivo: regra — msg`),
+   * para comparar antes vs. depois no portão empírico. Retorna null (verificação não se
+   * aplica) quando o projeto não tem ESLint instalado, não há arquivo JS/TS para analisar, a
+   * saída não é JSON (config quebrada) ou quando a própria promoção traz um arquivo de
+   * configuração do ESLint — config é JavaScript executável, e rodá-la executaria código
+   * gerado pela IA fora de sandbox.
+   */
+  public static async verifyProjectLint(
+    projectPath: string,
+    relativeFiles: string[],
+    timeoutMs: number = 60000
+  ): Promise<{ result: CommandResult; errors: string[] } | null> {
+    if (!projectPath) return null;
+    const eslintBin = path.join(projectPath, "node_modules", "eslint", "bin", "eslint.js");
+    if (!fs.existsSync(eslintBin)) return null;
+
+    const normalized = relativeFiles.map((f) => f.replace(/\\/g, "/"));
+    if (normalized.some((f) => /(^|\/)(eslint\.config\.[cm]?[jt]s|\.eslintrc(\.[cm]?js)?)$/i.test(f))) {
+      console.warn("[EMPIRICAL_GATE] ESLint ignorado: a promoção altera a configuração do ESLint (código executável).");
+      return null;
+    }
+    const lintable = normalized.filter(
+      (f) => /\.(?:[cm]?[jt]sx?)$/i.test(f) && fs.existsSync(path.join(projectPath, f))
+    );
+    if (lintable.length === 0) return null;
+
+    const quoted = lintable.map((f) => `"${f.replace(/"/g, "")}"`).join(" ");
+    const result = await TerminalExecutionEngine.runCommand(
+      `node "${eslintBin}" --format json ${quoted}`,
+      projectPath,
+      timeoutMs
+    );
+
+    let report: Array<{ filePath: string; messages: Array<{ ruleId: string | null; severity: number; message: string }> }>;
+    try {
+      report = JSON.parse(result.stdout);
+    } catch {
+      console.warn("[EMPIRICAL_GATE] ESLint não produziu JSON válido (config do projeto quebrada?) — etapa ignorada.");
+      return null;
+    }
+
+    const errors: string[] = [];
+    for (const fileReport of report) {
+      const rel = path.relative(projectPath, fileReport.filePath).replace(/\\/g, "/");
+      for (const msg of fileReport.messages || []) {
+        if (msg.severity !== 2) continue;
+        errors.push(`[ESLINT] ${rel}: ${msg.ruleId || "parse-error"} — ${msg.message}`);
+      }
+    }
+    return { result, errors: Array.from(new Set(errors)) };
+  }
+
+  /**
    * Interrompe processos que estejam ocupando uma determinada porta local (ex: 3000).
    */
   public static killProcessOnPort(port: number): boolean {

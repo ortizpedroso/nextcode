@@ -50,6 +50,22 @@ export type LLMDispatchFn = (
   messages: { role: "system" | "user"; content: string }[]
 ) => Promise<string | null>;
 
+const SCRIPT_FILE_RE = /\.(?:[cm]?[jt]sx?)$/i;
+
+type TypeScriptModule = typeof import("typescript");
+let cachedTypeScript: TypeScriptModule | null | undefined;
+/** typescript é devDependency: carregado sob demanda; null se não estiver instalado. */
+function loadTypeScript(): TypeScriptModule | null {
+  if (cachedTypeScript === undefined) {
+    try {
+      cachedTypeScript = require("typescript") as TypeScriptModule;
+    } catch {
+      cachedTypeScript = null;
+    }
+  }
+  return cachedTypeScript;
+}
+
 /** Normaliza um caminho relativo para comparação de escopo (separador, "./" e "/" iniciais). */
 export function normalizeScopePath(p: string): string {
   return p.trim().replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
@@ -214,17 +230,25 @@ export class DualLensAuditor {
         }
       }
 
-      // 2. Validação sintática de balanço de escopo (chaves/parênteses/colchetes)
-      const openCurly = (content.match(/\{/g) || []).length;
-      const closeCurly = (content.match(/\}/g) || []).length;
-      const openParen = (content.match(/\(/g) || []).length;
-      const closeParen = (content.match(/\)/g) || []).length;
+      // 2. Validação sintática. Para JS/TS usa o parser real do TypeScript: a contagem de
+      // chaves/parênteses dava falso positivo com "{" dentro de strings, template literals,
+      // regex e comentários, e não pegava erros com contagem balanceada ("const = 1;").
+      const syntaxErrors = SCRIPT_FILE_RE.test(filePath) ? DualLensAuditor.parseScriptSyntax(filePath, content) : null;
+      if (syntaxErrors) {
+        compilationErrors.push(...syntaxErrors);
+      } else {
+        // Demais arquivos (ou typescript indisponível): balanço de chaves/parênteses.
+        const openCurly = (content.match(/\{/g) || []).length;
+        const closeCurly = (content.match(/\}/g) || []).length;
+        const openParen = (content.match(/\(/g) || []).length;
+        const closeParen = (content.match(/\)/g) || []).length;
 
-      if (Math.abs(openCurly - closeCurly) > 0) {
-        compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de chaves ({ }) detectado em ${filePath} (${openCurly} abertas, ${closeCurly} fechadas)`);
-      }
-      if (Math.abs(openParen - closeParen) > 0) {
-        compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de parênteses (( )) detectado em ${filePath} (${openParen} abertos, ${closeParen} fechados)`);
+        if (Math.abs(openCurly - closeCurly) > 0) {
+          compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de chaves ({ }) detectado em ${filePath} (${openCurly} abertas, ${closeCurly} fechadas)`);
+        }
+        if (Math.abs(openParen - closeParen) > 0) {
+          compilationErrors.push(`[SYNTAX ERROR] Desbalanceamento de parênteses (( )) detectado em ${filePath} (${openParen} abertos, ${closeParen} fechados)`);
+        }
       }
 
       // 3. Regra de tipagem estrita (Aviso de Clean Code registrado)
@@ -307,6 +331,27 @@ export class DualLensAuditor {
 
   /** Chamadas à Lente Cega antes de cair no fallback (que rejeita). */
   private static readonly BLIND_LENS_MAX_CALLS = 2;
+
+  /**
+   * Erros de SINTAXE (não de tipo) de um arquivo JS/TS pelo parser do TypeScript — sem
+   * executar o código e sem custo de token. Tipos são verificados depois, contra o projeto
+   * inteiro, pelo portão empírico (empirical-gate.ts). Retorna null se o typescript não
+   * estiver disponível (o chamador cai na checagem de balanço).
+   */
+  private static parseScriptSyntax(filePath: string, content: string): string[] | null {
+    const ts = loadTypeScript();
+    if (!ts) return null;
+    const output = ts.transpileModule(content, {
+      fileName: filePath,
+      reportDiagnostics: true,
+      compilerOptions: { jsx: ts.JsxEmit.Preserve, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+    });
+    return (output.diagnostics || []).slice(0, 5).map((d) => {
+      const message = ts.flattenDiagnosticMessageText(d.messageText, " ");
+      const line = d.file && d.start !== undefined ? d.file.getLineAndCharacterOfPosition(d.start).line + 1 : null;
+      return `[SYNTAX ERROR] ${filePath}${line ? `:${line}` : ""} — TS${d.code}: ${message}`;
+    });
+  }
 
   private static readonly SUCCESS_KEYWORDS = [
     "concluído",

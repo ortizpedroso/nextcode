@@ -14,7 +14,7 @@ import { stripErrorLogLines } from "../intake/input-preprocessor";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import { buildErrorSignature } from "../telemetry/error-signature";
 import { SkillMiner } from "../telemetry/skill-miner";
-import { promoteWithEmpiricalGate, firstBuildErrorLine } from "./empirical-gate";
+import { promoteWithEmpiricalGate, empiricalStageLabel } from "./empirical-gate";
 
 /** Minera telemetria em plano de fundo (retrabalho recorrente -> proposta de skill; erro
  * recorrente do próprio NextCode -> proposta de bug_pattern). Nunca bloqueia a resposta ao
@@ -32,6 +32,8 @@ export interface ZeroHallucinationExecutionResult {
   groundedMessage: string;
   workspaceResult?: WorkspaceWriteResult;
   empiricalBuildResult?: CommandResult | null;
+  /** Erros novos que reprovaram a prova empírica (type-check ou ESLint), já resumidos. */
+  empiricalFailure?: string;
 }
 
 /** Monta um bloco curto (não um dump) com o resultado real do type-check pós-promoção. */
@@ -216,6 +218,8 @@ export class ZeroHallucinationEngine {
     let executionBadge = "";
     let empiricalBuildResult: CommandResult | null = null;
     let empiricalPassed = true;
+    // Motivo da reprovação empírica (tsc ou ESLint) para o feedback do auto-healing no chat.
+    let empiricalFailure: string | undefined;
     let workspaceResult: WorkspaceWriteResult;
     if (envAdapter.getMode() === "LOCAL" && projectPath) {
       // Trava T4: em modo local a ÚNICA escrita no projeto é a promoção da quarentena (o
@@ -232,27 +236,35 @@ export class ZeroHallucinationEngine {
       };
 
       if (gate.rolledBack) {
-        executionBadge = `⚠️ **[NextCode Anti-Hallucination Guard] (Modo Local)** — o type-check real do projeto reprovou a alteração e a promoção foi DESFEITA; nenhum dos ${promotedFiles.length} arquivo(s) permaneceu no disco.`;
+        executionBadge = `⚠️ **[NextCode Anti-Hallucination Guard] (Modo Local)** — o ${empiricalStageLabel(gate.failedStage)} reprovou a alteração e a promoção foi DESFEITA; nenhum dos ${promotedFiles.length} arquivo(s) permaneceu no disco.`;
       } else {
         executionBadge = `⚡ **[NextCode Anti-Hallucination Guard] (0 Erros - Modo Local)** — ${promotedFiles.length} arquivo(s) validado(s) e salvo(s) no disco:\n${checklist}`;
       }
       if (empiricalBuildResult) {
         executionBadge += formatEmpiricalBuildBadge(empiricalBuildResult);
-        if (gate.preexistingFailure) {
-          executionBadge += `\n\nℹ️ _Os erros acima já existiam no projeto antes desta alteração — ela não introduziu nenhum erro novo._`;
-        }
-        if (!gate.passed) {
-          const firstErrorLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
-          TelemetryLogger.log({
-            sessionId: taskId,
-            action: "EMPIRICAL_BUILD_FAILED",
-            details: {
-              errorSignature: buildErrorSignature("build", firstErrorLine),
-              sample: firstErrorLine,
-              rolledBack: gate.rolledBack,
-            },
-          });
-        }
+      }
+      if (gate.failedStage === "lint") {
+        executionBadge += `\n\n❌ **ESLint (erros novos introduzidos):**\n${gate.newErrors
+          .slice(0, 5)
+          .map((e) => `- \`${e}\``)
+          .join("\n")}`;
+      }
+      if (gate.preexistingFailure) {
+        executionBadge += `\n\nℹ️ _O projeto já tinha erros antes desta alteração — ela não introduziu nenhum erro novo._`;
+      }
+      if (!gate.passed) {
+        empiricalFailure = `${empiricalStageLabel(gate.failedStage)}: ${gate.newErrors.slice(0, 5).join(" | ") || gate.failureLine}`;
+        const firstErrorLine = gate.failureLine || "falha na verificação empírica pós-promoção";
+        TelemetryLogger.log({
+          sessionId: taskId,
+          action: "EMPIRICAL_BUILD_FAILED",
+          details: {
+            errorSignature: buildErrorSignature("build", firstErrorLine),
+            sample: firstErrorLine,
+            stage: gate.failedStage,
+            rolledBack: gate.rolledBack,
+          },
+        });
       }
     } else {
       workspaceResult = envAdapter.writeFilesToWorkspace(codeMap);
@@ -272,6 +284,7 @@ export class ZeroHallucinationEngine {
       groundedMessage: `${strippedProse ? `${strippedProse}\n\n` : ""}${executionBadge}`,
       workspaceResult,
       empiricalBuildResult,
+      empiricalFailure,
     };
   }
 }

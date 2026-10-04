@@ -60,6 +60,15 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     },
   },
   {
+    match: /\[ESLINT\]|ESLint real p[oó]s-promo[cç][aã]o/i,
+    category: {
+      key: "lint",
+      label: "ESLint do projeto reprovado (promoção desfeita)",
+      humanAction:
+        "O código compila, mas viola regras do ESLint configuradas no próprio projeto (ex.: react-hooks, imports). Veja a regra citada em cada erro abaixo: ajuste o requisito na Spec para respeitá-la ou, se a regra não se aplica a esse caso, ajuste a configuração do ESLint do projeto.",
+    },
+  },
+  {
     match: /Verifica[cç][aã]o emp[ií]rica|error TS/i,
     category: {
       key: "build",

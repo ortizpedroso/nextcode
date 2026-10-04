@@ -10,6 +10,7 @@ import { normalizeScopePath } from "./dual-lens-auditor";
 
 interface PromotionSnapshotEntry {
   destPath: string;
+  relativePath: string;
   previous: Buffer | null;
   promoted: Buffer;
 }
@@ -349,6 +350,7 @@ export class QuarantineManager {
         }
         snapshot.push({
           destPath,
+          relativePath: normalizeScopePath(fileRel),
           previous: fs.existsSync(destPath) ? fs.readFileSync(destPath) : null,
           promoted: fs.readFileSync(sourcePath),
         });
@@ -376,6 +378,12 @@ export class QuarantineManager {
       }
     }
     return snapshot.map((e) => e.destPath);
+  }
+
+  /** Caminhos relativos ao projeto efetivamente copiados na última promoção da tarefa. */
+  public lastPromotedFiles(taskId: string): string[] {
+    const snapshot = this.promotionSnapshots.get(taskId) || [];
+    return snapshot.map((e) => e.relativePath);
   }
 
   /** Reaplica a última promoção desfeita por rollbackPromotion (mesmo conteúdo auditado). */

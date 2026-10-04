@@ -1,28 +1,40 @@
 /**
- * Empirical Gate (NextCode v5 - Trava T4)
- * Prova empírica real (type-check do projeto já mesclado) com rollback: se a promoção
- * introduzir erros de build NOVOS, os arquivos promovidos são restaurados ao estado anterior
- * — o código reprovado nunca permanece no repositório principal. Antes, a verificação só
- * reportava a falha e o código quebrado ficava no disco.
+ * Empirical Gate (NextCode v5 - Travas T4/T5)
+ * Prova empírica real com rollback, em duas etapas sobre o projeto já mesclado:
+ *  1. type-check (`tsc --noEmit`) do projeto inteiro;
+ *  2. ESLint nos arquivos promovidos, quando o projeto-alvo tem ESLint instalado.
+ * Se a promoção introduzir erros NOVOS em qualquer etapa, os arquivos promovidos são
+ * restaurados ao estado anterior — o código reprovado nunca permanece no repositório.
  *
- * Erros que já existiam antes da promoção (projeto previamente quebrado) não reprovam a
- * mudança: comparamos o conjunto de erros com e sem ela, ignorando linha/coluna.
+ * Erros que já existiam antes da promoção não reprovam a mudança: comparamos o conjunto de
+ * erros com e sem ela, ignorando linha/coluna.
+ *
+ * Testes gerados pela IA NÃO são executados aqui: rodar Vitest/Jest executa o código gerado
+ * com as permissões do usuário, fora de qualquer sandbox. tsc e ESLint só analisam o código.
  */
 
 import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
 
+export type EmpiricalStage = "typecheck" | "lint";
+
 export interface EmpiricalGateResult {
-  /** true quando a promoção não introduziu nenhum erro novo (ou o projeto não tem tsconfig). */
+  /** true quando a promoção não introduziu nenhum erro novo (ou as verificações não se aplicam). */
   passed: boolean;
   /** Resultado do type-check com a mudança aplicada (null = verificação indisponível). */
   buildResult: CommandResult | null;
+  /** Resultado do ESLint nos arquivos promovidos (null = projeto sem ESLint / não executado). */
+  lintResult: CommandResult | null;
   /** true quando a promoção foi desfeita por introduzir erros novos. */
   rolledBack: boolean;
-  /** true quando o build já falhava antes da mudança e ela não acrescentou erros. */
+  /** true quando o projeto já tinha erros antes da mudança e ela não acrescentou nenhum. */
   preexistingFailure: boolean;
-  /** Erros "error TS" presentes só com a mudança aplicada (sem linha/coluna). */
+  /** Erros presentes só com a mudança aplicada (sem linha/coluna). */
   newErrors: string[];
+  /** Etapa que reprovou a mudança (null quando passou). */
+  failedStage: EmpiricalStage | null;
+  /** Primeiro erro novo, pronto para relatório/feedback (undefined quando passou). */
+  failureLine?: string;
 }
 
 /** Extrai as linhas "error TS" sem posição (linha/coluna), para comparar antes vs. depois. */
@@ -44,28 +56,76 @@ export function firstBuildErrorLine(result: CommandResult, newErrors: string[] =
   );
 }
 
+/** Rótulo legível da etapa, para mensagens de rejeição. */
+export function empiricalStageLabel(stage: EmpiricalStage | null): string {
+  return stage === "lint" ? "ESLint real pós-promoção" : "type-check real pós-promoção";
+}
+
 export async function promoteWithEmpiricalGate(
   qm: QuarantineManager,
   taskId: string,
   projectRoot: string,
   filesScope: string[]
 ): Promise<EmpiricalGateResult> {
-  qm.promoteToMainRepo(taskId, projectRoot, filesScope);
+  const promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
+  let preexistingFailure = false;
 
+  // Etapa 1: type-check do projeto inteiro.
   const after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-  if (!after || after.success) {
-    return { passed: true, buildResult: after, rolledBack: false, preexistingFailure: false, newErrors: [] };
-  }
+  if (after && !after.success) {
+    qm.rollbackPromotion(taskId);
+    const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+    const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
+    const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
 
-  qm.rollbackPromotion(taskId);
-  const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-  const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
-  const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
-
-  if (baseline && !baseline.success && newErrors.length === 0) {
+    if (!(baseline && !baseline.success && newErrors.length === 0)) {
+      return {
+        passed: false,
+        buildResult: after,
+        lintResult: null,
+        rolledBack: true,
+        preexistingFailure: false,
+        newErrors,
+        failedStage: "typecheck",
+        failureLine: firstBuildErrorLine(after, newErrors),
+      };
+    }
     qm.reapplyPromotion(taskId);
-    return { passed: true, buildResult: after, rolledBack: false, preexistingFailure: true, newErrors };
+    preexistingFailure = true;
   }
 
-  return { passed: false, buildResult: after, rolledBack: true, preexistingFailure: false, newErrors };
+  // Etapa 2: ESLint só nos arquivos promovidos (erros de lint são por arquivo).
+  const lintAfter = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
+  if (lintAfter && lintAfter.errors.length > 0) {
+    qm.rollbackPromotion(taskId);
+    // Baseline: as versões anteriores dos mesmos arquivos (os que não existiam somem do lint).
+    const lintBaseline = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
+    const baselineKeys = new Set(lintBaseline?.errors || []);
+    const newErrors = lintAfter.errors.filter((k) => !baselineKeys.has(k));
+
+    if (newErrors.length > 0) {
+      return {
+        passed: false,
+        buildResult: after,
+        lintResult: lintAfter.result,
+        rolledBack: true,
+        preexistingFailure: false,
+        newErrors,
+        failedStage: "lint",
+        failureLine: newErrors[0],
+      };
+    }
+    qm.reapplyPromotion(taskId);
+    preexistingFailure = true;
+  }
+
+  return {
+    passed: true,
+    buildResult: after,
+    lintResult: lintAfter?.result || null,
+    rolledBack: false,
+    preexistingFailure,
+    newErrors: [],
+    failedStage: null,
+  };
 }

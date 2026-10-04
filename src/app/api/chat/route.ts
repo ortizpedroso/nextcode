@@ -270,14 +270,9 @@ export async function POST(request: NextRequest) {
     // Motivo exato da rejeição de uma tentativa — alimenta o feedback da próxima tentativa e,
     // ao esgotar o ciclo, o relatório direcionado ao humano (Trava T6).
     const describeChatFailure = (res: NonNullable<typeof zeroEngineRes>): string => {
-      const empiricalErrorLines =
-        res.empiricalBuildResult && !res.empiricalBuildResult.success
-          ? `${res.empiricalBuildResult.stdout}\n${res.empiricalBuildResult.stderr}`
-              .split("\n")
-              .filter((l) => l.includes("error TS"))
-              .slice(0, 5)
-              .join(" | ") || "Falha no type-check real do projeto pós-promoção (sem linha 'error TS' na saída)."
-          : "";
+      // Só os erros NOVOS que reprovaram a prova empírica (type-check ou ESLint). Usar a saída
+      // bruta do tsc misturaria erros que já existiam no projeto antes da alteração.
+      const empiricalErrorLines = res.empiricalFailure || "";
       // A prova empírica só roda depois de Tipo 1+Tipo 2 aprovarem, então quando ela
       // falha é o motivo real da rejeição — vem antes dos erros do auditor, que nesse
       // caso só podem conter avisos não fatais ([CLEAN CODE VIOLATION]).

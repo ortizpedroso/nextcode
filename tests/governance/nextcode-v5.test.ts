@@ -218,6 +218,23 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       expect(res2.verdict).toBe("APPROVED");
     });
 
+    it("Trava T5 (Tipo 1): sintaxe JS/TS pelo parser do TypeScript — sem falso positivo de chaves em strings/regex", () => {
+      const ok = DualLensAuditor.validateType1({
+        "src/strings.ts": 'export const open = "{"; export const re = /\\(/; export const tpl = `}${open}`;',
+        "src/view.tsx": "export default function V() { return <div>{1}</div>; }",
+      });
+      expect(ok.compilationErrors.filter((e) => e.includes("[SYNTAX ERROR]"))).toEqual([]);
+
+      // Chaves balanceadas, mas sintaxe inválida: a contagem antiga deixava passar.
+      const bad = DualLensAuditor.validateType1({ "src/bad.ts": "export const = 1;\nexport function f() { return; }" });
+      expect(bad.passed).toBe(false);
+      expect(bad.compilationErrors.join(" ")).toMatch(/\[SYNTAX ERROR\] src\/bad\.ts:1 — TS\d+/);
+
+      // JSX em arquivo .ts (não .tsx) é erro de sintaxe real.
+      const jsxInTs = DualLensAuditor.validateType1({ "src/x.ts": "export const x = <div />;" });
+      expect(jsxInTs.passed).toBe(false);
+    });
+
     it("schema.prisma do lote substitui o do disco no guard de alucinação de modelo Prisma", () => {
       const projectRoot = path.join(testQuarantineDir, "prisma-guard-project");
       fs.mkdirSync(path.join(projectRoot, "prisma"), { recursive: true });

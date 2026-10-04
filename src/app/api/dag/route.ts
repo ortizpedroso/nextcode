@@ -18,7 +18,7 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
-import { promoteWithEmpiricalGate, firstBuildErrorLine } from "@/core/governance/empirical-gate";
+import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import type { Setting } from "@prisma/client";
 
 /** Minera telemetria em plano de fundo após cada execução de nó — nunca bloqueia a resposta. */
@@ -569,6 +569,7 @@ DIRETRIZES DE EXECUÇÃO:
       let promotionTarget: string | null = null;
       let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
       let empiricalFailureLine: string | undefined;
+      let empiricalFailureStage: EmpiricalStage | null = null;
       let mcpRes: Record<string, unknown>;
       let newFailureHistory: string | undefined;
 
@@ -629,8 +630,9 @@ DIRETRIZES DE EXECUÇÃO:
               details: { nodeId: task.id },
             });
           }
-          if (!gate.passed && empiricalBuildResult) {
-            empiricalFailureLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
+          if (!gate.passed) {
+            empiricalFailureLine = gate.failureLine || "falha na verificação empírica pós-promoção";
+            empiricalFailureStage = gate.failedStage;
             TelemetryLogger.log({
               sessionId: task.sessionId,
               action: "EMPIRICAL_BUILD_FAILED",
@@ -659,7 +661,7 @@ DIRETRIZES DE EXECUÇÃO:
         }
 
         const empiricalFailureReason = empiricalFailureLine
-          ? `Verificação empírica (type-check real pós-promoção) falhou — promoção desfeita: ${empiricalFailureLine}`
+          ? `Verificação empírica (${empiricalStageLabel(empiricalFailureStage)}) falhou — promoção desfeita: ${empiricalFailureLine}`
           : undefined;
 
         const rejectionReason =
@@ -1098,8 +1100,8 @@ DIRETRIZES DE EXECUÇÃO:
                   details: { nodeId: taskDb.id },
                 });
               }
-              if (!gate.passed && empiricalBuildResult) {
-                const firstErrorLine = firstBuildErrorLine(empiricalBuildResult, gate.newErrors);
+              if (!gate.passed) {
+                const firstErrorLine = gate.failureLine || "falha na verificação empírica pós-promoção";
                 TelemetryLogger.log({
                   sessionId: targetSessionId,
                   action: "EMPIRICAL_BUILD_FAILED",
@@ -1110,7 +1112,7 @@ DIRETRIZES DE EXECUÇÃO:
                   },
                 });
                 finalStatus = newAttempts >= (taskDb.maxAttempts || 3) ? "blocked" : "failed";
-                rejectionReason = `Verificação empírica (type-check real pós-promoção) falhou — promoção desfeita: ${firstErrorLine}`;
+                rejectionReason = `Verificação empírica (${empiricalStageLabel(gate.failedStage)}) falhou — promoção desfeita: ${firstErrorLine}`;
               }
             } else {
               qm.purgeWorkspace(taskDb.id);
