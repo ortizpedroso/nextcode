@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
 import * as path from "path";
 import { parseSkillContent, writeParsedSkillToDisk } from "@/core/skills/skill-installer";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     const proposals = await prisma.candidateSkillProposal.findMany({
       orderBy: { createdAt: "desc" },

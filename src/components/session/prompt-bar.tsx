@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Sparkles, Loader2, Cpu, Zap, Brain, Bot, Globe, FileCode2, Command, Square, Image as ImageIcon, X } from "lucide-react";
 import { CustomProviderItem } from "@/components/settings/settings-dialog";
 import { SkillItemInfo } from "@/app/api/skills/list/route";
+import { authFetch } from "@/lib/client-session";
 
 interface PromptBarProps {
   loading: boolean;
@@ -54,7 +55,7 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
 
   const fetchOmniModels = useCallback(async () => {
     try {
-      const res = await fetch("/api/omniroute/models");
+      const res = await authFetch("/api/omniroute/models");
       const data = await res.json();
       if (res.ok && Array.isArray(data.models)) {
         setOmniModels(data.models);
@@ -69,7 +70,7 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
   const fetchSkills = useCallback(async () => {
     try {
       const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-      const res = await fetch(`/api/skills/list${query}`);
+      const res = await authFetch(`/api/skills/list${query}`);
       const data = await res.json();
       if (res.ok && data.skills) {
         setSkills(data.skills);

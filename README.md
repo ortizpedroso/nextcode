@@ -27,7 +27,7 @@ O **NextCode v5** é um orquestrador de desenvolvimento de software desacoplado 
 
 ## 🛡️ Segurança Baseline Zero-Trust
 
-* **Autenticação de API Routes (`requireAuth`):** Rotas mutativas (POST/PUT/DELETE) exigem o header `X-Nextcode-Token`. Leituras (GET) são liberadas para a UI local e nunca devolvem segredos em claro; o servidor escuta só em loopback (`127.0.0.1`) por padrão.
+* **Autenticação de API Routes (`requireAuth`):** Rotas mutativas (POST/PUT/DELETE) exigem o header `X-Nextcode-Token`. GETs que expõem sessões, mensagens, DAG, projetos ou configurações também exigem o token (sem rate limit); só GETs de status operacional sem dado de usuário (ex.: `/api/metrics`) ficam abertos. O token fica no `localStorage` do navegador e sobrevive a reloads; o servidor escuta só em loopback (`127.0.0.1`) por padrão.
 * **Proteção Anti-SSRF (`safeFetch`):** Requisições HTTP de saída passam por resolução DNS prévia e bloqueio de IPs privados/reservados (`127.0.0.1`, `169.254.169.254`).
 * **Criptografia em Repouso:** Segredos e chaves de provedores (BYOK) são cifrados com **AES-256-GCM** (`enc:v2`) usando `NEXTCODE_MASTER_KEY` (ou `NEXTCODE_MASTER_KEYS` para rotação). Em produção, sem chave mestra o salvamento de segredos é recusado (503); em desenvolvimento a UI avisa que a chave ficaria em texto plano.
 * **Guarde Anti-Vazamento (`check:secrets`):** Impedimento mecânico de comitar bancos de dados (`*.db`) ou arquivos `.env`.

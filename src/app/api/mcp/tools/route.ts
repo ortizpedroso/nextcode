@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 
 export async function GET(req: NextRequest) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(req);
+  if (readGuard.response) return readGuard.response;
   try {
     const { searchParams } = new URL(req.url);
     const serverId = searchParams.get("serverId");

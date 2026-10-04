@@ -4,8 +4,9 @@
  * Modelo: o app NextCode roda em máquina local (dev/uso pessoal). Em vez de um
  * sistema completo de login, usamos um token compartilhado gerado no primeiro
  * acesso ("login local") e exigido em todas as rotas MUTÁVEIS (POST/PUT/DELETE)
- * de /api/*. Leituras simples (GET) continuam liberadas para a UI local, mas
- * NUNCA retornam segredos em claro (apenas máscaras ****abcd).
+ * de /api/* (requireAuth, com rate limit) e também nos GETs que expõem sessões,
+ * mensagens, DAG, projetos ou configurações (requireReadAuth, sem rate limit).
+ * Respostas nunca retornam segredos em claro (apenas máscaras ****abcd).
  *
  * - NEXTCODE_AUTH_TOKEN: token fixo opcional via env (para scripts/CI).
  * - Sem env: gera token aleatório em memória e expõe POST /api/auth/session
@@ -18,17 +19,28 @@ import crypto from "crypto";
 // ---------------------------------------------------------------------------
 // Token da sessão local
 // ---------------------------------------------------------------------------
-let runtimeToken: string | null = null;
-let bootstrapTokenIssued = false;
+// No `next dev`, cada rota compilada pela primeira vez reavalia este módulo: o token era
+// regerado e a trava do bootstrap zerada a cada compilação, invalidando o token já entregue
+// ao navegador. Em desenvolvimento o estado fica em globalThis (mesmo padrão do lib/prisma.ts)
+// e sobrevive às reavaliações; em produção o módulo é avaliado uma vez só.
+interface LocalAuthState {
+  runtimeToken: string | null;
+  bootstrapTokenIssued: boolean;
+}
+const globalForAuth = globalThis as unknown as { nextcodeLocalAuth?: LocalAuthState };
+const authState: LocalAuthState =
+  process.env.NODE_ENV === "development"
+    ? (globalForAuth.nextcodeLocalAuth ??= { runtimeToken: null, bootstrapTokenIssued: false })
+    : { runtimeToken: null, bootstrapTokenIssued: false };
 
 export function getRuntimeToken(): string {
   const envToken = (process.env.NEXTCODE_AUTH_TOKEN || "").trim();
   if (envToken) return envToken;
-  if (!runtimeToken) {
-    runtimeToken = crypto.randomBytes(24).toString("hex");
+  if (!authState.runtimeToken) {
+    authState.runtimeToken = crypto.randomBytes(24).toString("hex");
     console.log("[AUTH] Token de sessão local gerado. Rotas mutativas exigem header X-Nextcode-Token.");
   }
-  return runtimeToken;
+  return authState.runtimeToken;
 }
 
 /**
@@ -39,11 +51,11 @@ export function getRuntimeToken(): string {
  */
 export function canIssueBootstrapToken(): boolean {
   if ((process.env.NEXTCODE_AUTH_TOKEN || "").trim()) return false; // token fixo: bootstrap desativado
-  return !bootstrapTokenIssued;
+  return !authState.bootstrapTokenIssued;
 }
 
 export function markBootstrapTokenIssued(): void {
-  bootstrapTokenIssued = true;
+  authState.bootstrapTokenIssued = true;
 }
 
 export function verifyToken(candidate?: string | null): boolean {
@@ -112,6 +124,10 @@ export function requireAuth(req: NextRequest): AuthGuardResult {
     };
   }
 
+  return checkToken(req);
+}
+
+function checkToken(req: Request): AuthGuardResult {
   const token = req.headers.get("x-nextcode-token");
   if (!verifyToken(token)) {
     return {
@@ -125,6 +141,16 @@ export function requireAuth(req: NextRequest): AuthGuardResult {
     };
   }
   return { ok: true };
+}
+
+/**
+ * Protege uma rota de LEITURA (GET) que expõe dados de sessões, projetos, DAG ou
+ * configurações: exige o mesmo X-Nextcode-Token das rotas mutativas, mas sem o rate
+ * limit — a UI faz polling desses GETs e estouraria o limite de 30 req/min.
+ * Ficam abertos só GETs de status operacional sem dado de usuário (ex.: /api/metrics).
+ */
+export function requireReadAuth(req: Request): AuthGuardResult {
+  return checkToken(req);
 }
 
 /** Máscara padrão para respostas GET de configurações (nunca ecoar segredo). */

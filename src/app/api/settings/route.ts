@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import {
   writeSecret,
@@ -42,7 +42,11 @@ async function ensureSettingTable() {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     await ensureSettingTable();
 

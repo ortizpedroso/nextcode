@@ -30,7 +30,7 @@ export function SkillProposalModal({ onClose }: SkillProposalModalProps) {
   const fetchProposals = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/skills/proposals");
+      const res = await authFetch("/api/skills/proposals");
       const data = await res.json();
       if (res.ok && Array.isArray(data.proposals)) {
         setProposals(data.proposals);

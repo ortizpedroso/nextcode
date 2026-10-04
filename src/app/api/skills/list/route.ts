@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireReadAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
 import * as path from "path";
 import prisma from "@/lib/prisma";
@@ -78,6 +79,10 @@ function scanSubdirsForSkills(baseDir: string): SkillItemInfo[] {
 }
 
 export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get("projectId");

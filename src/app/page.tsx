@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { authFetch } from "@/lib/client-session";
+import { authFetch, authDownload } from "@/lib/client-session";
 import { Sidebar, ProjectItem, SessionItem } from "@/components/layout/sidebar";
 import { Workspace, TaskNode, SessionMessage, GraphifyRunOutcome } from "@/components/layout/workspace";
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
@@ -580,9 +580,18 @@ export default function DashboardOrchestrator() {
     }
   };
 
-  const handleExportAuditReport = () => {
+  // Exportações usam authDownload: window.open não envia o X-Nextcode-Token e a rota
+  // protegida respondia 401 na aba nova.
+  const handleExportAuditReport = async () => {
     if (!activeSessionId) return;
-    window.open(`/api/governance/export?sessionId=${activeSessionId}&format=markdown`, "_blank");
+    try {
+      await authDownload(
+        `/api/governance/export?sessionId=${activeSessionId}&format=markdown`,
+        `auditoria-nextcode-${activeSessionId.substring(0, 8)}.md`
+      );
+    } catch (err) {
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao exportar relatório de auditoria: ${String(err)}`]);
+    }
   };
 
   const handleSaveSettings = async (updated: SettingsFormState) => {
@@ -600,8 +609,15 @@ export default function DashboardOrchestrator() {
     await fetchSettings();
   };
 
-  const handleExportSessionJSON = (sessionId: string) => {
-    window.open(`/api/sessions/export-import?sessionId=${sessionId}`, "_blank");
+  const handleExportSessionJSON = async (sessionId: string) => {
+    try {
+      await authDownload(
+        `/api/sessions/export-import?sessionId=${sessionId}`,
+        `nextcode-session-${sessionId.substring(0, 8)}.json`
+      );
+    } catch (err) {
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao exportar sessão: ${String(err)}`]);
+    }
   };
 
   const handleImportSessionJSON = async (file: File) => {

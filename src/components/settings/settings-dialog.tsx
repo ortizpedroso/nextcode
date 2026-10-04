@@ -119,7 +119,7 @@ export function SettingsDialog({
 
   const fetchCustomProviders = async () => {
     try {
-      const res = await fetch("/api/providers/custom");
+      const res = await authFetch("/api/providers/custom");
       const data = await res.json();
       if (data.providers) setCustomProviders(data.providers);
     } catch (err) {
@@ -129,7 +129,7 @@ export function SettingsDialog({
 
   const fetchMcpServers = async () => {
     try {
-      const res = await fetch("/api/mcp/servers");
+      const res = await authFetch("/api/mcp/servers");
       const data = await res.json();
       if (data.servers) setMcpServers(data.servers);
     } catch (err) {
@@ -263,7 +263,7 @@ export function SettingsDialog({
       const url = editingMcpId ? `/api/mcp/servers/${editingMcpId}` : "/api/mcp/servers";
       const method = editingMcpId ? "PATCH" : "POST";
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

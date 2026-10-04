@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
+  requireReadAuth: vi.fn().mockReturnValue({ response: null }),
 }));
 
 describe("API /api/sessions/export-import", () => {

@@ -129,6 +129,22 @@ describe("local-auth.ts — token, rate-limit e guard", () => {
     });
   });
 
+  describe("requireReadAuth (guard dos GETs com dados locais)", () => {
+    it("401 sem header e 401 com token errado", async () => {
+      const m = await loadAuth({ NEXTCODE_AUTH_TOKEN: "tok-leitura" });
+      expect(m.requireReadAuth(fakeRequest({})).response?.status).toBe(401);
+      expect(m.requireReadAuth(fakeRequest({ "X-Nextcode-Token": "outro" })).response?.status).toBe(401);
+    });
+
+    it("aceita o token válido e NÃO aplica rate limit (a UI faz polling dos GETs)", async () => {
+      const m = await loadAuth({ NEXTCODE_AUTH_TOKEN: "tok-leitura", NEXTCODE_RATE_LIMIT: "1" });
+      for (let i = 0; i < 10; i++) {
+        const res = m.requireReadAuth(fakeRequest({ "X-Nextcode-Token": "tok-leitura" }));
+        expect(res.ok).toBe(true);
+      }
+    });
+  });
+
   describe("maskKey", () => {
     it("mostra apenas os 4 últimos caracteres", async () => {
       const m = await loadAuth({});

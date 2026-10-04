@@ -33,7 +33,7 @@ export function McpToolsModal({ onClose }: McpToolsModalProps) {
   const fetchTools = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/mcp/tools");
+      const res = await authFetch("/api/mcp/tools");
       const data = await res.json();
       if (res.ok && Array.isArray(data.servers)) {
         setServers(data.servers);

@@ -5,6 +5,7 @@ import { markComboExhausted } from "@/core/router/quota-tracker";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
+  requireReadAuth: vi.fn().mockReturnValue({ response: null }),
 }));
 
 describe("API /api/quota", () => {
@@ -13,7 +14,7 @@ describe("API /api/quota", () => {
     markComboExhausted("auto/test-combo", 429);
 
     // 2. GET
-    const getRes = await GET();
+    const getRes = await GET(new Request("http://localhost/api"));
     expect(getRes.status).toBe(200);
     const getData = await getRes.json();
     expect(getData.totalTracked).toBeGreaterThanOrEqual(1);
@@ -31,7 +32,7 @@ describe("API /api/quota", () => {
     expect(postData.success).toBe(true);
 
     // 4. Verificação de reset
-    const getResAfter = await GET();
+    const getResAfter = await GET(new Request("http://localhost/api"));
     const getDataAfter = await getResAfter.json();
     expect(getDataAfter.totalTracked).toBe(0);
   });

@@ -24,7 +24,7 @@ export function QuotaModal({ onClose }: QuotaModalProps) {
   const fetchQuotaStatus = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/quota");
+      const res = await authFetch("/api/quota");
       const data = await res.json();
       if (res.ok && Array.isArray(data.activeCooldowns)) {
         setCooldowns(data.activeCooldowns);

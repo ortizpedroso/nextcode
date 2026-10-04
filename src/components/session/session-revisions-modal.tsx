@@ -27,7 +27,7 @@ export function SessionRevisionsModal({ sessionId, onClose, onRevisionRestored }
   const fetchRevisions = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/sessions/revisions?sessionId=${sessionId}`);
+      const res = await authFetch(`/api/sessions/revisions?sessionId=${sessionId}`);
       const data = await res.json();
       if (res.ok && Array.isArray(data.revisions)) {
         setRevisions(data.revisions);

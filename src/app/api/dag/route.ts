@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
@@ -201,6 +201,10 @@ function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | n
 }
 
 export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get("sessionId");

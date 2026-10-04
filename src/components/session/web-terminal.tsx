@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { authFetch } from "@/lib/client-session";
+import { authFetch, authEventStream } from "@/lib/client-session";
 import { Terminal, Send, X, Play, RefreshCw, Trash2, CheckCircle2, ShieldAlert, Radio } from "lucide-react";
 
 interface WebTerminalProps {
@@ -83,69 +83,44 @@ export function WebTerminal({ sessionId, projectId, onClose }: WebTerminalProps)
         },
       ]);
 
+      // authEventStream em vez de EventSource: EventSource não envia o X-Nextcode-Token e a
+      // rota /api/terminal/stream (protegida) respondia 401 em toda execução.
+      const params = new URLSearchParams({ command: targetCmd });
+      if (projectId) params.set("projectId", projectId);
       try {
-        const eventSource = new EventSource(
-          `/api/terminal/stream?command=${encodeURIComponent(targetCmd)}`
-        );
-
-        eventSource.addEventListener("log", (event: MessageEvent) => {
-          try {
-            const data = JSON.parse(event.data);
-            setHistory((prev) => {
-              const updated = [...prev];
-              const targetItem = { ...updated[itemIndex] };
-
-              if (data.type === "stdout") {
-                targetItem.stdout += data.text;
-              } else if (data.type === "stderr") {
-                targetItem.stderr += data.text;
-              }
-
-              updated[itemIndex] = targetItem;
-              return updated;
-            });
-          } catch {}
-        });
-
-        eventSource.addEventListener("done", (event: MessageEvent) => {
-          try {
-            const data = JSON.parse(event.data);
-            setHistory((prev) => {
-              const updated = [...prev];
-              if (updated[itemIndex]) {
-                updated[itemIndex].success = data.exitCode === 0;
-              }
-              return updated;
-            });
-          } catch {}
-          eventSource.close();
-          setRunning(false);
-        });
-
-        eventSource.addEventListener("error", (err: any) => {
+        await authEventStream(`/api/terminal/stream?${params.toString()}`, (event, payload) => {
+          const data = payload as { type?: string; text?: string; exitCode?: number; message?: string };
           setHistory((prev) => {
             const updated = [...prev];
-            if (updated[itemIndex]) {
-              updated[itemIndex].stderr += `\n[Erro SSE Connection]`;
-              updated[itemIndex].success = false;
+            const targetItem = updated[itemIndex] ? { ...updated[itemIndex] } : null;
+            if (!targetItem) return prev;
+            if (event === "log" && data.type === "stdout") {
+              targetItem.stdout += data.text || "";
+            } else if (event === "log" && data.type === "stderr") {
+              targetItem.stderr += data.text || "";
+            } else if (event === "done") {
+              targetItem.success = data.exitCode === 0;
+            } else if (event === "error") {
+              targetItem.stderr += `\n[Erro de execução] ${data.message || ""}`;
+              targetItem.success = false;
             }
+            updated[itemIndex] = targetItem;
             return updated;
           });
-          eventSource.close();
-          setRunning(false);
         });
       } catch (err) {
-        setHistory((prev) => [
-          ...prev,
-          {
-            command: targetCmd,
-            cwd: "workspace",
-            stdout: "",
-            stderr: String(err),
-            success: false,
-            timestamp,
-          },
-        ]);
+        setHistory((prev) => {
+          const updated = [...prev];
+          if (updated[itemIndex]) {
+            updated[itemIndex] = {
+              ...updated[itemIndex],
+              stderr: `${updated[itemIndex].stderr}\n[Erro SSE Connection] ${err instanceof Error ? err.message : String(err)}`,
+              success: false,
+            };
+          }
+          return updated;
+        });
+      } finally {
         setRunning(false);
       }
     } else {

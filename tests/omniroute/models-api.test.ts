@@ -20,8 +20,15 @@ vi.mock("@/core/security/safe-fetch", () => ({
 }));
 
 describe("API /api/omniroute/models", () => {
+  it("GET sem X-Nextcode-Token é recusado (401)", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/omniroute/models"));
+    expect(res.status).toBe(401);
+  });
+
   it("GET — descobre dinamicamente a lista de modelos do OmniRoute local", async () => {
-    const req = new NextRequest("http://localhost/api/omniroute/models");
+    const req = new NextRequest("http://localhost/api/omniroute/models", {
+      headers: { "X-Nextcode-Token": process.env.NEXTCODE_AUTH_TOKEN || "" },
+    });
     const res = await GET(req);
 
     expect(res.status).toBe(200);

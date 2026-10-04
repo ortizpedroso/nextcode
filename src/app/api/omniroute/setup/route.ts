@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { readSecret, writeSecret, MasterKeyMissingError } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
@@ -9,7 +9,11 @@ import { resolveOmniRouteUrl } from "@/core/router/smart-router";
 
 const DEFAULT_OMNI_ENDPOINT = "http://localhost:20128/v1";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     const setting = await prisma.setting.findUnique({ where: { id: "default" } });
     const targetEndpoint = setting?.omniRouteUrl || setting?.customEndpoint || DEFAULT_OMNI_ENDPOINT;

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import { writeSecret, MasterKeyMissingError } from "@/core/security/crypto";
 import prisma from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
+  // o token da sessão local, sem rate limit (a UI faz polling).
+  const readGuard = requireReadAuth(request);
+  if (readGuard.response) return readGuard.response;
   try {
     const providers = await prisma.customProvider.findMany({
       orderBy: { updatedAt: "desc" },

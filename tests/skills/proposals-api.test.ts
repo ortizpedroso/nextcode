@@ -9,6 +9,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
+  requireReadAuth: vi.fn().mockReturnValue({ response: null }),
 }));
 
 describe("API /api/skills/proposals", () => {
@@ -36,7 +37,7 @@ describe("API /api/skills/proposals", () => {
     expect(createData.proposal.name).toBe("test-auto-skill");
 
     // 2. Listar propostas
-    const getRes = await GET();
+    const getRes = await GET(new Request("http://localhost/api"));
     expect(getRes.status).toBe(200);
     const getData = await getRes.json();
     expect(getData.proposals.some((p: { id: string }) => p.id === createData.proposal.id)).toBe(true);

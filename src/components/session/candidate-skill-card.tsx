@@ -21,7 +21,7 @@ export function CandidateSkillCard() {
 
   const fetchProposals = async () => {
     try {
-      const res = await fetch("/api/skills/proposals");
+      const res = await authFetch("/api/skills/proposals");
       const data = await res.json();
       if (data.proposals) {
         setProposals(data.proposals.filter((p: SkillProposal) => p.status === "pending"));

@@ -15,6 +15,7 @@ import {
   FileCode2,
 } from "lucide-react";
 import { SkillItemInfo } from "@/app/api/skills/list/route";
+import { authFetch } from "@/lib/client-session";
 
 interface GithubSkillInstallerCardProps {
   projectId?: string | null;
@@ -38,7 +39,7 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
     setLoadingSkills(true);
     try {
       const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-      const res = await fetch(`/api/skills/list${query}`);
+      const res = await authFetch(`/api/skills/list${query}`);
       const data = await res.json();
       if (res.ok && data.skills) {
         setSkills(data.skills);
@@ -63,7 +64,7 @@ export function GithubSkillInstallerCard({ projectId }: GithubSkillInstallerCard
     setSuccessResult(null);
 
     try {
-      const res = await fetch("/api/skills/install-github", {
+      const res = await authFetch("/api/skills/install-github", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

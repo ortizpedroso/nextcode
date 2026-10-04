@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Search, RefreshCw, X, FileText, Regex, ArrowRight } from "lucide-react";
+import { authFetch } from "@/lib/client-session";
 
 interface MatchResult {
   filePath: string;
@@ -34,7 +35,7 @@ export function CodeSearchModal({ projectId, onClose }: CodeSearchModalProps) {
     try {
       const projParam = projectId ? `&projectId=${encodeURIComponent(projectId)}` : "";
       const regexParam = isRegex ? "&isRegex=true" : "";
-      const res = await fetch(`/api/fs/search?query=${encodeURIComponent(q)}${projParam}${regexParam}`);
+      const res = await authFetch(`/api/fs/search?query=${encodeURIComponent(q)}${projParam}${regexParam}`);
       const data = await res.json();
       if (res.ok && Array.isArray(data.matches)) {
         setMatches(data.matches);
