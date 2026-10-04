@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRuntimeToken, rateLimited, canIssueBootstrapToken, markBootstrapTokenIssued } from "@/core/security/local-auth";
+import {
+  getRuntimeToken,
+  rateLimited,
+  rateLimitKey,
+  canIssueBootstrapToken,
+  markBootstrapTokenIssued,
+} from "@/core/security/local-auth";
 
 /**
  * Bootstrap da sessão local (Fase 4).
@@ -15,8 +21,7 @@ import { getRuntimeToken, rateLimited, canIssueBootstrapToken, markBootstrapToke
  * é entregue UMA vez por processo.
  */
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  if (rateLimited(ip)) {
+  if (rateLimited(rateLimitKey(req))) {
     return NextResponse.json({ error: "Rate limit excedido." }, { status: 429 });
   }
   if (!canIssueBootstrapToken()) {

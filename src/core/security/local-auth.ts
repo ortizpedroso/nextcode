@@ -11,7 +11,8 @@
  * - NEXTCODE_AUTH_TOKEN: token fixo opcional via env (para scripts/CI).
  * - Sem env: gera token aleatório em memória e expõe POST /api/auth/session
  *   (rota pública bootstrap, rate-limited) que entrega o token UMA vez.
- * - Rate-limit in-memory: 30 req/min por IP nas rotas sensíveis.
+ * - Rate-limit in-memory: 30 req/min nas rotas sensíveis (balde único local; por IP só
+ *   atrás de proxy confiável, NEXTCODE_TRUST_PROXY=1 — ver rateLimitKey).
  */
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
@@ -76,9 +77,29 @@ interface Bucket {
   count: number;
   resetAt: number;
 }
-const buckets = new Map<string, Bucket>();
+// Mesmo motivo do authState acima: em `next dev` cada rota tinha o próprio Map de baldes.
+const globalForBuckets = globalThis as unknown as { nextcodeRateBuckets?: Map<string, Bucket> };
+const buckets: Map<string, Bucket> =
+  process.env.NODE_ENV === "development"
+    ? (globalForBuckets.nextcodeRateBuckets ??= new Map<string, Bucket>())
+    : new Map<string, Bucket>();
 const WINDOW_MS = 60_000;
 const MAX_REQ_PER_WINDOW = Number(process.env.NEXTCODE_RATE_LIMIT || 30);
+
+/**
+ * Chave do rate limit. `X-Forwarded-For`/`X-Real-IP` são enviados pelo PRÓPRIO cliente — o
+ * Next só preenche X-Forwarded-For com o IP real quando o header vem ausente (`??=` em
+ * base-server.js), então trocar o valor a cada requisição furava qualquer limite, inclusive
+ * o do bootstrap. Sem proxy confiável na frente (padrão: servidor só em 127.0.0.1), todos os
+ * clientes são locais e dividem um único balde. Com NEXTCODE_TRUST_PROXY=1 (proxy reverso
+ * que ACRESCENTA o IP do cliente), usa o último salto da lista — o único que o proxy garante.
+ */
+export function rateLimitKey(req: Request): string {
+  if (process.env.NEXTCODE_TRUST_PROXY !== "1") return "local";
+  const forwarded = req.headers.get("x-forwarded-for");
+  const lastHop = forwarded?.split(",").map((s) => s.trim()).filter(Boolean).pop();
+  return lastHop || "local";
+}
 
 export function rateLimited(ip: string): boolean {
   const now = Date.now();
@@ -109,12 +130,7 @@ export interface AuthGuardResult {
  *   }
  */
 export function requireAuth(req: NextRequest): AuthGuardResult {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "local";
-
-  if (rateLimited(ip)) {
+  if (rateLimited(rateLimitKey(req))) {
     return {
       ok: false,
       response: NextResponse.json(

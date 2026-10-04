@@ -112,13 +112,23 @@ describe("local-auth.ts — token, rate-limit e guard", () => {
       expect(third.response?.status).toBe(429);
     });
 
-    it("usa x-forwarded-for (primeiro valor) como chave do bucket", async () => {
+    it("sem proxy confiável, trocar x-forwarded-for/x-real-ip NÃO escapa do rate limit", async () => {
       const m = await loadAuth({ NEXTCODE_AUTH_TOKEN: "t", NEXTCODE_RATE_LIMIT: "1" });
-      const a = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "7.7.7.7, proxy" });
-      const b = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "8.8.8.8, proxy" });
+      const a = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "7.7.7.7" });
+      const forjado = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "8.8.8.8", "x-real-ip": "9.9.9.9" });
       expect(m.requireAuth(a).ok).toBe(true);
-      expect(m.requireAuth(a).response?.status).toBe(429);
-      expect(m.requireAuth(b).ok).toBe(true); // IP real distinto -> bucket distinto
+      expect(m.requireAuth(forjado).response?.status).toBe(429); // mesmo balde "local"
+    });
+
+    it("com NEXTCODE_TRUST_PROXY=1 usa o ÚLTIMO salto (o acrescentado pelo proxy), não o primeiro", async () => {
+      const m = await loadAuth({ NEXTCODE_AUTH_TOKEN: "t", NEXTCODE_RATE_LIMIT: "1", NEXTCODE_TRUST_PROXY: "1" });
+      // O cliente forja o primeiro valor; o proxy acrescenta o IP real no fim.
+      const a1 = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "1.1.1.1, 7.7.7.7" });
+      const a2 = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "2.2.2.2, 7.7.7.7" });
+      const b = fakeRequest({ "x-nextcode-token": "t", "x-forwarded-for": "1.1.1.1, 8.8.8.8" });
+      expect(m.requireAuth(a1).ok).toBe(true);
+      expect(m.requireAuth(a2).response?.status).toBe(429); // mesmo IP real 7.7.7.7
+      expect(m.requireAuth(b).ok).toBe(true); // IP real distinto -> balde distinto
     });
 
     it("respostas de erro nunca contêm o token esperado", async () => {
