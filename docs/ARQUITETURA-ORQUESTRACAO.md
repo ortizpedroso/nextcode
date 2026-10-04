@@ -1,6 +1,6 @@
-# NextCode — Arquitetura de Orquestração (v3)
+# NextCode — Arquitetura de Orquestração (v4)
 
-> **Status:** papéis aprovados em 04/10/2026; execução, tokens, roteamento, chaves e roadmap de escala aprovados em 04/10/2026. Decisões tomadas e em aberto na §15.
+> **Status:** papéis aprovados em 04/10/2026; execução, tokens, roteamento, chaves, roadmap de escala, catálogo, segredos e ponte única aprovados em 04/10/2026. Decisões tomadas e em aberto na §15.
 > **Objetivo do NextCode:** transformar um pedido de desenvolvimento — de um leigo ou de um engenheiro — em software entregue no disco, completo em relação à Spec aprovada, sem a orquestração se perder.
 
 ---
@@ -23,7 +23,9 @@
 | P12 | **Rastreabilidade por requisito.** | Todo requisito da Spec tem um código (`REQ-001`…). Macrobrief, Contratos, Microbriefs, relatório do executor e veredito usam os mesmos códigos. "Bater" um artefato com outro é conferência mecânica, não opinião de LLM. |
 | P13 | **Automatizar tudo o que as travas permitem.** | O humano só é acionado nas situações da lista fechada da §10.2. Todo o resto é resolvido pelas skills e travas. |
 | P14 | **Menor consumo de token possível.** | Decisão pelo Jev, contexto por artefato, Tipo 1 antes de qualquer LLM, correção por `REQ` (§11). Medido em tokens por `REQ` entregue. |
-| P15 | **Um único roteador de provedores: o OmniRoute.** | O NextCode decide a *faixa* de modelo; o OmniRoute escolhe provedor, faz failover, controla cota e guarda as chaves (§12). |
+| P15 | **Um único roteador de provedores.** | O NextCode decide a *faixa* de modelo; o gateway escolhido no catálogo escolhe provedor, faz failover e controla cota (§12, D3). |
+| P16 | **Tudo que é substituível vive no catálogo.** | MCP, skill, plugin, motor de decisão e gateway são itens do catálogo (§14b), trocados pela tela, sem alterar código, desde que cumpram o contrato da sua função. |
+| P17 | **Nenhum segredo em texto puro.** | Toda chave gravada no banco é criptografada, sempre (§13b). |
 
 ---
 
@@ -505,6 +507,49 @@ Agenda de visitas
 
 ---
 
+## 13b. Segredos
+
+- **Nenhum segredo em texto puro, nunca** — inclusive em desenvolvimento.
+- **Chave mestra gerada automaticamente** na 1ª inicialização, se não existir, guardada **fora do banco** (arquivo protegido ou cofre de credenciais do sistema operacional), com **aviso obrigatório de backup** (perder a chave mestra = perder acesso às chaves gravadas).
+- **Migração** das chaves já gravadas em texto puro (atualizar `scripts/migrate-encrypt-keys.mjs`, hoje no formato antigo `enc:v1`).
+- Cobertura: `Setting` (todas as chaves), `CustomProvider.apiKey`, **`McpServer.env`** (hoje sempre em texto puro) e qualquer chave de item do catálogo.
+- **Formulário gerado:** toda integração tem formulário para colar a chave, montado a partir do que o item declara (14a.3, regra 5) — integração nova não exige tela nova.
+
+---
+
+## 14a. Catálogo de componentes (MCP, skills, plugins, motores, gateways)
+
+### 14a.1 Funções e contratos
+Tudo o que pode ser trocado é organizado por **função**. Cada função tem um **contrato** que toda opção deve cumprir; dentro da função, as opções ficam **em ordem de preferência**.
+
+| Função (categoria) | Contrato | Opções iniciais (ordem) |
+|---|---|---|
+| Motor de decisão | API no formato do Jev (`state` + `questions` → `answers`) | 1. Laya · 2. Jev (D6) |
+| Gateway de LLM | API compatível com OpenAI | definido pelos projetos de referência (D3) |
+| Busca na web | MCP com ferramentas de busca e leitura de página | 1. Exa · 2. SearXNG (D2) |
+| Skill de cada papel | `SKILL.md` no formato NextCode (Markdown + YAML, versionado) | skills próprias (D5) |
+| Plugin / integração | contrato declarado pelo próprio plugin | — |
+
+### 14a.2 O que a tela permite
+- **ativar, desativar, remover, reordenar** (1ª opção, 2ª…) e **trocar** por outra opção da mesma função — sem alterar código;
+- ver origem, versão fixada, status de saúde e uso (telemetria) de cada item.
+
+### 14a.3 Regras
+1. **Failover automático:** o NextCode usa a 1ª opção ativa; se ela falhar no teste de saúde ou em uso, passa para a próxima e registra o evento.
+2. **"Sem código" vale dentro do contrato.** Algo que não segue o contrato da função precisa de um adaptador escrito uma única vez; a partir daí, a troca é pela tela.
+3. **Item novo entra como "não validado"** até passar pelos projetos de referência (§14.1); antes disso nunca vira 1ª opção sozinho. Versão sempre fixada; origem sempre exibida (MCP `stdio` é código de terceiros executado na máquina).
+4. **O catálogo nunca concede permissão.** Quem pode usar o quê é a matriz de permissões por papel (§4.1).
+5. **Cada item declara de quais chaves precisa** (nome, formato, link para obter, como testar) — isso gera o formulário (§13b).
+
+### 14a.4 Ponte única (hub MCP do harness)
+- Uma **ponte única** liga o orquestrador aos itens do catálogo: MCPs (ferramentas), **skills publicadas como prompts MCP**, motor de decisão e gateway.
+- A ponte é **parte do harness**, não um serviço independente com lógica própria: recebe em cada chamada **o papel e a fase** e só expõe o que a matriz de permissões libera. **Não decide sequência** — isso é só da máquina de fases (evita repetir o problema de dois roteadores competindo).
+- Centraliza: failover e saúde (14a.3), injeção de credenciais (nenhum agente vê chave), telemetria de cada chamada (papel, item, versão).
+- Antes de construir do zero, **avaliar gateways MCP prontos** (ex.: Docker MCP Gateway, MetaMCP, IBM ContextForge) quanto ao controle por papel; se nenhum cumprir, construir o nosso.
+- **Mais adiante (etapa "mundo"):** expor a ponte para fora como servidor MCP, para ferramentas externas (Claude Code, Cursor) usarem as skills e MCPs do NextCode.
+
+---
+
 ## 14. Roadmap de escala
 
 ### 14.1 Projetos de referência (meta que governa tudo)
@@ -560,7 +605,7 @@ Skills versionadas e fixadas, registro interno, avaliação pelos projetos de re
 | Etapa | Entrega | Para quem |
 |---|---|---|
 | 0 | Projetos de referência + máquina de fases no servidor + orquestração única | Fundador |
-| 1 | Papéis da v2 (Elicitador com Jev, Analista, Microbriefs com `REQ`, avaliador por cluster) + checklist + roteamento único + BYOK | Fundador |
+| 1 | Papéis da v2 (Elicitador com Laya→Jev, Analista, Microbriefs com `REQ`, avaliador por cluster) + checklist + roteamento único + BYOK + **segredos (§13b)** + **catálogo e ponte única (§14a)** | Fundador |
 | 2 | Entrega por Git + proveniência | Equipe interna |
 | 3 | Política de dados + PostgreSQL, worker e contas + custo antes de aprovar | Equipe interna |
 | 4 | Sandbox com testes de aceite + adaptadores por stack | Equipe ampliada |
@@ -581,11 +626,13 @@ Skills versionadas e fixadas, registro interno, avaliação pelos projetos de re
 | D4 | **Pausa sem LLM:** após **1 minuto** sem modelo disponível, o Elicitador avisa no chat que parou por falta de cota/provedor e sugere recarregar; mostra quando a cota volta, se o gateway informar; **não consome tentativa**; o NextCode continua tentando e **retoma sozinho** quando houver modelo. | 04/10/2026 |
 | D5 | **Skills próprias** para Elicitador, Analista, os 4 Executores e o Avaliador cego: Markdown + YAML, versionadas, curtas, aprovadas pelos projetos de referência. Skills de terceiros só como complemento (revisadas e com versão fixa). Rubricas do Jev são configuração versionada do harness, não skills. | 04/10/2026 |
 | D6 | **Motor de decisão em cascata:** adaptador de decisão único no formato da API do Jev. **Laya** (modelo aberto, local, Apache 2.0, checkpoint `laya-multilingual`) decide primeiro; se a confiança ficar abaixo do limiar, a mesma pergunta vai ao **Jev**; o resultado segue para a porta de confiança (§7.2). Laya roda como **serviço à parte** (container com o pacote Python oficial, ~2 GB de RAM), nunca dentro do servidor Next.js. Se um dos dois cair, o outro assume. O papel de cada um (principal/reserva) é decidido por medição: conjunto de ~100 mensagens reais em português com a classificação correta. | 04/10/2026 |
+| D7 | **Cliente MCP real** com controle por papel, dentro da ponte única do harness (§14a.4). | 04/10/2026 |
+| D8 | **Catálogo de componentes** por função, com contrato, ordem de preferência, failover, saúde e entrada como "não validado"; o catálogo nunca concede permissão (§14a). | 04/10/2026 |
+| D9 | **Segredos:** criptografia obrigatória sempre, chave mestra gerada automaticamente com aviso de backup, migração das chaves atuais, `McpServer.env` cifrado, formulário gerado por item (§13b). | 04/10/2026 |
+| D10 | **Ponte única** (hub MCP) dentro do harness, skills como prompts MCP, avaliação de gateways MCP prontos antes de construir; exposição externa só na etapa "mundo" (§14a.4). | 04/10/2026 |
 
 ### 15.2 Em aberto
-1. **Cliente MCP real** com controle por papel (pré-requisito da busca, D2).
-2. **Metas da §9.3** — ajustar valores.
-3. **`NEXTCODE_MASTER_KEY`** — configurar antes de gravar chaves (hoje ficam em texto puro sem ela).
+1. **Metas da §9.3** — ajustar valores.
 
 ---
 
@@ -603,3 +650,6 @@ Skills versionadas e fixadas, registro interno, avaliação pelos projetos de re
 | Trilha append-only | `TelemetryLog` + triggers |
 | Grafo do projeto | `graphify-runner` |
 | Gestão de conexões do OmniRoute | API `/api/providers` do gateway (consultada em `omniroute/audit`) |
+| Cadastro de MCP | tabela `McpServer` + aba MCP (grava configuração; nada a usa; `env` em texto puro) |
+| Provedores customizados | tabela `CustomProvider` (sem prioridade nem failover) |
+| Migração de chaves | `scripts/migrate-encrypt-keys.mjs` (formato antigo `enc:v1`) |
