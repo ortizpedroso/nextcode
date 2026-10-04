@@ -37,6 +37,12 @@ export interface PruneResult {
 
 import { safeFetch } from "../security/safe-fetch";
 import { isComboOnCooldown, markComboExhausted } from "./quota-tracker";
+import { ensureVerifiedOmniModels, reportOmniModelFailure, reportOmniModelSuccess } from "./omni-model-discovery";
+// Imports estáticos: os antigos `require()` dentro de try/catch falhavam em silêncio quando o
+// módulo rodava como ESM (ex.: tsx) — a chave do OmniRoute virava "" e o gateway recebia
+// requisições ANÔNIMAS (catálogo 401; chat sem as conexões da conta).
+import { readSecret } from "../security/crypto";
+import { getAvailableGeminiModels } from "./gemini-client";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
@@ -171,8 +177,7 @@ function buildDispatchDiagnostics(): string {
 export function resolveEffectiveGeminiKey(storedGeminiKey?: string | null): string {
   try {
     // readSecret aceita cifrado (enc:v1:) e legado texto-plano.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const plain = require("../security/crypto").readSecret(storedGeminiKey) as string;
+    const plain = readSecret(storedGeminiKey);
     if (plain && plain.trim() && !/^enc:v\d:/i.test(plain.trim())) return plain.trim();
   } catch {
     /* master key ausente/incorreta: segue para envs */
@@ -792,7 +797,7 @@ export class SmartRouter {
     const effectiveOmniRouteKey =
       (() => {
         try {
-          return require("../security/crypto").readSecret(omniRouteKey) as string;
+          return readSecret(omniRouteKey);
         } catch {
           return "";
         }
@@ -805,32 +810,57 @@ export class SmartRouter {
       console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
     }
 
+    const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
+
+    const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
+    const { chatUrl: omniEndpoint, rootUrl: omniRootUrl } = buildOmniEndpoints(rawUrl);
+
+    // Timeout POR MODELO (não por gateway). Sem stream, o gateway só devolve os headers quando
+    // termina de gerar — 15s cortava respostas de código no meio. Com stream, só precisa do
+    // primeiro byte.
+    const omniAttemptTimeoutMs =
+      Number(process.env.OMNIROUTE_TIMEOUT_MS) || (stream ? 20000 : 60000);
+    const circuitOpen = omniCircuitOpen();
+
+    // Cascata de modelos. Ordem de precedência:
+    //  1. OMNIROUTE_MODEL (lista explícita do operador);
+    //  2. modelos VERIFICADOS por descoberta (ver omni-model-discovery.ts) — testados de
+    //     verdade contra o gateway, só de provedores com credencial ativa, mais rápido primeiro;
+    //  3. combos virtuais `auto/*` do gateway, só como último recurso: eles sorteiam entre
+    //     centenas de alvos (inclusive provedores sem credencial) e podem levar dezenas de
+    //     segundos até falhar — era a causa do "OmniRoute não funciona".
     const autoCascade =
       tier === "heavy"
         ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
         : ["auto/best-free", "auto/chat", "auto/fast", "auto/cheap", "auto"];
     const envModels = process.env.OMNIROUTE_MODEL?.trim();
-    const fullList = envModels
-      ? envModels.split(",").map((s) => s.trim()).filter(Boolean)
-      : autoCascade;
+    let fullList: string[];
+    let usingVerifiedModels = false;
+    if (envModels) {
+      fullList = envModels.split(",").map((s) => s.trim()).filter(Boolean);
+    } else {
+      const verified =
+        circuitOpen || signal?.aborted
+          ? []
+          : await ensureVerifiedOmniModels(
+              { rootUrl: omniRootUrl, chatUrl: omniEndpoint, apiKey: effectiveOmniRouteKey },
+              signal
+            );
+      usingVerifiedModels = verified.length > 0;
+      fullList = usingVerifiedModels ? verified.map((m) => m.id) : autoCascade;
+    }
 
     const requestedOmniModels = fullList.filter((m) => !isComboOnCooldown(m));
     if (requestedOmniModels.length === 0 && fullList.length > 0) {
-      console.warn("[ROUTER] Todos os combos da cascata em cooldown de cota; tentando o primeiro como última chance.");
+      console.warn("[ROUTER] Todos os modelos da cascata em cooldown de cota; tentando o primeiro como última chance.");
       requestedOmniModels.push(fullList[0]);
     }
-    const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
-
-    const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
-    const { chatUrl: omniEndpoint } = buildOmniEndpoints(rawUrl);
-
-    const omniConnectTimeoutMs = Number(process.env.OMNIROUTE_TIMEOUT_MS) || 15000;
 
     // ----------------------------------------------------
     // TENTATIVA 1: OmniRoute Local Gateway (Rota Primária)
     // ----------------------------------------------------
     recordOmniAttempt();
-    if (omniCircuitOpen()) {
+    if (circuitOpen) {
       lastOmniFailure = "circuit-breaker aberto apos falhas consecutivas (cooldown de 30s)";
       console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); avançando na cascata BYOK.");
     } else
@@ -853,26 +883,44 @@ export class SmartRouter {
       });
 
       const omniStart = Date.now();
+      // Timeout do MODELO combinado com o sinal do chamador (guard da DAG). Antes, com `signal`
+      // presente o timeout interno era ignorado e um modelo travado consumia a etapa inteira.
+      const attemptTimeout = AbortSignal.timeout(omniAttemptTimeoutMs);
+      const attemptSignal = signal ? AbortSignal.any([signal, attemptTimeout]) : attemptTimeout;
+      let modelTimedOut = false;
       const omniRes = await safeFetch(omniEndpoint, {
         method: "POST",
         headers: omniHeaders,
         body: omniBody,
-        timeoutMs: omniConnectTimeoutMs,
-        // C5: sinal do guard da DAG tem prioridade sobre o timeout interno.
-        ...(signal ? { signal } : {}),
+        signal: attemptSignal,
       }).catch((err) => {
-        networkDown = true;
-        omniRecordFailure();
-        lastOmniFailure = `falha de rede em ${omniEndpoint}: ${String(err).slice(0, 160)}`;
-        console.warn(
-          `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
-        );
+        if (signal?.aborted) {
+          // O chamador desistiu (timeout da etapa): não há o que tentar depois.
+          networkDown = true;
+          lastOmniFailure = "requisição abortada pelo chamador";
+        } else if (attemptTimeout.aborted) {
+          // Modelo lento NÃO é gateway fora do ar: tenta o próximo modelo da cascata.
+          // Antes isso dava `break` e abandonava o OmniRoute inteiro no primeiro combo lento.
+          modelTimedOut = true;
+          lastOmniFailure = `modelo "${requestedOmniModel}" sem resposta em ${omniAttemptTimeoutMs}ms`;
+          console.warn(`[ROUTER] OmniRoute: ${lastOmniFailure} — tentando o próximo da cascata.`);
+        } else {
+          // Falha de conexão real (gateway parado/porta fechada): só isso alimenta o circuit-breaker.
+          networkDown = true;
+          omniRecordFailure();
+          lastOmniFailure = `falha de rede em ${omniEndpoint}: ${String(err).slice(0, 160)}`;
+          console.warn(
+            `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
+          );
+        }
         return null;
       });
+      if (modelTimedOut && usingVerifiedModels) reportOmniModelFailure(requestedOmniModel);
 
       if (omniRes && omniRes.ok) {
         omniRecordSuccess();
         recordOmniSuccess(Date.now() - omniStart);
+        if (usingVerifiedModels) reportOmniModelSuccess(requestedOmniModel, Date.now() - omniStart);
 
         const idleMs = Number(process.env.OMNIROUTE_IDLE_TIMEOUT_MS) || 45000;
         let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -922,17 +970,22 @@ export class SmartRouter {
           };
         }
       } else if (omniRes) {
-        if (omniRes.status >= 500) omniRecordFailure();
+        // 5xx aqui é falha do PROVEDOR por trás do gateway (ex.: 502 de upstream sem
+        // credencial), não do gateway: não alimenta mais o circuit-breaker — antes, três
+        // modelos ruins seguidos desligavam o OmniRoute inteiro por 30s.
         const errText = await omniRes.text().catch(() => "");
+        // 401/403 também chegam de PROVEDORES por trás do gateway (credencial do upstream
+        // recusada/esgotada), não só da chave do gateway — então seguem para o próximo modelo.
         const quotaHit = omniRes.status === 402 || omniRes.status === 429;
         if (quotaHit) markComboExhausted(requestedOmniModel, omniRes.status);
+        if (usingVerifiedModels) reportOmniModelFailure(requestedOmniModel);
         lastOmniFailure = quotaHit
-          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no combo do gateway): ${errText.slice(0, 160)}`
-          : `HTTP ${omniRes.status} em ${omniEndpoint}: ${errText.slice(0, 160)}`;
+          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no modelo "${requestedOmniModel}"): ${errText.slice(0, 160)}`
+          : `HTTP ${omniRes.status} no modelo "${requestedOmniModel}": ${errText.slice(0, 160)}`;
         console.warn(
           `[ROUTER] OmniRoute HTTP ${omniRes.status} no modelo "${requestedOmniModel}" (${Date.now() - omniStart}ms). ` +
-            (quotaHit && omniIdx < requestedOmniModels.length - 1
-              ? `tentando próximo combo da cascata: "${requestedOmniModels[omniIdx + 1]}"`
+            (omniIdx < requestedOmniModels.length - 1
+              ? `tentando o próximo da cascata: "${requestedOmniModels[omniIdx + 1]}"`
               : `Resposta: ${errText.substring(0, 200)}`)
         );
       }
@@ -972,12 +1025,11 @@ export class SmartRouter {
     // ----------------------------------------------------
     // TENTATIVA 5: Fallback — Google Gemini Direto
     // ----------------------------------------------------
-    if (effectiveGeminiKey) {
+    if (effectiveGeminiKey && !signal?.aborted) {
       recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
 
-      const { getAvailableGeminiModels } = require("./gemini-client");
-      const candidateModels: string[] = await getAvailableGeminiModels(cleanApiKey);
+      const candidateModels: string[] = await getAvailableGeminiModels(cleanApiKey, signal);
 
       for (const modelId of candidateModels) {
         try {

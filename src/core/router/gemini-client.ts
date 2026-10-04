@@ -8,7 +8,7 @@ let cachedModels: string[] | null = null;
  * Consulta dinamicamente a API do Google para obter TODOS os modelos ativos
  * e suportados especificamente para a chave informada via /v1beta/models.
  */
-export async function getAvailableGeminiModels(apiKey: string): Promise<string[]> {
+export async function getAvailableGeminiModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
   if (cachedModels && cachedModels.length > 0) {
     return cachedModels;
   }
@@ -17,7 +17,8 @@ export async function getAvailableGeminiModels(apiKey: string): Promise<string[]
     // Anti-SSRF + timeout: mesma política de saída HTTP do SmartRouter (antes fetch nativo sem timeout).
     const res = await safeFetch(
       `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(apiKey)}`,
-      { timeoutMs: 10000 }
+      // Respeita o sinal do chamador (guard da etapa da DAG) além do teto de 10s.
+      { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000) }
     );
     if (res.ok) {
       const data = await res.json();

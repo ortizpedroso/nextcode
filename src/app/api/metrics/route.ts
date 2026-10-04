@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRouterMetrics } from "@/core/router/smart-router";
+import { getOmniDiscoveryStatus } from "@/core/router/omni-model-discovery";
 import { getQuotaStatus } from "@/core/router/quota-tracker";
 
 /** Fase 6 — métricas do dispatcher (somente leitura, nada sensível). */
@@ -18,6 +19,8 @@ export async function GET() {
     exhaustedReplies: m.exhausted,
     // Fase 12 — combos em cooldown por cota esgotada (HTTP 402/429).
     quotaCooldowns: getQuotaStatus(),
+    // Modelos do OmniRoute verificados por descoberta (ver omni-model-discovery.ts).
+    omnirouteDiscovery: getOmniDiscoveryStatus(),
     timestamp: new Date().toISOString(),
   });
 }

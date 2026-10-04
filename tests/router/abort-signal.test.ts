@@ -46,7 +46,12 @@ describe("SmartRouter — AbortSignal real nos provedores (C5)", () => {
     const res = await router.dispatchWithFallback(options);
     expect(res.providerUsed).toBe("omniroute");
     const omniCall = captured.find((c) => c.method === "POST");
-    expect(omniCall?.signal).toBe(controller.signal);
+    // O fetch recebe o sinal do chamador COMBINADO com o timeout por modelo (AbortSignal.any):
+    // abortar o chamador tem de abortar a requisição ao gateway.
+    expect(omniCall?.signal).toBeInstanceOf(AbortSignal);
+    expect(omniCall?.signal?.aborted).toBe(false);
+    controller.abort();
+    expect(omniCall?.signal?.aborted).toBe(true);
   });
 
   it("falha imediatamente quando o signal já está abortado (sem hang)", async () => {
