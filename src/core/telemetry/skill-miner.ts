@@ -92,11 +92,13 @@ Esta habilidade otimiza a execução repetitiva de: \`${action}\`.
    * com source="bug_pattern" para aparecer na mesma tela de propostas, mas como alerta de bug
    * a ser corrigido pelo time — nunca instalada/escrita em disco como skill.
    */
-  public static async detectRecurringBugs(threshold: number = 3): Promise<SkillProposalData | null> {
+  public static async detectRecurringBugs(threshold: number = 3, since?: Date): Promise<SkillProposalData | null> {
     const FAILURE_ACTIONS = ["AUDIT_REJECTED", "EMPIRICAL_BUILD_FAILED"];
 
+    // `since` restringe a uma janela de tempo — a TelemetryLog é append-only (Trava T3), então
+    // quem precisa ignorar registros antigos filtra por data em vez de apagá-los.
     const logs = await prisma.telemetryLog.findMany({
-      where: { action: { in: FAILURE_ACTIONS } },
+      where: { action: { in: FAILURE_ACTIONS }, ...(since ? { createdAt: { gte: since } } : {}) },
       orderBy: { createdAt: "desc" },
       take: 100,
     });

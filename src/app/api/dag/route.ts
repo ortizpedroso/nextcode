@@ -1297,6 +1297,24 @@ DIRETRIZES DE EXECUÇÃO:
         return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
       }
 
+      // Trava T3: o reset abaixo descarta attempts/failureHistory do nó — antes de apagá-los,
+      // a decisão humana de desbloquear e o histórico descartado vão para a trilha de
+      // auditoria (append-only), que é a fonte permanente do que aconteceu com o nó.
+      const logHumanUnblock = (t: typeof targetTask, cascade: boolean) =>
+        TelemetryLogger.log({
+          sessionId: t.sessionId,
+          action: "NODE_UNBLOCKED_BY_HUMAN",
+          details: {
+            nodeId: t.id,
+            title: t.title,
+            previousStatus: t.status,
+            previousAttempts: t.attempts,
+            discardedFailureHistory: t.failureHistory || "[]",
+            unblockedVia: cascade ? `cascata de ${nodeId}` : "retry_node",
+          },
+        });
+      logHumanUnblock(targetTask, false);
+
       // Desbloqueia o nó selecionado resetando tentativas, status e o histórico de falhas
       // (Trava T6 - D-RANHO): um novo ciclo de tentativas começa limpo, sem o relatório de
       // incidente da rodada anterior.
@@ -1312,6 +1330,7 @@ DIRETRIZES DE EXECUÇÃO:
 
       for (const task of sessionTasks) {
         if (task.status === "blocked") {
+          logHumanUnblock(task, true);
           await prisma.taskNode.update({
             where: { id: task.id },
             data: { status: "pending", attempts: 0, failureHistory: "[]" },

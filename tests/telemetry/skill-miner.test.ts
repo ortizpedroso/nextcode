@@ -25,9 +25,12 @@ describe("buildErrorSignature", () => {
 });
 
 describe("SkillMiner.detectRecurringBugs", () => {
+  // TelemetryLog é append-only (Trava T3): em vez de apagar os logs entre testes, cada teste
+  // só considera o que ele mesmo gravou (janela `since`).
+  let since: Date;
   beforeEach(async () => {
     await prisma.candidateSkillProposal.deleteMany({});
-    await prisma.telemetryLog.deleteMany({});
+    since = new Date(Date.now() - 1);
   });
 
   it("não propõe nada quando a mesma assinatura de erro aparece abaixo do limiar", async () => {
@@ -40,7 +43,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
       });
     }
 
-    const result = await SkillMiner.detectRecurringBugs(3);
+    const result = await SkillMiner.detectRecurringBugs(3, since);
     expect(result).toBeNull();
 
     const proposals = await prisma.candidateSkillProposal.findMany();
@@ -60,7 +63,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
       });
     }
 
-    const result = await SkillMiner.detectRecurringBugs(3);
+    const result = await SkillMiner.detectRecurringBugs(3, since);
     expect(result).not.toBeNull();
 
     const created = await prisma.candidateSkillProposal.findFirst({
@@ -82,10 +85,10 @@ describe("SkillMiner.detectRecurringBugs", () => {
       });
     }
 
-    const first = await SkillMiner.detectRecurringBugs(3);
+    const first = await SkillMiner.detectRecurringBugs(3, since);
     expect(first).not.toBeNull();
 
-    const second = await SkillMiner.detectRecurringBugs(3);
+    const second = await SkillMiner.detectRecurringBugs(3, since);
     expect(second).toBeNull();
 
     const proposals = await prisma.candidateSkillProposal.findMany({ where: { source: "bug_pattern" } });
@@ -102,7 +105,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
       });
     }
 
-    const result = await SkillMiner.detectRecurringBugs(3);
+    const result = await SkillMiner.detectRecurringBugs(3, since);
     expect(result).toBeNull();
   });
 });
