@@ -40,6 +40,7 @@ export interface SettingsFormState {
   groqKey: string;
   nvidiaKey: string;
   omniRouteKey: string;
+  typesafeKey: string;
   customEndpoint: string;
 }
 

@@ -67,6 +67,7 @@ export default function DashboardOrchestrator() {
     deepseekKey: "",
     groqKey: "",
     nvidiaKey: "",
+    typesafeKey: "",
     omniRouteKey: "",
     customEndpoint: "",
   });
@@ -154,6 +155,7 @@ export default function DashboardOrchestrator() {
         groqKey: data.groqKey || "",
         nvidiaKey: data.nvidiaKey || "",
         omniRouteKey: data.omniRouteKey || "",
+        typesafeKey: data.typesafeKey || "",
         customEndpoint: data.customEndpoint || "",
       });
     } catch (err) {

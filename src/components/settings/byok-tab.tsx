@@ -280,6 +280,14 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
         )}
 
         {renderProviderRow(
+          "Jev — TypeSafe AI (motor de decisão da orquestração)",
+          "typesafe",
+          "typesafeKey",
+          "https://console.typesafe.ai",
+          "chave do console TypeSafe"
+        )}
+
+        {renderProviderRow(
           "OpenRouter / Gateway Customizado",
           "omniRoute",
           "omniRouteKey",

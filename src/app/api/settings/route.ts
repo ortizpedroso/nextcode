@@ -37,6 +37,9 @@ async function ensureSettingTable() {
     if (!existingCols.has("nvidiaKey")) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "nvidiaKey" TEXT;`).catch(() => {});
     }
+    if (!existingCols.has("typesafeKey")) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "typesafeKey" TEXT;`).catch(() => {});
+    }
   } catch (e) {
     console.warn("[SETTINGS] Bootstrap de tabela Setting:", e);
   }
@@ -91,6 +94,7 @@ export async function GET(request: Request) {
       groqKey: mask(setting.groqKey),
       nvidiaKey: mask(setting.nvidiaKey),
       omniRouteKey: mask(setting.omniRouteKey),
+      typesafeKey: mask(setting.typesafeKey),
       omniRouteUrl: setting.omniRouteUrl || "http://localhost:20128/v1",
       customEndpoint: setting.customEndpoint || "http://localhost:20128/v1",
       activeProvider: setting.activeProvider || "auto",
@@ -101,6 +105,7 @@ export async function GET(request: Request) {
       hasGroqKey: Boolean(setting.groqKey),
       hasNvidiaKey: Boolean(setting.nvidiaKey),
       hasOmniRouteKey: Boolean(setting.omniRouteKey),
+      hasTypesafeKey: Boolean(setting.typesafeKey),
       // false = chaves novas seriam gravadas em texto plano (sem NEXTCODE_MASTER_KEY) — a UI avisa.
       secretsEncryptionEnabled: isSecretEncryptionEnabled(),
       updatedAt: setting.updatedAt,
@@ -128,6 +133,7 @@ export async function POST(request: NextRequest) {
       groqKey,
       nvidiaKey,
       omniRouteKey,
+      typesafeKey,
       omniRouteUrl,
       customEndpoint,
       activeProvider,
@@ -156,6 +162,7 @@ export async function POST(request: NextRequest) {
     const newDeepseekKey = processKeyUpdate(deepseekKey, existing?.deepseekKey);
     const newGroqKey = processKeyUpdate(groqKey, existing?.groqKey);
     const newNvidiaKey = processKeyUpdate(nvidiaKey, existing?.nvidiaKey);
+    const newTypesafeKey = processKeyUpdate(typesafeKey, existing?.typesafeKey);
     const newOmniRouteKey = processKeyUpdate(omniRouteKey, existing?.omniRouteKey);
 
     const newEndpoint = customEndpoint || omniRouteUrl || existing?.customEndpoint || "http://localhost:20128/v1";
@@ -163,8 +170,8 @@ export async function POST(request: NextRequest) {
     let updated: any = null;
     try {
       await prisma.$executeRawUnsafe(
-        `INSERT INTO "Setting" ("id", "geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "omniRouteKey", "omniRouteUrl", "customEndpoint", "activeProvider", "updatedAt")
-         VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `INSERT INTO "Setting" ("id", "geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "omniRouteKey", "typesafeKey", "omniRouteUrl", "customEndpoint", "activeProvider", "updatedAt")
+         VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT("id") DO UPDATE SET
            "geminiKey" = excluded."geminiKey",
            "claudeKey" = excluded."claudeKey",
@@ -173,6 +180,7 @@ export async function POST(request: NextRequest) {
            "groqKey" = excluded."groqKey",
            "nvidiaKey" = excluded."nvidiaKey",
            "omniRouteKey" = excluded."omniRouteKey",
+           "typesafeKey" = excluded."typesafeKey",
            "omniRouteUrl" = excluded."omniRouteUrl",
            "customEndpoint" = excluded."customEndpoint",
            "activeProvider" = excluded."activeProvider",
@@ -184,6 +192,7 @@ export async function POST(request: NextRequest) {
         newGroqKey,
         newNvidiaKey,
         newOmniRouteKey,
+        newTypesafeKey,
         newEndpoint,
         newEndpoint,
         activeProvider || "auto"
@@ -196,6 +205,7 @@ export async function POST(request: NextRequest) {
         groqKey: newGroqKey,
         nvidiaKey: newNvidiaKey,
         omniRouteKey: newOmniRouteKey,
+        typesafeKey: newTypesafeKey,
         customEndpoint: newEndpoint,
       };
     } catch (sqlErr) {
@@ -211,6 +221,7 @@ export async function POST(request: NextRequest) {
           groqKey: newGroqKey,
           nvidiaKey: newNvidiaKey,
           omniRouteKey: newOmniRouteKey,
+          typesafeKey: newTypesafeKey,
           omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
           activeProvider: activeProvider || "auto",
@@ -223,6 +234,7 @@ export async function POST(request: NextRequest) {
           groqKey: newGroqKey,
           nvidiaKey: newNvidiaKey,
           omniRouteKey: newOmniRouteKey,
+          typesafeKey: newTypesafeKey,
           omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
           activeProvider: activeProvider || "auto",
@@ -243,6 +255,7 @@ export async function POST(request: NextRequest) {
         groqKey: (updated as any).groqKey ? "••••" : "",
         nvidiaKey: (updated as any).nvidiaKey ? "••••" : "",
         omniRouteKey: updated.omniRouteKey ? "••••" : "",
+        typesafeKey: (updated as any).typesafeKey ? "••••" : "",
         customEndpoint: updated.customEndpoint,
       },
       updatedAt: updated.updatedAt,

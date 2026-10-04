@@ -16,6 +16,8 @@ model Setting {
   groqKey        String?
   nvidiaKey      String?
   omniRouteKey   String?
+  // Jev (TypeSafe AI): motor de decisão da orquestração (ver docs/ARQUITETURA-ORQUESTRACAO.md).
+  typesafeKey    String?
   // 20128 = porta oficial do OmniRoute no docker-compose.yml (8080 era um default obsoleto
   // que fazia o router apontar para porta fechada -> "Cotas e Serviços Indisponíveis")
   omniRouteUrl   String?  @default("http://localhost:20128/v1")

@@ -29,6 +29,7 @@ async function resolveKeyForTest(provider: string, inputKey?: string): Promise<s
   else if (provider === "groq") encryptedVal = setting.groqKey;
   else if (provider === "nvidia") encryptedVal = setting.nvidiaKey;
   else if (provider === "omniRoute" || provider === "custom") encryptedVal = setting.omniRouteKey;
+  else if (provider === "typesafe") encryptedVal = setting.typesafeKey;
 
   if (!encryptedVal) return "";
   return readSecret(encryptedVal) || "";
@@ -163,6 +164,39 @@ export async function POST(request: NextRequest) {
         const errData = await res.json().catch(() => ({}));
         const errMsg = errData.error?.message || `Status HTTP ${res.status}`;
         return NextResponse.json({ success: false, message: `Erro OpenAI: ${errMsg}` });
+      }
+
+      if (provider === "typesafe") {
+        // Jev (TypeSafe AI): a chamada mais leve que valida a chave é uma única pergunta
+        // "noul" sobre um state curto. Formato conferido em docs.typesafe.ai (quickstart e
+        // primitives/noul): `questions` é um OBJETO com ids escolhidos por nós, e a resposta
+        // traz `answers` + `model` + `usage`.
+        const res = await safeFetch("https://api.typesafe.ai/v1/systemone", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "jev-1.13.0",
+            state: "Quero criar um sistema de cadastro de clientes.",
+            questions: { key_check: { type: "noul", instructions: "Esta mensagem pede para criar software?" } },
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const data = (await res.json().catch(() => ({}))) as {
+          model?: string;
+          answers?: Record<string, { noul?: number }>;
+          // Erro real da API (verificado): { detail: { error_type, message } }
+          detail?: { message?: string } | string;
+          error?: { message?: string } | string;
+        };
+        if (res.ok && typeof data.answers?.key_check?.noul === "number") {
+          return NextResponse.json({ success: true, message: `Chave Jev válida e ativa (${data.model || "jev"}).` });
+        }
+        const pickMessage = (v: { message?: string } | string | undefined) =>
+          typeof v === "string" ? v : v?.message;
+        const errMsg = pickMessage(data.detail) || pickMessage(data.error) || `Status HTTP ${res.status}`;
+        return NextResponse.json({ success: false, message: `Erro TypeSafe (Jev): ${errMsg}` });
       }
 
       if (provider === "deepseek") {
