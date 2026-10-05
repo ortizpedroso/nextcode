@@ -19,23 +19,22 @@ export interface SessionQueueResult {
 }
 
 /**
- * Executa a fila de nós da DAG de uma sessão no servidor:
- * recuperação de nós zumbis, laço de lotes (até 3 em paralelo),
- * cascata/relatório por lote e mensagem de conclusão.
+ * Recupera nós travados em "running" (caminho de zumbi): consome tentativa,
+ * acrescenta ao failureHistory, e se atingir maxAttempts bloqueia, faz cascata e
+ * envia relatório ao humano.
  */
-export async function processSessionQueue(sessionId: string): Promise<SessionQueueResult> {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: { project: true },
-  });
-
-  // Recuperação de nós "zumbis": resgata tarefas travadas em "running" após estouro do timeout
+export async function recoverZombieRunningNodes(
+  sessionId: string,
+  options: { ignoreStaleThreshold?: boolean } = {}
+): Promise<number> {
   const staleThresholdMs = (Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000) + 30000;
   const staleRunningTasks = await prisma.taskNode.findMany({
     where: {
       sessionId,
       status: "running",
-      updatedAt: { lt: new Date(Date.now() - staleThresholdMs) },
+      ...(options.ignoreStaleThreshold
+        ? {}
+        : { updatedAt: { lt: new Date(Date.now() - staleThresholdMs) } }),
     },
   });
   for (const stale of staleRunningTasks) {
@@ -79,6 +78,23 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
       await reportBlockedNodeToHuman(sessionId, stale.id);
     }
   }
+
+  return staleRunningTasks.length;
+}
+
+/**
+ * Executa a fila de nós da DAG de uma sessão no servidor:
+ * recuperação de nós zumbis, laço de lotes (até 3 em paralelo),
+ * cascata/relatório por lote e mensagem de conclusão.
+ */
+export async function processSessionQueue(sessionId: string): Promise<SessionQueueResult> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: { project: true },
+  });
+
+  // Recuperação de nós "zumbis": resgata tarefas travadas em "running" após estouro do timeout
+  await recoverZombieRunningNodes(sessionId);
 
   let processedCount = 0;
   let isProcessing = true;

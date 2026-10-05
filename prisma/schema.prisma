@@ -77,6 +77,7 @@ model Session {
   project       Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks         TaskNode[]
   messages      Message[]
+  jobs          Job[]
 }
 
 model TaskNode {
@@ -141,4 +142,23 @@ model CandidateSkillProposal {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model Job {
+  id          String    @id @default(uuid())
+  sessionId   String
+  kind        String    @default("session_queue")
+  status      String    @default("queued")  // queued | running | done | failed
+  lockedBy    String?                        // id da instância do worker (uuid gerado a cada boot)
+  lockedUntil DateTime?
+  reclaims    Int       @default(0)          // quantas vezes foi retomado após lease vencido
+  lastError   String?
+  result      String?                        // JSON do retorno de processSessionQueue
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  @@index([status, lockedUntil])
+}
+
 
