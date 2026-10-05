@@ -29,8 +29,9 @@ export const GATEWAY_DEFAULTS: Record<GatewayId, { label: string; baseUrl: strin
     label: "FreeLLMAPI",
     baseUrl: "http://localhost:3100/v1",
     priority: 0,
-    // "auto" = estratégia balanced do FreeLLMAPI (confiabilidade primeiro); "auto:smart" prioriza qualidade.
-    modelFast: "auto",
+    // auto:fast = menor latência medida (chat, Auditor Cego); auto:smart = mais capaz (código dos nós).
+    // "auto" (balanced) chegou a escolher um modelo de 61s para uma resposta de uma linha.
+    modelFast: "auto:fast",
     modelHeavy: "auto:smart",
     pingPath: "/api/ping",
     dashboardUrl: "http://localhost:3100",

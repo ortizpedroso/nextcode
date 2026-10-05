@@ -51,9 +51,9 @@ Só a etapa 3 deixa o gateway "Pronto". Cada falha vem com a ação para resolve
 
 ## Modelos
 
-| Gateway | Rápido (chat, DAG) | Pesado |
+| Gateway | Rápido (chat, Auditor Cego) | Pesado (código dos nós da DAG) |
 |---|---|---|
-| FreeLLMAPI | `auto` (estratégia balanced: confiabilidade primeiro) | `auto:smart` |
+| FreeLLMAPI | `auto:fast` (menor latência medida) | `auto:smart` (mais capaz) |
 | OmniRoute | vazio = cascata do router (`OMNIROUTE_MODEL` → modelos verificados → combos `auto/*`) | idem |
 
 No OmniRoute, preencher o modelo em Configurações fixa um **modelo exato** (recomendado: os combos

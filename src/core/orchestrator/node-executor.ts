@@ -355,7 +355,9 @@ DIRETRIZES DE EXECUÇÃO:
     const stepSignal = AbortSignal.timeout(stepTimeoutMs);
     const dispatchPromise = smartRouter.dispatchWithFallback({
       messages: dispatchMessages,
-      tier: "fast",
+      // O worker gera o código do nó: modelo pesado do gateway (FreeLLMAPI: auto:smart).
+      // O Auditor Cego continua no rápido (makeBlindAuditDispatchFn).
+      tier: "heavy",
       geminiKey: readSecret(setting?.geminiKey),
       groqKey: readSecret((setting as any)?.groqKey),
       nvidiaKey: readSecret((setting as any)?.nvidiaKey),
