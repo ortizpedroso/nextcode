@@ -400,6 +400,7 @@ export async function POST(request: NextRequest) {
 
         const batchResults = await Promise.all(
           tasksToExecute.map(async (taskDb) => {
+            // TODO(passo-4): unificar — consulta extra por nó para montar a sessão que executeTaskNode espera (o original usava a sessão já carregada)
             const fullTask = await prisma.taskNode.findUniqueOrThrow({
               where: { id: taskDb.id },
               include: { session: { include: { project: true } } },

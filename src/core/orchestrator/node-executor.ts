@@ -219,6 +219,7 @@ export async function postCompletionMessageIfDone(
     completionMessageTargetText = "promovidas para o projeto",
   } = opts;
 
+  // TODO(passo-4): unificar — ordem do resumo de conclusão (execute_node buscava sem orderBy; process_queue já ordenava por createdAt)
   const sessionTasks = await prisma.taskNode.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
@@ -533,6 +534,7 @@ DIRETRIZES DE EXECUÇÃO:
       filesScope: taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [],
       timestamp: new Date().toISOString(),
     });
+    // TODO(passo-4): unificar — process_queue não passava { maxAttempts } aqui (caía no padrão 3); só difere se maxAttempts ≠ 3
     const incidentReportMarkdown =
       finalStatus === "blocked"
         ? IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, JSON.parse(newFailureHistory), {
