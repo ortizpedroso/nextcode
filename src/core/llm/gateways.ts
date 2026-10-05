@@ -369,11 +369,20 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
 
   health.httpStatus = attempt.status ?? null;
   health.error = attempt.detail;
+  // OmniRoute: a chave do gateway já passou no /v1/models (authOk). Qualquer 4xx/5xx daqui em
+  // diante vem dos PROVEDORES por trás do modelo — trocar a chave do OmniRoute não resolve.
+  if (id === "omniroute" && attempt.kind !== "timeout" && attempt.kind !== "network") {
+    health.action =
+      `A chave do OmniRoute está correta (o gateway aceitou). Quem recusou foi o provedor por trás do modelo "${model}"` +
+      (/opencode/i.test(attempt.detail)
+        ? " (o OpenCode Zen bloqueia o plano gratuito fora do app OpenCode)"
+        : "") +
+      `. Para o OmniRoute servir modelos bons, conecte um provedor com chave própria em ${def.dashboardUrl} → Providers e fixe o modelo dele aqui (ex.: groq/llama-3.3-70b-versatile). Enquanto isso, o FreeLLMAPI é a rota principal.`;
+    return health;
+  }
   health.action =
     attempt.kind === "auth"
-      ? id === "omniroute"
-        ? `Os provedores por trás do modelo "${model}" recusaram a credencial. Configure provedores com chave própria no painel do OmniRoute (${def.dashboardUrl}) ou defina um modelo exato que funcione.`
-        : `Chave recusada: copie de novo a chave unificada em ${def.dashboardUrl}.`
+      ? `Chave recusada: copie de novo a chave unificada em ${def.dashboardUrl}.`
       : attempt.kind === "exhausted"
         ? id === "freellmapi"
           ? `Nenhum provedor do FreeLLMAPI respondeu. Cadastre chaves gratuitas (Groq, Google, Cerebras, OpenRouter...) em ${def.dashboardUrl} → Keys.`
