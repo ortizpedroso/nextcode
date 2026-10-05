@@ -5,6 +5,8 @@ import type { ParsedSpec } from "@/core/intake/spec-format";
 
 interface SpecSummaryCardProps {
   spec: ParsedSpec;
+  /** Estado de aprovação vindo do servidor. O campo `status` que o LLM escreve na Spec é ignorado. */
+  approved: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -13,8 +15,8 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 /** Resumo simplificado de uma Spec (YAML + Markdown enxuto) para aprovação do usuário. */
-export function SpecSummaryCard({ spec }: SpecSummaryCardProps) {
-  const statusKey = (spec.status || "aguardando_aprovacao").toLowerCase();
+export function SpecSummaryCard({ spec, approved }: SpecSummaryCardProps) {
+  const statusKey = approved ? "aprovada" : "aguardando_aprovacao";
   const statusStyle = STATUS_STYLES[statusKey] || STATUS_STYLES.aguardando_aprovacao;
   const statusLabel = statusKey === "aprovada" ? "Aprovada" : "Aguardando aprovação";
 

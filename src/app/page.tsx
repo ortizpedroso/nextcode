@@ -41,6 +41,9 @@ export default function DashboardOrchestrator() {
   const [showRevisionsModal, setShowRevisionsModal] = useState(false);
   const [canonicalSpec, setCanonicalSpec] = useState("");
   const [isSpecApproved, setIsSpecApproved] = useState(false);
+  // Spec que o SERVIDOR registrou como aprovada. canonicalSpec acima é o rascunho do modal e muda
+  // ao clicar em qualquer mensagem; o selo "Aprovada" nunca pode vir dele nem do texto do LLM.
+  const [approvedSpec, setApprovedSpec] = useState<string | null>(null);
 
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [tokensSaved, setTokensSaved] = useState<number>(12450);
@@ -127,6 +130,7 @@ export default function DashboardOrchestrator() {
         setActiveProjectId(data.session.projectId || null);
         setCanonicalSpec(data.session.canonicalSpec || "");
         setIsSpecApproved(Boolean(data.session.specApproved));
+        setApprovedSpec(data.session.specApproved ? data.session.canonicalSpec || null : null);
         setTasks(data.tasks || []);
         // Filtra estritamente para que APENAS mensagens do Usuário e do Assistente sejam exibidas
         const cleanMsgs = (data.messages || []).filter(
@@ -715,6 +719,7 @@ export default function DashboardOrchestrator() {
         onRetryNode={handleRetryNode}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
+        approvedSpec={approvedSpec}
         onOpenSpecModal={(content) => {
           // Usa a Spec real escrita pela IA na conversa (se o clique partiu de uma mensagem),
           // em vez de deixar o modal reabrir com o estado antigo/desincronizado em canonicalSpec.
@@ -798,6 +803,11 @@ export default function DashboardOrchestrator() {
           sessionId={activeSessionId}
           specContent={canonicalSpec}
           specApproved={isSpecApproved}
+          approvedSpec={approvedSpec}
+          onSpecSaved={async () => {
+            await fetchSessionDetails(activeSessionId);
+            setConsoleLogs((prev) => [...prev, "[ESPECIFICAÇÃO] Rascunho da Spec salvo (não aprovado)."]);
+          }}
           onClose={() => setShowSpecModal(false)}
           onSpecApproved={async () => {
             await fetchSessionDetails(activeSessionId);

@@ -10,8 +10,12 @@ interface CanonicalSpecModalProps {
   sessionId: string;
   specContent: string;
   specApproved: boolean;
+  /** Spec registrada como aprovada no servidor (o selo do resumo vem daqui, nunca do texto). */
+  approvedSpec?: string | null;
   onClose: () => void;
   onSpecApproved: () => Promise<void>;
+  /** Rascunho salvo (sem aprovar): só recarrega a sessão. Nunca dispara execução. */
+  onSpecSaved?: () => Promise<void>;
 }
 
 const DEFAULT_SPEC = `---
@@ -28,12 +32,15 @@ export function CanonicalSpecModal({
   sessionId,
   specContent,
   specApproved,
+  approvedSpec,
   onClose,
   onSpecApproved,
+  onSpecSaved,
 }: CanonicalSpecModalProps) {
   const [content, setContent] = useState(specContent || DEFAULT_SPEC);
   const [saving, setSaving] = useState(false);
   const [isApproved, setIsApproved] = useState(specApproved);
+  const [approvedHere, setApprovedHere] = useState(false);
   const [showFullDoc, setShowFullDoc] = useState(false);
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
@@ -52,6 +59,7 @@ export function CanonicalSpecModal({
 
       if (res.ok) {
         setIsApproved(true);
+        setApprovedHere(true);
         await onSpecApproved();
       }
     } catch (err) {
@@ -71,7 +79,7 @@ export function CanonicalSpecModal({
           canonicalSpec: content,
         }),
       });
-      await onSpecApproved();
+      await onSpecSaved?.();
     } catch (err) {
       console.error("Erro ao salvar Spec Canônica:", err);
     } finally {
@@ -154,7 +162,13 @@ export function CanonicalSpecModal({
             />
           ) : (
             <div className="flex-1 overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
-              <SpecSummaryCard spec={parsedSpec} />
+              <SpecSummaryCard
+                spec={parsedSpec}
+                approved={
+                  approvedHere ||
+                  (Boolean(approvedSpec) && approvedSpec!.replace(/\r\n/g, "\n").trim() === content.replace(/\r\n/g, "\n").trim())
+                }
+              />
             </div>
           )}
         </div>

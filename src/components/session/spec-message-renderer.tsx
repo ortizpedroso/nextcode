@@ -25,9 +25,14 @@ interface SpecMessageRendererProps {
   content: string;
   onOpenSpecModal?: (content?: string) => void;
   role?: string;
+  /** Spec registrada como aprovada no servidor; esta mensagem só aparece aprovada se for ela. */
+  approvedSpec?: string | null;
 }
 
-export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMessageRendererProps) {
+const normalizeSpec = (text: string) => text.replace(/\r\n/g, "\n").trim();
+
+export function SpecMessageRenderer({ content, onOpenSpecModal, role, approvedSpec }: SpecMessageRendererProps) {
+  const isApproved = Boolean(approvedSpec) && normalizeSpec(approvedSpec!) === normalizeSpec(content);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<"formatted" | "raw">("formatted");
@@ -77,9 +82,15 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMess
                 <span className="font-bold text-xs text-slate-900 dark:text-white">
                   Especificação Executiva NextCode
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 flex items-center gap-1">
-                  <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" /> Trava T1 (Aguardando Aprovação)
-                </span>
+                {isApproved ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80">
+                    Aprovada por você
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/80 flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" /> Trava T1 (Aguardando Aprovação)
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -130,7 +141,7 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role }: SpecMess
                 {content}
               </pre>
             ) : parsedSpec ? (
-              <SpecSummaryCard spec={parsedSpec} />
+              <SpecSummaryCard spec={parsedSpec} approved={isApproved} />
             ) : (
               <RenderParsedMarkdown text={content} />
             )}

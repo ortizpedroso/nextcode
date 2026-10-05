@@ -17,6 +17,41 @@ import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incide
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import type { Setting, TaskNode } from "@prisma/client";
 
+/**
+ * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
+ * só roda o type-check com tsconfig.json, e um projeto sem package.json nem roda. Sem isso a
+ * mensagem dizia "auditadas e promovidas" para código que nunca foi verificado (sessão gateway).
+ */
+export function describeUnverifiedBuild(tasks: TaskNode[], projectPath?: string | null): string {
+  const root = projectPath || process.cwd();
+  const touchesTs = tasks.some((t) => {
+    try {
+      return (JSON.parse(t.filesScope || "[]") as string[]).some((f) => /\.(ts|tsx)$/i.test(f));
+    } catch {
+      return false;
+    }
+  });
+  if (!touchesTs) return "";
+
+  const missing: string[] = [];
+  if (!fs.existsSync(path.join(root, "tsconfig.json"))) missing.push("`tsconfig.json`");
+  let hasDeps = false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    hasDeps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }).length > 0;
+  } catch {
+    /* sem package.json legível */
+  }
+  if (!hasDeps) missing.push("`package.json` com dependências");
+  if (missing.length === 0) return "";
+
+  return (
+    `\n\n🚫 **Código NÃO compilado nem executado.** O projeto não tem ${missing.join(" nem ")}, ` +
+    "então a verificação empírica (type-check e lint) não rodou: os arquivos foram aprovados só pela " +
+    "auditoria de texto. Trate como rascunho até o projeto ter essa base e passar no build."
+  );
+}
+
 /** Minera telemetria em plano de fundo após cada execução de nó — nunca bloqueia a resposta. */
 export function mineTelemetryInBackground(): void {
   SkillMiner.analyzeAndPropose().catch((err) => console.error("[SkillMiner] analyzeAndPropose falhou:", err));
@@ -238,11 +273,13 @@ export async function postCompletionMessageIfDone(
               .join("\n")}`
           : "";
 
+      const unverifiedBlock = describeUnverifiedBuild(sessionTasks, projectPath);
+
       await prisma.message.create({
         data: {
           sessionId,
           role: "assistant",
-          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}`,
+          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}${unverifiedBlock}`,
         },
       });
     }

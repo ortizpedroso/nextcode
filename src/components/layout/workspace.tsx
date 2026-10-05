@@ -79,6 +79,8 @@ interface WorkspaceProps {
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: (content?: string) => void;
+  /** Spec registrada como aprovada no servidor (null = nenhuma). */
+  approvedSpec?: string | null;
   onOpenTelemetryModal?: () => void;
   onOpenQuotaModal?: () => void;
   onOpenSkillsModal?: () => void;
@@ -114,6 +116,7 @@ export function Workspace({
   onInspectQuarantine,
   onExportAuditReport,
   onOpenSpecModal,
+  approvedSpec,
   onOpenTelemetryModal,
   onOpenQuotaModal,
   onOpenSkillsModal,
@@ -442,6 +445,7 @@ export function Workspace({
                             content={msg.content}
                             onOpenSpecModal={onOpenSpecModal}
                             role={msg.role}
+                            approvedSpec={approvedSpec}
                           />
                           {msg.role === "assistant" && msg.graphifySuggestion && (
                             <div className="mt-2 p-3 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 text-[11px] space-y-2">
