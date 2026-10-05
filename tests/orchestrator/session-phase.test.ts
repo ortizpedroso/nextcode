@@ -155,9 +155,9 @@ describe("Fase persistida na sessão e trilha de transições (Passo 4a - 4.1)",
       canonicalSpec: null,
     });
 
-    await backfillSessionPhases();
+    await backfillSessionPhases(createdSessionIds);
     // Segunda execução para provar idempotência
-    await backfillSessionPhases();
+    await backfillSessionPhases(createdSessionIds);
 
     const [dbEntregue, dbBloqueada, dbExecucao, dbSpecRevisao, dbEntrada] = await Promise.all([
       prisma.session.findUniqueOrThrow({ where: { id: sEntregue.id } }),

@@ -2,8 +2,13 @@ import prisma from "../src/lib/prisma";
 import type { Phase } from "../src/core/orchestrator/phase-machine";
 import { serializeSessionPhaseContext } from "../src/core/orchestrator/session-phase";
 
-export async function backfillSessionPhases(): Promise<Record<Phase, number>> {
+export async function backfillSessionPhases(
+  sessionIds?: string[]
+): Promise<Record<Phase, number>> {
   const sessions = await prisma.session.findMany({
+    ...(sessionIds && sessionIds.length > 0
+      ? { where: { id: { in: sessionIds } } }
+      : {}),
     include: {
       tasks: {
         select: { status: true },
@@ -56,7 +61,7 @@ export async function backfillSessionPhases(): Promise<Record<Phase, number>> {
       ...(faseAntesDoBloqueio ? { faseAntesDoBloqueio } : {}),
     });
 
-    await prisma.session.update({
+    const updated = await prisma.session.updateMany({
       where: { id: session.id },
       data: {
         phase: targetPhase,
@@ -64,7 +69,9 @@ export async function backfillSessionPhases(): Promise<Record<Phase, number>> {
       },
     });
 
-    counts[targetPhase] += 1;
+    if (updated.count > 0) {
+      counts[targetPhase] += 1;
+    }
   }
 
   return counts;

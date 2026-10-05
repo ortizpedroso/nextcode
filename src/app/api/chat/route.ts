@@ -20,6 +20,10 @@ import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-audi
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
 import { isExplicitSpecApproval, isNewSpecRequest } from "@/core/intake/approval-intent";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
+import {
+  approveSpecAndStart,
+  type ApproveSpecResult,
+} from "@/core/orchestrator/execution-trigger";
 import type { Setting } from "@prisma/client";
 
 /** Adapta o SmartRouter (tier fast, mesmas chaves BYOK já resolvidas na requisição) para o formato de dispatchFn que o DualLensAuditor espera — mesmo padrão usado em dag/route.ts, mantendo o auditor desacoplado dos provedores. */
@@ -89,10 +93,12 @@ export async function POST(request: NextRequest) {
     // Trava T1: Garante que novas solicitações de Spec travem a sessão até aprovação explícita do usuário
     // Palavra inteira + negação + pergunta (ver approval-intent.ts) — substring liberava a
     // trava com "não vou aprovar" e a re-travava com "aspecto"/"especial".
+    // TODO(passo-4b): classificar intenções de mensagem pela máquina de fases e tratar mudanças em EXECUCAO/SPEC_REVISAO
     const isNewSpec = isNewSpecRequest(targetPrompt);
     const isExplicitApproval = isExplicitSpecApproval(targetPrompt);
 
     let specApprovedNow: boolean;
+    let approvalTriggerResult: ApproveSpecResult | null = null;
     if (isNewSpec && !isExplicitApproval) {
       await prisma.session.update({
         where: { id: activeSessionId },
@@ -101,16 +107,19 @@ export async function POST(request: NextRequest) {
       specApprovedNow = false;
       console.log(`[CHAT_INTENT] Trava T1 BLOQUEADA na sessão ${activeSessionId} para aguardar aprovação da nova Spec.`);
     } else if (isExplicitApproval) {
-      await prisma.session.update({
-        where: { id: activeSessionId },
-        data: { specApproved: true },
-      });
-      specApprovedNow = true;
-      console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por aprovação do usuário.`);
+      approvalTriggerResult = await approveSpecAndStart(activeSessionId);
+      if (approvalTriggerResult.ok) {
+        specApprovedNow = true;
+        console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por aprovação do usuário.`);
+      } else {
+        specApprovedNow = false;
+        console.log(
+          `[CHAT_INTENT] Aprovação explícita recusada na sessão ${activeSessionId}: ${approvalTriggerResult.reason}`
+        );
+      }
     } else {
       const sessionForLock = await prisma.session.findUnique({
         where: { id: activeSessionId },
-        select: { specApproved: true },
       });
       specApprovedNow = sessionForLock?.specApproved ?? false;
     }
@@ -123,6 +132,40 @@ export async function POST(request: NextRequest) {
         content: targetPrompt,
       },
     });
+
+    if (approvalTriggerResult && !approvalTriggerResult.ok && approvalTriggerResult.reason === "SPEC_AUSENTE") {
+      const missingSpecMessage =
+        "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação.";
+      const assistantMessage = await prisma.message.create({
+        data: {
+          sessionId: activeSessionId,
+          role: "assistant",
+          content: missingSpecMessage,
+          tokens: 0,
+          tier: "fast",
+        },
+      });
+      const cleanMessages = await prisma.message.findMany({
+        where: {
+          sessionId: activeSessionId,
+          role: { in: ["user", "assistant"] },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: "SPEC_AUSENTE",
+          success: false,
+          sessionId: activeSessionId,
+          specApproved: false,
+          userMessage,
+          assistantMessage,
+          messages: cleanMessages,
+        },
+        { status: 200 }
+      );
+    }
 
     // 3. Busca histórico da sessão
     const history = await prisma.message.findMany({

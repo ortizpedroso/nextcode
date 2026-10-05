@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
+import {
+  approveSpecAndStart,
+  type ApproveSpecResult,
+} from "@/core/orchestrator/execution-trigger";
 
 // GET fica aberto para a UI local, como as demais rotas de leitura (ver sessions/route.ts).
 export async function GET(
@@ -57,12 +61,51 @@ export async function PATCH(
     if (projectId !== undefined) {
       dataToUpdate.projectId = projectId ? String(projectId).trim() : null;
     }
-    if (body.specApproved !== undefined) dataToUpdate.specApproved = Boolean(body.specApproved);
-    if (body.canonicalSpec !== undefined) dataToUpdate.canonicalSpec = String(body.canonicalSpec);
+    if (body.specApproved === false) {
+      // TODO(passo-4b): revisar impacto na fase quando specApproved volta para false
+      dataToUpdate.specApproved = false;
+    }
+    if (body.canonicalSpec !== undefined && body.specApproved !== true) {
+      dataToUpdate.canonicalSpec = String(body.canonicalSpec);
+    }
 
-    const updated = await prisma.session.update({
+    if (Object.keys(dataToUpdate).length > 0) {
+      await prisma.session.update({
+        where: { id },
+        data: dataToUpdate,
+      });
+    }
+
+    let triggerResult: ApproveSpecResult | null = null;
+    if (body.specApproved === true) {
+      triggerResult = await approveSpecAndStart(
+        id,
+        body.canonicalSpec !== undefined ? String(body.canonicalSpec) : undefined
+      );
+      if (!triggerResult.ok) {
+        const currentSession = await prisma.session.findUnique({
+          where: { id },
+          include: {
+            project: {
+              select: { id: true, name: true, path: true },
+            },
+          },
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            success: false,
+            reason: triggerResult.reason,
+            error: triggerResult.reason,
+            session: currentSession,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updated = await prisma.session.findUnique({
       where: { id },
-      data: dataToUpdate,
       include: {
         project: {
           select: { id: true, name: true, path: true },
@@ -70,7 +113,18 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json({ success: true, session: updated });
+    if (!updated) {
+      return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      success: true,
+      ...(triggerResult
+        ? { alreadyStarted: triggerResult.alreadyStarted, phase: triggerResult.phase }
+        : {}),
+      session: updated,
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao atualizar sessão", details: String(error) },

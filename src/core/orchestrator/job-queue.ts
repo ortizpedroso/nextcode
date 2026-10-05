@@ -5,6 +5,7 @@ import {
   recoverZombieRunningNodes,
   type SessionQueueResult,
 } from "@/core/orchestrator/session-queue";
+import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import type { Job } from "@prisma/client";
 
 export const DEFAULT_JOB_LEASE_MS = 30000;
@@ -174,6 +175,25 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
     }
 
     const queueResult: SessionQueueResult = await processSessionQueue(job.sessionId);
+
+    const sessionAfterQueue = await prisma.session.findUnique({
+      where: { id: job.sessionId },
+      select: { phase: true },
+    });
+    if (sessionAfterQueue?.phase === "EXECUCAO") {
+      const hasBlockedNode = queueResult.tasks.some((t) => t.status === "blocked");
+      if (hasBlockedNode) {
+        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" });
+      } else if (queueResult.allCompleted) {
+        await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
+        // TODO(etapa-1): verificação real de lacunas
+        await applyPhaseEvent(
+          job.sessionId,
+          { type: "VERIFICACAO_OK" },
+          { extraDetails: { specCompleteness: queueResult.specCompleteness } }
+        );
+      }
+    }
 
     return await prisma.job.update({
       where: { id: jobId },

@@ -106,12 +106,12 @@ export async function POST(req: NextRequest) {
 
       const details = JSON.parse(log.details);
 
-      // Atualiza spec da sessão
+      // Atualiza spec da sessão (specApproved volta para false; aprovação exige approveSpecAndStart)
       await prisma.session.update({
         where: { id: sessionId },
         data: {
           canonicalSpec: details.canonicalSpec || null,
-          specApproved: Boolean(details.specApproved),
+          specApproved: false,
         },
       });
 

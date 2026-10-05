@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
-import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { SmartRouter, AvailableKeys } from "@/core/router/smart-router";
-import { parseSpecDocument } from "@/core/intake/spec-format";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import {
   executeTaskNode,
@@ -17,6 +15,7 @@ import {
   executeClaimedJob,
 } from "@/core/orchestrator/job-queue";
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
+import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 
 export async function GET(request: Request) {
@@ -97,7 +96,7 @@ export async function POST(request: NextRequest) {
     // Limpa mensagens de log do tipo 'system'
     await prisma.message.deleteMany({ where: { role: "system" } }).catch(() => {});
 
-    // Ação 1: Criar e Decompor um novo objetivo em nós de DAG
+    // Ação 1: Garantir que a sessão existe e devolver os nós já existentes (sem criar TaskNode antes da aprovação da Spec)
     if (action === "create_dag" || prompt) {
       const targetPrompt = prompt || "Novo Objetivo NextCode";
       let activeSessionId = sessionId;
@@ -122,7 +121,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Trava T1: criar/decompor os nós da DAG NUNCA aprova a Spec por si só
       const setting = await prisma.setting.findUnique({ where: { id: "default" } });
       const availableKeys: AvailableKeys = {
         hasGeminiKey: Boolean(setting?.geminiKey),
@@ -135,37 +133,6 @@ export async function POST(request: NextRequest) {
       const smartRouter = new SmartRouter();
       const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
       const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
-
-      const sessionForScope = await prisma.session.findUnique({
-        where: { id: activeSessionId },
-        select: { canonicalSpec: true },
-      });
-      const specFilesScope = sessionForScope?.canonicalSpec
-        ? parseSpecDocument(sessionForScope.canonicalSpec)?.arquivosAfetados
-        : undefined;
-
-      const { nodes: decomposedNodes } = SpecDecomposerSkill.decompose(targetPrompt, undefined, specFilesScope);
-
-      const createdTasks = [];
-      for (const node of decomposedNodes) {
-        const dbTask = await prisma.taskNode.create({
-          data: {
-            id: node.id,
-            sessionId: activeSessionId,
-            title: node.title,
-            role: node.role,
-            status: "pending",
-            dependencies: JSON.stringify(node.dependencies),
-            filesScope: JSON.stringify(node.filesScope || []),
-            mcpScope: node.mcpScope,
-            payload: JSON.stringify({
-              ...(typeof node.payload === "object" && node.payload !== null ? node.payload : { data: node.payload }),
-              intent,
-            }),
-          },
-        });
-        createdTasks.push(dbTask);
-      }
 
       const updatedSession = await prisma.session.findUnique({
         where: { id: activeSessionId },
@@ -183,7 +150,7 @@ export async function POST(request: NextRequest) {
         success: true,
         sessionId: activeSessionId,
         intent,
-        tasks: updatedSession?.tasks || createdTasks,
+        tasks: updatedSession?.tasks || [],
         messages: updatedSession?.messages || [],
         session: updatedSession,
       });
@@ -386,6 +353,15 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      const sessionBeforeUnblock = await prisma.session.findUnique({
+        where: { id: targetTask.sessionId },
+        select: { phase: true },
+      });
+      if (sessionBeforeUnblock?.phase === "BLOQUEADA") {
+        await applyPhaseEvent(targetTask.sessionId, { type: "DESBLOQUEIO_HUMANO" });
+      }
+      await enqueueSessionQueueJob(targetTask.sessionId);
 
       const updatedTasks = await prisma.taskNode.findMany({
         where: { sessionId: targetTask.sessionId },

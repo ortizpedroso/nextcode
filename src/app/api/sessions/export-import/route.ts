@@ -91,13 +91,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cria nova sessão restaurada
+    // Cria nova sessão restaurada (specApproved inicia false; aprovação exige approveSpecAndStart)
     const newSession = await prisma.session.create({
       data: {
         title: `${backupData.session.title || "Sessão Restaurada"} (Importada)`,
         projectId: backupData.session.projectId || null,
         canonicalSpec: backupData.session.canonicalSpec || null,
-        specApproved: Boolean(backupData.session.specApproved),
+        specApproved: false,
       },
     });
 

@@ -108,7 +108,7 @@ export async function applyPhaseEvent(
 
     const ctx = parseSessionPhaseContext(session.phase, session.phaseContext);
 
-    if (attempt === 1 && options?.stopRetryIfPhaseIn?.includes(ctx.phase)) {
+    if (options?.stopRetryIfPhaseIn?.includes(ctx.phase)) {
       return {
         ok: false,
         reason: "CONCURRENT_PHASE_CHANGED",
