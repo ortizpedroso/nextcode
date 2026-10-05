@@ -173,20 +173,6 @@ export function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Sett
   };
 }
 
-export interface NodeExecutionOptions {
-  // TODO(passo-4): unificar — timeout da etapa (45s em execute_node vs 90s em process_queue)
-  stepTimeoutMs?: number;
-
-  // TODO(passo-4): unificar — chaves BYOK no despacho do worker (execute_node só Gemini/Omni vs process_queue com Groq/Nvidia/Deepseek)
-  includeCloudByokKeys?: boolean;
-
-  // TODO(passo-4): unificar — incremento de tentativas em sucesso (false em execute_node vs true em process_queue)
-  alwaysIncrementAttempts?: boolean;
-
-  // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 (undefined em execute_node vs "Divergência semântica." em process_queue)
-  type2RejectionFallback?: string;
-}
-
 export interface NodeExecutionResult {
   success: boolean;
   claimed?: boolean;
@@ -198,8 +184,6 @@ export interface NodeExecutionResult {
 export interface PostCompletionMessageOptions {
   canonicalSpec?: string | null;
   projectPath?: string | null;
-  // TODO(passo-4): unificar — texto da mensagem de conclusão ("promovidas para o projeto" vs "promovidas no servidor")
-  completionMessageTargetText?: string;
 }
 
 /**
@@ -214,13 +198,8 @@ export async function postCompletionMessageIfDone(
   allCompleted: boolean;
   specCompleteness: ReturnType<typeof checkSpecCompletenessOnDisk>;
 }> {
-  const {
-    canonicalSpec,
-    projectPath,
-    completionMessageTargetText = "promovidas para o projeto",
-  } = opts;
+  const { canonicalSpec, projectPath } = opts;
 
-  // TODO(passo-4): unificar — ordem do resumo de conclusão (execute_node buscava sem orderBy; process_queue já ordenava por createdAt)
   const sessionTasks = await prisma.taskNode.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
@@ -259,12 +238,11 @@ export async function postCompletionMessageIfDone(
               .join("\n")}`
           : "";
 
-      // TODO(passo-4): unificar — texto da mensagem de conclusão
       await prisma.message.create({
         data: {
           sessionId,
           role: "assistant",
-          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e ${completionMessageTargetText}:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}`,
+          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}`,
         },
       });
     }
@@ -277,6 +255,8 @@ export async function postCompletionMessageIfDone(
   };
 }
 
+export interface NodeExecutionOptions {}
+
 /**
  * Serviço único de orquestração de execução de um nó da DAG (Etapa 0 - Passo 2).
  * Encapsula a montagem do prompt, despacho LLM, quarentena, auditoria em duas lentes,
@@ -285,18 +265,9 @@ export async function postCompletionMessageIfDone(
  */
 export async function executeTaskNode(
   taskDb: TaskNode & { session: { id: string; canonicalSpec?: string | null; project?: { id: string; name: string; path?: string | null } | null } },
-  options: NodeExecutionOptions = {}
+  _opts: NodeExecutionOptions = {}
 ): Promise<NodeExecutionResult> {
-  const {
-    // TODO(passo-4): unificar: timeout da etapa
-    stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 45000,
-    // TODO(passo-4): unificar: chaves BYOK passadas no despacho do worker
-    includeCloudByokKeys = false,
-    // TODO(passo-4): unificar: incremento de tentativas em sucesso
-    alwaysIncrementAttempts = false,
-    // TODO(passo-4): unificar: fallback de motivo de rejeição do Tipo 2
-    type2RejectionFallback,
-  } = options;
+  const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000;
 
   // Reserva atômica do nó (Passo 4a - 4.5): só executa se conseguir transicionar de pending/failed para running
   const claimRes = await prisma.taskNode.updateMany({
@@ -386,13 +357,9 @@ DIRETRIZES DE EXECUÇÃO:
       messages: dispatchMessages,
       tier: "fast",
       geminiKey: readSecret(setting?.geminiKey),
-      ...(includeCloudByokKeys
-        ? {
-            groqKey: readSecret((setting as any)?.groqKey),
-            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-            deepseekKey: readSecret((setting as any)?.deepseekKey),
-          }
-        : {}),
+      groqKey: readSecret((setting as any)?.groqKey),
+      nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+      deepseekKey: readSecret((setting as any)?.deepseekKey),
       omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
       omniRouteKey: readSecret(setting?.omniRouteKey),
       stream: false,
@@ -515,7 +482,9 @@ DIRETRIZES DE EXECUÇÃO:
 
     const rejectionReason =
       empiricalFailureReason ||
-      (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason || type2RejectionFallback : undefined);
+      (type2Res.verdict !== "APPROVED"
+        ? type2Res.rejectionReason || "Divergência semântica."
+        : undefined);
 
     let incidentReportMarkdown: string | undefined;
     if (finalStatus === "failed" || finalStatus === "blocked") {
@@ -551,7 +520,6 @@ DIRETRIZES DE EXECUÇÃO:
       filesScope: taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [],
       timestamp: new Date().toISOString(),
     });
-    // TODO(passo-4): unificar — process_queue não passava { maxAttempts } aqui (caía no padrão 3); só difere se maxAttempts ≠ 3
     const incidentReportMarkdown =
       finalStatus === "blocked"
         ? IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, JSON.parse(newFailureHistory), {
@@ -570,12 +538,10 @@ DIRETRIZES DE EXECUÇÃO:
     console.error(`[DAG_NODE_CRASH] Nó "${taskDb.title}" travou após 'running':`, err);
   }
 
-  // TODO(passo-4): unificar — incremento de tentativas em sucesso
-  const updatedAttempts = alwaysIncrementAttempts
-    ? newAttempts
-    : finalStatus === "failed" || finalStatus === "blocked"
-    ? newAttempts
-    : taskDb.attempts;
+  const updatedAttempts =
+    finalStatus === "failed" || finalStatus === "blocked"
+      ? newAttempts
+      : taskDb.attempts;
 
   const updatedTask = await prisma.taskNode.update({
     where: { id: taskDb.id },

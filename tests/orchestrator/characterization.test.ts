@@ -513,8 +513,8 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
 
       const dbTask = await prisma.taskNode.findUnique({ where: { id: task.id } });
       expect(dbTask?.status).toBe("completed");
-      // Divergência 3: process_queue SEMPRE incrementa attempts (de 0 para 1) mesmo no sucesso
-      expect(dbTask?.attempts).toBe(1);
+      // Divergência 3 unificada (Passo 4a): attempts incrementa só em falha/bloqueio, nunca no sucesso
+      expect(dbTask?.attempts).toBe(0);
     });
 
     it("(b) Tipo 1 reprova → failed e failureHistory acrescida", async () => {
@@ -544,7 +544,7 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
 
       const dbTask = await prisma.taskNode.findUnique({ where: { id: task.id } });
       expect(dbTask?.status).toBe("completed");
-      expect(dbTask?.attempts).toBe(2);
+      expect(dbTask?.attempts).toBe(1);
       expect(dbTask?.failureHistory).toBeTruthy();
 
       const history = JSON.parse(dbTask!.failureHistory!);
@@ -699,10 +699,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
         expect(execWorkerCall).toBeDefined();
         expect(execAuditorCall).toBeDefined();
 
-        // Worker em execute_node NÃO recebe as chaves (divergência 2)
-        expect(execWorkerCall!.groqKey).toBeUndefined();
-        expect(execWorkerCall!.nvidiaKey).toBeUndefined();
-        expect(execWorkerCall!.deepseekKey).toBeUndefined();
+        // Worker em execute_node recebe todas as chaves BYOK (divergência 2 unificada no Passo 4a)
+        expect(execWorkerCall!.groqKey).toBe("gsk-test-groq");
+        expect(execWorkerCall!.nvidiaKey).toBe("nvapi-test-nvidia");
+        expect(execWorkerCall!.deepseekKey).toBe("sk-test-deepseek");
 
         // Auditor Cego em execute_node SEMPRE recebe as chaves
         expect(execAuditorCall!.groqKey).toBe("gsk-test-groq");
@@ -812,10 +812,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
         expect(dbTask?.status).toBe("failed");
         const result = JSON.parse(dbTask!.result!);
         expect(result.auditVerdict).toBe("REJECTED");
-        expect(result.rejectionReason).toBeUndefined();
+        expect(result.rejectionReason).toBe("Divergência semântica.");
         const history = JSON.parse(dbTask!.failureHistory!);
         expect(history).toHaveLength(1);
-        expect(history[0].rejectionReason).toBe("Falha não especificada.");
+        expect(history[0].rejectionReason).toBe("Divergência semântica.");
       } finally {
         validateType2Spy.mockRestore();
       }

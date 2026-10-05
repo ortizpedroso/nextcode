@@ -147,21 +147,11 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
 
     const batchResults = await Promise.all(
       tasksToExecute.map(async (taskDb) => {
-        // TODO(passo-4): unificar — consulta extra por nó para montar a sessão que executeTaskNode espera (o original usava a sessão já carregada)
         const fullTask = await prisma.taskNode.findUniqueOrThrow({
           where: { id: taskDb.id },
           include: { session: { include: { project: true } } },
         });
-        const execResult = await executeTaskNode(fullTask, {
-          // TODO(passo-4): unificar — timeout da etapa (90s em process_queue)
-          stepTimeoutMs: Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000,
-          // TODO(passo-4): unificar — chaves BYOK passadas no despacho do worker (inclui Groq/Nvidia/Deepseek)
-          includeCloudByokKeys: true,
-          // TODO(passo-4): unificar — incremento de tentativas em sucesso (sempre incrementa)
-          alwaysIncrementAttempts: true,
-          // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 ("Divergência semântica." em process_queue)
-          type2RejectionFallback: "Divergência semântica.",
-        });
+        const execResult = await executeTaskNode(fullTask);
         return {
           id: taskDb.id,
           claimed: execResult.claimed !== false,
@@ -188,8 +178,6 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
   } = await postCompletionMessageIfDone(sessionId, {
     canonicalSpec: session?.canonicalSpec,
     projectPath: session?.project?.path,
-    // TODO(passo-4): unificar — mensagem de conclusão ("promovidas no servidor")
-    completionMessageTargetText: "promovidas no servidor",
   });
 
   return {

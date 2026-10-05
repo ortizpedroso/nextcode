@@ -182,7 +182,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // TODO(passo-4): unificar — guardas de entrada específicas de execute_node
       const maxAttemptsGuard = task.maxAttempts || 3;
       const isRetryableFailure = task.status === "failed" && task.attempts < maxAttemptsGuard;
       if (!(task.status === "pending" || task.status === "standby" || isRetryableFailure)) {
@@ -216,16 +215,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Executa o nó via serviço único de orquestração
-      const execResult = await executeTaskNode(task, {
-        // TODO(passo-4): unificar — timeout da etapa (45s em execute_node)
-        stepTimeoutMs: Number(process.env.DAG_STEP_TIMEOUT_MS) || 45000,
-        // TODO(passo-4): unificar — chaves BYOK passadas no despacho do worker (apenas Gemini/Omni)
-        includeCloudByokKeys: false,
-        // TODO(passo-4): unificar — incremento de tentativas em sucesso (não incrementa no sucesso)
-        alwaysIncrementAttempts: false,
-        // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 (sem fallback extra em execute_node)
-        type2RejectionFallback: undefined,
-      });
+      const execResult = await executeTaskNode(task);
 
       if (execResult.claimed === false) {
         return NextResponse.json(
@@ -245,8 +235,6 @@ export async function POST(request: NextRequest) {
       const { specCompleteness } = await postCompletionMessageIfDone(task.sessionId, {
         canonicalSpec: task.session.canonicalSpec,
         projectPath: task.session.project?.path,
-        // TODO(passo-4): unificar — mensagem de conclusão ("promovidas para o projeto")
-        completionMessageTargetText: "promovidas para o projeto",
       });
 
       return NextResponse.json({

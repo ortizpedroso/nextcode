@@ -352,7 +352,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
       const updatedTask = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
       expect(updatedTask.status).toBe("completed");
       expect(updatedTask.failureHistory).toBe("[]");
-      expect(updatedTask.attempts).toBe(1);
+      expect(updatedTask.attempts).toBe(0);
 
       const updatedJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
       expect(updatedJob.status).toBe("done");
