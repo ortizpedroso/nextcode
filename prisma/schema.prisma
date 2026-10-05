@@ -65,19 +65,21 @@ model Project {
 
 
 model Session {
-  id            String     @id @default(uuid())
-  projectId     String?
-  title         String     @default("Nova Sessão")
-  specApproved  Boolean    @default(false)
+  id             String     @id @default(uuid())
+  projectId      String?
+  title          String     @default("Nova Sessão")
+  specApproved   Boolean    @default(false)
+  phase          String     @default("ENTRADA")
+  phaseContext   String     @default("{}")
   intakeScenario String?
-  turnCount     Int        @default(0)
-  canonicalSpec String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  project       Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks         TaskNode[]
-  messages      Message[]
-  jobs          Job[]
+  turnCount      Int        @default(0)
+  canonicalSpec  String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  project        Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks          TaskNode[]
+  messages       Message[]
+  jobs           Job[]
 }
 
 model TaskNode {
