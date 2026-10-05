@@ -15,6 +15,8 @@ import { POST } from "@/app/api/dag/route";
 
 import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
+import { DualLensAuditor, type ValidationType2Result } from "@/core/governance/dual-lens-auditor";
+import { executeTaskNode } from "@/core/orchestrator/node-executor";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
@@ -192,6 +194,11 @@ const CHAR_TASK_IDS = [
   "pq-par-2",
   "byok-exec-1",
   "byok-pq-1",
+  "exec-t2-noreason",
+  "pq-t2-noreason",
+  "contract-done-1",
+  "contract-block-A",
+  "contract-block-B",
 ];
 
 async function cleanupCharTestRecords() {
@@ -757,6 +764,179 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
           },
         });
       }
+    });
+  });
+
+  // O DualLensAuditor atual nunca devolve REJECTED sem motivo (dual-lens-auditor.ts:396, 499, 544),
+  // mas a interface permite (rejectionReason?: string). Estes testes fixam como cada caminho reage
+  // a esse retorno — a divergência do fallback do Tipo 2 só se manifesta se o contrato do auditor mudar.
+  describe("Fallback do motivo de rejeição do Tipo 2 (divergência 3 de motivo)", () => {
+    const rejectedWithoutReason: ValidationType2Result = {
+      verdict: "REJECTED",
+      lens1BlindReport: "",
+      lens2CrossVerification: "",
+      rejectionReason: undefined,
+      method: "llm_blind",
+    };
+
+    it("(b2) execute_node: Tipo 2 reprova sem motivo → sem fallback no result, 'Falha não especificada.' no histórico", async () => {
+      const validateType2Spy = vi
+        .spyOn(DualLensAuditor, "validateType2")
+        .mockResolvedValueOnce(rejectedWithoutReason);
+      try {
+        const { session } = await setupTestProjectAndSession("execute_node tipo 2 sem motivo");
+        const task = await prisma.taskNode.create({
+          data: {
+            id: "exec-t2-noreason",
+            sessionId: session.id,
+            title: "Etapa Tipo2 Sem Motivo",
+            role: "backend",
+            status: "pending",
+            filesScope: JSON.stringify(["index.ts"]),
+            attempts: 0,
+            maxAttempts: 3,
+          },
+        });
+
+        fakeLlmMode = "success";
+        const req = new NextRequest("http://localhost/api/dag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "execute_node", nodeId: task.id }),
+        });
+        const res = await POST(req);
+        expect(res.status).toBe(200);
+        expect(validateType2Spy).toHaveBeenCalledTimes(1);
+
+        const dbTask = await prisma.taskNode.findUnique({ where: { id: task.id } });
+        expect(dbTask?.status).toBe("failed");
+        const result = JSON.parse(dbTask!.result!);
+        expect(result.auditVerdict).toBe("REJECTED");
+        expect(result.rejectionReason).toBeUndefined();
+        const history = JSON.parse(dbTask!.failureHistory!);
+        expect(history).toHaveLength(1);
+        expect(history[0].rejectionReason).toBe("Falha não especificada.");
+      } finally {
+        validateType2Spy.mockRestore();
+      }
+    });
+
+    it("(b2) process_queue: Tipo 2 reprova sem motivo → 'Divergência semântica.' no result e no histórico", async () => {
+      const validateType2Spy = vi
+        .spyOn(DualLensAuditor, "validateType2")
+        .mockResolvedValueOnce(rejectedWithoutReason);
+      try {
+        const { session } = await setupTestProjectAndSession("process_queue tipo 2 sem motivo");
+        await prisma.taskNode.create({
+          data: {
+            id: "pq-t2-noreason",
+            sessionId: session.id,
+            title: "Etapa Tipo2 Sem Motivo",
+            role: "backend",
+            status: "pending",
+            filesScope: JSON.stringify(["index.ts"]),
+            attempts: 2,
+            maxAttempts: 3,
+          },
+        });
+
+        // attempts=2/maxAttempts=3: a reprovação bloqueia o nó e o lote termina sem reexecutá-lo.
+        fakeLlmMode = "success";
+        const req = new NextRequest("http://localhost/api/dag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "process_queue", sessionId: session.id }),
+        });
+        const res = await POST(req);
+        expect(res.status).toBe(200);
+        expect(validateType2Spy).toHaveBeenCalledTimes(1);
+
+        const dbTask = await prisma.taskNode.findUnique({ where: { id: "pq-t2-noreason" } });
+        expect(dbTask?.status).toBe("blocked");
+        const result = JSON.parse(dbTask!.result!);
+        expect(result.auditVerdict).toBe("REJECTED");
+        expect(result.rejectionReason).toBe("Divergência semântica.");
+        const history = JSON.parse(dbTask!.failureHistory!);
+        expect(history).toHaveLength(1);
+        expect(history[0].rejectionReason).toBe("Divergência semântica.");
+      } finally {
+        validateType2Spy.mockRestore();
+      }
+    });
+  });
+
+  // Contrato do serviço único: executeTaskNode só executa o nó. Cascata, relatório ao chat e
+  // mensagem de conclusão ficam com o chamador (uma vez por nó em execute_node, uma vez por lote
+  // ou por fila em process_queue) — senão nós paralelos do mesmo lote duplicam essas mensagens.
+  describe("Contrato de executeTaskNode (sem efeitos de sessão)", () => {
+    it("(g1) último nó pendente concluído → nenhuma mensagem de conclusão criada pelo executor", async () => {
+      const { session } = await setupTestProjectAndSession("contrato conclusao");
+      await prisma.taskNode.create({
+        data: {
+          id: "contract-done-1",
+          sessionId: session.id,
+          title: "Etapa Única",
+          role: "backend",
+          status: "pending",
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+      const fullTask = await prisma.taskNode.findUniqueOrThrow({
+        where: { id: "contract-done-1" },
+        include: { session: { include: { project: true } } },
+      });
+
+      fakeLlmMode = "success";
+      const execResult = await executeTaskNode(fullTask, {});
+      expect(execResult.finalStatus).toBe("completed");
+
+      const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+      expect(msgs.filter((m) => m.content.includes("Execução Autônoma Concluída!"))).toHaveLength(0);
+    });
+
+    it("(g2) 3ª falha → blocked sem cascata nos dependentes e sem mensagem de incidente criada pelo executor", async () => {
+      const { session } = await setupTestProjectAndSession("contrato bloqueio");
+      await prisma.taskNode.create({
+        data: {
+          id: "contract-block-A",
+          sessionId: session.id,
+          title: "Etapa Principal",
+          role: "backend",
+          status: "pending",
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 2,
+          maxAttempts: 3,
+        },
+      });
+      await prisma.taskNode.create({
+        data: {
+          id: "contract-block-B",
+          sessionId: session.id,
+          title: "Etapa Dependente",
+          role: "frontend",
+          status: "pending",
+          dependencies: JSON.stringify(["contract-block-A"]),
+          filesScope: JSON.stringify(["ui.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+      const fullTask = await prisma.taskNode.findUniqueOrThrow({
+        where: { id: "contract-block-A" },
+        include: { session: { include: { project: true } } },
+      });
+
+      fakeLlmMode = "bad_code";
+      const execResult = await executeTaskNode(fullTask, {});
+      expect(execResult.finalStatus).toBe("blocked");
+
+      const dependent = await prisma.taskNode.findUnique({ where: { id: "contract-block-B" } });
+      expect(dependent?.status).toBe("pending");
+
+      const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+      expect(msgs.filter((m) => m.content.includes("intervenção humana necessária"))).toHaveLength(0);
     });
   });
 });

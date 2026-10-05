@@ -13,8 +13,16 @@ vi.mock("@/core/security/local-auth", () => ({
 }));
 
 describe("API /api/skills/proposals", () => {
+  // A tabela é compartilhada com outros arquivos de teste em paralelo (ex.: skill-miner.test.ts):
+  // apaga só as propostas que este arquivo cria.
   beforeEach(async () => {
-    await prisma.candidateSkillProposal.deleteMany({});
+    await prisma.candidateSkillProposal.deleteMany({
+      where: {
+        name: {
+          in: ["test-auto-skill", "github-imported-skill", "learned-skill", "bug-type2-divergencia", "imported-reviewer"],
+        },
+      },
+    });
   });
 
   it("GET & POST — cria, lista e aprova propostas de novas skills aprendidas", async () => {

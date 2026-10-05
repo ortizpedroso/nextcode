@@ -27,9 +27,24 @@ describe("buildErrorSignature", () => {
 describe("SkillMiner.detectRecurringBugs", () => {
   // TelemetryLog é append-only (Trava T3): em vez de apagar os logs entre testes, cada teste
   // só considera o que ele mesmo gravou (janela `since`).
+  // CandidateSkillProposal é compartilhada com outros arquivos de teste que rodam em paralelo no
+  // mesmo SQLite (rotas de skills, mineração em plano de fundo após executar nós): limpeza e
+  // asserções ficam restritas às assinaturas deste arquivo.
+  const OWN_SIGNATURES = [
+    "type2:erro raro",
+    "type2:divergência semântica recorrente",
+    "build:mesmo erro de build",
+  ];
+  const ownProposalsWhere = (signature?: string) => ({
+    source: "bug_pattern",
+    OR: (signature ? [signature] : OWN_SIGNATURES).map((s) => ({
+      description: { contains: `Assinatura normalizada: ${s}` },
+    })),
+  });
+
   let since: Date;
   beforeEach(async () => {
-    await prisma.candidateSkillProposal.deleteMany({});
+    await prisma.candidateSkillProposal.deleteMany({ where: ownProposalsWhere() });
     since = new Date(Date.now() - 1);
   });
 
@@ -46,7 +61,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
     const result = await SkillMiner.detectRecurringBugs(3, since);
     expect(result).toBeNull();
 
-    const proposals = await prisma.candidateSkillProposal.findMany();
+    const proposals = await prisma.candidateSkillProposal.findMany({ where: ownProposalsWhere("type2:erro raro") });
     expect(proposals.length).toBe(0);
   });
 
@@ -91,7 +106,9 @@ describe("SkillMiner.detectRecurringBugs", () => {
     const second = await SkillMiner.detectRecurringBugs(3, since);
     expect(second).toBeNull();
 
-    const proposals = await prisma.candidateSkillProposal.findMany({ where: { source: "bug_pattern" } });
+    const proposals = await prisma.candidateSkillProposal.findMany({
+      where: ownProposalsWhere("build:mesmo erro de build"),
+    });
     expect(proposals.length).toBe(1);
   });
 
