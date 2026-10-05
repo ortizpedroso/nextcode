@@ -44,6 +44,14 @@ import { ensureVerifiedOmniModels, reportOmniModelFailure, reportOmniModelSucces
 import { readSecret } from "../security/crypto";
 import { getAvailableGeminiModels } from "./gemini-client";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
+import {
+  loadGatewayConfigs,
+  modelForTier,
+  callGateway,
+  GATEWAY_DEFAULTS,
+  type GatewayConfig,
+} from "../llm/gateways";
+import prisma from "@/lib/prisma";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
   // FIX DEFINITIVO (porta morta): normaliza qualquer URL apontando para a porta 8080
@@ -150,13 +158,25 @@ export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-1.5-pro";
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
 // alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
 let lastOmniFailure = "";
+let lastGatewayFailure = "";
 let lastGroqFailure = "";
 let lastNvidiaFailure = "";
 let lastDeepseekFailure = "";
 let lastGeminiFailure = "";
 
+/** OmniRoute desativado explicitamente em Configurações > Gateways LLM. */
+async function isOmniRouteDisabled(): Promise<boolean> {
+  try {
+    const row = await prisma.llmGateway.findUnique({ where: { id: "omniroute" }, select: { enabled: true } });
+    return row?.enabled === false;
+  } catch {
+    return false;
+  }
+}
+
 function buildDispatchDiagnostics(): string {
   const parts: string[] = [];
+  if (lastGatewayFailure) parts.push(lastGatewayFailure);
   if (lastOmniFailure) parts.push(`OmniRoute Local: ${lastOmniFailure}`);
   if (lastGroqFailure) parts.push(`Groq Cloud: ${lastGroqFailure}`);
   if (lastNvidiaFailure) parts.push(`NVIDIA NIM: ${lastNvidiaFailure}`);
@@ -213,13 +233,15 @@ export interface DispatchOptions {
    * apenas "esquecer" a promise via Promise.race (timeout decorativo).
    */
   signal?: AbortSignal;
+  /** Gateways LLM em ordem (testes/diagnóstico). Omitido = lidos do banco (LlmGateway). */
+  gateways?: GatewayConfig[];
 }
 
 export interface DispatchResult {
   response: Response;
-  providerUsed: "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
+  providerUsed: "freellmapi" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
   badge: string;
-  tierTag: "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
+  tierTag: "freellmapi" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
   modelUsed: string;
 }
 
@@ -755,61 +777,64 @@ export class SmartRouter {
   }
 
   /**
-   * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall):
-   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions)
-   * 2. Tentativa 2: Groq Cloud API Direta
-   * 3. Tentativa 3: NVIDIA NIM API Direta
-   * 4. Tentativa 4: DeepSeek API Direta
-   * 5. Tentativa 5: Google Gemini Direto
-   * 6. Tentativa 6 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
+   * Gateway compatível com OpenAI que já faz roteamento/fallback/cota entre provedores
+   * (FreeLLMAPI). Uma chamada; falha classificada vai para o diagnóstico e o próximo gateway.
    */
-  public async dispatchWithFallback(options: DispatchOptions): Promise<DispatchResult> {
-    const {
-      messages,
-      tier = "fast",
-      modelOverride,
-      geminiKey,
-      groqKey,
-      nvidiaKey,
-      deepseekKey,
-      omniRouteUrl,
-      omniRouteKey,
-      stream = true,
+  private async tryOpenAiGateway(
+    gw: GatewayConfig,
+    messages: DispatchMessage[],
+    tier: ModelTier,
+    stream: boolean,
+    signal?: AbortSignal
+  ): Promise<DispatchResult | null> {
+    const label = GATEWAY_DEFAULTS[gw.id].label;
+    const model = modelForTier(gw, tier) || "auto";
+    const attempt = await callGateway(gw, {
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      model,
+      stream,
       signal,
-    } = options;
-
-    // Se o usuário selecionou explicitamente um modelo de provedor direto no UI
-    if (modelOverride === "groq" && groqKey) {
-      const groqRes = await this.tryGroqDirect(messages, groqKey, signal);
-      if (groqRes) return groqRes;
+      maxTokens: Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
+    });
+    if (attempt.ok) {
+      lastGatewayFailure = "";
+      console.log(`[ROUTER] Chamada processada via ${label} (${attempt.servedBy}, ${attempt.latencyMs}ms).`);
+      TelemetryLogger.log({
+        action: "llm.gateway_call",
+        details: { gateway: gw.id, requestedModel: model, servedBy: attempt.servedBy, latencyMs: attempt.latencyMs, tier },
+      });
+      return {
+        response: attempt.response,
+        providerUsed: "freellmapi",
+        badge: `🆓 ${label} (${attempt.servedBy})`,
+        tierTag: "freellmapi",
+        modelUsed: attempt.servedBy,
+      };
     }
-    if (modelOverride === "nvidia" && nvidiaKey) {
-      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey, signal);
-      if (nvidiaRes) return nvidiaRes;
-    }
-    if (modelOverride === "deepseek" && deepseekKey) {
-      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey, signal);
-      if (deepseekRes) return deepseekRes;
-    }
+    lastGatewayFailure = `${label}: ${attempt.kind}${attempt.status ? ` HTTP ${attempt.status}` : ""} — ${attempt.detail}`;
+    console.warn(`[ROUTER] ${lastGatewayFailure}. Tentando a próxima rota.`);
+    TelemetryLogger.log({
+      action: "llm.gateway_failure",
+      details: { gateway: gw.id, requestedModel: model, kind: attempt.kind, status: attempt.status ?? null, detail: attempt.detail },
+    });
+    return null;
+  }
 
-    const effectiveGeminiKey = resolveEffectiveGeminiKey(geminiKey);
-
-    const effectiveOmniRouteKey =
-      (() => {
-        try {
-          return readSecret(omniRouteKey);
-        } catch {
-          return "";
-        }
-      })().trim() ||
-      process.env.OMNIROUTE_KEY ||
-      process.env.OMNIROUTE_API_KEY ||
-      "";
-
-    if (omniRouteKey && /^enc:v\d:/i.test(omniRouteKey.trim())) {
-      console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
-    }
-
+  /**
+   * Rota OmniRoute (gateway local): cascata de modelos, cooldown de cota e circuit-breaker
+   * próprios — extraída de dispatchWithFallback sem mudança de comportamento. `explicitModels`
+   * vem de LlmGateway.modelFast/modelHeavy (modelo exato escolhido pelo operador).
+   */
+  private async tryOmniRouteGateway(params: {
+    messages: DispatchMessage[];
+    tier: ModelTier;
+    stream: boolean;
+    signal?: AbortSignal;
+    omniRouteUrl?: string | null;
+    effectiveOmniRouteKey: string;
+    explicitModels?: string[];
+  }): Promise<DispatchResult | null> {
+    const { messages, tier, stream, signal, omniRouteUrl, effectiveOmniRouteKey, explicitModels } = params;
     const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
 
     const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
@@ -833,7 +858,7 @@ export class SmartRouter {
       tier === "heavy"
         ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
         : ["auto/best-free", "auto/chat", "auto/fast", "auto/cheap", "auto"];
-    const envModels = process.env.OMNIROUTE_MODEL?.trim();
+    const envModels = explicitModels?.length ? explicitModels.join(",") : process.env.OMNIROUTE_MODEL?.trim();
     let fullList: string[];
     let usingVerifiedModels = false;
     if (envModels) {
@@ -857,7 +882,7 @@ export class SmartRouter {
     }
 
     // ----------------------------------------------------
-    // TENTATIVA 1: OmniRoute Local Gateway (Rota Primária)
+    // OmniRoute Local Gateway
     // ----------------------------------------------------
     recordOmniAttempt();
     if (circuitOpen) {
@@ -997,6 +1022,95 @@ export class SmartRouter {
       break;
     }
     }
+    return null;
+  }
+
+  /**
+   * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall):
+   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions)
+   * 2. Tentativa 2: Groq Cloud API Direta
+   * 3. Tentativa 3: NVIDIA NIM API Direta
+   * 4. Tentativa 4: DeepSeek API Direta
+   * 5. Tentativa 5: Google Gemini Direto
+   * 6. Tentativa 6 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
+   */
+  public async dispatchWithFallback(options: DispatchOptions): Promise<DispatchResult> {
+    const {
+      messages,
+      tier = "fast",
+      modelOverride,
+      geminiKey,
+      groqKey,
+      nvidiaKey,
+      deepseekKey,
+      omniRouteUrl,
+      omniRouteKey,
+      stream = true,
+      signal,
+    } = options;
+
+    // Se o usuário selecionou explicitamente um modelo de provedor direto no UI
+    if (modelOverride === "groq" && groqKey) {
+      const groqRes = await this.tryGroqDirect(messages, groqKey, signal);
+      if (groqRes) return groqRes;
+    }
+    if (modelOverride === "nvidia" && nvidiaKey) {
+      const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey, signal);
+      if (nvidiaRes) return nvidiaRes;
+    }
+    if (modelOverride === "deepseek" && deepseekKey) {
+      const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey, signal);
+      if (deepseekRes) return deepseekRes;
+    }
+
+    const effectiveGeminiKey = resolveEffectiveGeminiKey(geminiKey);
+
+    const effectiveOmniRouteKey =
+      (() => {
+        try {
+          return readSecret(omniRouteKey);
+        } catch {
+          return "";
+        }
+      })().trim() ||
+      process.env.OMNIROUTE_KEY ||
+      process.env.OMNIROUTE_API_KEY ||
+      "";
+
+    if (omniRouteKey && /^enc:v\d:/i.test(omniRouteKey.trim())) {
+      console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
+    }
+
+    // ----------------------------------------------------
+    // TENTATIVA 1: gateways LLM em ordem de prioridade (FreeLLMAPI, OmniRoute) — docs/LLM-GATEWAYS.md
+    // ----------------------------------------------------
+    const gateways = options.gateways ?? (await loadGatewayConfigs().catch(() => [] as GatewayConfig[]));
+    // OmniRoute sempre participa (salvo se desativado explicitamente): é a rota legada e os testes
+    // existentes apontam para ele via omniRouteUrl.
+    const omniDisabled = options.gateways ? !gateways.some((g) => g.id === "omniroute") : await isOmniRouteDisabled();
+    const gatewayOrder: GatewayConfig[] =
+      gateways.some((g) => g.id === "omniroute") || omniDisabled
+        ? gateways
+        : [...gateways, { id: "omniroute", enabled: true, priority: 99, baseUrl: "", apiKey: "", modelFast: null, modelHeavy: null }];
+    for (const gw of gatewayOrder) {
+      if (signal?.aborted) break;
+      if (gw.id === "omniroute") {
+        const explicit = modelForTier(gw, tier);
+        const omniResult = await this.tryOmniRouteGateway({
+          messages,
+          tier,
+          stream,
+          signal,
+          omniRouteUrl,
+          effectiveOmniRouteKey,
+          explicitModels: explicit ? explicit.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        });
+        if (omniResult) return omniResult;
+        continue;
+      }
+      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal);
+      if (gatewayResult) return gatewayResult;
+    }
 
     // ----------------------------------------------------
     // TENTATIVA 2: Fallback — Groq Cloud API Direta
@@ -1099,7 +1213,7 @@ export class SmartRouter {
     // TENTATIVA 6: Esgotamento de Cotas / Provedores
     // ----------------------------------------------------
     const alertText =
-      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível obter resposta de nenhum dos provedores configurados (OmniRoute Local, Groq Cloud, NVIDIA NIM, DeepSeek ou Gemini Direto). Verifique se o OmniRoute está em execução na porta 20128 ou regularize suas chaves em **Configurações > BYOK**." +
+      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível obter resposta de nenhum dos provedores configurados (FreeLLMAPI, OmniRoute Local, Groq Cloud, NVIDIA NIM, DeepSeek ou Gemini Direto). Abra **Configurações > Gateways LLM** e rode o diagnóstico: ele diz exatamente o que falhou e o que fazer." +
       buildDispatchDiagnostics();
 
     let fallbackResponse: Response;

@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { ByokTab } from "./byok-tab";
 import { OmniRouteCard } from "./omniroute-card";
+import { LlmGatewaysCard } from "./llm-gateways-card";
 import { HeadroomCard } from "./headroom-card";
 import { GithubSkillInstallerCard } from "./github-skill-installer-card";
 
@@ -366,7 +367,7 @@ export function SettingsDialog({
               }`}
             >
               <Zap className="w-4 h-4 text-amber-500" />
-              <span>OmniRoute Local (1-Clique)</span>
+              <span>Gateways LLM</span>
             </button>
 
             <button
@@ -490,7 +491,12 @@ export function SettingsDialog({
             )}
 
             {/* ABA: OMNIROUTE LOCAL 1-CLIQUE */}
-            {activeTab === "omniroute" && <OmniRouteCard />}
+            {activeTab === "omniroute" && (
+              <div className="space-y-6">
+                <LlmGatewaysCard />
+                <OmniRouteCard />
+              </div>
+            )}
 
             {/* ABA: HEADROOM TOKEN OPTIMIZER */}
             {activeTab === "headroom" && <HeadroomCard />}

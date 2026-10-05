@@ -25,6 +25,8 @@ const DEFAULT_ALLOWED_HOSTS = new Set([
   "host.docker.internal",
   "omniroute", // serviço da rede do docker-compose
   "nextcode-omniroute",
+  "freellmapi", // serviço da rede do docker-compose (gateway LLM primário)
+  "nextcode-freellmapi",
 ]);
 
 export class SsrfError extends Error {

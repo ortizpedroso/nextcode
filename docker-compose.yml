@@ -1,5 +1,10 @@
 services:
   nextcode-app:
+    # Fora do "docker compose up" padrão: o NextCode roda no host (npm run dev). Este
+    # container monta o MESMO prisma/dev.db e, ao reiniciar, subiria um segundo worker de
+    # fila no mesmo banco. Use "docker compose --profile app up -d" só para rodar o app
+    # inteiro em container (e pare o npm run dev antes).
+    profiles: ["app"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -28,6 +33,8 @@ services:
       - IS_DOCKER=true
       - OMNIROUTE_URL=http://omniroute:20128/v1
       - NEXTCODE_SANDBOX_JAIL=on
+      # Sem isto o next dev escuta só no loopback DO CONTAINER e o mapeamento de porta nunca responde.
+      - NEXTCODE_DEV_HOST=0.0.0.0
     restart: unless-stopped
 
   omniroute:
@@ -58,7 +65,34 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  freellmapi:
+    # Gateway de LLM gratuito (34 provedores, fallback com cooldown e cota por chave).
+    # Rota primária do NextCode; o OmniRoute é a segunda rota (ver docs/LLM-GATEWAYS.md).
+    # Porta 3100 no host: a 3001 (padrão da imagem) é a do NextCode.
+    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    container_name: nextcode-freellmapi
+    env_file:
+      - .env.freellmapi
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    ports:
+      - "127.0.0.1:3100:3001"
+    volumes:
+      - freellmapi-data:/app/server/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
+  freellmapi-data:
+    driver: local
   sqlite_data:
     driver: local
   omniroute-data:

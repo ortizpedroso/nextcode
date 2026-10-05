@@ -64,6 +64,20 @@ model Project {
 }
 
 
+// Gateways de LLM compatíveis com OpenAI, tentados em ordem de priority (menor primeiro).
+// Ver docs/LLM-GATEWAYS.md. O OmniRoute continua com URL/chave em Setting (legado); aqui
+// ele só tem ordem, ativação e modelos.
+model LlmGateway {
+  id         String   @id // "freellmapi" | "omniroute"
+  enabled    Boolean  @default(true)
+  priority   Int      @default(0)
+  baseUrl    String?
+  apiKey     String?  // cifrada com writeSecret
+  modelFast  String?
+  modelHeavy String?
+  updatedAt  DateTime @updatedAt
+}
+
 model Session {
   id             String     @id @default(uuid())
   projectId      String?
