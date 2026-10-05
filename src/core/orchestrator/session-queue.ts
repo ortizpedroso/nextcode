@@ -162,15 +162,20 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
           // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 ("Divergência semântica." em process_queue)
           type2RejectionFallback: "Divergência semântica.",
         });
-        return { id: taskDb.id, finalStatus: execResult.finalStatus };
+        return {
+          id: taskDb.id,
+          claimed: execResult.claimed !== false,
+          finalStatus: execResult.finalStatus,
+        };
       })
     );
 
-    processedCount += batchResults.length;
+    const claimedResults = batchResults.filter((res) => res.claimed);
+    processedCount += claimedResults.length;
 
-    if (batchResults.some((res) => res.finalStatus === "blocked")) {
+    if (claimedResults.some((res) => res.finalStatus === "blocked")) {
       await cascadeBlockedNodes(sessionId);
-      for (const res of batchResults) {
+      for (const res of claimedResults) {
         if (res.finalStatus === "blocked") await reportBlockedNodeToHuman(sessionId, res.id);
       }
     }

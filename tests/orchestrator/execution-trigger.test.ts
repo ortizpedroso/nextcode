@@ -4,8 +4,16 @@ import path from "path";
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
-import { claimJob, executeClaimedJob } from "@/core/orchestrator/job-queue";
+import {
+  enqueueSessionQueueJob,
+  claimJob,
+  executeClaimedJob,
+} from "@/core/orchestrator/job-queue";
+import { startJobWorker, stopJobWorker } from "@/core/orchestrator/job-worker";
 import * as nodeExecutorModule from "@/core/orchestrator/node-executor";
+import * as sessionQueueModule from "@/core/orchestrator/session-queue";
+import { SmartRouter } from "@/core/router/smart-router";
+import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { PATCH as patchSession } from "@/app/api/sessions/[id]/route";
 import { POST as postChat } from "@/app/api/chat/route";
 import { POST as postDag } from "@/app/api/dag/route";
@@ -62,8 +70,9 @@ function collectTsFiles(dir: string): string[] {
   return results;
 }
 
-describe("Gatilho Único de Execução e Fase Persistida (Passo 4a — 4.2 e 4.3)", () => {
+describe("Gatilho Único, Fila Única por Sessão e Reserva Atômica (Passo 4a)", () => {
   afterEach(async () => {
+    await stopJobWorker();
     vi.restoreAllMocks();
     if (createdSessionIds.length > 0) {
       await prisma.job.deleteMany({ where: { sessionId: { in: createdSessionIds } } });
@@ -72,6 +81,102 @@ describe("Gatilho Único de Execução e Fase Persistida (Passo 4a — 4.2 e 4.3
       await prisma.session.deleteMany({ where: { id: { in: createdSessionIds } } });
       createdSessionIds.length = 0;
     }
+  });
+
+  it("1. Duas chamadas concorrentes a enqueueSessionQueueJob(s) → mesmo jobId, uma linha ativa no banco; depois que o job vira done (activeKey = null), uma nova chamada cria outro jobId", async () => {
+    const session = await createTestSession({
+      title: "Sessão fila única por activeKey",
+    });
+
+    const [jobId1, jobId2] = await Promise.all([
+      enqueueSessionQueueJob(session.id),
+      enqueueSessionQueueJob(session.id),
+    ]);
+
+    expect(jobId1).toBe(jobId2);
+
+    const activeJobs = await prisma.job.findMany({
+      where: { sessionId: session.id, activeKey: session.id },
+    });
+    expect(activeJobs).toHaveLength(1);
+    expect(activeJobs[0].id).toBe(jobId1);
+
+    // Conclui o job (status = done e activeKey = null na mesma operação)
+    const claimed = await claimJob(jobId1, "worker-dedup-1");
+    expect(claimed).toBe(true);
+    const doneJob = await executeClaimedJob(jobId1, "worker-dedup-1");
+    expect(doneJob?.status).toBe("done");
+    expect(doneJob?.activeKey).toBeNull();
+
+    // Nova chamada após conclusão cria um novo jobId
+    const jobId3 = await enqueueSessionQueueJob(session.id);
+    expect(jobId3).not.toBe(jobId1);
+
+    const allJobsForSession = await prisma.job.findMany({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(allJobsForSession).toHaveLength(2);
+    expect(allJobsForSession[0].activeKey).toBeNull();
+    expect(allJobsForSession[1].activeKey).toBe(session.id);
+  });
+
+  it("2. Duas chamadas concorrentes a executeTaskNode no mesmo nó pending → apenas 1 despacho ao LLM; a outra recebe claimed: false", async () => {
+    const session = await createTestSession({
+      title: "Sessão reserva atômica de nó",
+      canonicalSpec: VALID_CANONICAL_SPEC,
+      phase: "EXECUCAO",
+    });
+
+    const task = await prisma.taskNode.create({
+      data: {
+        sessionId: session.id,
+        title: "Nó Concorrente Único",
+        role: "backend",
+        status: "pending",
+        filesScope: JSON.stringify(["src/payments/gateway.ts"]),
+        attempts: 0,
+        maxAttempts: 3,
+      },
+    });
+
+    const fullTask = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: task.id },
+      include: { session: { include: { project: true } } },
+    });
+
+    let llmDispatchCalls = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async () => {
+      llmDispatchCalls += 1;
+      await new Promise((r) => setTimeout(r, 40));
+      return {
+        tierTag: "fast",
+        modelUsed: "fake-model",
+        response: new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Sem blocos de código para encerrar rápido." } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        ),
+      } as any;
+    });
+    vi.spyOn(DualLensAuditor, "validateType2").mockResolvedValue({
+      verdict: "REJECTED",
+      rejectionReason: "Teste de concorrência",
+      confidenceScore: 0,
+      lens1Passed: false,
+      lens2CrossVerification: "Rejeitado",
+      divergenceDetected: false,
+    });
+
+    const [resA, resB] = await Promise.all([
+      nodeExecutorModule.executeTaskNode(fullTask),
+      nodeExecutorModule.executeTaskNode(fullTask),
+    ]);
+
+    expect(llmDispatchCalls).toBe(1);
+    const claimedFlags = [resA.claimed, resB.claimed].sort();
+    expect(claimedFlags).toEqual([false, true]);
   });
 
   it('3. Aprovar sem canonicalSpec (via PATCH ou frase "aprovo" no chat) → { ok: false, reason: "SPEC_AUSENTE" }, specApproved continua false, fase não avança, zero nós, zero jobs', async () => {
@@ -301,6 +406,7 @@ describe("Gatilho Único de Execução e Fase Persistida (Passo 4a — 4.2 e 4.3
       });
       return {
         success: true,
+        claimed: true,
         executedTask: updated,
         finalStatus: "completed",
         promotionTarget: null,
@@ -349,6 +455,7 @@ describe("Gatilho Único de Execução e Fase Persistida (Passo 4a — 4.2 e 4.3
       });
       return {
         success: false,
+        claimed: true,
         executedTask: updated,
         finalStatus: "blocked",
         promotionTarget: null,
@@ -386,5 +493,136 @@ describe("Gatilho Único de Execução e Fase Persistida (Passo 4a — 4.2 e 4.3
       where: { sessionId: sessionBlock.id, status: "queued" },
     });
     expect(queuedJobsAfterRetry.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("6. Sessão em EXECUCAO com nós pending e sem Job ativo → startJobWorker cria o job na partida e conclui a sessão", async () => {
+    const preexistingExecSessions = await prisma.session.findMany({
+      where: { phase: "EXECUCAO" },
+      select: { id: true },
+    });
+    const preexistingIds = preexistingExecSessions.map((s) => s.id);
+    if (preexistingIds.length > 0) {
+      await prisma.session.updateMany({
+        where: { id: { in: preexistingIds } },
+        data: { phase: "PAUSADA" },
+      });
+    }
+
+    try {
+      const orphanSession = await prisma.session.create({
+        data: {
+          title: "Sessão Órfã em EXECUCAO",
+          canonicalSpec: VALID_CANONICAL_SPEC,
+          specApproved: true,
+          phase: "EXECUCAO",
+        },
+      });
+      createdSessionIds.push(orphanSession.id);
+
+      await prisma.taskNode.create({
+        data: {
+          sessionId: orphanSession.id,
+          title: "Etapa Órfã Pendente",
+          role: "backend",
+          status: "pending",
+          filesScope: JSON.stringify(["src/payments/gateway.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+
+      expect(await prisma.job.count({ where: { sessionId: orphanSession.id } })).toBe(0);
+
+      vi.spyOn(nodeExecutorModule, "executeTaskNode").mockImplementation(async (taskDb) => {
+        const updated = await prisma.taskNode.update({
+          where: { id: taskDb.id },
+          data: { status: "completed", result: JSON.stringify({ success: true }) },
+        });
+        return {
+          success: true,
+          claimed: true,
+          executedTask: updated,
+          finalStatus: "completed",
+          promotionTarget: null,
+        };
+      });
+
+      startJobWorker();
+
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const s = await prisma.session.findUnique({ where: { id: orphanSession.id } });
+        if (s?.phase === "ENTREGUE") break;
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      await stopJobWorker();
+
+      const finalSession = await prisma.session.findUnique({ where: { id: orphanSession.id } });
+      expect(finalSession?.phase).toBe("ENTREGUE");
+
+      const jobs = await prisma.job.findMany({ where: { sessionId: orphanSession.id } });
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].status).toBe("done");
+      expect(jobs[0].activeKey).toBeNull();
+    } finally {
+      if (preexistingIds.length > 0) {
+        await prisma.session.updateMany({
+          where: { id: { in: preexistingIds } },
+          data: { phase: "EXECUCAO" },
+        });
+      }
+    }
+  });
+
+  it("7. Worker A perde o lease para o worker B durante processSessionQueue → quando A termina, não sobrescreve o job de B e registra JOB_LEASE_LOST", async () => {
+    const session = await createTestSession({
+      title: "Sessão disputa de lease Worker A vs Worker B",
+      canonicalSpec: VALID_CANONICAL_SPEC,
+      phase: "EXECUCAO",
+    });
+
+    const jobId = await enqueueSessionQueueJob(session.id);
+    const claimedA = await claimJob(jobId, "worker-A");
+    expect(claimedA).toBe(true);
+
+    vi.spyOn(sessionQueueModule, "processSessionQueue").mockImplementation(async () => {
+      // Simula expiração do lease de A e tomada de posse pelo Worker B enquanto A ainda processa a fila
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { lockedUntil: new Date(Date.now() - 5000) },
+      });
+      const claimedB = await claimJob(jobId, "worker-B");
+      expect(claimedB).toBe(true);
+
+      return {
+        processedCount: 1,
+        allCompleted: true,
+        tasks: [],
+        specCompleteness: null,
+      };
+    });
+
+    const resultA = await executeClaimedJob(jobId, "worker-A");
+    expect(resultA).toBeNull();
+
+    // O job deve continuar pertencendo a worker-B em status "running" e com activeKey intacta
+    const currentJob = await prisma.job.findUniqueOrThrow({ where: { id: jobId } });
+    expect(currentJob.status).toBe("running");
+    expect(currentJob.lockedBy).toBe("worker-B");
+    expect(currentJob.activeKey).toBe(session.id);
+    expect(currentJob.finishedAt).toBeNull();
+
+    // Deve haver registro de JOB_LEASE_LOST para worker-A
+    const leaseLostLogs = await prisma.telemetryLog.findMany({
+      where: {
+        sessionId: session.id,
+        action: "JOB_LEASE_LOST",
+      },
+    });
+    expect(leaseLostLogs).toHaveLength(1);
+    const details = JSON.parse(leaseLostLogs[0].details!);
+    expect(details.jobId).toBe(jobId);
+    expect(details.workerId).toBe("worker-A");
   });
 });

@@ -227,6 +227,16 @@ export async function POST(request: NextRequest) {
         type2RejectionFallback: undefined,
       });
 
+      if (execResult.claimed === false) {
+        return NextResponse.json(
+          {
+            error: "Nó já reservado ou em execução",
+            details: `O nó "${task.title}" não pôde ser reservado atomicamente (claimed=false).`,
+          },
+          { status: 409 }
+        );
+      }
+
       if (execResult.finalStatus === "blocked") {
         await cascadeBlockedNodes(task.sessionId);
         await reportBlockedNodeToHuman(task.sessionId, task.id);

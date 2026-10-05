@@ -189,6 +189,7 @@ export interface NodeExecutionOptions {
 
 export interface NodeExecutionResult {
   success: boolean;
+  claimed?: boolean;
   executedTask: TaskNode;
   finalStatus: "completed" | "failed" | "blocked";
   promotionTarget: string | null;
@@ -297,11 +298,27 @@ export async function executeTaskNode(
     type2RejectionFallback,
   } = options;
 
-  // Atualiza estado do nó para 'running' no banco
-  await prisma.taskNode.update({
-    where: { id: taskDb.id },
+  // Reserva atômica do nó (Passo 4a - 4.5): só executa se conseguir transicionar de pending/failed para running
+  const claimRes = await prisma.taskNode.updateMany({
+    where: {
+      id: taskDb.id,
+      status: { in: ["pending", "failed"] },
+    },
     data: { status: "running" },
   });
+
+  if (claimRes.count !== 1) {
+    return {
+      success: false,
+      claimed: false,
+      executedTask: taskDb,
+      finalStatus:
+        taskDb.status === "completed" || taskDb.status === "blocked"
+          ? (taskDb.status as "completed" | "blocked")
+          : "failed",
+      promotionTarget: null,
+    };
+  }
 
   let projectContextBlock = "";
   if (taskDb.session.project && taskDb.session.project.path) {
@@ -585,6 +602,7 @@ DIRETRIZES DE EXECUÇÃO:
 
   return {
     success: finalStatus === "completed",
+    claimed: true,
     executedTask: updatedTask,
     finalStatus,
     promotionTarget,

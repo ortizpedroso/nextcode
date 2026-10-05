@@ -16,18 +16,42 @@ export function getJobLeaseMs(): number {
 }
 
 /**
- * Enfileira um Job "session_queue" em status "queued".
- * TODO(passo-4): deduplicar jobs por sessão e garantir gatilho único / trava por sessão.
+ * Enfileira um Job "session_queue" em status "queued" com activeKey = sessionId.
+ * Se já houver um job ativo para a sessão (P2002 em activeKey), devolve o id do job existente.
  */
 export async function enqueueSessionQueueJob(sessionId: string): Promise<string> {
-  const job = await prisma.job.create({
-    data: {
-      sessionId,
-      kind: "session_queue",
-      status: "queued",
-    },
-  });
-  return job.id;
+  try {
+    const job = await prisma.job.create({
+      data: {
+        sessionId,
+        activeKey: sessionId,
+        kind: "session_queue",
+        status: "queued",
+      },
+    });
+    return job.id;
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === "P2002") {
+      const existing = await prisma.job.findUnique({
+        where: { activeKey: sessionId },
+        select: { id: true },
+      });
+      if (existing) {
+        return existing.id;
+      }
+      const retryJob = await prisma.job.create({
+        data: {
+          sessionId,
+          activeKey: sessionId,
+          kind: "session_queue",
+          status: "queued",
+        },
+      });
+      return retryJob.id;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -109,11 +133,32 @@ export function startJobHeartbeat(jobId: string, workerId: string): () => void {
   };
 }
 
+async function logJobLeaseLost(
+  sessionId: string | null,
+  jobId: string,
+  workerId: string,
+  stage: string
+): Promise<void> {
+  await prisma.telemetryLog.create({
+    data: {
+      sessionId,
+      action: "JOB_LEASE_LOST",
+      details: JSON.stringify({
+        jobId,
+        workerId,
+        stage,
+      }),
+      durationMs: 0,
+    },
+  });
+}
+
 /**
  * Executa um Job já reservado via claimJob:
  * - mantém heartbeat ativo durante a execução (parando no finally);
- * - aplica a regra 3.4 de retomada após queda quando reclaims > 0;
- * - chama processSessionQueue e grava status done (com result) ou failed (com lastError) e finishedAt.
+ * - aplica a regra 3.4 de retomada após queda quando reclaims > 0 (somente se ainda for o dono);
+ * - chama processSessionQueue e grava status done (com result e activeKey: null) ou failed (com lastError e activeKey: null)
+ *   somente se where { id: jobId, lockedBy: workerId } confirmar a posse do lease.
  */
 export async function executeClaimedJob(jobId: string, workerId: string): Promise<Job | null> {
   const stopHeartbeat = startJobHeartbeat(jobId, workerId);
@@ -123,8 +168,21 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       return null;
     }
 
+    if (job.lockedBy !== workerId) {
+      await logJobLeaseLost(job.sessionId, jobId, workerId, "initial_check");
+      return null;
+    }
+
     // 3.4 Retomada após queda: quando claimJob reservou um job que estava "running" com lease vencido (reclaims > 0)
     if (job.reclaims > 0) {
+      const stillOwnsBeforeReclaim = await prisma.job.count({
+        where: { id: jobId, lockedBy: workerId },
+      });
+      if (stillOwnsBeforeReclaim === 0) {
+        await logJobLeaseLost(job.sessionId, jobId, workerId, "reclaim_recovery");
+        return null;
+      }
+
       if (job.reclaims <= 3) {
         const now = new Date();
         const otherValidJob = await prisma.job.findFirst({
@@ -145,6 +203,14 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           });
 
           for (const node of runningNodes) {
+            const stillOwnsNodeRevert = await prisma.job.count({
+              where: { id: jobId, lockedBy: workerId },
+            });
+            if (stillOwnsNodeRevert === 0) {
+              await logJobLeaseLost(job.sessionId, jobId, workerId, "reclaim_revert_node");
+              return null;
+            }
+
             await prisma.taskNode.update({
               where: { id: node.id },
               data: { status: "pending" },
@@ -161,20 +227,49 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           }
         }
       } else {
-        // reclaims > 3: o job vai para failed e os nós "running" seguem o caminho de zumbi (consome tentativa, failureHistory, cascata e relatório)
-        await recoverZombieRunningNodes(job.sessionId, { ignoreStaleThreshold: true });
-        return await prisma.job.update({
-          where: { id: jobId },
+        // reclaims > 3: o job vai para failed (limpando activeKey) somente se ainda for o dono, e os nós "running" seguem o caminho de zumbi
+        const failedReclaimUpdate = await prisma.job.updateMany({
+          where: {
+            id: jobId,
+            lockedBy: workerId,
+          },
           data: {
             status: "failed",
+            activeKey: null,
             lastError: `Limite de retomadas excedido (reclaims=${job.reclaims}).`,
             finishedAt: new Date(),
           },
         });
+
+        if (failedReclaimUpdate.count === 0) {
+          await logJobLeaseLost(job.sessionId, jobId, workerId, "reclaim_limit_exceeded");
+          return null;
+        }
+
+        await recoverZombieRunningNodes(job.sessionId, { ignoreStaleThreshold: true });
+        return await prisma.job.findUnique({ where: { id: jobId } });
       }
     }
 
     const queueResult: SessionQueueResult = await processSessionQueue(job.sessionId);
+
+    const doneUpdate = await prisma.job.updateMany({
+      where: {
+        id: jobId,
+        lockedBy: workerId,
+      },
+      data: {
+        status: "done",
+        activeKey: null,
+        result: JSON.stringify(queueResult),
+        finishedAt: new Date(),
+      },
+    });
+
+    if (doneUpdate.count === 0) {
+      await logJobLeaseLost(job.sessionId, jobId, workerId, "finalize_done");
+      return null;
+    }
 
     const sessionAfterQueue = await prisma.session.findUnique({
       where: { id: job.sessionId },
@@ -195,26 +290,41 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       }
     }
 
-    return await prisma.job.update({
-      where: { id: jobId },
-      data: {
-        status: "done",
-        result: JSON.stringify(queueResult),
-        finishedAt: new Date(),
-      },
-    });
+    return await prisma.job.findUnique({ where: { id: jobId } });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    return await prisma.job
-      .update({
-        where: { id: jobId },
+    const failedUpdate = await prisma.job
+      .updateMany({
+        where: {
+          id: jobId,
+          lockedBy: workerId,
+        },
         data: {
           status: "failed",
+          activeKey: null,
           lastError: errorMessage,
           finishedAt: new Date(),
         },
       })
-      .catch(() => null);
+      .catch(() => ({ count: 0 }));
+
+    if (failedUpdate.count === 0) {
+      const currentJob = await prisma.job
+        .findUnique({
+          where: { id: jobId },
+          select: { sessionId: true },
+        })
+        .catch(() => null);
+      await logJobLeaseLost(
+        currentJob?.sessionId ?? null,
+        jobId,
+        workerId,
+        "finalize_failed"
+      ).catch(() => {});
+      return null;
+    }
+
+    return await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
   } finally {
     stopHeartbeat();
   }

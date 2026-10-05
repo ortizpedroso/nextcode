@@ -1,6 +1,10 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { claimJob, executeClaimedJob } from "@/core/orchestrator/job-queue";
+import {
+  enqueueSessionQueueJob,
+  claimJob,
+  executeClaimedJob,
+} from "@/core/orchestrator/job-queue";
 
 export const DEFAULT_WORKER_CONCURRENCY = 2;
 export const DEFAULT_WORKER_POLL_MS = 2000;
@@ -19,6 +23,35 @@ const defaultProcessWorkerId = `worker-${crypto.randomUUID()}`;
 
 export function getProcessWorkerId(): string {
   return defaultProcessWorkerId;
+}
+
+/**
+ * Busca sessões órfãs em EXECUCAO com nós pending/failed/running e sem Job ativo (queued/running),
+ * enfileirando um Job para cada uma na partida do worker.
+ */
+export async function recoverOrphanExecutionSessions(): Promise<number> {
+  const orphanSessions = await prisma.session.findMany({
+    where: {
+      phase: "EXECUCAO",
+      tasks: {
+        some: {
+          status: { in: ["pending", "failed", "running"] },
+        },
+      },
+      jobs: {
+        none: {
+          status: { in: ["queued", "running"] },
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  for (const session of orphanSessions) {
+    await enqueueSessionQueueJob(session.id);
+  }
+
+  return orphanSessions.length;
 }
 
 /**
@@ -62,10 +95,11 @@ export async function runOnce(workerId: string = defaultProcessWorkerId): Promis
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         await prisma.job
-          .update({
-            where: { id: jobId },
+          .updateMany({
+            where: { id: jobId, lockedBy: workerId },
             data: {
               status: "failed",
+              activeKey: null,
               lastError: errorMessage,
               finishedAt: new Date(),
             },
@@ -112,6 +146,12 @@ export function startJobWorker(): JobWorkerHandle {
   globalForJobWorker.__nextcodeJobWorker = handle;
 
   handle.loopPromise = (async () => {
+    try {
+      await recoverOrphanExecutionSessions();
+    } catch (err) {
+      console.error("[JobWorker] Erro ao recuperar sessões órfãs em EXECUCAO no boot:", err);
+    }
+
     while (handle.running) {
       handle.cycles += 1;
       try {

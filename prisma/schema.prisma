@@ -148,6 +148,7 @@ model CandidateSkillProposal {
 model Job {
   id          String    @id @default(uuid())
   sessionId   String
+  activeKey   String?   @unique              // sessionId enquanto queued/running; NULL em done/failed
   kind        String    @default("session_queue")
   status      String    @default("queued")  // queued | running | done | failed
   lockedBy    String?                        // id da instância do worker (uuid gerado a cada boot)
