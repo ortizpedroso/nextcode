@@ -14,6 +14,7 @@ import prisma from "@/lib/prisma";
 import { POST } from "@/app/api/dag/route";
 
 import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
+import { SkillMiner } from "@/core/telemetry/skill-miner";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
@@ -24,7 +25,8 @@ let server: http.Server;
 let baseUrl: string;
 let fakeLlmMode: "success" | "bad_code" | "bad_code_once" = "success";
 let tempDir: string;
-let routerSpy: any;
+let routerSpy: ReturnType<typeof vi.spyOn>;
+let originalSetting: Awaited<ReturnType<typeof prisma.setting.findUnique>> = null;
 
 beforeAll(async () => {
   process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
@@ -131,35 +133,96 @@ beforeAll(async () => {
     });
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
-  baseUrl = `http://127.0.0.1:${port}`;
+  baseUrl = `http://localhost:${port}`;
+
+  originalSetting = await prisma.setting.findUnique({ where: { id: "default" } });
 
   await prisma.setting.upsert({
     where: { id: "default" },
-    update: { omniRouteUrl: baseUrl },
-    create: { id: "default", omniRouteUrl: baseUrl },
+    update: {
+      omniRouteUrl: baseUrl,
+      geminiKey: null,
+      groqKey: null,
+      nvidiaKey: null,
+      deepseekKey: null,
+      omniRouteKey: null,
+      customEndpoint: null,
+    },
+    create: {
+      id: "default",
+      omniRouteUrl: baseUrl,
+      geminiKey: null,
+      groqKey: null,
+      nvidiaKey: null,
+      deepseekKey: null,
+      omniRouteKey: null,
+      customEndpoint: null,
+    },
   });
 
   process.env.OMNIROUTE_MODEL = "auto/best-free";
 
-  routerSpy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (options: DispatchOptions) => {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: options.messages }),
-    });
-    return {
-      response: res,
-      providerUsed: "omniroute",
-      badge: "[OmniRoute]",
-      tierTag: "omniroute",
-      modelUsed: "auto/best-free",
-    };
-  });
+  routerSpy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback");
+  skillMinerAnalyzeSpy = vi.spyOn(SkillMiner, "analyzeAndPropose").mockResolvedValue(null as any);
+  skillMinerDetectSpy = vi.spyOn(SkillMiner, "detectRecurringBugs").mockResolvedValue(null as any);
 });
 
+let skillMinerAnalyzeSpy: ReturnType<typeof vi.spyOn>;
+let skillMinerDetectSpy: ReturnType<typeof vi.spyOn>;
+
+const createdSessionIds: string[] = [];
+const createdProjectIds: string[] = [];
+const CHAR_TASK_IDS = [
+  "exec-succ-1",
+  "exec-fail-1",
+  "exec-block-A",
+  "exec-block-B",
+  "exec-guard-comp",
+  "exec-guard-dep",
+  "exec-guard-child",
+  "exec-done-1",
+  "exec-done-2",
+  "pq-succ-1",
+  "pq-fail-1",
+  "pq-block-A",
+  "pq-block-B",
+  "pq-par-1",
+  "pq-par-2",
+  "byok-exec-1",
+  "byok-pq-1",
+];
+
+async function cleanupCharTestRecords() {
+  await prisma.taskNode.deleteMany({ where: { id: { in: CHAR_TASK_IDS } } }).catch(() => {});
+  if (createdSessionIds.length > 0) {
+    await prisma.taskNode.deleteMany({ where: { sessionId: { in: createdSessionIds } } }).catch(() => {});
+    await prisma.message.deleteMany({ where: { sessionId: { in: createdSessionIds } } }).catch(() => {});
+    await prisma.session.deleteMany({ where: { id: { in: createdSessionIds } } }).catch(() => {});
+    createdSessionIds.length = 0;
+  }
+  if (createdProjectIds.length > 0) {
+    await prisma.project.deleteMany({ where: { id: { in: createdProjectIds } } }).catch(() => {});
+    createdProjectIds.length = 0;
+  }
+}
+
 afterAll(async () => {
+  await cleanupCharTestRecords();
+  routerSpy?.mockRestore();
+  skillMinerAnalyzeSpy?.mockRestore();
+  skillMinerDetectSpy?.mockRestore();
+  if (originalSetting) {
+    const { id, ...rest } = originalSetting;
+    await prisma.setting.upsert({
+      where: { id },
+      update: rest,
+      create: originalSetting,
+    });
+  } else {
+    await prisma.setting.deleteMany({ where: { id: "default" } }).catch(() => {});
+  }
   await new Promise<void>((resolve) => server.close(() => resolve()));
   if (tempDir && fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -168,21 +231,20 @@ afterAll(async () => {
 
 beforeEach(async () => {
   fakeLlmMode = "success";
+  routerSpy?.mockClear();
   await new Promise((resolve) => setTimeout(resolve, 2));
-
-  await prisma.taskNode.deleteMany().catch(() => {});
-  await prisma.message.deleteMany().catch(() => {});
-  await prisma.session.deleteMany().catch(() => {});
-  await prisma.project.deleteMany().catch(() => {});
+  await cleanupCharTestRecords();
 });
 
 async function setupTestProjectAndSession(title: string) {
   const project = await prisma.project.create({
     data: { name: title, path: tempDir },
   });
+  createdProjectIds.push(project.id);
   const session = await prisma.session.create({
     data: { title, projectId: project.id, specApproved: true },
   });
+  createdSessionIds.push(session.id);
   return { project, session };
 }
 
@@ -303,8 +365,8 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
       expect(dbTaskB?.status).toBe("blocked");
 
       const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
-      const incidentMsg = msgs.find((m) => m.content.includes("intervenção humana necessária"));
-      expect(incidentMsg).toBeTruthy();
+      const incidentMsgs = msgs.filter((m) => m.content.includes("intervenção humana necessária"));
+      expect(incidentMsgs.length).toBe(1);
     });
 
     it("(e) guardas da divergência 4 (409)", async () => {
@@ -366,6 +428,50 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
       expect(res2.status).toBe(409);
       const data2 = await res2.json();
       expect(data2.error).toContain("Dependências não concluídas");
+    });
+
+    it("(f) concluir o último nó pendente → exatamente 1 mensagem de conclusão com 'promovidas para o projeto'", async () => {
+      const { session } = await setupTestProjectAndSession("execute_node conclusao");
+      await prisma.taskNode.create({
+        data: {
+          id: "exec-done-1",
+          sessionId: session.id,
+          title: "Etapa 1",
+          role: "backend",
+          status: "completed",
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+      const lastTask = await prisma.taskNode.create({
+        data: {
+          id: "exec-done-2",
+          sessionId: session.id,
+          title: "Etapa Final",
+          role: "backend",
+          status: "pending",
+          dependencies: JSON.stringify(["exec-done-1"]),
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+
+      fakeLlmMode = "success";
+      const req = new NextRequest("http://localhost/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "execute_node", nodeId: lastTask.id }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+      const completionMsgs = msgs.filter((m) => m.content.includes("Execução Autônoma Concluída!"));
+      expect(completionMsgs.length).toBe(1);
+      expect(completionMsgs[0].content).toContain("promovidas para o projeto");
     });
   });
 
@@ -486,8 +592,171 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
       expect(dbTaskB?.status).toBe("blocked");
 
       const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
-      const incidentMsg = msgs.find((m) => m.content.includes("intervenção humana necessária"));
-      expect(incidentMsg).toBeTruthy();
+      const incidentMsgs = msgs.filter((m) => m.content.includes("intervenção humana necessária"));
+      expect(incidentMsgs.length).toBe(1);
+    });
+
+    it("(e) dois nós sem dependências e ambos com sucesso no mesmo lote → exatamente 1 mensagem 'Execução Autônoma Concluída!'", async () => {
+      const { session } = await setupTestProjectAndSession("process_queue 2 nos paralelos");
+      await prisma.taskNode.create({
+        data: {
+          id: "pq-par-1",
+          sessionId: session.id,
+          title: "Paralelo 1",
+          role: "backend",
+          status: "pending",
+          dependencies: JSON.stringify([]),
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+      await prisma.taskNode.create({
+        data: {
+          id: "pq-par-2",
+          sessionId: session.id,
+          title: "Paralelo 2",
+          role: "backend",
+          status: "pending",
+          dependencies: JSON.stringify([]),
+          filesScope: JSON.stringify(["index.ts"]),
+          attempts: 0,
+          maxAttempts: 3,
+        },
+      });
+
+      fakeLlmMode = "success";
+      const req = new NextRequest("http://localhost/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "process_queue", sessionId: session.id }),
+      });
+
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.allCompleted).toBe(true);
+      expect(data.processedCount).toBe(2);
+
+      const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+      const completionMsgs = msgs.filter((m) => m.content.includes("Execução Autônoma Concluída!"));
+      expect(completionMsgs.length).toBe(1);
+    });
+  });
+
+  describe("Chaves BYOK no despacho (worker vs Auditor Cego)", () => {
+    it("Auditor Cego recebe groqKey, nvidiaKey e deepseekKey nos dois caminhos; worker segue divergência 2", async () => {
+      await prisma.setting.update({
+        where: { id: "default" },
+        data: {
+          omniRouteUrl: baseUrl,
+          groqKey: "gsk-test-groq",
+          nvidiaKey: "nvapi-test-nvidia",
+          deepseekKey: "sk-test-deepseek",
+        },
+      });
+
+      try {
+        // 1. Caminho execute_node
+        routerSpy.mockClear();
+        const { session: execSession } = await setupTestProjectAndSession("byok execute_node");
+        const execTask = await prisma.taskNode.create({
+          data: {
+            id: "byok-exec-1",
+            sessionId: execSession.id,
+            title: "Etapa BYOK Exec",
+            role: "backend",
+            status: "pending",
+            filesScope: JSON.stringify(["index.ts"]),
+            attempts: 0,
+            maxAttempts: 3,
+          },
+        });
+
+        const execReq = new NextRequest("http://localhost/api/dag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "execute_node", nodeId: execTask.id }),
+        });
+        const execRes = await POST(execReq);
+        expect(execRes.status).toBe(200);
+
+        const execCalls = routerSpy.mock.calls.map((c) => c[0] as DispatchOptions);
+        const execAuditorCall = execCalls.find((opts) =>
+          opts.messages.some((m) => m.role === "system" && m.content.includes("Auditor Cego"))
+        );
+        const execWorkerCall = execCalls.find(
+          (opts) => !opts.messages.some((m) => m.role === "system" && m.content.includes("Auditor Cego"))
+        );
+
+        expect(execWorkerCall).toBeDefined();
+        expect(execAuditorCall).toBeDefined();
+
+        // Worker em execute_node NÃO recebe as chaves (divergência 2)
+        expect(execWorkerCall!.groqKey).toBeUndefined();
+        expect(execWorkerCall!.nvidiaKey).toBeUndefined();
+        expect(execWorkerCall!.deepseekKey).toBeUndefined();
+
+        // Auditor Cego em execute_node SEMPRE recebe as chaves
+        expect(execAuditorCall!.groqKey).toBe("gsk-test-groq");
+        expect(execAuditorCall!.nvidiaKey).toBe("nvapi-test-nvidia");
+        expect(execAuditorCall!.deepseekKey).toBe("sk-test-deepseek");
+
+        // 2. Caminho process_queue
+        routerSpy.mockClear();
+        const { session: pqSession } = await setupTestProjectAndSession("byok process_queue");
+        await prisma.taskNode.create({
+          data: {
+            id: "byok-pq-1",
+            sessionId: pqSession.id,
+            title: "Etapa BYOK Queue",
+            role: "backend",
+            status: "pending",
+            filesScope: JSON.stringify(["index.ts"]),
+            attempts: 0,
+            maxAttempts: 3,
+          },
+        });
+
+        const pqReq = new NextRequest("http://localhost/api/dag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "process_queue", sessionId: pqSession.id }),
+        });
+        const pqRes = await POST(pqReq);
+        expect(pqRes.status).toBe(200);
+
+        const pqCalls = routerSpy.mock.calls.map((c) => c[0] as DispatchOptions);
+        const pqAuditorCall = pqCalls.find((opts) =>
+          opts.messages.some((m) => m.role === "system" && m.content.includes("Auditor Cego"))
+        );
+        const pqWorkerCall = pqCalls.find(
+          (opts) => !opts.messages.some((m) => m.role === "system" && m.content.includes("Auditor Cego"))
+        );
+
+        expect(pqWorkerCall).toBeDefined();
+        expect(pqAuditorCall).toBeDefined();
+
+        // Worker em process_queue recebe as chaves (divergência 2)
+        expect(pqWorkerCall!.groqKey).toBe("gsk-test-groq");
+        expect(pqWorkerCall!.nvidiaKey).toBe("nvapi-test-nvidia");
+        expect(pqWorkerCall!.deepseekKey).toBe("sk-test-deepseek");
+
+        // Auditor Cego em process_queue também recebe as chaves
+        expect(pqAuditorCall!.groqKey).toBe("gsk-test-groq");
+        expect(pqAuditorCall!.nvidiaKey).toBe("nvapi-test-nvidia");
+        expect(pqAuditorCall!.deepseekKey).toBe("sk-test-deepseek");
+      } finally {
+        await prisma.setting.update({
+          where: { id: "default" },
+          data: {
+            omniRouteUrl: baseUrl,
+            groqKey: null,
+            nvidiaKey: null,
+            deepseekKey: null,
+          },
+        });
+      }
     });
   });
 });
