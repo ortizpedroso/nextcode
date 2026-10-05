@@ -45,7 +45,7 @@ Nenhuma nova tentativa no mesmo gateway: ele já tentou todos os provedores dele
 
 1. ping (`/api/ping` no FreeLLMAPI, `/api/health` no OmniRoute);
 2. `GET /v1/models` com a chave → separa "fora do ar" de "chave inválida";
-3. **uma conversa real** com o modelo configurado (`max_tokens: 16`).
+3. **uma conversa real** com o modelo configurado (`max_tokens: 512`, para caber o raciocínio de modelos que pensam antes).
 
 Só a etapa 3 deixa o gateway "Pronto". Cada falha vem com a ação para resolver.
 

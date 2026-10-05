@@ -9,6 +9,7 @@
 import prisma from "@/lib/prisma";
 import { readSecret, writeSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
+import { ensureVerifiedOmniModels } from "@/core/router/omni-model-discovery";
 
 export type GatewayId = "freellmapi" | "omniroute";
 export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "omniroute"];
@@ -266,7 +267,18 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
       : row?.baseUrl || def.baseUrl;
   const apiKey = id === "omniroute" ? readSecret(setting?.omniRouteKey) : readSecret(row?.apiKey);
   const configuredModel = row?.modelFast ?? def.modelFast;
-  const model = configuredModel || process.env.OMNIROUTE_MODEL?.split(",")[0]?.trim() || "auto/best-free";
+  // O diagnóstico testa o MESMO modelo que o roteador vai usar. No OmniRoute sem modelo fixo, o
+  // roteador usa OMNIROUTE_MODEL ou os modelos verificados pela descoberta (não o combo auto/*).
+  let model = configuredModel || process.env.OMNIROUTE_MODEL?.split(",")[0]?.trim() || "";
+  if (!model && id === "omniroute" && apiKey) {
+    const root = rootUrl(baseUrl);
+    const verified = await ensureVerifiedOmniModels(
+      { rootUrl: root, chatUrl: chatCompletionsUrl(baseUrl), apiKey },
+      AbortSignal.timeout(90000)
+    ).catch(() => []);
+    model = verified[0]?.id || "";
+  }
+  if (!model) model = "auto/best-free";
 
   const health: GatewayHealth = {
     id,
@@ -336,7 +348,8 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     messages: [{ role: "user", content: "Responda apenas: ok" }],
     model,
     stream: false,
-    maxTokens: 16,
+    // Modelos com raciocínio gastam os primeiros tokens pensando; 16 devolvia content: null.
+    maxTokens: 512,
     signal: AbortSignal.timeout(60000),
   });
 

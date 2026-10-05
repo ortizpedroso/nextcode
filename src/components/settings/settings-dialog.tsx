@@ -28,7 +28,6 @@ import {
   Lock,
 } from "lucide-react";
 import { ByokTab } from "./byok-tab";
-import { OmniRouteCard } from "./omniroute-card";
 import { LlmGatewaysCard } from "./llm-gateways-card";
 import { HeadroomCard } from "./headroom-card";
 import { GithubSkillInstallerCard } from "./github-skill-installer-card";
@@ -491,12 +490,7 @@ export function SettingsDialog({
             )}
 
             {/* ABA: OMNIROUTE LOCAL 1-CLIQUE */}
-            {activeTab === "omniroute" && (
-              <div className="space-y-6">
-                <LlmGatewaysCard />
-                <OmniRouteCard />
-              </div>
-            )}
+            {activeTab === "omniroute" && <LlmGatewaysCard />}
 
             {/* ABA: HEADROOM TOKEN OPTIMIZER */}
             {activeTab === "headroom" && <HeadroomCard />}
