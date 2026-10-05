@@ -651,4 +651,73 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       expect(ctx.phase).toBe('ENTREGUE');
     });
   });
+
+  describe('Consistência entre o declarado (allowedEvents/allowedIntents) e o aceito por transition', () => {
+    const ALL_INTENTIONS: MessageIntention[] = [
+      'criar_novo',
+      'corrigir_existente',
+      'incerto',
+      'duvida_avulsa',
+      'mudanca_durante_execucao',
+      'status',
+    ];
+
+    const SAMPLE_EVENTS: PhaseEvent[] = [
+      { type: 'MENSAGEM_CLASSIFICADA', intencao: 'duvida_avulsa' },
+      { type: 'ESCOLHA_INTERVENCAO', escolha: 'criar' },
+      { type: 'SPEC_PRONTA' },
+      { type: 'AJUSTE_SOLICITADO' },
+      { type: 'SPEC_APROVADA' },
+      { type: 'MACROBRIEF_PRONTO' },
+      { type: 'CONFERENCIA_OK' },
+      { type: 'CONFERENCIA_FALHOU', culpa: 'macrobrief' },
+      { type: 'PLANO_PRONTO' },
+      { type: 'SEM_PENDENCIAS' },
+      { type: 'SEM_LLM' },
+      { type: 'LLM_VOLTOU' },
+      { type: 'EXECUTOR_BLOQUEADO' },
+      { type: 'DESBLOQUEIO_HUMANO' },
+      { type: 'VERIFICACAO_COM_LACUNAS' },
+      { type: 'VERIFICACAO_OK' },
+      { type: 'NOVO_PEDIDO' },
+    ];
+
+    it.each(ALL_PHASES)('na fase %s, allowedEvents e allowedIntents coincidem exatamente com a aceitação real', (phase) => {
+      const testCtx: PhaseContext = {
+        phase,
+        rodadasSemClareza: 1,
+        voltasConferencia: 1,
+        faseAntesDaPausa: 'EXECUCAO',
+        faseAntesDoBloqueio: 'CONFERENCIA',
+      };
+
+      // 1. Testa intenções realmente aceitas vs declaradas em allowedIntents
+      const acceptedIntents = ALL_INTENTIONS.filter((intencao) => {
+        const res = transition(testCtx, { type: 'MENSAGEM_CLASSIFICADA', intencao }, optsEtapa1On);
+        return res.ok;
+      });
+
+      const invalidIntentionSample: MessageIntention = ALL_INTENTIONS.find((i) => !acceptedIntents.includes(i)) ?? 'status';
+      const rejectedRes = transition(testCtx, { type: 'MENSAGEM_CLASSIFICADA', intencao: invalidIntentionSample }, optsEtapa1On);
+
+      if (!rejectedRes.ok && rejectedRes.allowedIntents) {
+        expect(acceptedIntents.sort()).toEqual([...rejectedRes.allowedIntents].sort());
+      }
+
+      // 2. Testa tipos de evento realmente aceitos vs declarados em allowedEvents
+      const acceptedEvents = Array.from(new Set(SAMPLE_EVENTS.filter((event) => {
+        if (event.type === 'MENSAGEM_CLASSIFICADA') {
+          return ALL_INTENTIONS.some((intencao) => transition(testCtx, { type: 'MENSAGEM_CLASSIFICADA', intencao }, optsEtapa1On).ok);
+        }
+        return transition(testCtx, event, optsEtapa1On).ok;
+      }).map((e) => e.type)));
+
+      const invalidEventSample = SAMPLE_EVENTS.find((e) => !acceptedEvents.includes(e.type)) ?? { type: 'NOVO_PEDIDO' };
+      const rejectedEventRes = transition(testCtx, invalidEventSample, optsEtapa1On);
+      expect(rejectedEventRes.ok).toBe(false);
+      if (!rejectedEventRes.ok) {
+        expect(acceptedEvents.sort()).toEqual([...rejectedEventRes.allowedEvents].sort());
+      }
+    });
+  });
 });
