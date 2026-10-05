@@ -1,8 +1,8 @@
 /**
  * Máquina de Fases da Sessão do NextCode (Módulo Puro)
  *
- * @see docs/ARQUITETURA-ORQUESTRACAO.md §3 (Fases da sessão)
- * @see docs/PLANO-ETAPA-0.md (Etapa 0 - Passo 1)
+ * @see docs/ARQUITETURA-ORQUESTRACAO.md §3 (Fases da sessão — revisado pós-auditoria)
+ * @see docs/PLANO-ETAPA-0.md (Etapa 0 - Passo 1b)
  */
 
 export type Phase =
@@ -59,14 +59,17 @@ export type PhaseEffect =
   | { type: 'SUSPENDER_EXECUTORES_PENDENTES' }
   | { type: 'INICIAR_EXECUCAO' }
   | { type: 'AVISAR_HUMANO'; motivo: string }
-  | { type: 'RETOMAR_EXECUCAO' };
+  | { type: 'RETOMAR_EXECUCAO' }
+  | { type: 'CONTINUAR_ELICITACAO' }
+  | { type: 'RETOMAR_FASE'; fase: Phase }
+  | { type: 'SEM_MODELO_DISPONIVEL' };
 
 export interface PhaseContext {
   phase: Phase;
-  rodadasSemClareza: number;      // regra da 3ª rodada (§3, 4.2)
-  voltasConferencia: number;      // idas e voltas CONFERENCIA → MACROBRIEF/SPEC_REVISAO (§3, regra 3)
-  faseAntesDaPausa?: Phase;       // para voltar de PAUSADA (§3, P6, D4)
-  faseAntesDoBloqueio?: Phase;    // para voltar de BLOQUEADA (§3, P6)
+  rodadasSemClareza: number;      // regra da 3ª rodada (§3, regra 4)
+  voltasConferencia: number;      // idas e voltas CONFERENCIA → MACROBRIEF/SPEC_REVISAO (§3, regra 6)
+  faseAntesDaPausa?: Phase;       // para voltar de PAUSADA (§3, regra 9)
+  faseAntesDoBloqueio?: Phase;    // para voltar de BLOQUEADA (§3, regras 7 e 8)
 }
 
 export interface PhaseOptions {
@@ -75,7 +78,12 @@ export interface PhaseOptions {
 
 export type TransitionResult =
   | { ok: true; ctx: PhaseContext; effects: PhaseEffect[] }
-  | { ok: false; reason: string; allowedEvents: PhaseEvent['type'][] };
+  | {
+      ok: false;
+      reason: string;
+      allowedEvents: PhaseEvent['type'][];
+      allowedIntents?: MessageIntention[];
+    };
 
 /**
  * Retorna o contexto inicial de uma sessão.
@@ -90,75 +98,32 @@ export function initialContext(): PhaseContext {
 }
 
 /**
- * Tabela declarativa que mapeia cada Fase aos tipos de eventos permitidos.
+ * Definição da tabela declarativa de fases.
  */
-const ALLOWED_EVENTS_PER_PHASE: Record<Phase, PhaseEvent['type'][]> = {
-  ENTRADA: ['MENSAGEM_CLASSIFICADA'],
-  CONVERSA: ['MENSAGEM_CLASSIFICADA'],
-  INTERVENCAO: ['ESCOLHA_INTERVENCAO', 'MENSAGEM_CLASSIFICADA'],
-  ELICITACAO: ['SPEC_PRONTA', 'MENSAGEM_CLASSIFICADA'],
-  ELICITACAO_CORRECAO: ['SPEC_PRONTA', 'MENSAGEM_CLASSIFICADA'],
-  SPEC_REVISAO: ['AJUSTE_SOLICITADO', 'SPEC_APROVADA', 'MENSAGEM_CLASSIFICADA'],
-  MACROBRIEF: ['MACROBRIEF_PRONTO', 'MENSAGEM_CLASSIFICADA'],
-  CONFERENCIA: ['CONFERENCIA_OK', 'CONFERENCIA_FALHOU', 'MENSAGEM_CLASSIFICADA'],
-  PLANEJAMENTO: ['PLANO_PRONTO', 'MENSAGEM_CLASSIFICADA'],
-  EXECUCAO: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'MENSAGEM_CLASSIFICADA'],
-  PAUSADA: ['LLM_VOLTOU', 'MENSAGEM_CLASSIFICADA'],
-  BLOQUEADA: ['DESBLOQUEIO_HUMANO', 'MENSAGEM_CLASSIFICADA'],
-  VERIFICACAO: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'MENSAGEM_CLASSIFICADA'],
-  ENTREGUE: ['NOVO_PEDIDO', 'MENSAGEM_CLASSIFICADA'],
-};
+interface PhaseConfig {
+  allowedEvents: PhaseEvent['type'][];
+  allowedIntents?: MessageIntention[];
+  handler: (
+    ctx: PhaseContext,
+    event: PhaseEvent,
+    opts: PhaseOptions
+  ) => TransitionResult | null;
+}
 
-/**
- * Função pura de transição de fase.
- *
- * Regras (§3):
- * 1. ENTRADA: criar_novo -> ELICITACAO, corrigir_existente -> ELICITACAO_CORRECAO, incerto -> CONVERSA (rodadasSemClareza = 1).
- * 2. CONVERSA: incerto incrementa rodadasSemClareza (3ª rodada -> INTERVENCAO + OFERECER_TRES_CAMINHOS).
- * 3. INTERVENCAO: escolhas criar, corrigir ou conversar (reseta contador).
- * 4. Dúvida avulsa em QUALQUER fase: fase não muda + RESPONDER_SEM_MUDAR_FASE (§3, regra 1).
- * 5. status em QUALQUER fase: fase não muda + MOSTRAR_STATUS.
- * 6. ELICITACAO / ELICITACAO_CORRECAO + SPEC_PRONTA -> SPEC_REVISAO; SPEC_REVISAO + AJUSTE_SOLICITADO -> ELICITACAO.
- * 7. SPEC_REVISAO + SPEC_APROVADA: etapa1Ativa ? MACROBRIEF : PLANEJAMENTO.
- * 8. MACROBRIEF + MACROBRIEF_PRONTO -> CONFERENCIA; CONFERENCIA_OK -> PLANEJAMENTO (zera voltasConferencia);
- *    CONFERENCIA_FALHOU -> incrementa voltasConferencia (se > 3 -> BLOQUEADA + AVISAR_HUMANO).
- * 9. PLANEJAMENTO + PLANO_PRONTO -> EXECUCAO + INICIAR_EXECUCAO.
- * 10. EXECUCAO: SEM_PENDENCIAS -> VERIFICACAO; SEM_LLM -> PAUSADA; EXECUTOR_BLOQUEADO -> BLOQUEADA; mudanca_durante_execucao -> SPEC_REVISAO + SUSPENDER_EXECUTORES_PENDENTES.
- * 11. PAUSADA + LLM_VOLTOU -> volta para faseAntesDaPausa + RETOMAR_EXECUCAO (não consome tentativa; P6, D4).
- * 12. BLOQUEADA + DESBLOQUEIO_HUMANO -> volta para faseAntesDoBloqueio + RETOMAR_EXECUCAO (§10.2).
- * 13. VERIFICACAO: VERIFICACAO_COM_LACUNAS -> PLANEJAMENTO (volta ao Analista; §3, regra 6); VERIFICACAO_OK -> ENTREGUE.
- * 14. ENTREGUE + NOVO_PEDIDO -> ENTRADA com contadores zerados.
- * 15. Combinações inválidas -> ok: false + allowedEvents.
- */
-export function transition(
-  ctx: PhaseContext,
-  event: PhaseEvent,
-  opts: PhaseOptions
-): TransitionResult {
-  const allowedEvents = ALLOWED_EVENTS_PER_PHASE[ctx.phase] || [];
+const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
+  ENTRADA: {
+    allowedEvents: ['MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['criar_novo', 'corrigir_existente', 'incerto', 'duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      // §3, regra 9: ENTRADA sem LLM informa falta de modelo e não altera fase
+      if (event.type === 'SEM_LLM') {
+        return {
+          ok: true,
+          ctx: { ...ctx },
+          effects: [{ type: 'SEM_MODELO_DISPONIVEL' }],
+        };
+      }
 
-  // §3, regra 1: Dúvida avulsa em qualquer fase não muda a fase e responde sem alterar contexto
-  if (event.type === 'MENSAGEM_CLASSIFICADA' && event.intencao === 'duvida_avulsa') {
-    return {
-      ok: true,
-      ctx: { ...ctx },
-      effects: [{ type: 'RESPONDER_SEM_MUDAR_FASE' }],
-    };
-  }
-
-  // §3, 4.2: status em qualquer fase exibe o status sem alterar a fase
-  if (event.type === 'MENSAGEM_CLASSIFICADA' && event.intencao === 'status') {
-    return {
-      ok: true,
-      ctx: { ...ctx },
-      effects: [{ type: 'MOSTRAR_STATUS' }],
-    };
-  }
-
-  // Resolução baseada na fase atual
-  switch (ctx.phase) {
-    case 'ENTRADA': {
-      // §3: ENTRADA transita por MENSAGEM_CLASSIFICADA
       if (event.type === 'MENSAGEM_CLASSIFICADA') {
         if (event.intencao === 'criar_novo') {
           return {
@@ -182,28 +147,19 @@ export function transition(
           };
         }
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'CONVERSA': {
-      // §3: CONVERSA transita por MENSAGEM_CLASSIFICADA
+  CONVERSA: {
+    allowedEvents: ['MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['criar_novo', 'corrigir_existente', 'incerto', 'duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
+
       if (event.type === 'MENSAGEM_CLASSIFICADA') {
-        if (event.intencao === 'incerto') {
-          const novasRodadas = ctx.rodadasSemClareza + 1;
-          // §3, 4.2: 3ª rodada sem clareza dispara INTERVENCAO
-          if (novasRodadas >= 3) {
-            return {
-              ok: true,
-              ctx: { ...ctx, phase: 'INTERVENCAO', rodadasSemClareza: novasRodadas },
-              effects: [{ type: 'OFERECER_TRES_CAMINHOS' }],
-            };
-          }
-          return {
-            ok: true,
-            ctx: { ...ctx, phase: 'CONVERSA', rodadasSemClareza: novasRodadas },
-            effects: [],
-          };
-        }
         if (event.intencao === 'criar_novo') {
           return {
             ok: true,
@@ -218,12 +174,35 @@ export function transition(
             effects: [],
           };
         }
+        if (event.intencao === 'incerto') {
+          const novasRodadas = ctx.rodadasSemClareza + 1;
+          // §3, regra 4: 3ª rodada sem clareza leva a INTERVENCAO
+          if (novasRodadas >= 3) {
+            return {
+              ok: true,
+              ctx: { ...ctx, phase: 'INTERVENCAO', rodadasSemClareza: novasRodadas },
+              effects: [{ type: 'OFERECER_TRES_CAMINHOS' }],
+            };
+          }
+          return {
+            ok: true,
+            ctx: { ...ctx, phase: 'CONVERSA', rodadasSemClareza: novasRodadas },
+            effects: [],
+          };
+        }
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'INTERVENCAO': {
-      // §3, 4.2: INTERVENCAO é resolvida pela escolha explícita do usuário
+  INTERVENCAO: {
+    allowedEvents: ['ESCOLHA_INTERVENCAO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['criar_novo', 'corrigir_existente', 'incerto', 'duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
+
       if (event.type === 'ESCOLHA_INTERVENCAO') {
         if (event.escolha === 'criar') {
           return {
@@ -247,24 +226,76 @@ export function transition(
           };
         }
       }
-      break;
-    }
 
-    case 'ELICITACAO':
-    case 'ELICITACAO_CORRECAO': {
-      // §3: Elicitação concluída avança para SPEC_REVISAO
-      if (event.type === 'SPEC_PRONTA') {
-        return {
-          ok: true,
-          ctx: { ...ctx, phase: 'SPEC_REVISAO' },
-          effects: [],
-        };
+      // §3, regra 4: Intervenção por texto e resposta evasiva
+      if (event.type === 'MENSAGEM_CLASSIFICADA') {
+        if (event.intencao === 'criar_novo') {
+          return {
+            ok: true,
+            ctx: { ...ctx, phase: 'ELICITACAO', rodadasSemClareza: 0 },
+            effects: [],
+          };
+        }
+        if (event.intencao === 'corrigir_existente') {
+          return {
+            ok: true,
+            ctx: { ...ctx, phase: 'ELICITACAO_CORRECAO', rodadasSemClareza: 0 },
+            effects: [],
+          };
+        }
+        if (event.intencao === 'incerto') {
+          // Resposta evasiva: volta para CONVERSA com contador zerado
+          return {
+            ok: true,
+            ctx: { ...ctx, phase: 'CONVERSA', rodadasSemClareza: 0 },
+            effects: [],
+          };
+        }
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'SPEC_REVISAO': {
-      // §3: Spec rejeitada volta para ELICITACAO
+  ELICITACAO: {
+    allowedEvents: ['SPEC_PRONTA', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: [
+      'criar_novo',
+      'corrigir_existente',
+      'incerto',
+      'mudanca_durante_execucao',
+      'duvida_avulsa',
+      'status',
+    ],
+    handler: (ctx, event) => handleElicitacao(ctx, event),
+  },
+
+  ELICITACAO_CORRECAO: {
+    allowedEvents: ['SPEC_PRONTA', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: [
+      'criar_novo',
+      'corrigir_existente',
+      'incerto',
+      'mudanca_durante_execucao',
+      'duvida_avulsa',
+      'status',
+    ],
+    handler: (ctx, event) => handleElicitacao(ctx, event),
+  },
+
+  SPEC_REVISAO: {
+    allowedEvents: ['AJUSTE_SOLICITADO', 'SPEC_APROVADA', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: [
+      'criar_novo',
+      'corrigir_existente',
+      'incerto',
+      'mudanca_durante_execucao',
+      'duvida_avulsa',
+      'status',
+    ],
+    handler: (ctx, event, opts) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
       if (event.type === 'AJUSTE_SOLICITADO') {
         return {
           ok: true,
@@ -272,7 +303,6 @@ export function transition(
           effects: [],
         };
       }
-      // §3: Spec APROVADA (T1). Na etapa 0 (etapa1Ativa=false), pula MACROBRIEF/CONFERENCIA direto para PLANEJAMENTO
       if (event.type === 'SPEC_APROVADA') {
         const nextPhase: Phase = opts.etapa1Ativa ? 'MACROBRIEF' : 'PLANEJAMENTO';
         return {
@@ -281,11 +311,32 @@ export function transition(
           effects: [],
         };
       }
-      break;
-    }
+      // §3, regra 3: Comentário do usuário em SPEC_REVISAO é pedido de ajuste -> ELICITACAO
+      if (event.type === 'MENSAGEM_CLASSIFICADA') {
+        if (
+          event.intencao === 'criar_novo' ||
+          event.intencao === 'corrigir_existente' ||
+          event.intencao === 'incerto' ||
+          event.intencao === 'mudanca_durante_execucao'
+        ) {
+          return {
+            ok: true,
+            ctx: { ...ctx, phase: 'ELICITACAO' },
+            effects: [],
+          };
+        }
+      }
+      return null;
+    },
+  },
 
-    case 'MACROBRIEF': {
-      // §3: Elicitador entrega Macrobrief -> CONFERENCIA
+  MACROBRIEF: {
+    allowedEvents: ['MACROBRIEF_PRONTO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
       if (event.type === 'MACROBRIEF_PRONTO') {
         return {
           ok: true,
@@ -293,11 +344,17 @@ export function transition(
           effects: [],
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'CONFERENCIA': {
-      // §3 (T8a): Conferência aprova Macrobrief -> PLANEJAMENTO e zera voltas
+  CONFERENCIA: {
+    allowedEvents: ['CONFERENCIA_OK', 'CONFERENCIA_FALHOU', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
       if (event.type === 'CONFERENCIA_OK') {
         return {
           ok: true,
@@ -305,9 +362,9 @@ export function transition(
           effects: [],
         };
       }
-      // §3, regra 3 & §10.2: Conferência falha incrementa voltas. Na 4ª falha (passaria de 3), bloqueia
       if (event.type === 'CONFERENCIA_FALHOU') {
         const novasVoltas = ctx.voltasConferencia + 1;
+        // §3, regra 6: máximo 3 falhas. A 4ª falha bloqueia
         if (novasVoltas > 3) {
           return {
             ok: true,
@@ -322,7 +379,6 @@ export function transition(
             ],
           };
         }
-
         const nextPhase: Phase = event.culpa === 'macrobrief' ? 'MACROBRIEF' : 'SPEC_REVISAO';
         return {
           ok: true,
@@ -330,11 +386,17 @@ export function transition(
           effects: [],
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'PLANEJAMENTO': {
-      // §3 (T8b): Contratos e Microbriefs prontos -> EXECUCAO
+  PLANEJAMENTO: {
+    allowedEvents: ['PLANO_PRONTO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
       if (event.type === 'PLANO_PRONTO') {
         return {
           ok: true,
@@ -342,11 +404,14 @@ export function transition(
           effects: [{ type: 'INICIAR_EXECUCAO' }],
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'EXECUCAO': {
-      // §3: Sem pendências -> VERIFICACAO
+  EXECUCAO: {
+    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'MENSAGEM_CLASSIFICADA'],
+    allowedIntents: ['mudanca_durante_execucao', 'duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
       if (event.type === 'SEM_PENDENCIAS') {
         return {
           ok: true,
@@ -354,15 +419,9 @@ export function transition(
           effects: [],
         };
       }
-      // §3, P6, D4: Sem LLM -> PAUSADA (guarda fase; não consome tentativa)
       if (event.type === 'SEM_LLM') {
-        return {
-          ok: true,
-          ctx: { ...ctx, phase: 'PAUSADA', faseAntesDaPausa: 'EXECUCAO' },
-          effects: [],
-        };
+        return handleSemLlm(ctx);
       }
-      // §3 (T6), §10.2: Executor bloqueado após 3 tentativas -> BLOQUEADA
       if (event.type === 'EXECUTOR_BLOQUEADO') {
         return {
           ok: true,
@@ -370,7 +429,6 @@ export function transition(
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas' }],
         };
       }
-      // §3, regra 2: Mudança durante execução -> SPEC_REVISAO + suspender executores pendentes
       if (
         event.type === 'MENSAGEM_CLASSIFICADA' &&
         event.intencao === 'mudanca_durante_execucao'
@@ -381,37 +439,94 @@ export function transition(
           effects: [{ type: 'SUSPENDER_EXECUTORES_PENDENTES' }],
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'PAUSADA': {
-      // §3, D4: LLM voltou -> retoma a fase anterior à pausa
+  PAUSADA: {
+    allowedEvents: ['LLM_VOLTOU', 'MENSAGEM_CLASSIFICADA'],
+    allowedIntents: ['duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      // §3, regra 9: LLM_VOLTOU volta para faseAntesDaPausa
       if (event.type === 'LLM_VOLTOU') {
         const destino = ctx.faseAntesDaPausa ?? 'EXECUCAO';
+        const effects: PhaseEffect[] =
+          destino === 'EXECUCAO'
+            ? [{ type: 'RETOMAR_EXECUCAO' }]
+            : [{ type: 'RETOMAR_FASE', fase: destino }];
+
         return {
           ok: true,
           ctx: { ...ctx, phase: destino, faseAntesDaPausa: undefined },
-          effects: [{ type: 'RETOMAR_EXECUCAO' }],
+          effects,
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'BLOQUEADA': {
-      // §3, §10.2: Humano desbloqueia -> retoma a fase anterior ao bloqueio
+  BLOQUEADA: {
+    allowedEvents: ['DESBLOQUEIO_HUMANO', 'MENSAGEM_CLASSIFICADA'],
+    allowedIntents: [
+      'mudanca_durante_execucao',
+      'criar_novo',
+      'corrigir_existente',
+      'duvida_avulsa',
+      'status',
+    ],
+    handler: (ctx, event) => {
+      // §3, regra 7: DESBLOQUEIO_HUMANO volta para faseAntesDoBloqueio
       if (event.type === 'DESBLOQUEIO_HUMANO') {
         const destino = ctx.faseAntesDoBloqueio ?? 'EXECUCAO';
+        // Se a fase de origem do bloqueio for CONFERENCIA, zera o contador de voltasConferencia
+        const voltasConferencia = destino === 'CONFERENCIA' ? 0 : ctx.voltasConferencia;
+        const effects: PhaseEffect[] =
+          destino === 'EXECUCAO'
+            ? [{ type: 'RETOMAR_EXECUCAO' }]
+            : [{ type: 'RETOMAR_FASE', fase: destino }];
+
         return {
           ok: true,
-          ctx: { ...ctx, phase: destino, faseAntesDoBloqueio: undefined },
-          effects: [{ type: 'RETOMAR_EXECUCAO' }],
+          ctx: {
+            ...ctx,
+            phase: destino,
+            voltasConferencia,
+            faseAntesDoBloqueio: undefined,
+          },
+          effects,
         };
       }
-      break;
-    }
 
-    case 'VERIFICACAO': {
-      // §3, regra 6 (T10): Lacunas na verificação voltam ao PLANEJAMENTO (Analista, nunca Elicitador)
+      // §3, regra 8: Bloqueio + pedido de ajuste da Spec pelo usuário
+      if (event.type === 'MENSAGEM_CLASSIFICADA') {
+        if (
+          event.intencao === 'mudanca_durante_execucao' ||
+          event.intencao === 'criar_novo' ||
+          event.intencao === 'corrigir_existente'
+        ) {
+          return {
+            ok: true,
+            ctx: {
+              ...ctx,
+              phase: 'SPEC_REVISAO',
+              voltasConferencia: 0,
+              faseAntesDoBloqueio: undefined,
+            },
+            effects: [{ type: 'SUSPENDER_EXECUTORES_PENDENTES' }],
+          };
+        }
+      }
+      return null;
+    },
+  },
+
+  VERIFICACAO: {
+    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedIntents: ['duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
+      if (event.type === 'SEM_LLM') {
+        return handleSemLlm(ctx);
+      }
       if (event.type === 'VERIFICACAO_COM_LACUNAS') {
         return {
           ok: true,
@@ -419,7 +534,6 @@ export function transition(
           effects: [],
         };
       }
-      // §3 (T10): Verificação OK -> ENTREGUE
       if (event.type === 'VERIFICACAO_OK') {
         return {
           ok: true,
@@ -427,11 +541,14 @@ export function transition(
           effects: [],
         };
       }
-      break;
-    }
+      return null;
+    },
+  },
 
-    case 'ENTREGUE': {
-      // §3: Novo pedido -> ENTRADA com contadores zerados
+  ENTREGUE: {
+    allowedEvents: ['NOVO_PEDIDO', 'MENSAGEM_CLASSIFICADA'],
+    allowedIntents: ['criar_novo', 'corrigir_existente', 'incerto', 'duvida_avulsa', 'status'],
+    handler: (ctx, event) => {
       if (event.type === 'NOVO_PEDIDO') {
         return {
           ok: true,
@@ -445,19 +562,146 @@ export function transition(
           effects: [],
         };
       }
-      break;
+
+      // §3, regra 10: Novo pedido via mensagem após ENTREGUE
+      if (event.type === 'MENSAGEM_CLASSIFICADA') {
+        if (event.intencao === 'criar_novo') {
+          return {
+            ok: true,
+            ctx: {
+              phase: 'ELICITACAO',
+              rodadasSemClareza: 0,
+              voltasConferencia: 0,
+              faseAntesDaPausa: undefined,
+              faseAntesDoBloqueio: undefined,
+            },
+            effects: [],
+          };
+        }
+        if (event.intencao === 'corrigir_existente') {
+          return {
+            ok: true,
+            ctx: {
+              phase: 'ELICITACAO_CORRECAO',
+              rodadasSemClareza: 0,
+              voltasConferencia: 0,
+              faseAntesDaPausa: undefined,
+              faseAntesDoBloqueio: undefined,
+            },
+            effects: [],
+          };
+        }
+        if (event.intencao === 'incerto') {
+          return {
+            ok: true,
+            ctx: {
+              phase: 'CONVERSA',
+              rodadasSemClareza: 1,
+              voltasConferencia: 0,
+              faseAntesDaPausa: undefined,
+              faseAntesDoBloqueio: undefined,
+            },
+            effects: [],
+          };
+        }
+      }
+      return null;
+    },
+  },
+};
+
+/**
+ * Auxiliar para transitar qualquer fase dependente de LLM para PAUSADA.
+ * §3, regra 9.
+ */
+function handleSemLlm(ctx: PhaseContext): TransitionResult {
+  return {
+    ok: true,
+    ctx: { ...ctx, phase: 'PAUSADA', faseAntesDaPausa: ctx.phase },
+    effects: [],
+  };
+}
+
+/**
+ * Auxiliar para a fase ELICITACAO e ELICITACAO_CORRECAO.
+ * §3, regra 3: toda mensagem regular do usuário continua a elicitação.
+ */
+function handleElicitacao(ctx: PhaseContext, event: PhaseEvent): TransitionResult | null {
+  if (event.type === 'SEM_LLM') {
+    return handleSemLlm(ctx);
+  }
+  if (event.type === 'SPEC_PRONTA') {
+    return {
+      ok: true,
+      ctx: { ...ctx, phase: 'SPEC_REVISAO' },
+      effects: [],
+    };
+  }
+  if (event.type === 'MENSAGEM_CLASSIFICADA') {
+    if (
+      event.intencao === 'criar_novo' ||
+      event.intencao === 'corrigir_existente' ||
+      event.intencao === 'incerto' ||
+      event.intencao === 'mudanca_durante_execucao'
+    ) {
+      return {
+        ok: true,
+        ctx: { ...ctx },
+        effects: [{ type: 'CONTINUAR_ELICITACAO' }],
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Função pura de transição de fase com tabela declarativa.
+ */
+export function transition(
+  ctx: PhaseContext,
+  event: PhaseEvent,
+  opts: PhaseOptions
+): TransitionResult {
+  const config = PHASE_DECLARATIVE_TABLE[ctx.phase];
+  const allowedEvents = config?.allowedEvents || [];
+  const allowedIntents = config?.allowedIntents;
+
+  // §3, regra 1: Dúvida avulsa em qualquer fase
+  if (event.type === 'MENSAGEM_CLASSIFICADA' && event.intencao === 'duvida_avulsa') {
+    return {
+      ok: true,
+      ctx: { ...ctx },
+      effects: [{ type: 'RESPONDER_SEM_MUDAR_FASE' }],
+    };
+  }
+
+  // §3, regra 2: Pedido de status em qualquer fase
+  if (event.type === 'MENSAGEM_CLASSIFICADA' && event.intencao === 'status') {
+    return {
+      ok: true,
+      ctx: { ...ctx },
+      effects: [{ type: 'MOSTRAR_STATUS' }],
+    };
+  }
+
+  // Executa o handler declarativo da fase
+  if (config) {
+    const result = config.handler(ctx, event, opts);
+    if (result) {
+      return result;
     }
   }
 
-  // §3: Transição inválida para qualquer combinação fase x evento não mapeada
-  const detail =
+  // §3, regra 14: Transição recusada
+  const reason =
     event.type === 'MENSAGEM_CLASSIFICADA'
       ? `Intenção "${event.intencao}" não permitida na fase ${ctx.phase}`
       : `Evento "${event.type}" não permitido na fase ${ctx.phase}`;
 
   return {
     ok: false,
-    reason: detail,
+    reason,
     allowedEvents,
+    ...(event.type === 'MENSAGEM_CLASSIFICADA' && allowedIntents ? { allowedIntents } : {}),
   };
 }

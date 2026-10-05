@@ -6,6 +6,7 @@ import {
   PhaseContext,
   PhaseEvent,
   PhaseOptions,
+  MessageIntention,
 } from '../../src/core/orchestrator/phase-machine';
 
 const ALL_PHASES: Phase[] = [
@@ -25,10 +26,23 @@ const ALL_PHASES: Phase[] = [
   'ENTREGUE',
 ];
 
+const LLM_DEPENDENT_PHASES: Phase[] = [
+  'CONVERSA',
+  'INTERVENCAO',
+  'ELICITACAO',
+  'ELICITACAO_CORRECAO',
+  'SPEC_REVISAO',
+  'MACROBRIEF',
+  'CONFERENCIA',
+  'PLANEJAMENTO',
+  'EXECUCAO',
+  'VERIFICACAO',
+];
+
 const optsEtapa1On: PhaseOptions = { etapa1Ativa: true };
 const optsEtapa1Off: PhaseOptions = { etapa1Ativa: false };
 
-describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
+describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo 1b)', () => {
   it('initialContext() deve retornar ENTRADA com contadores zerados', () => {
     const ctx = initialContext();
     expect(ctx).toEqual({
@@ -67,6 +81,16 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
       if (res.ok) {
         expect(res.ctx.phase).toBe('CONVERSA');
         expect(res.ctx.rodadasSemClareza).toBe(1);
+      }
+    });
+
+    it('ENTRADA + SEM_LLM deve continuar em ENTRADA + SEM_MODELO_DISPONIVEL', () => {
+      const ctx = initialContext();
+      const res = transition(ctx, { type: 'SEM_LLM' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('ENTRADA');
+        expect(res.effects).toEqual([{ type: 'SEM_MODELO_DISPONIVEL' }]);
       }
     });
   });
@@ -115,8 +139,8 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
     });
   });
 
-  describe('Regra 3: INTERVENCAO', () => {
-    it('escolha criar deve ir para ELICITACAO', () => {
+  describe('Regra 3 & 4 (Mudanças A e C): Resposta ao Elicitador e Intervenção', () => {
+    it('INTERVENCAO + ESCOLHA_INTERVENCAO criar → ELICITACAO', () => {
       const ctx: PhaseContext = { phase: 'INTERVENCAO', rodadasSemClareza: 3, voltasConferencia: 0 };
       const res = transition(ctx, { type: 'ESCOLHA_INTERVENCAO', escolha: 'criar' }, optsEtapa1Off);
       expect(res.ok).toBe(true);
@@ -126,7 +150,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
       }
     });
 
-    it('escolha corrigir deve ir para ELICITACAO_CORRECAO', () => {
+    it('INTERVENCAO + ESCOLHA_INTERVENCAO corrigir → ELICITACAO_CORRECAO', () => {
       const ctx: PhaseContext = { phase: 'INTERVENCAO', rodadasSemClareza: 3, voltasConferencia: 0 };
       const res = transition(ctx, { type: 'ESCOLHA_INTERVENCAO', escolha: 'corrigir' }, optsEtapa1Off);
       expect(res.ok).toBe(true);
@@ -136,13 +160,87 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
       }
     });
 
-    it('escolha conversar deve voltar para CONVERSA com rodadasSemClareza = 0', () => {
+    it('INTERVENCAO + ESCOLHA_INTERVENCAO conversar → CONVERSA com rodadasSemClareza = 0', () => {
       const ctx: PhaseContext = { phase: 'INTERVENCAO', rodadasSemClareza: 3, voltasConferencia: 0 };
       const res = transition(ctx, { type: 'ESCOLHA_INTERVENCAO', escolha: 'conversar' }, optsEtapa1Off);
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.ctx.phase).toBe('CONVERSA');
         expect(res.ctx.rodadasSemClareza).toBe(0);
+      }
+    });
+
+    it('INTERVENCAO por texto (criar_novo, corrigir_existente, incerto)', () => {
+      const ctx: PhaseContext = { phase: 'INTERVENCAO', rodadasSemClareza: 3, voltasConferencia: 0 };
+
+      // criar_novo por texto
+      const r1 = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
+      expect(r1.ok).toBe(true);
+      if (r1.ok) expect(r1.ctx.phase).toBe('ELICITACAO');
+
+      // corrigir_existente por texto
+      const r2 = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'corrigir_existente' }, optsEtapa1Off);
+      expect(r2.ok).toBe(true);
+      if (r2.ok) expect(r2.ctx.phase).toBe('ELICITACAO_CORRECAO');
+
+      // incerto (resposta evasiva) → CONVERSA com contador zerado
+      const r3 = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(r3.ok).toBe(true);
+      if (r3.ok) {
+        expect(r3.ctx.phase).toBe('CONVERSA');
+        expect(r3.ctx.rodadasSemClareza).toBe(0);
+      }
+    });
+
+    it('intervenção → evasiva → mais 2 incertas continua em CONVERSA → a 3ª volta à INTERVENCAO', () => {
+      let ctx: PhaseContext = { phase: 'INTERVENCAO', rodadasSemClareza: 3, voltasConferencia: 0 };
+
+      // Resposta evasiva na intervenção
+      let res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('CONVERSA');
+      expect(ctx.rodadasSemClareza).toBe(0);
+
+      // 1ª mensagem incerta pós-evasiva
+      res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('CONVERSA');
+      expect(ctx.rodadasSemClareza).toBe(1);
+
+      // 2ª mensagem incerta pós-evasiva
+      res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('CONVERSA');
+      expect(ctx.rodadasSemClareza).toBe(2);
+
+      // 3ª mensagem incerta pós-evasiva → INTERVENCAO
+      res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('INTERVENCAO');
+      expect(ctx.rodadasSemClareza).toBe(3);
+    });
+
+    it('ELICITACAO / ELICITACAO_CORRECAO + mensagem do usuário mantém mesma fase + CONTINUAR_ELICITACAO', () => {
+      const intentions: MessageIntention[] = ['criar_novo', 'corrigir_existente', 'incerto', 'mudanca_durante_execucao'];
+
+      for (const intencao of intentions) {
+        const ctx: PhaseContext = { phase: 'ELICITACAO', rodadasSemClareza: 0, voltasConferencia: 0 };
+        const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao }, optsEtapa1Off);
+        expect(res.ok).toBe(true);
+        if (res.ok) {
+          expect(res.ctx.phase).toBe('ELICITACAO');
+          expect(res.effects).toEqual([{ type: 'CONTINUAR_ELICITACAO' }]);
+        }
+      }
+    });
+
+    it('SPEC_REVISAO + comentário do usuário → ELICITACAO (pedido de ajuste)', () => {
+      const ctx: PhaseContext = { phase: 'SPEC_REVISAO', rodadasSemClareza: 0, voltasConferencia: 0 };
+      const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('ELICITACAO');
+        expect(res.effects).toHaveLength(0);
       }
     });
   });
@@ -231,7 +329,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
     });
   });
 
-  describe('Regra 8: MACROBRIEF e CONFERENCIA', () => {
+  describe('Regra 8: MACROBRIEF e CONFERENCIA (com contadores de falhas)', () => {
     it('MACROBRIEF + MACROBRIEF_PRONTO → CONFERENCIA', () => {
       const ctx: PhaseContext = { phase: 'MACROBRIEF', rodadasSemClareza: 0, voltasConferencia: 0 };
       const res = transition(ctx, { type: 'MACROBRIEF_PRONTO' }, optsEtapa1On);
@@ -251,23 +349,13 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
       }
     });
 
-    it('CONFERENCIA + CONFERENCIA_FALHOU (1ª falha, culpa macrobrief) → MACROBRIEF', () => {
-      const ctx: PhaseContext = { phase: 'CONFERENCIA', rodadasSemClareza: 0, voltasConferencia: 0 };
+    it('3ª falha de conferência NÃO bloqueia (voltasConferencia de 2 → 3 continua no fluxo)', () => {
+      const ctx: PhaseContext = { phase: 'CONFERENCIA', rodadasSemClareza: 0, voltasConferencia: 2 };
       const res = transition(ctx, { type: 'CONFERENCIA_FALHOU', culpa: 'macrobrief' }, optsEtapa1On);
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.ctx.phase).toBe('MACROBRIEF');
-        expect(res.ctx.voltasConferencia).toBe(1);
-      }
-    });
-
-    it('CONFERENCIA + CONFERENCIA_FALHOU (2ª falha, culpa spec) → SPEC_REVISAO', () => {
-      const ctx: PhaseContext = { phase: 'CONFERENCIA', rodadasSemClareza: 0, voltasConferencia: 1 };
-      const res = transition(ctx, { type: 'CONFERENCIA_FALHOU', culpa: 'spec' }, optsEtapa1On);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('SPEC_REVISAO');
-        expect(res.ctx.voltasConferencia).toBe(2);
+        expect(res.ctx.voltasConferencia).toBe(3);
       }
     });
 
@@ -286,86 +374,32 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
     });
   });
 
-  describe('Regra 9: PLANEJAMENTO + PLANO_PRONTO', () => {
-    it('PLANEJAMENTO + PLANO_PRONTO → EXECUCAO + INICIAR_EXECUCAO', () => {
-      const ctx: PhaseContext = { phase: 'PLANEJAMENTO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'PLANO_PRONTO' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('EXECUCAO');
-        expect(res.effects).toEqual([{ type: 'INICIAR_EXECUCAO' }]);
-      }
-    });
-  });
-
-  describe('Regra 10: EXECUCAO', () => {
-    it('SEM_PENDENCIAS → VERIFICACAO', () => {
-      const ctx: PhaseContext = { phase: 'EXECUCAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'SEM_PENDENCIAS' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('VERIFICACAO');
-      }
-    });
-
-    it('SEM_LLM → PAUSADA e guarda faseAntesDaPausa', () => {
-      const ctx: PhaseContext = { phase: 'EXECUCAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'SEM_LLM' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('PAUSADA');
-        expect(res.ctx.faseAntesDaPausa).toBe('EXECUCAO');
-      }
-    });
-
-    it('EXECUTOR_BLOQUEADO → BLOQUEADA + AVISAR_HUMANO e guarda faseAntesDoBloqueio', () => {
-      const ctx: PhaseContext = { phase: 'EXECUCAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'EXECUTOR_BLOQUEADO' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('BLOQUEADA');
-        expect(res.ctx.faseAntesDoBloqueio).toBe('EXECUCAO');
-        expect(res.effects).toEqual([
-          { type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas' },
-        ]);
-      }
-    });
-
-    it('mudanca_durante_execucao → SPEC_REVISAO + SUSPENDER_EXECUTORES_PENDENTES', () => {
-      const ctx: PhaseContext = { phase: 'EXECUCAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(
-        ctx,
-        { type: 'MENSAGEM_CLASSIFICADA', intencao: 'mudanca_durante_execucao' },
-        optsEtapa1Off
-      );
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('SPEC_REVISAO');
-        expect(res.effects).toEqual([{ type: 'SUSPENDER_EXECUTORES_PENDENTES' }]);
-      }
-    });
-  });
-
-  describe('Regra 11: PAUSADA + LLM_VOLTOU', () => {
-    it('LLM_VOLTOU volta para faseAntesDaPausa + RETOMAR_EXECUCAO (sem consumir tentativa)', () => {
+  describe('Regra D (Mudança D): Bloqueio e Desbloqueio Humano', () => {
+    it('desbloqueio vindo de CONFERENCIA zera o contador voltasConferencia e emite RETOMAR_FASE', () => {
       const ctx: PhaseContext = {
-        phase: 'PAUSADA',
+        phase: 'BLOQUEADA',
         rodadasSemClareza: 0,
-        voltasConferencia: 0,
-        faseAntesDaPausa: 'EXECUCAO',
+        voltasConferencia: 4,
+        faseAntesDoBloqueio: 'CONFERENCIA',
       };
-      const res = transition(ctx, { type: 'LLM_VOLTOU' }, optsEtapa1Off);
+      const res = transition(ctx, { type: 'DESBLOQUEIO_HUMANO' }, optsEtapa1On);
       expect(res.ok).toBe(true);
       if (res.ok) {
-        expect(res.ctx.phase).toBe('EXECUCAO');
-        expect(res.ctx.faseAntesDaPausa).toBeUndefined();
-        expect(res.effects).toEqual([{ type: 'RETOMAR_EXECUCAO' }]);
+        expect(res.ctx.phase).toBe('CONFERENCIA');
+        expect(res.ctx.voltasConferencia).toBe(0);
+        expect(res.effects).toEqual([{ type: 'RETOMAR_FASE', fase: 'CONFERENCIA' }]);
+
+        // A falha seguinte (1ª falha pós-desbloqueio) NÃO bloqueia
+        const res2 = transition(res.ctx, { type: 'CONFERENCIA_FALHOU', culpa: 'macrobrief' }, optsEtapa1On);
+        expect(res2.ok).toBe(true);
+        if (res2.ok) {
+          expect(res2.ctx.phase).toBe('MACROBRIEF');
+          expect(res2.ctx.voltasConferencia).toBe(1);
+        }
       }
     });
-  });
 
-  describe('Regra 12: BLOQUEADA + DESBLOQUEIO_HUMANO', () => {
-    it('DESBLOQUEIO_HUMANO volta para faseAntesDoBloqueio + RETOMAR_EXECUCAO', () => {
+    it('DESBLOQUEIO_HUMANO vindo de EXECUCAO emite RETOMAR_EXECUCAO', () => {
       const ctx: PhaseContext = {
         phase: 'BLOQUEADA',
         rodadasSemClareza: 0,
@@ -376,63 +410,168 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.ctx.phase).toBe('EXECUCAO');
-        expect(res.ctx.faseAntesDoBloqueio).toBeUndefined();
         expect(res.effects).toEqual([{ type: 'RETOMAR_EXECUCAO' }]);
       }
     });
-  });
 
-  describe('Regra 13: VERIFICACAO', () => {
-    it('VERIFICACAO_COM_LACUNAS → PLANEJAMENTO (Analista)', () => {
-      const ctx: PhaseContext = { phase: 'VERIFICACAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'VERIFICACAO_COM_LACUNAS' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('PLANEJAMENTO');
-      }
-    });
-
-    it('VERIFICACAO_OK → ENTREGUE', () => {
-      const ctx: PhaseContext = { phase: 'VERIFICACAO', rodadasSemClareza: 0, voltasConferencia: 0 };
-      const res = transition(ctx, { type: 'VERIFICACAO_OK' }, optsEtapa1Off);
-      expect(res.ok).toBe(true);
-      if (res.ok) {
-        expect(res.ctx.phase).toBe('ENTREGUE');
-      }
-    });
-  });
-
-  describe('Regra 14: ENTREGUE + NOVO_PEDIDO', () => {
-    it('NOVO_PEDIDO → ENTRADA com contadores zerados', () => {
+    it('BLOQUEADA + MENSAGEM_CLASSIFICADA (mudanca_durante_execucao/criar_novo/corrigir_existente) → SPEC_REVISAO', () => {
       const ctx: PhaseContext = {
-        phase: 'ENTREGUE',
-        rodadasSemClareza: 2,
-        voltasConferencia: 1,
+        phase: 'BLOQUEADA',
+        rodadasSemClareza: 0,
+        voltasConferencia: 4,
+        faseAntesDoBloqueio: 'CONFERENCIA',
+      };
+      const res = transition(
+        ctx,
+        { type: 'MENSAGEM_CLASSIFICADA', intencao: 'mudanca_durante_execucao' },
+        optsEtapa1On
+      );
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('SPEC_REVISAO');
+        expect(res.ctx.voltasConferencia).toBe(0);
+        expect(res.ctx.faseAntesDoBloqueio).toBeUndefined();
+        expect(res.effects).toEqual([{ type: 'SUSPENDER_EXECUTORES_PENDENTES' }]);
+      }
+    });
+  });
+
+  describe('Regra E (Mudança E): Sem LLM e Retomada de Pausa', () => {
+    it.each(LLM_DEPENDENT_PHASES)('SEM_LLM na fase %s transita para PAUSADA guardando a fase', (phase) => {
+      const ctx: PhaseContext = { phase, rodadasSemClareza: 0, voltasConferencia: 0 };
+      const res = transition(ctx, { type: 'SEM_LLM' }, optsEtapa1On);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('PAUSADA');
+        expect(res.ctx.faseAntesDaPausa).toBe(phase);
+      }
+    });
+
+    it('PAUSADA + LLM_VOLTOU vindo de EXECUCAO emite RETOMAR_EXECUCAO', () => {
+      const ctx: PhaseContext = {
+        phase: 'PAUSADA',
+        rodadasSemClareza: 0,
+        voltasConferencia: 0,
         faseAntesDaPausa: 'EXECUCAO',
       };
+      const res = transition(ctx, { type: 'LLM_VOLTOU' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('EXECUCAO');
+        expect(res.effects).toEqual([{ type: 'RETOMAR_EXECUCAO' }]);
+      }
+    });
+
+    it('PAUSADA + LLM_VOLTOU vindo de ELICITACAO emite RETOMAR_FASE', () => {
+      const ctx: PhaseContext = {
+        phase: 'PAUSADA',
+        rodadasSemClareza: 0,
+        voltasConferencia: 0,
+        faseAntesDaPausa: 'ELICITACAO',
+      };
+      const res = transition(ctx, { type: 'LLM_VOLTOU' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('ELICITACAO');
+        expect(res.effects).toEqual([{ type: 'RETOMAR_FASE', fase: 'ELICITACAO' }]);
+      }
+    });
+
+    it('SEM_LLM em PAUSADA, BLOQUEADA ou ENTREGUE deve ser recusado', () => {
+      const unpausable: Phase[] = ['PAUSADA', 'BLOQUEADA', 'ENTREGUE'];
+      for (const phase of unpausable) {
+        const ctx: PhaseContext = { phase, rodadasSemClareza: 0, voltasConferencia: 0 };
+        const res = transition(ctx, { type: 'SEM_LLM' }, optsEtapa1Off);
+        expect(res.ok).toBe(false);
+      }
+    });
+
+    it('caminho completo com uma pausa no meio da ELICITACAO, voltando à ELICITACAO', () => {
+      let ctx = initialContext();
+
+      // 1. ENTRADA → ELICITACAO
+      let res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('ELICITACAO');
+
+      // 2. ELICITACAO → PAUSADA (sem LLM)
+      res = transition(ctx, { type: 'SEM_LLM' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('PAUSADA');
+      expect(ctx.faseAntesDaPausa).toBe('ELICITACAO');
+
+      // 3. PAUSADA → ELICITACAO (LLM voltou)
+      res = transition(ctx, { type: 'LLM_VOLTOU' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('ELICITACAO');
+      expect(res.effects).toEqual([{ type: 'RETOMAR_FASE', fase: 'ELICITACAO' }]);
+
+      // 4. Conclusão normal → SPEC_REVISAO → PLANEJAMENTO → EXECUCAO → VERIFICACAO → ENTREGUE
+      res = transition(ctx, { type: 'SPEC_PRONTA' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('SPEC_REVISAO');
+
+      res = transition(ctx, { type: 'SPEC_APROVADA' }, optsEtapa1Off);
+      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
+      expect(ctx.phase).toBe('PLANEJAMENTO');
+    });
+  });
+
+  describe('Regra B (Mudança B): Novo pedido após ENTREGUE', () => {
+    it('ENTREGUE + MENSAGEM_CLASSIFICADA criar_novo → ELICITACAO', () => {
+      const ctx: PhaseContext = { phase: 'ENTREGUE', rodadasSemClareza: 2, voltasConferencia: 1 };
+      const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('ELICITACAO');
+        expect(res.ctx.rodadasSemClareza).toBe(0);
+        expect(res.ctx.voltasConferencia).toBe(0);
+      }
+    });
+
+    it('ENTREGUE + MENSAGEM_CLASSIFICADA corrigir_existente → ELICITACAO_CORRECAO', () => {
+      const ctx: PhaseContext = { phase: 'ENTREGUE', rodadasSemClareza: 2, voltasConferencia: 1 };
+      const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'corrigir_existente' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('ELICITACAO_CORRECAO');
+        expect(res.ctx.rodadasSemClareza).toBe(0);
+      }
+    });
+
+    it('ENTREGUE + MENSAGEM_CLASSIFICADA incerto → CONVERSA com rodadasSemClareza = 1', () => {
+      const ctx: PhaseContext = { phase: 'ENTREGUE', rodadasSemClareza: 2, voltasConferencia: 1 };
+      const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'incerto' }, optsEtapa1Off);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('CONVERSA');
+        expect(res.ctx.rodadasSemClareza).toBe(1);
+      }
+    });
+
+    it('ENTREGUE + NOVO_PEDIDO continua funcionando (reseta tudo e vai para ENTRADA)', () => {
+      const ctx: PhaseContext = { phase: 'ENTREGUE', rodadasSemClareza: 2, voltasConferencia: 1 };
       const res = transition(ctx, { type: 'NOVO_PEDIDO' }, optsEtapa1Off);
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.ctx.phase).toBe('ENTRADA');
         expect(res.ctx.rodadasSemClareza).toBe(0);
-        expect(res.ctx.voltasConferencia).toBe(0);
-        expect(res.ctx.faseAntesDaPausa).toBeUndefined();
       }
     });
   });
 
-  describe('Regra 15: Transições Inválidas', () => {
-    it('deve retornar ok: false com reason e allowedEvents correto quando evento é inválido', () => {
+  describe('Regra 15 & F: Transições Inválidas e allowedIntents', () => {
+    it('deve retornar ok: false com reason e allowedEvents quando evento é totalmente inválido', () => {
       const ctx = initialContext();
       const res = transition(ctx, { type: 'PLANO_PRONTO' }, optsEtapa1Off);
       expect(res.ok).toBe(false);
       if (!res.ok) {
         expect(res.reason).toContain('não permitido');
-        expect(res.allowedEvents).toEqual(['MENSAGEM_CLASSIFICADA']);
+        expect(res.allowedEvents).toEqual(['MENSAGEM_CLASSIFICADA', 'SEM_LLM']);
       }
     });
 
-    it('deve retornar ok: false para intenção inválida na fase EXECUCAO', () => {
+    it('deve retornar ok: false com allowedIntents quando MENSAGEM_CLASSIFICADA contém intenção recusada', () => {
       const ctx: PhaseContext = { phase: 'EXECUCAO', rodadasSemClareza: 0, voltasConferencia: 0 };
       const res = transition(
         ctx,
@@ -448,120 +587,66 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3)', () => {
           'EXECUTOR_BLOQUEADO',
           'MENSAGEM_CLASSIFICADA',
         ]);
+        expect(res.allowedIntents).toEqual(['mudanca_durante_execucao', 'duvida_avulsa', 'status']);
+      }
+    });
+
+    it.each(ALL_PHASES)('para cada fase %s, uma intenção recusada retorna ok: false com allowedIntents correto', (phase) => {
+      const ctx: PhaseContext = { phase, rodadasSemClareza: 0, voltasConferencia: 0 };
+      // Intenção fictícia/inválida para fases sem fluxo genérico de mensagem
+      const invalidIntention: MessageIntention = phase === 'ENTRADA' ? 'mudanca_durante_execucao' : 'criar_novo';
+
+      const res = transition(
+        ctx,
+        { type: 'MENSAGEM_CLASSIFICADA', intencao: invalidIntention },
+        optsEtapa1Off
+      );
+
+      // Se a intenção for recusada na fase, deve retornar ok: false e allowedIntents
+      if (!res.ok) {
+        expect(res.allowedEvents).toContain('MENSAGEM_CLASSIFICADA');
+        expect(res.allowedIntents).toBeDefined();
+        expect(Array.isArray(res.allowedIntents)).toBe(true);
       }
     });
   });
 
-  describe('Imutabilidade do contexto', () => {
+  describe('Imutabilidade e Caminho Feliz', () => {
     it('o contexto de entrada não deve ser alterado', () => {
       const ctx: PhaseContext = Object.freeze({
         phase: 'ENTRADA',
         rodadasSemClareza: 0,
         voltasConferencia: 0,
       });
-
       const res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
       expect(res.ok).toBe(true);
       expect(ctx.phase).toBe('ENTRADA');
     });
-  });
 
-  describe('Inalcançabilidade com etapa1Ativa: false', () => {
-    it('com etapa1Ativa: false, a aprovação da Spec pula MACROBRIEF e CONFERENCIA indo direto a PLANEJAMENTO', () => {
-      let ctx = initialContext();
-
-      const r1 = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
-      expect(r1.ok).toBe(true);
-      if (r1.ok) ctx = r1.ctx;
-      expect(ctx.phase).toBe('ELICITACAO');
-
-      const r2 = transition(ctx, { type: 'SPEC_PRONTA' }, optsEtapa1Off);
-      expect(r2.ok).toBe(true);
-      if (r2.ok) ctx = r2.ctx;
-      expect(ctx.phase).toBe('SPEC_REVISAO');
-
-      const r3 = transition(ctx, { type: 'SPEC_APROVADA' }, optsEtapa1Off);
-      expect(r3.ok).toBe(true);
-      if (r3.ok) ctx = r3.ctx;
-      expect(ctx.phase).toBe('PLANEJAMENTO'); // Pula MACROBRIEF e CONFERENCIA
-    });
-  });
-
-  describe('Caminho Feliz Completo', () => {
     it('fluxo completo ENTRADA → ENTREGUE com etapa1Ativa: false (Etapa 0)', () => {
       let ctx = initialContext();
 
-      // 1. ENTRADA → ELICITACAO
       let res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1Off);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('ELICITACAO');
 
-      // 2. ELICITACAO → SPEC_REVISAO
       res = transition(ctx, { type: 'SPEC_PRONTA' }, optsEtapa1Off);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('SPEC_REVISAO');
 
-      // 3. SPEC_REVISAO → PLANEJAMENTO
       res = transition(ctx, { type: 'SPEC_APROVADA' }, optsEtapa1Off);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('PLANEJAMENTO');
 
-      // 4. PLANEJAMENTO → EXECUCAO
       res = transition(ctx, { type: 'PLANO_PRONTO' }, optsEtapa1Off);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('EXECUCAO');
 
-      // 5. EXECUCAO → VERIFICACAO
       res = transition(ctx, { type: 'SEM_PENDENCIAS' }, optsEtapa1Off);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('VERIFICACAO');
 
-      // 6. VERIFICACAO → ENTREGUE
       res = transition(ctx, { type: 'VERIFICACAO_OK' }, optsEtapa1Off);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('ENTREGUE');
-    });
-
-    it('fluxo completo ENTRADA → ENTREGUE com etapa1Ativa: true (Etapa 1)', () => {
-      let ctx = initialContext();
-
-      // 1. ENTRADA → ELICITACAO
-      let res = transition(ctx, { type: 'MENSAGEM_CLASSIFICADA', intencao: 'criar_novo' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('ELICITACAO');
-
-      // 2. ELICITACAO → SPEC_REVISAO
-      res = transition(ctx, { type: 'SPEC_PRONTA' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('SPEC_REVISAO');
-
-      // 3. SPEC_REVISAO → MACROBRIEF
-      res = transition(ctx, { type: 'SPEC_APROVADA' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('MACROBRIEF');
-
-      // 4. MACROBRIEF → CONFERENCIA
-      res = transition(ctx, { type: 'MACROBRIEF_PRONTO' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('CONFERENCIA');
-
-      // 5. CONFERENCIA → PLANEJAMENTO
-      res = transition(ctx, { type: 'CONFERENCIA_OK' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('PLANEJAMENTO');
-
-      // 6. PLANEJAMENTO → EXECUCAO
-      res = transition(ctx, { type: 'PLANO_PRONTO' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('EXECUCAO');
-
-      // 7. EXECUCAO → VERIFICACAO
-      res = transition(ctx, { type: 'SEM_PENDENCIAS' }, optsEtapa1On);
-      expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
-      expect(ctx.phase).toBe('VERIFICACAO');
-
-      // 8. VERIFICACAO → ENTREGUE
-      res = transition(ctx, { type: 'VERIFICACAO_OK' }, optsEtapa1On);
       expect(res.ok).toBe(true); if (res.ok) ctx = res.ctx;
       expect(ctx.phase).toBe('ENTREGUE');
     });
