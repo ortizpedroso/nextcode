@@ -11,7 +11,13 @@ import {
   reportBlockedNodeToHuman,
   postCompletionMessageIfDone,
 } from "@/core/orchestrator/node-executor";
-import { processSessionQueue } from "@/core/orchestrator/session-queue";
+import {
+  enqueueSessionQueueJob,
+  claimJob,
+  executeClaimedJob,
+} from "@/core/orchestrator/job-queue";
+import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
+import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 
 export async function GET(request: Request) {
   // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
@@ -296,12 +302,40 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // TODO(passo-6): responder 202 Accepted e deixar a interface apenas observar os eventos do servidor
+      const jobId = await enqueueSessionQueueJob(targetSessionId);
+      const workerId = getProcessWorkerId();
+      const claimed = await claimJob(jobId, workerId);
+
+      let completedJob = claimed
+        ? await executeClaimedJob(jobId, workerId)
+        : null;
+
+      if (!claimed) {
+        const waitTimeoutMs = Number(process.env.NEXTCODE_JOB_WAIT_TIMEOUT_MS) || 300000;
+        const deadline = Date.now() + waitTimeoutMs;
+        while (Date.now() < deadline) {
+          const currentJob = await prisma.job.findUnique({ where: { id: jobId } });
+          if (!currentJob || currentJob.status === "done" || currentJob.status === "failed") {
+            completedJob = currentJob;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      if (!completedJob || completedJob.status !== "done" || !completedJob.result) {
+        throw new Error(
+          completedJob?.lastError || "Falha ou timeout ao aguardar a conclusão do Job da fila da sessão."
+        );
+      }
+
       const {
         processedCount,
         allCompleted,
         tasks: finalSessionTasks,
         specCompleteness,
-      } = await processSessionQueue(targetSessionId);
+      } = JSON.parse(completedJob.result) as SessionQueueResult;
 
       return NextResponse.json({
         success: true,
