@@ -8,6 +8,12 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globals: false,
     testTimeout: 15000,
+    // Banco de teste isolado definido ANTES de qualquer import: o Prisma carrega o .env
+    // (DATABASE_URL=dev.db) no import do client, então o fallback do vitest.setup.ts nunca
+    // valia e a suíte gravava no dev.db real. Os processos filhos herdam este valor.
+    env: {
+      DATABASE_URL: `file:${path.resolve(__dirname, "prisma", "test.db")}`,
+    },
     // Os testes de integração compartilham o mesmo arquivo SQLite (prisma/test.db),
     // incluindo Setting(id="default") e a fila global na tabela Job.
     // Desabilitar paralelismo entre arquivos garante isolamento determinístico sem esperas fixas.
