@@ -12,7 +12,7 @@ import {
   appendFailureAttempt,
   cascadeBlockedNodes,
   reportBlockedNodeToHuman,
-  checkSpecCompletenessOnDisk,
+  postCompletionMessageIfDone,
 } from "@/core/orchestrator/node-executor";
 
 export async function GET(request: Request) {
@@ -248,10 +248,22 @@ export async function POST(request: NextRequest) {
       const execResult = await executeTaskNode(task, {
         // TODO(passo-4): unificar — timeout da etapa (45s em execute_node)
         stepTimeoutMs: Number(process.env.DAG_STEP_TIMEOUT_MS) || 45000,
-        // TODO(passo-4): unificar — chaves BYOK passadas no despacho (apenas Gemini/Omni)
+        // TODO(passo-4): unificar — chaves BYOK passadas no despacho do worker (apenas Gemini/Omni)
         includeCloudByokKeys: false,
         // TODO(passo-4): unificar — incremento de tentativas em sucesso (não incrementa no sucesso)
         alwaysIncrementAttempts: false,
+        // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 (sem fallback extra em execute_node)
+        type2RejectionFallback: undefined,
+      });
+
+      if (execResult.finalStatus === "blocked") {
+        await cascadeBlockedNodes(task.sessionId);
+        await reportBlockedNodeToHuman(task.sessionId, task.id);
+      }
+
+      const { specCompleteness } = await postCompletionMessageIfDone(task.sessionId, {
+        canonicalSpec: task.session.canonicalSpec,
+        projectPath: task.session.project?.path,
         // TODO(passo-4): unificar — mensagem de conclusão ("promovidas para o projeto")
         completionMessageTargetText: "promovidas para o projeto",
       });
@@ -260,7 +272,7 @@ export async function POST(request: NextRequest) {
         success: true,
         executedTask: execResult.executedTask,
         promotedPath: execResult.promotionTarget,
-        specCompleteness: execResult.specCompleteness,
+        specCompleteness,
       });
     }
 
@@ -395,12 +407,12 @@ export async function POST(request: NextRequest) {
             const execResult = await executeTaskNode(fullTask, {
               // TODO(passo-4): unificar — timeout da etapa (90s em process_queue)
               stepTimeoutMs: Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000,
-              // TODO(passo-4): unificar — chaves BYOK passadas no despacho (inclui Groq/Nvidia/Deepseek)
+              // TODO(passo-4): unificar — chaves BYOK passadas no despacho do worker (inclui Groq/Nvidia/Deepseek)
               includeCloudByokKeys: true,
               // TODO(passo-4): unificar — incremento de tentativas em sucesso (sempre incrementa)
               alwaysIncrementAttempts: true,
-              // TODO(passo-4): unificar — mensagem de conclusão ("promovidas no servidor")
-              completionMessageTargetText: "promovidas no servidor",
+              // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 ("Divergência semântica." em process_queue)
+              type2RejectionFallback: "Divergência semântica.",
             });
             return { id: taskDb.id, finalStatus: execResult.finalStatus };
           })
@@ -416,13 +428,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const finalSessionTasks = await prisma.taskNode.findMany({
-        where: { sessionId: targetSessionId },
-        orderBy: { createdAt: "asc" },
+      const {
+        tasks: finalSessionTasks,
+        allCompleted,
+        specCompleteness,
+      } = await postCompletionMessageIfDone(targetSessionId, {
+        canonicalSpec: session.canonicalSpec,
+        projectPath: session.project?.path,
+        // TODO(passo-4): unificar — mensagem de conclusão ("promovidas no servidor")
+        completionMessageTargetText: "promovidas no servidor",
       });
-
-      const allCompleted = finalSessionTasks.length > 0 && finalSessionTasks.every((t) => t.status === "completed");
-      const specCompleteness = checkSpecCompletenessOnDisk(session.canonicalSpec, session.project?.path);
 
       return NextResponse.json({
         success: true,

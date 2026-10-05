@@ -146,20 +146,16 @@ export function buildBriefMarkdown(task: { title: string; role?: string | null; 
 }
 
 /** Adapta o SmartRouter para a função de despacho LLM que o DualLensAuditor espera. */
-export function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null, includeCloudKeys = false): LLMDispatchFn {
+export function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null): LLMDispatchFn {
   return async (messages) => {
     try {
       const res = await smartRouter.dispatchWithFallback({
         messages,
         tier: "fast",
         geminiKey: readSecret(setting?.geminiKey),
-        ...(includeCloudKeys
-          ? {
-              groqKey: readSecret((setting as any)?.groqKey),
-              nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-              deepseekKey: readSecret((setting as any)?.deepseekKey),
-            }
-          : {}),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
         omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
         omniRouteKey: readSecret(setting?.omniRouteKey),
         stream: false,
@@ -181,14 +177,14 @@ export interface NodeExecutionOptions {
   // TODO(passo-4): unificar — timeout da etapa (45s em execute_node vs 90s em process_queue)
   stepTimeoutMs?: number;
 
-  // TODO(passo-4): unificar — chaves BYOK no despacho (execute_node só Gemini/Omni vs process_queue com Groq/Nvidia/Deepseek)
+  // TODO(passo-4): unificar — chaves BYOK no despacho do worker (execute_node só Gemini/Omni vs process_queue com Groq/Nvidia/Deepseek)
   includeCloudByokKeys?: boolean;
 
   // TODO(passo-4): unificar — incremento de tentativas em sucesso (false em execute_node vs true em process_queue)
   alwaysIncrementAttempts?: boolean;
 
-  // TODO(passo-4): unificar — texto da mensagem de conclusão ("promovidas para o projeto" vs "promovidas no servidor")
-  completionMessageTargetText?: string;
+  // TODO(passo-4): unificar — fallback de motivo de rejeição do Tipo 2 (undefined em execute_node vs "Divergência semântica." em process_queue)
+  type2RejectionFallback?: string;
 }
 
 export interface NodeExecutionResult {
@@ -196,13 +192,94 @@ export interface NodeExecutionResult {
   executedTask: TaskNode;
   finalStatus: "completed" | "failed" | "blocked";
   promotionTarget: string | null;
+}
+
+export interface PostCompletionMessageOptions {
+  canonicalSpec?: string | null;
+  projectPath?: string | null;
+  // TODO(passo-4): unificar — texto da mensagem de conclusão ("promovidas para o projeto" vs "promovidas no servidor")
+  completionMessageTargetText?: string;
+}
+
+/**
+ * Verifica se todos os nós da sessão foram concluídos e, em caso afirmativo,
+ * envia a mensagem de conclusão (uma única vez) no chat da sessão.
+ */
+export async function postCompletionMessageIfDone(
+  sessionId: string,
+  opts: PostCompletionMessageOptions = {}
+): Promise<{
+  tasks: TaskNode[];
+  allCompleted: boolean;
   specCompleteness: ReturnType<typeof checkSpecCompletenessOnDisk>;
+}> {
+  const {
+    canonicalSpec,
+    projectPath,
+    completionMessageTargetText = "promovidas para o projeto",
+  } = opts;
+
+  const sessionTasks = await prisma.taskNode.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const allCompleted = sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
+  const specCompleteness = checkSpecCompletenessOnDisk(canonicalSpec, projectPath);
+
+  if (allCompleted) {
+    const existingCompletionMsg = await prisma.message.findFirst({
+      where: {
+        sessionId,
+        role: "assistant",
+        content: { contains: "Execução Autônoma Concluída!" },
+      },
+    });
+
+    if (!existingCompletionMsg) {
+      const completedSummary = sessionTasks
+        .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
+        .join("\n");
+
+      const firstUserMsg = await prisma.message.findFirst({
+        where: { sessionId, role: "user" },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const skillHeader = firstUserMsg?.content.startsWith("/")
+        ? firstUserMsg.content.split(" ")[0]
+        : "/autonomo";
+
+      const completenessBlock =
+        specCompleteness && !specCompleteness.complete
+          ? `\n\n⚠️ **Spec vs. disco: ${specCompleteness.missingFiles.length} arquivo(s) declarado(s) na Spec não foram encontrados no projeto:**\n${specCompleteness.missingFiles
+              .map((f) => `- ❌ \`${f}\``)
+              .join("\n")}`
+          : "";
+
+      // TODO(passo-4): unificar — texto da mensagem de conclusão
+      await prisma.message.create({
+        data: {
+          sessionId,
+          role: "assistant",
+          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e ${completionMessageTargetText}:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}`,
+        },
+      });
+    }
+  }
+
+  return {
+    tasks: sessionTasks,
+    allCompleted,
+    specCompleteness,
+  };
 }
 
 /**
  * Serviço único de orquestração de execução de um nó da DAG (Etapa 0 - Passo 2).
  * Encapsula a montagem do prompt, despacho LLM, quarentena, auditoria em duas lentes,
  * portão empírico, persistência no SQLite e telemetria.
+ * Não executa cascata de bloqueio, relatório ao chat ou mensagem de conclusão da sessão.
  */
 export async function executeTaskNode(
   taskDb: TaskNode & { session: { id: string; canonicalSpec?: string | null; project?: { id: string; name: string; path?: string | null } | null } },
@@ -215,8 +292,8 @@ export async function executeTaskNode(
     includeCloudByokKeys = false,
     // TODO(passo-4): unificar: incremento de tentativas em sucesso
     alwaysIncrementAttempts = false,
-    // TODO(passo-4): unificar: texto da mensagem de conclusão
-    completionMessageTargetText = "promovidas para o projeto",
+    // TODO(passo-4): unificar: fallback de motivo de rejeição do Tipo 2
+    type2RejectionFallback,
   } = options;
 
   // Atualiza estado do nó para 'running' no banco
@@ -360,7 +437,7 @@ DIRETRIZES DE EXECUÇÃO:
       buildBriefMarkdown(taskDb),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting, includeCloudByokKeys)
+      makeBlindAuditDispatchFn(smartRouter, setting)
     );
 
     if (type2Res.divergenceDetected) {
@@ -373,8 +450,6 @@ DIRETRIZES DE EXECUÇÃO:
         },
       });
     }
-
-    let rejectionReason: string | undefined;
 
     if (type2Res.verdict === "APPROVED") {
       finalStatus = "completed";
@@ -401,12 +476,10 @@ DIRETRIZES DE EXECUÇÃO:
           },
         });
         finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
-        rejectionReason = `Verificação empírica (${empiricalStageLabel(gate.failedStage)}) falhou — promoção desfeita: ${empiricalFailureLine}`;
       }
     } else {
       finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
       qm.purgeWorkspace(taskDb.id);
-      rejectionReason = type2Res.rejectionReason || "Divergência semântica.";
 
       TelemetryLogger.log({
         sessionId: taskDb.sessionId,
@@ -417,6 +490,14 @@ DIRETRIZES DE EXECUÇÃO:
         },
       });
     }
+
+    const empiricalFailureReason = empiricalFailureLine
+      ? `Verificação empírica (${empiricalStageLabel(empiricalFailureStage)}) falhou — promoção desfeita: ${empiricalFailureLine}`
+      : undefined;
+
+    const rejectionReason =
+      empiricalFailureReason ||
+      (type2Res.verdict !== "APPROVED" ? type2Res.rejectionReason || type2RejectionFallback : undefined);
 
     let incidentReportMarkdown: string | undefined;
     if (finalStatus === "failed" || finalStatus === "blocked") {
@@ -500,58 +581,10 @@ DIRETRIZES DE EXECUÇÃO:
   });
   mineTelemetryInBackground();
 
-  if (finalStatus === "blocked") {
-    await cascadeBlockedNodes(taskDb.sessionId);
-    await reportBlockedNodeToHuman(taskDb.sessionId, taskDb.id);
-  }
-
-  const sessionTasks = await prisma.taskNode.findMany({
-    where: { sessionId: taskDb.sessionId },
-  });
-  const allCompleted = sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
-  const specCompleteness = checkSpecCompletenessOnDisk(taskDb.session.canonicalSpec, taskDb.session.project?.path);
-
-  if (allCompleted) {
-    const existingCompletionMsg = await prisma.message.findFirst({
-      where: {
-        sessionId: taskDb.sessionId,
-        role: "assistant",
-        content: { contains: "Execução Autônoma Concluída!" },
-      },
-    });
-
-    if (!existingCompletionMsg) {
-      const completedSummary = sessionTasks
-        .map((t) => `• **${t.title}** (${t.role}): Concluído com sucesso`)
-        .join("\n");
-
-      const skillHeader = firstUserMsg?.content.startsWith("/")
-        ? firstUserMsg.content.split(" ")[0]
-        : "/autonomo";
-
-      const completenessBlock =
-        specCompleteness && !specCompleteness.complete
-          ? `\n\n⚠️ **Spec vs. disco: ${specCompleteness.missingFiles.length} arquivo(s) declarado(s) na Spec não foram encontrados no projeto:**\n${specCompleteness.missingFiles
-              .map((f) => `- ❌ \`${f}\``)
-              .join("\n")}`
-          : "";
-
-      // TODO(passo-4): unificar — texto da mensagem de conclusão
-      await prisma.message.create({
-        data: {
-          sessionId: taskDb.sessionId,
-          role: "assistant",
-          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e ${completionMessageTargetText}:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${taskDb.session.project?.path || process.cwd()}\`_${completenessBlock}`,
-        },
-      });
-    }
-  }
-
   return {
     success: finalStatus === "completed",
     executedTask: updatedTask,
     finalStatus,
     promotionTarget,
-    specCompleteness,
   };
 }
