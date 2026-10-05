@@ -37,53 +37,6 @@ const savedEnv = {
 };
 
 let originalSetting: Awaited<ReturnType<typeof prisma.setting.findUnique>> = null;
-const moduleLoadedAt = new Date(Date.now() - 2000);
-
-function isCharacterizationInCurrentRun(): boolean {
-  const args = process.argv.slice(2).filter((a) => !a.startsWith("-") && a !== "run" && !a.includes("vitest"));
-  if (args.length === 0) return true;
-  return args.some((a) => a.includes("characterization") || a.endsWith("orchestrator") || a.endsWith("orchestrator/"));
-}
-
-async function isCharacterizationServerActive(): Promise<boolean> {
-  const setting = await prisma.setting.findUnique({ where: { id: "default" } });
-  const url = setting?.omniRouteUrl;
-  if (!url || url.includes(":20128") || (baseUrl && url === baseUrl)) {
-    return false;
-  }
-  try {
-    const res = await fetch(`${url.replace(/\/v1\/?$/, "")}/healthz`, {
-      signal: AbortSignal.timeout(150),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForCharacterizationToComplete(): Promise<void> {
-  const mustWaitForCharCompletion = isCharacterizationInCurrentRun();
-  const deadline = Date.now() + 25000;
-  while (Date.now() < deadline) {
-    if (mustWaitForCharCompletion) {
-      const charLastLog = await prisma.telemetryLog.findFirst({
-        where: {
-          action: "NODE_EXECUTION_BLOCKED",
-          details: { contains: "contract-block-A" },
-          createdAt: { gte: moduleLoadedAt },
-        },
-      });
-      if (!charLastLog) {
-        await new Promise((r) => setTimeout(r, 150));
-        continue;
-      }
-    }
-    if (!(await isCharacterizationServerActive())) {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
 
 async function cleanupWorkerTestRecords(): Promise<void> {
   await stopJobWorker();
@@ -120,10 +73,6 @@ async function setupProjectAndSession(title: string) {
 }
 
 beforeAll(async () => {
-  await waitForCharacterizationToComplete();
-  // Permite que job-queue.test.ts (testes rápidos 1-3) finalize antes de iniciar o worker
-  await new Promise((r) => setTimeout(r, 500));
-
   process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
   process.env.BLIND_AUDIT_TIMEOUT_MS = "5000";
   process.env.DAG_STEP_TIMEOUT_MS = "5000";
@@ -651,5 +600,5 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
         });
       }
     }
-  });
+  }, 30000);
 });

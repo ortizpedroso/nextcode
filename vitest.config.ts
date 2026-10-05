@@ -8,6 +8,10 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     globals: false,
     testTimeout: 15000,
+    // Os testes de integração compartilham o mesmo arquivo SQLite (prisma/test.db),
+    // incluindo Setting(id="default") e a fila global na tabela Job.
+    // Desabilitar paralelismo entre arquivos garante isolamento determinístico sem esperas fixas.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

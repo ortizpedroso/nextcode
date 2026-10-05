@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import prisma from "@/lib/prisma";
 import {
   enqueueSessionQueueJob,
@@ -9,54 +9,6 @@ import {
 
 const createdSessionIds: string[] = [];
 const savedLeaseEnv = process.env.NEXTCODE_JOB_LEASE_MS;
-
-const moduleLoadedAt = new Date(Date.now() - 2000);
-
-function isCharacterizationInCurrentRun(): boolean {
-  const args = process.argv.slice(2).filter((a) => !a.startsWith("-") && a !== "run" && !a.includes("vitest"));
-  if (args.length === 0) return true;
-  return args.some((a) => a.includes("characterization") || a.endsWith("orchestrator") || a.endsWith("orchestrator/"));
-}
-
-async function isCharacterizationServerActive(): Promise<boolean> {
-  const setting = await prisma.setting.findUnique({ where: { id: "default" } });
-  const url = setting?.omniRouteUrl;
-  if (!url || url.includes(":20128")) {
-    return false;
-  }
-  try {
-    const res = await fetch(`${url.replace(/\/v1\/?$/, "")}/healthz`, {
-      signal: AbortSignal.timeout(150),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForCharacterizationToComplete(): Promise<void> {
-  const mustWaitForCharCompletion = isCharacterizationInCurrentRun();
-  const deadline = Date.now() + 25000;
-  while (Date.now() < deadline) {
-    if (mustWaitForCharCompletion) {
-      const charLastLog = await prisma.telemetryLog.findFirst({
-        where: {
-          action: "NODE_EXECUTION_BLOCKED",
-          details: { contains: "contract-block-A" },
-          createdAt: { gte: moduleLoadedAt },
-        },
-      });
-      if (!charLastLog) {
-        await new Promise((r) => setTimeout(r, 150));
-        continue;
-      }
-    }
-    if (!(await isCharacterizationServerActive())) {
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
 
 async function cleanupTestRecords(): Promise<void> {
   if (createdSessionIds.length > 0) {
@@ -78,10 +30,6 @@ async function createTestSession(title: string) {
   createdSessionIds.push(session.id);
   return session;
 }
-
-beforeAll(async () => {
-  await waitForCharacterizationToComplete();
-}, 30000);
 
 beforeEach(async () => {
   process.env.NEXTCODE_JOB_LEASE_MS = "30000";
