@@ -59,7 +59,7 @@ Nenhuma trava muda entre perfis.
 
 ## 3. Fases da sessão
 
-A fase fica gravada na sessão. **Só a fase atual decide qual papel age.**
+A fase fica gravada na sessão. **Só a fase atual decide qual papel age.** Implementação: `src/core/orchestrator/phase-machine.ts` (módulo puro; regras revisadas na auditoria do passo 1 da etapa 0).
 
 ```mermaid
 stateDiagram-v2
@@ -67,40 +67,56 @@ stateDiagram-v2
   ENTRADA --> ELICITACAO: criar algo novo
   ENTRADA --> ELICITACAO_CORRECAO: corrigir algo existente
   ENTRADA --> CONVERSA: intenção incerta
-  ENTRADA --> ENTRADA: dúvida avulsa (responde, não muda fase)
-  CONVERSA --> ENTRADA: intenção ficou clara
+  CONVERSA --> ELICITACAO: intenção clara (criar)
+  CONVERSA --> ELICITACAO_CORRECAO: intenção clara (corrigir)
   CONVERSA --> INTERVENCAO: 3ª rodada sem clareza
-  INTERVENCAO --> ELICITACAO: "Criar algo novo"
-  INTERVENCAO --> ELICITACAO_CORRECAO: "Corrigir algo existente"
-  INTERVENCAO --> CONVERSA: "Continuar conversando" (contador zera)
+  INTERVENCAO --> ELICITACAO: "Criar algo novo" (botão ou texto)
+  INTERVENCAO --> ELICITACAO_CORRECAO: "Corrigir algo existente" (botão ou texto)
+  INTERVENCAO --> CONVERSA: "Continuar conversando" ou resposta evasiva (contador zera)
+  ELICITACAO --> ELICITACAO: resposta do usuário ao Elicitador
   ELICITACAO --> SPEC_REVISAO: Spec pronta
   ELICITACAO_CORRECAO --> SPEC_REVISAO: Spec de Correção pronta
-  SPEC_REVISAO --> ELICITACAO: usuário pede ajustes
-  SPEC_REVISAO --> MACROBRIEF: Spec APROVADA (T1)
+  SPEC_REVISAO --> ELICITACAO: comentário/pedido de ajuste do usuário
+  SPEC_REVISAO --> MACROBRIEF: Spec APROVADA (T1) — etapa 1
+  SPEC_REVISAO --> PLANEJAMENTO: Spec APROVADA (T1) — etapa 0
   MACROBRIEF --> CONFERENCIA: Elicitador entrega o Macrobrief
   CONFERENCIA --> MACROBRIEF: Macrobrief incompleto/infiel (Spec correta)
   CONFERENCIA --> SPEC_REVISAO: lacuna na Spec (usuário reaprova)
   CONFERENCIA --> PLANEJAMENTO: Spec x Macrobrief conferem (T8a)
-  PLANEJAMENTO --> EXECUCAO: Contratos + Microbriefs válidos (T8b)
-  EXECUCAO --> EXECUCAO: executor/cluster concluído → próximos
-  EXECUCAO --> PAUSADA: sem LLM disponível
-  PAUSADA --> EXECUCAO: LLM voltou
+  CONFERENCIA --> BLOQUEADA: 4ª falha de conferência
+  PLANEJAMENTO --> EXECUCAO: plano válido (T8b)
+  EXECUCAO --> SPEC_REVISAO: pedido de mudança (pendentes suspensos)
   EXECUCAO --> BLOQUEADA: executor esgotou 3 tentativas (T6)
-  BLOQUEADA --> EXECUCAO: humano desbloqueia
+  BLOQUEADA --> SPEC_REVISAO: usuário pede ajuste da Spec
+  BLOQUEADA --> EXECUCAO: humano desbloqueia (volta à fase anterior)
   EXECUCAO --> VERIFICACAO: sem executores pendentes
   VERIFICACAO --> PLANEJAMENTO: falta requisito/arquivo no disco (T10)
   VERIFICACAO --> ENTREGUE: Spec completa no disco + build ok
-  ENTREGUE --> ENTRADA: novo pedido
+  ENTREGUE --> ELICITACAO: novo pedido (criar)
+  ENTREGUE --> ELICITACAO_CORRECAO: novo pedido (corrigir)
+  ENTREGUE --> CONVERSA: novo pedido incerto
+  note right of PAUSADA
+    Sem LLM em qualquer fase que dependa de LLM
+    → PAUSADA; LLM voltou → retorna à mesma fase.
+  end note
 ```
 
 **Regras de transição:**
 
 1. **Dúvida avulsa em qualquer fase** é respondida pelo Elicitador, **não muda a fase** e **não entra no contexto dos outros papéis**.
-2. **Pedido de mudança durante EXECUCAO** → nova versão da Spec em `SPEC_REVISAO`, com os executores pendentes suspensos; nunca cria uma execução paralela.
-3. **Idas e voltas CONFERENCIA → MACROBRIEF/SPEC_REVISAO:** máximo 3; depois, relatório ao humano.
-4. **Uma fila por sessão.** Executor só passa a `running` se ainda estiver pendente (operação única no banco).
-5. **Retomada automática:** ao iniciar o servidor, sessões em `EXECUCAO`/`PAUSADA` com pendências voltam a processar.
-6. **Lacuna detectada na VERIFICACAO** volta ao Analista (gera Microbriefs só do que falta), não ao Elicitador — a Spec já estava aprovada.
+2. **Pedido de status em qualquer fase** mostra o progresso e não muda a fase.
+3. **Resposta ao Elicitador:** em `ELICITACAO`/`ELICITACAO_CORRECAO`, toda mensagem que não for dúvida avulsa nem status é resposta às perguntas do Elicitador — a fase continua (efeito "continuar elicitação"). Em `SPEC_REVISAO`, um comentário do usuário é pedido de ajuste e volta para `ELICITACAO`. **A aprovação da Spec é sempre explícita** (botão ou confirmação de aprovação), nunca inferida de um comentário.
+4. **Regra da 3ª rodada:** três mensagens seguidas com intenção incerta (contando a primeira, vinda de `ENTRADA`) levam a `INTERVENCAO`, que oferece três caminhos. A escolha vale por **botão ou texto**. **Resposta evasiva** na intervenção volta para `CONVERSA` com o contador **zerado**; a intervenção reaparece após mais três rodadas sem clareza.
+5. **Pedido de mudança durante EXECUCAO** → nova versão da Spec em `SPEC_REVISAO`, com os executores pendentes suspensos; nunca cria uma execução paralela.
+6. **Idas e voltas CONFERENCIA → MACROBRIEF/SPEC_REVISAO:** máximo 3; na 4ª falha, `BLOQUEADA` com relatório ao humano. A 3ª falha **não** bloqueia.
+7. **Desbloqueio humano** volta à fase anterior ao bloqueio **com o contador daquele bloqueio zerado** (nova rodada de chances) e efeito "retomar fase" — não necessariamente execução.
+8. **Bloqueio + pedido de ajuste da Spec** (o que o relatório de incidente recomenda) → `SPEC_REVISAO`, com os pendentes suspensos.
+9. **Sem LLM:** qualquer fase que dependa de LLM (`CONVERSA`, `INTERVENCAO`, `ELICITACAO`, `ELICITACAO_CORRECAO`, `SPEC_REVISAO`, `MACROBRIEF`, `CONFERENCIA`, `PLANEJAMENTO`, `EXECUCAO`, `VERIFICACAO`) vai para `PAUSADA` e volta **à mesma fase** quando o LLM voltar (D4: aviso em 1 minuto, sem consumir tentativa). Em `ENTRADA`, sem modelo para classificar, o Elicitador responde "sem modelo disponível" e a fase não muda.
+10. **Novo pedido após ENTREGUE** é classificado como em `ENTRADA` (criar → `ELICITACAO`, corrigir → `ELICITACAO_CORRECAO`, incerto → `CONVERSA`), com todos os contadores zerados.
+11. **Uma fila por sessão.** Executor só passa a `running` se ainda estiver pendente (operação única no banco).
+12. **Retomada automática:** ao iniciar o servidor, sessões em `EXECUCAO`/`PAUSADA` com pendências voltam a processar.
+13. **Lacuna detectada na VERIFICACAO** volta ao Analista (gera Microbriefs só do que falta), não ao Elicitador — a Spec já estava aprovada.
+14. **Qualquer outra combinação** fase × evento é recusada (sem exceção), com a lista do que é permitido naquela fase.
 
 ---
 
