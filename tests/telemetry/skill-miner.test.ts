@@ -30,10 +30,17 @@ describe("SkillMiner.detectRecurringBugs", () => {
   // CandidateSkillProposal é compartilhada com outros arquivos de teste que rodam em paralelo no
   // mesmo SQLite (rotas de skills, mineração em plano de fundo após executar nós): limpeza e
   // asserções ficam restritas às assinaturas deste arquivo.
+  // TelemetryLog é append-only e acumula entre execuções da suíte; a mineração em plano de fundo
+  // de outros arquivos (sem janela `since`) chegava a criar a proposta destas assinaturas antes do
+  // teste. Assinaturas únicas por execução eliminam essa colisão.
+  const RUN_ID = `${process.pid}-${Date.now()}`;
+  const SIG_RARE = `type2:erro raro ${RUN_ID}`;
+  const SIG_RECURRING = `type2:divergência semântica recorrente ${RUN_ID}`;
+  const SIG_BUILD = `build:mesmo erro de build ${RUN_ID}`;
   const OWN_SIGNATURES = [
-    "type2:erro raro",
-    "type2:divergência semântica recorrente",
-    "build:mesmo erro de build",
+    SIG_RARE,
+    SIG_RECURRING,
+    SIG_BUILD,
   ];
   const ownProposalsWhere = (signature?: string) => ({
     source: "bug_pattern",
@@ -53,7 +60,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
       await prisma.telemetryLog.create({
         data: {
           action: "AUDIT_REJECTED",
-          details: JSON.stringify({ errorSignature: "type2:erro raro", sample: "erro raro" }),
+          details: JSON.stringify({ errorSignature: SIG_RARE, sample: "erro raro" }),
         },
       });
     }
@@ -61,7 +68,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
     const result = await SkillMiner.detectRecurringBugs(3, since);
     expect(result).toBeNull();
 
-    const proposals = await prisma.candidateSkillProposal.findMany({ where: ownProposalsWhere("type2:erro raro") });
+    const proposals = await prisma.candidateSkillProposal.findMany({ where: ownProposalsWhere(SIG_RARE) });
     expect(proposals.length).toBe(0);
   });
 
@@ -71,7 +78,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
         data: {
           action: "AUDIT_REJECTED",
           details: JSON.stringify({
-            errorSignature: "type2:divergência semântica recorrente",
+            errorSignature: SIG_RECURRING,
             sample: `Falha na tentativa ${i}`,
           }),
         },
@@ -95,7 +102,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
       await prisma.telemetryLog.create({
         data: {
           action: "EMPIRICAL_BUILD_FAILED",
-          details: JSON.stringify({ errorSignature: "build:mesmo erro de build", sample: "erro" }),
+          details: JSON.stringify({ errorSignature: SIG_BUILD, sample: "erro" }),
         },
       });
     }
@@ -107,7 +114,7 @@ describe("SkillMiner.detectRecurringBugs", () => {
     expect(second).toBeNull();
 
     const proposals = await prisma.candidateSkillProposal.findMany({
-      where: ownProposalsWhere("build:mesmo erro de build"),
+      where: ownProposalsWhere(SIG_BUILD),
     });
     expect(proposals.length).toBe(1);
   });
