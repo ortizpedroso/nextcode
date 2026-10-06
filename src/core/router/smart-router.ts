@@ -152,7 +152,7 @@ function omniRecordSuccess() {
 // "404 NOT_FOUND: Model not found", o que parecia erro de chave. Agora usamos IDs
 // reais da API, e a cascata de candidatos abaixo cobre variantes oficiais em ordem
 // de preferência; um 404/400 avança para o próximo candidato em vez de derrubar tudo.
-export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-1.5-flash";
+export const FAST_MODEL = process.env.GEMINI_FAST_MODEL || "gemini-flash-latest";
 export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-1.5-pro";
 
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no

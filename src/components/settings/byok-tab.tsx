@@ -227,7 +227,7 @@ export function ByokTab({ settings, onUpdateSettings, onSave }: ByokTabProps) {
   return (
     <div className="space-y-4 text-xs">
       <div className="bg-blue-50/50 dark:bg-blue-950/40 p-3 rounded-xl border border-blue-200/60 dark:border-blue-800/60 text-slate-700 dark:text-slate-300 leading-relaxed text-[11px]">
-        Insira suas chaves de API próprias para utilizar o modelo <strong>BYOK (Bring Your Own Key)</strong>. Suas chaves são criptografadas e mantidas localmente na sua máquina.
+        <strong>Opcional.</strong> As chamadas saem primeiro pelos <strong>Gateways LLM</strong> (FreeLLMAPI, OmniRoute): cadastre as chaves dos provedores lá. As chaves desta aba só são usadas como último recurso, se os gateways falharem. Ficam criptografadas na sua máquina.
       </div>
 
       <div className="space-y-3">
