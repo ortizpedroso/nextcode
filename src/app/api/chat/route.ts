@@ -27,6 +27,7 @@ import {
 } from "@/core/orchestrator/message-intent";
 import {
   applyCumulativeSpecGuard,
+  buildSpecWriterSystemPrompt,
   buildCumulativeSpecSystemPrompt,
 } from "@/core/orchestrator/spec-draft";
 import type { Phase } from "@/core/orchestrator/phase-machine";
@@ -499,17 +500,19 @@ export async function POST(request: NextRequest) {
         preprocessedInput.fullFormattedPrompt;
     }
 
-    const systemPromptContent = isQuestionWithoutPhaseChange
-      ? `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
-        `Responda apenas com explicação clara e objetiva. ` +
-        `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
-      : IntakeEngine.getGovernanceSystemPrompt();
-
     const isSpecDraftingPhase =
       !isQuestionWithoutPhaseChange &&
       (resultingPhase === "ELICITACAO" ||
         resultingPhase === "ELICITACAO_CORRECAO" ||
         resultingPhase === "SPEC_REVISAO");
+
+    const systemPromptContent = isQuestionWithoutPhaseChange
+      ? `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
+        `Responda apenas com explicação clara e objetiva. ` +
+        `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
+      : isSpecDraftingPhase
+        ? buildSpecWriterSystemPrompt()
+        : IntakeEngine.getGovernanceSystemPrompt();
 
     const dispatchMessages: DispatchMessage[] = [
       { role: "system", content: systemPromptContent },
@@ -585,8 +588,11 @@ export async function POST(request: NextRequest) {
     try {
       const dispatchRes = await smartRouter.dispatchWithFallback({
         messages: dispatchMessages,
-        // Gerar/atualizar a Spec exige contexto grande (Spec inteira + histórico): modelo pesado.
-        tier: isSpecDraftingPhase ? "heavy" : "fast",
+        // Medido no FreeLLMAPI real (06/10): com o prompt de Spec, auto:fast gera a Spec completa
+        // em ~6-23 s; auto:smart escolheu modelos piores e o teto de 8192 tokens deixava
+        // provedores lentos passarem de 90-120 s. Uma Spec cabe com folga em 4000 tokens.
+        tier: "fast",
+        ...(isSpecDraftingPhase ? { maxTokens: 4000 } : {}),
         modelOverride,
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -606,6 +612,38 @@ export async function POST(request: NextRequest) {
         aiResponseContent = resJson.candidates[0].content.parts[0].text;
       } else {
         aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+      }
+
+      // Modelos com raciocínio às vezes não chegam ao documento (gastam a resposta "pensando").
+      // Uma segunda tentativa, explícita, antes de desistir de gravar o rascunho.
+      if (
+        isSpecDraftingPhase &&
+        dispatchRes.providerUsed !== "none" &&
+        !parseSpecDocument(aiResponseContent)
+      ) {
+        const retryRes = await smartRouter.dispatchWithFallback({
+          messages: [
+            ...dispatchMessages,
+            { role: "assistant", content: aiResponseContent.slice(0, 2000) },
+            {
+              role: "user",
+              content:
+                "A resposta acima não é a Spec. Responda AGORA somente com o documento da Spec, começando na primeira linha por --- e com valores reais (sem <placeholders>).",
+            },
+          ],
+          tier: "fast",
+          maxTokens: 4000,
+          geminiKey: readSecret(setting?.geminiKey),
+          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+          omniRouteKey: readSecret(setting?.omniRouteKey),
+          stream: false,
+        });
+        const retryJson = await retryRes.response.json().catch(() => ({}));
+        const retryText: string = retryJson.choices?.[0]?.message?.content || "";
+        if (parseSpecDocument(retryText)) {
+          aiResponseContent = retryText;
+          effectiveTier = retryRes.tierTag;
+        }
       }
 
       if (isQuestionWithoutPhaseChange) {
@@ -637,7 +675,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      if (!projectContextInjected && contextDiagnostics) {
+      if (!projectContextInjected && contextDiagnostics && !isSpecDraftingPhase) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
       }
     } catch (err) {

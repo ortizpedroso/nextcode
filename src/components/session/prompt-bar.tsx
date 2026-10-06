@@ -193,7 +193,7 @@ export function PromptBar({ loading, customProviders, projectId, onSubmit, onSto
     if (selectedModel === "fast") {
       return (
         <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full shrink-0">
-          ⚡ Gemini Flash (Fast)
+          ⚡ Rápido
         </span>
       );
     }

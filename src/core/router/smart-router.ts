@@ -236,6 +236,8 @@ export interface DispatchOptions {
   signal?: AbortSignal;
   /** Gateways LLM em ordem (testes/diagnóstico). Omitido = lidos do banco (LlmGateway). */
   gateways?: GatewayConfig[];
+  /** Teto de tokens da resposta nos gateways (padrão LLM_GATEWAY_MAX_TOKENS ou 8192). */
+  maxTokens?: number;
 }
 
 export interface DispatchResult {
@@ -786,7 +788,8 @@ export class SmartRouter {
     messages: DispatchMessage[],
     tier: ModelTier,
     stream: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    maxTokens?: number
   ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
@@ -795,7 +798,7 @@ export class SmartRouter {
       model,
       stream,
       signal,
-      maxTokens: Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
+      maxTokens: maxTokens || Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
     });
     if (attempt.ok) {
       lastGatewayFailure = "";
@@ -1110,7 +1113,7 @@ export class SmartRouter {
         if (omniResult) return omniResult;
         continue;
       }
-      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal);
+      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens);
       if ("response" in gatewayResult) return gatewayResult;
       // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
       // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.

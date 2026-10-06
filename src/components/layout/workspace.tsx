@@ -94,6 +94,22 @@ interface WorkspaceProps {
   graphifyResults?: Record<string, GraphifyRunOutcome>;
 }
 
+/** Selo da mensagem: por onde a resposta saiu (tierTag do roteador) ou o modo pedido pelo usuário. */
+function tierBadgeLabel(tier: string): string {
+  const labels: Record<string, string> = {
+    fast: "⚡ Rápido",
+    heavy: "🧠 Pesado",
+    freellmapi: "🆓 FreeLLMAPI",
+    omniroute: "🤖 OmniRoute",
+    "groq-fallback": "⚡ Groq (chave nativa)",
+    "nvidia-fallback": "🟢 NVIDIA (chave nativa)",
+    "deepseek-fallback": "🐋 DeepSeek (chave nativa)",
+    "fast-fallback": "⚡ Gemini (chave nativa)",
+    exhausted: "🚫 Sem provedor",
+  };
+  return labels[tier] ?? tier;
+}
+
 export function Workspace({
   activeView,
   activeSessionId,
@@ -411,11 +427,7 @@ export function Workspace({
                             <div className="flex items-center gap-2">
                               {msg.tier && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700">
-                                  {msg.tier === "fast"
-                                    ? "⚡ Gemini Flash (Fast)"
-                                    : msg.tier === "heavy"
-                                    ? "🧠 Claude Sonnet (Heavy)"
-                                    : "🤖 OmniRoute Local"}
+                                  {tierBadgeLabel(msg.tier)}
                                 </span>
                               )}
                               <button

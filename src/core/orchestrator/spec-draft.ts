@@ -24,6 +24,47 @@ export interface CumulativeSpecGuardResult {
 /**
  * Monta o bloco de instrução cumulativa quando a sessão já possui um rascunho de Spec (4b.3).
  */
+/**
+ * Papel do chat nas fases de elicitação/revisão: escrever SÓ a Spec. O prompt geral de
+ * governança manda gerar e gravar código ("patch_direto", "autonomia_disco"); usado aqui, o
+ * modelo devolvia a implementação inteira dentro da Spec (sessão gateway, 06/10).
+ */
+export function buildSpecWriterSystemPrompt(): string {
+  return [
+    "Você escreve a Spec Canônica de um projeto de software no NextCode. Nesta fase NÃO se escreve código: a implementação é feita depois, pela DAG, a partir da Spec aprovada.",
+    "Responda SOMENTE com o documento da Spec, neste formato exato e nada antes ou depois:",
+    "---",
+    'titulo: "<título>"',
+    "status: aguardando_aprovacao",
+    'data: "<AAAA-MM-DD>"',
+    "stack:",
+    '  - "<uma tecnologia por linha>"',
+    "modulos:",
+    "  - id: <id-curto>",
+    '    nome: "<nome>"',
+    '    resumo: "<o que o módulo faz, uma frase>"',
+    "entidades:",
+    "  - nome: <Entidade>",
+    "    campos:",
+    "      - nome: <campo>",
+    "        tipo: <tipo>",
+    "rotas:",
+    "  - caminho: <rota>",
+    '    descricao: "<para que serve>"',
+    "arquivos_afetados:",
+    "  - <caminho/do/arquivo.ts>",
+    "notas_implementacao:",
+    '  - "<aviso técnico não óbvio>"',
+    "---",
+    "",
+    "# <título>",
+    "",
+    "<1 a 2 parágrafos com o objetivo e as regras de negócio principais>",
+    "",
+    "Regras: listas sempre uma por linha (nunca [a, b]); nenhum bloco de código; não invente que algo já existe ou foi implementado; cubra TODO o pedido do usuário em módulos, entidades e arquivos.",
+  ].join("\n");
+}
+
 export function buildCumulativeSpecSystemPrompt(currentSpecDraft: string): string {
   return [
     "📋 [RASCUNHO ATUAL DA SPEC NO SERVIDOR — ATUALIZAÇÃO CUMULATIVA OBRIGATÓRIA]",

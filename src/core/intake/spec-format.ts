@@ -208,7 +208,24 @@ function parseYamlMapping(
 export function unwrapSpecDocument(content: string): string {
   if (!content) return content;
   const trimmed = content.trim();
+
+  // Modelos com raciocínio às vezes escrevem o "pensamento" antes da Spec e até repetem o
+  // modelo de formato com <placeholders>. Vale o ÚLTIMO frontmatter com titulo real.
+  const docs = Array.from(trimmed.matchAll(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*$/gm));
+  const real = docs.filter((m) => {
+    const titulo = m[1].match(/^titulo\s*:\s*(.*)$/m)?.[1] ?? "";
+    return titulo.trim() !== "" && !/<[^>]+>/.test(titulo);
+  });
+  if (real.length > 0 && !(real.length === 1 && trimmed.startsWith("---") && real[0].index === 0)) {
+    const last = real[real.length - 1];
+    // Se o documento estava dentro de um bloco ```, o fechamento da cerca fica para trás.
+    return trimmed
+      .slice(last.index ?? 0)
+      .replace(/\r?\n```[ \t]*(\r?\n[\s\S]*)?$/, "")
+      .trim();
+  }
   if (trimmed.startsWith("---")) return trimmed;
+
   // Primeiro bloco ```yaml / ```yml / ``` do texto.
   const fence = trimmed.match(/```(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/i);
   if (!fence) return trimmed;
@@ -234,12 +251,19 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
   // Defensivo: LLMs às vezes emitem uma lista como escalar único separado por
   // vírgulas (ex.: stack: "Next.js, Prisma, Tailwind") em vez de sequência YAML.
   // Sem isso, a seção some silenciosamente da UI em vez de aparecer vazia.
+  // Também aceita lista no estilo JSON/flow (stack: ["Next.js", "Prisma"]) e limpa itens que
+  // já chegaram quebrados de uma gravação anterior ('["Next.js"', '"Prisma"]').
+  const cleanItem = (s: string) =>
+    s.trim().replace(/^\[/, "").replace(/\]$/, "").trim().replace(/^["']|["']$/g, "").trim();
   const asStringList = (v: YamlValue | undefined): string[] =>
-    Array.isArray(v)
+    (Array.isArray(v)
       ? v.filter((x): x is string => typeof x === "string")
       : typeof v === "string"
-        ? v.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
+        ? v.split(",")
+        : []
+    )
+      .map(cleanItem)
+      .filter(Boolean);
 
   const modulos: SpecModule[] = Array.isArray(root.modulos)
     ? (root.modulos as Record<string, YamlValue>[]).map((m) => ({
@@ -272,7 +296,11 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
 
   const trimmedBody = body.trim();
   const objetivoMatch = trimmedBody.match(/^#.*(?:\r?\n)+([\s\S]*?)(?:\r?\n#{1,6}\s|$)/);
-  const objetivo = (objetivoMatch ? objetivoMatch[1] : trimmedBody).trim();
+  // A Spec é conceitual: blocos de código no corpo (implementação) são descartados.
+  const objetivo = (objetivoMatch ? objetivoMatch[1] : trimmedBody)
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   return {
     titulo: typeof root.titulo === "string" ? root.titulo : null,
