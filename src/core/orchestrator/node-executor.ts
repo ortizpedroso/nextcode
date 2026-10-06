@@ -344,6 +344,55 @@ export async function postCompletionMessageIfDone(
 
 export interface NodeExecutionOptions {}
 
+/**
+ * Conteúdo atual, no disco do projeto, dos arquivos entregues pelas etapas de que este nó depende
+ * (diretas e indiretas), para o executor usar os tipos e funções exatamente como existem.
+ */
+export async function buildDependencyContext(
+  taskDb: TaskNode & { session: { project?: { path?: string | null } | null } }
+): Promise<string | null> {
+  const projectRoot = taskDb.session.project?.path;
+  if (!projectRoot) return null;
+  const all = await prisma.taskNode.findMany({
+    where: { sessionId: taskDb.sessionId, specVersion: taskDb.specVersion },
+    select: { id: true, dependencies: true, filesScope: true, status: true },
+  });
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const seen = new Set<string>();
+  const stack: string[] = JSON.parse(taskDb.dependencies || "[]");
+  const files: string[] = [];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const dep = byId.get(id);
+    if (!dep) continue;
+    if (dep.status === "completed") {
+      for (const f of JSON.parse(dep.filesScope || "[]") as string[]) {
+        if (/\.(ts|tsx|prisma)$/.test(f) && !files.includes(f)) files.push(f);
+      }
+    }
+    stack.push(...(JSON.parse(dep.dependencies || "[]") as string[]));
+  }
+  const MAX_TOTAL = 40000;
+  let used = 0;
+  const blocks: string[] = [];
+  for (const f of files) {
+    const abs = path.join(projectRoot, f);
+    if (!fs.existsSync(abs)) continue;
+    const content = fs.readFileSync(abs, "utf8");
+    if (used + content.length > MAX_TOTAL) break;
+    used += content.length;
+    blocks.push(`--- ${f} ---\n${content}`);
+  }
+  if (blocks.length === 0) return null;
+  return (
+    "ARQUIVOS JÁ EXISTENTES NO PROJETO (entregues pelas etapas anteriores — use os tipos, nomes e assinaturas " +
+    "EXATAMENTE como estão abaixo; não os altere nem os redeclare):\n\n" +
+    blocks.join("\n\n")
+  );
+}
+
 /** Instalador usado pela etapa de base; trocado nos testes para não acessar a rede. */
 let scaffoldInstaller: Installer = npmInstaller;
 export function setScaffoldInstallerForTests(installer: Installer | null): void {
@@ -534,6 +583,14 @@ DIRETRIZES DE EXECUÇÃO:
     });
   }
 
+  // Saída das dependências (arquitetura §4.4): o código REAL dos arquivos que as etapas anteriores
+  // já gravaram. Sem isso o executor importava tipos sem conhecê-los (smoke M1 de 06/10: a rota
+  // usou AsaasCharge com outro formato → TS2322 nas 3 tentativas).
+  const dependencyBlock = await buildDependencyContext(taskDb);
+  if (dependencyBlock) {
+    dispatchMessages.push({ role: "system", content: dependencyBlock });
+  }
+
   dispatchMessages.push({
     role: "user",
     content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
@@ -587,6 +644,7 @@ DIRETRIZES DE EXECUÇÃO:
   let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
   let empiricalFailureLine: string | undefined;
   let empiricalFailureStage: EmpiricalStage | null = null;
+  let empiricalGateErrors: string[] = [];
   let mcpRes: Record<string, unknown>;
   let newFailureHistory: string | undefined;
 
@@ -642,6 +700,7 @@ DIRETRIZES DE EXECUÇÃO:
       if (!gate.passed) {
         empiricalFailureLine = gate.failureLine || "falha na verificação empírica pós-promoção";
         empiricalFailureStage = gate.failedStage;
+        empiricalGateErrors = gate.newErrors || [];
         TelemetryLogger.log({
           sessionId: taskDb.sessionId,
           action: "EMPIRICAL_BUILD_FAILED",
@@ -667,8 +726,12 @@ DIRETRIZES DE EXECUÇÃO:
       });
     }
 
+    // Todos os erros novos (até 10), não só o primeiro: com um só, o executor corrigia esse e
+    // tropeçava no seguinte em cada tentativa.
+    const extraErrors = empiricalGateErrors.filter((e) => e !== empiricalFailureLine).slice(0, 9);
     const empiricalFailureReason = empiricalFailureLine
-      ? `Verificação empírica (${empiricalStageLabel(empiricalFailureStage)}) falhou — promoção desfeita: ${empiricalFailureLine}`
+      ? `Verificação empírica (${empiricalStageLabel(empiricalFailureStage)}) falhou — promoção desfeita: ${empiricalFailureLine}` +
+        (extraErrors.length ? `\nOutros erros do compilador:\n${extraErrors.map((e) => `- ${e}`).join("\n")}` : "")
       : undefined;
 
     const rejectionReason =
