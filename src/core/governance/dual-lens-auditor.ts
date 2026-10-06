@@ -428,15 +428,27 @@ export class DualLensAuditor {
     codeContentMap: Record<string, string>,
     dispatchFn: LLMDispatchFn
   ): Promise<BlindAuditVerdict | null> {
-    const MAX_FILE_CHARS = 2500;
-    const MAX_TOTAL_CHARS = 9000;
+    // Antes: 2.500 caracteres por arquivo e 9.000 no total. Um arquivo real de 120 linhas passa
+    // disso; o auditor via o código cortado e reprovava por "arquivo termina abruptamente" — o
+    // bloqueio da etapa lib/asaas.ts (06/10) foi causado por este corte, não pelo executor.
+    // O corte agora é só teto de segurança e, quando acontece, é declarado ao auditor.
+    const MAX_FILE_CHARS = Number(process.env.BLIND_AUDIT_MAX_FILE_CHARS) || 24000;
+    const MAX_TOTAL_CHARS = Number(process.env.BLIND_AUDIT_MAX_TOTAL_CHARS) || 80000;
     let budget = MAX_TOTAL_CHARS;
     const fileBlocks: string[] = [];
     for (const [filePath, content] of Object.entries(codeContentMap)) {
-      if (budget <= 0) break;
-      const truncated = content.slice(0, Math.min(MAX_FILE_CHARS, budget));
-      fileBlocks.push(`--- ${filePath} ---\n${truncated}`);
-      budget -= truncated.length;
+      if (budget <= 0) {
+        fileBlocks.push(`--- ${filePath} ---\n[NÃO EXIBIDO PELO NEXTCODE POR LIMITE DE TAMANHO — não é defeito do código]`);
+        continue;
+      }
+      const limit = Math.min(MAX_FILE_CHARS, budget);
+      const shown = content.slice(0, limit);
+      const note =
+        content.length > limit
+          ? `\n[... ${content.length - limit} caracteres OMITIDOS PELO NEXTCODE por limite de tamanho — o arquivo continua; NÃO reprove por isso]`
+          : "";
+      fileBlocks.push(`--- ${filePath} ---\n${shown}${note}`);
+      budget -= shown.length;
     }
 
     const messages: { role: "system" | "user"; content: string }[] = [
@@ -452,7 +464,7 @@ export class DualLensAuditor {
       },
       {
         role: "user",
-        content: `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, 3000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}`,
+        content: `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}`,
       },
     ];
 
