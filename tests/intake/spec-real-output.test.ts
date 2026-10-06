@@ -81,3 +81,28 @@ describe("Modelo com raciocínio antes da Spec (nemotron via FreeLLMAPI, 06/10)"
     expect(parseSpecDocument(onlyTemplate)).toBeNull();
   });
 });
+
+describe("Frontmatter aberto e nunca fechado (gpt-oss-20b via FreeLLMAPI, 06/10)", () => {
+  const unclosed = [
+    "---",
+    'titulo: "Gateway"',
+    "status: aguardando_aprovacao",
+    "modulos:",
+    "  - id: auth",
+    '    nome: "Auth"',
+    '    resumo: "Login"',
+    "arquivos_afetados:",
+    '  - "lib/db.ts"',
+    "",
+    "# Gateway",
+    "",
+    "Objetivo do gateway.",
+  ].join("\n");
+
+  it("fecha o bloco antes do primeiro título e reconhece a Spec", () => {
+    const p = parseSpecDocument(unclosed);
+    expect(p?.modulos.map((m) => m.id)).toEqual(["auth"]);
+    expect(p?.arquivosAfetados).toEqual(["lib/db.ts"]);
+    expect(p?.objetivo).toBe("Objetivo do gateway.");
+  });
+});

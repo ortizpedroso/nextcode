@@ -207,7 +207,14 @@ function parseYamlMapping(
  */
 export function unwrapSpecDocument(content: string): string {
   if (!content) return content;
-  const trimmed = content.trim();
+  let trimmed = content.trim();
+
+  // Frontmatter aberto e nunca fechado (visto com gpt-oss-20b via FreeLLMAPI, 06/10): o YAML
+  // vai até o primeiro título Markdown. Fecha o bloco ali.
+  if (/^---\r?\n/.test(trimmed) && !/\r?\n---[ \t]*(\r?\n|$)/.test(trimmed.slice(3))) {
+    const h1 = trimmed.search(/\r?\n#\s/);
+    if (h1 > 0) trimmed = `${trimmed.slice(0, h1)}\n---\n${trimmed.slice(h1)}`;
+  }
 
   // Modelos com raciocínio às vezes escrevem o "pensamento" antes da Spec e até repetem o
   // modelo de formato com <placeholders>. Vale o ÚLTIMO frontmatter com titulo real.
