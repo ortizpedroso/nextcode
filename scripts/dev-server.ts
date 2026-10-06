@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
+import * as crypto from "crypto";
 import { findFreePort } from "./port-utils";
 
 // "npm run dev" → next dev; "npm start" (--start) → next start sobre o build existente.
@@ -8,7 +9,29 @@ import { findFreePort } from "./port-utils";
 // compilados (4bc901e) sem uma fonte .ts equivalente — o comando estava quebrado.
 const isStart = process.argv.slice(2).includes("--start");
 
+/**
+ * Garante a chave mestra que cifra as API keys no SQLite (NEXTCODE_MASTER_KEY no .env).
+ * Sem ela o app recusa gravar qualquer segredo (ver encryptSecret). Gerada uma única vez;
+ * perder o .env = recadastrar as chaves.
+ */
+function ensureMasterKey(): void {
+  if ((process.env.NEXTCODE_MASTER_KEY || process.env.NEXTCODE_MASTER_KEYS || "").trim()) return;
+  const envPath = path.join(process.cwd(), ".env");
+  const current = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  if (/^NEXTCODE_MASTER_KEYS?=\S+/m.test(current)) return;
+  const key = crypto.randomBytes(32).toString("base64");
+  const prefix = current && !current.endsWith("\n") ? "\n" : "";
+  fs.appendFileSync(
+    envPath,
+    `${prefix}\n# Chave mestra AES-256-GCM das API keys no SQLite (gerada automaticamente). PERDER = recadastrar as chaves.\nNEXTCODE_MASTER_KEY=${key}\n`
+  );
+  // Vale já para este processo e o next dev filho (herda process.env).
+  process.env.NEXTCODE_MASTER_KEY = key;
+  console.log("[NextCode] NEXTCODE_MASTER_KEY gerada e gravada no .env (guarde uma cópia em local seguro).");
+}
+
 async function startServer() {
+  ensureMasterKey();
   const basePort = parseInt(process.env.PORT || "3001", 10);
 
   try {

@@ -460,9 +460,9 @@ export function SettingsDialog({
               <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <span>
-                  <strong>NEXTCODE_MASTER_KEY não configurada:</strong> as chaves salvas aqui ficam em texto plano no
-                  banco SQLite. Defina a variável no <code>.env</code> e reinicie o servidor (em produção o salvamento é
-                  recusado).
+                  <strong>Chave mestra ausente neste servidor:</strong> nenhuma chave de API pode ser salva (o NextCode
+                  não grava senha em texto plano). Reinicie pelo <code>npm run dev</code>: ele gera a chave mestra no{" "}
+                  <code>.env</code> automaticamente.
                 </span>
               </div>
             )}

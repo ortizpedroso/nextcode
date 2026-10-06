@@ -75,8 +75,8 @@ function getAllMasterKeys(): Buffer[] {
 export class MasterKeyMissingError extends Error {
   constructor() {
     super(
-      "NEXTCODE_MASTER_KEY não está configurada — em produção nenhuma chave de API é gravada em texto plano. " +
-        "Defina NEXTCODE_MASTER_KEY (ou NEXTCODE_MASTER_KEYS) no .env e reinicie o servidor."
+      "NEXTCODE_MASTER_KEY não está configurada — nenhuma chave de API é gravada em texto plano. " +
+        "Inicie pelo npm run dev (gera a chave no .env automaticamente) ou defina NEXTCODE_MASTER_KEY no .env e reinicie o servidor."
     );
     this.name = "MasterKeyMissingError";
   }
@@ -128,7 +128,10 @@ export function encryptSecret(plaintext: string): string {
     // Em produção a ausência da chave mestra é falha fechada: nenhum segredo vai para o
     // banco em texto plano. Fora de produção mantém o legado (não quebra o dev local),
     // com advertência no console e na UI (GET /api/settings → secretsEncryptionEnabled).
-    if (process.env.NODE_ENV === "production") {
+    // Falha fechada em qualquer ambiente (exigência do fundador: toda senha cifrada). O
+    // npm run dev gera a chave sozinho (scripts/dev-server.ts). Só a suíte de testes mantém o
+    // legado texto-plano, para exercitar a leitura de valores antigos.
+    if (process.env.NODE_ENV === "production" || !process.env.VITEST) {
       throw new MasterKeyMissingError();
     }
     console.warn(
