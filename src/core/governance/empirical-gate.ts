@@ -15,6 +15,7 @@
 
 import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
+import { repairEnvironment } from "../execution/project-base";
 
 export type EmpiricalStage = "typecheck" | "lint";
 
@@ -70,8 +71,13 @@ export async function promoteWithEmpiricalGate(
   const promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
   let preexistingFailure = false;
 
-  // Etapa 1: type-check do projeto inteiro.
-  const after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+  // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
+  // ambiente é corrigido (nunca o código) e o tsc roda mais uma vez antes de julgar.
+  let after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+  if (after && !after.success) {
+    const repair = await repairEnvironment(projectRoot, `${after.stdout}\n${after.stderr}`);
+    if (repair.changed) after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+  }
   if (after && !after.success) {
     qm.rollbackPromotion(taskId);
     const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);

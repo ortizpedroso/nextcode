@@ -281,7 +281,7 @@ export async function approveSpecAndStart(
       // o trio legado (heurística de domínio).
       const { nodes: decomposedNodes } =
         specFilesScope && specFilesScope.length > 0
-          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope)
+          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope, parsedSpec?.stack ?? [])
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
 
       // Garante IDs únicos por versão para não colidir se duas versões forem aprovadas no mesmo ms

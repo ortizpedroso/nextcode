@@ -32,7 +32,12 @@ export class SpecDecomposerSkill {
    * etapa de "Análise" gerava um .md e era reprovada por "não implementar a Spec inteira"
    * (sessão gateway, 06/10), e a de "Desenvolvimento" pedia 15-30 arquivos numa resposta só.
    */
-  public static decomposeSpec(specText: string, titulo: string | null, files: string[]): DecompositionResult {
+  public static decomposeSpec(
+    specText: string,
+    titulo: string | null,
+    files: string[],
+    stack: string[] = []
+  ): DecompositionResult {
     const unique = Array.from(new Set(files.map((f) => f.trim()).filter(Boolean)));
     const foundation = unique.filter((f) => FOUNDATION_RE.test(f));
     const rest = unique.filter((f) => !FOUNDATION_RE.test(f)).sort();
@@ -65,10 +70,24 @@ export class SpecDecomposerSkill {
       return id;
     };
 
+    // M1: base do projeto sem IA (package.json da stack, tsconfig, npm install). Tudo depende
+    // dela: sem isso o código das etapas não pode ser compilado.
+    const scaffoldId = `task-scaffold-${stamp}`;
+    nodes.push({
+      id: scaffoldId,
+      title: "Base do projeto: dependências e tsconfig (sem IA)",
+      role: "scaffold",
+      status: "pending",
+      dependencies: [],
+      filesScope: ["package.json", "tsconfig.json"],
+      mcpScope: "",
+      payload: { goal: specText, titulo, step: "scaffold", stack },
+    });
+
     const foundationIds = foundationGroups.map((g, i) =>
-      makeNode(g, i === 0 ? [] : [nodes[nodes.length - 1].id], "base")
+      makeNode(g, i === 0 ? [scaffoldId] : [nodes[nodes.length - 1].id], "base")
     );
-    const lastFoundation = foundationIds.length > 0 ? [foundationIds[foundationIds.length - 1]] : [];
+    const lastFoundation = foundationIds.length > 0 ? [foundationIds[foundationIds.length - 1]] : [scaffoldId];
     for (const g of restGroups) makeNode(g, lastFoundation, "impl");
 
     return {

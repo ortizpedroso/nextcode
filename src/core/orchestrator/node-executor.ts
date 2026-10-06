@@ -15,6 +15,7 @@ import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
+import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
 
 /**
@@ -343,6 +344,80 @@ export async function postCompletionMessageIfDone(
 
 export interface NodeExecutionOptions {}
 
+/** Instalador usado pela etapa de base; trocado nos testes para não acessar a rede. */
+let scaffoldInstaller: Installer = npmInstaller;
+export function setScaffoldInstallerForTests(installer: Installer | null): void {
+  scaffoldInstaller = installer ?? npmInstaller;
+}
+
+/**
+ * Etapa de base (M1): package.json com as dependências da stack, tsconfig e npm install no
+ * projeto-alvo. Falha (ex.: npm sem rede) segue a política normal de tentativas (T6).
+ */
+async function runScaffoldNode(
+  taskDb: TaskNode & { session: { project?: { path?: string | null } | null } },
+  stack: string[]
+): Promise<NodeExecutionResult> {
+  const projectRoot = taskDb.session.project?.path || process.cwd();
+  const newAttempts = (taskDb.attempts || 0) + 1;
+  const maxAttempts = taskDb.maxAttempts || 3;
+  let base: ProjectBaseResult;
+  try {
+    base = await ensureProjectBase(projectRoot, stack, scaffoldInstaller);
+  } catch (err) {
+    base = { ok: false, changedFiles: [], installed: false, log: `exceção: ${String(err)}` };
+  }
+
+  const finalStatus: "completed" | "failed" | "blocked" = base.ok
+    ? "completed"
+    : newAttempts >= maxAttempts
+      ? "blocked"
+      : "failed";
+  const rejectionReason = base.ok ? undefined : `Base do projeto falhou: ${base.log}`;
+  const newFailureHistory = base.ok
+    ? undefined
+    : appendFailureAttempt(taskDb.failureHistory, {
+        attemptNumber: newAttempts,
+        rejectionReason: rejectionReason!,
+        filesScope: ["package.json", "tsconfig.json"],
+        timestamp: new Date().toISOString(),
+      });
+
+  const updatedTask = await prisma.taskNode.update({
+    where: { id: taskDb.id },
+    data: {
+      status: finalStatus,
+      attempts: base.ok ? taskDb.attempts : newAttempts,
+      result: JSON.stringify({
+        success: base.ok,
+        nodeId: taskDb.id,
+        title: taskDb.title,
+        output: base.log,
+        auditVerdict: base.ok ? "APPROVED" : "REJECTED",
+        auditMethod: "scaffold",
+        promotedPath: base.ok ? projectRoot : null,
+        changedFiles: base.changedFiles,
+        rejectionReason,
+      }),
+      ...(newFailureHistory ? { failureHistory: newFailureHistory } : {}),
+    },
+  });
+
+  TelemetryLogger.log({
+    sessionId: taskDb.sessionId,
+    action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
+    details: { nodeId: taskDb.id, title: taskDb.title, step: "scaffold", changedFiles: base.changedFiles, installed: base.installed },
+  });
+
+  return {
+    success: base.ok,
+    claimed: true,
+    executedTask: updatedTask,
+    finalStatus,
+    promotionTarget: base.ok ? projectRoot : null,
+  };
+}
+
 /**
  * Serviço único de orquestração de execução de um nó da DAG (Etapa 0 - Passo 2).
  * Encapsula a montagem do prompt, despacho LLM, quarentena, auditoria em duas lentes,
@@ -375,6 +450,19 @@ export async function executeTaskNode(
           : "failed",
       promotionTarget: null,
     };
+  }
+
+  // Etapa de base (M1): sem IA, sem quarentena e sem auditor — só prepara o ambiente para o
+  // código das próximas etapas ser compilado de verdade.
+  let scaffoldStack: string[] | null = null;
+  try {
+    const parsedPayload = taskDb.payload ? JSON.parse(taskDb.payload) : null;
+    if (parsedPayload?.step === "scaffold") scaffoldStack = Array.isArray(parsedPayload.stack) ? parsedPayload.stack : [];
+  } catch {
+    /* payload malformado: segue como etapa comum */
+  }
+  if (scaffoldStack) {
+    return runScaffoldNode(taskDb, scaffoldStack);
   }
 
   let projectContextBlock = "";
@@ -439,7 +527,9 @@ DIRETRIZES DE EXECUÇÃO:
       role: "system",
       content:
         "SPEC CANÔNICA APROVADA (fonte da verdade — implemente exatamente o que ela define para os arquivos desta etapa; " +
-        "os demais arquivos são feitos por outras etapas e você pode importá-los pelos caminhos declarados):\n\n" +
+        "os demais arquivos são feitos por outras etapas). O código é COMPILADO com tsc strict depois da entrega: importe " +
+        "apenas arquivos que já existem no projeto ou estão no seu escopo; pacotes npm que você importar são instalados " +
+        "automaticamente; não use o tipo `any`.\n\n" +
         nodePayload.goal,
     });
   }

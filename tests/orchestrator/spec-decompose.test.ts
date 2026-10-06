@@ -18,7 +18,17 @@ const files = [
 const spec = "---\ntitulo: \"Gateway\"\n---\n\n# Gateway\n\nGateway Asaas.";
 
 describe("DAG a partir da Spec: uma etapa por grupo de arquivos", () => {
-  const { nodes } = SpecDecomposerSkill.decomposeSpec(spec, "Gateway", files);
+  const { nodes: allNodes } = SpecDecomposerSkill.decomposeSpec(spec, "Gateway", files, ["Next.js", "TypeScript"]);
+  const scaffold = allNodes[0];
+  const nodes = allNodes.slice(1);
+
+  it("M1: primeira etapa é a base do projeto, sem IA, com a stack da Spec; todas dependem dela", () => {
+    expect(scaffold.role).toBe("scaffold");
+    expect((scaffold.payload as any).step).toBe("scaffold");
+    expect((scaffold.payload as any).stack).toEqual(["Next.js", "TypeScript"]);
+    expect(scaffold.dependencies).toEqual([]);
+    expect(nodes[0].dependencies).toEqual([scaffold.id]);
+  });
 
   it("sem etapa de 'Análise' que gera .md e sem teste de fachada; todo arquivo em exatamente uma etapa", () => {
     const scoped = nodes.flatMap((n) => n.filesScope);
@@ -31,7 +41,7 @@ describe("DAG a partir da Spec: uma etapa por grupo de arquivos", () => {
   it("base (schema, lib) primeiro; as demais etapas dependem da base", () => {
     const base = nodes[0];
     expect(base.filesScope).toEqual(expect.arrayContaining(["prisma/schema.prisma", "src/lib/prisma.ts"]));
-    expect(base.dependencies).toEqual([]);
+    expect(base.dependencies).toEqual([scaffold.id]);
     for (const n of nodes.slice(1)) expect(n.dependencies).toEqual([base.id]);
   });
 
