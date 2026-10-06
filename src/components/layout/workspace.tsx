@@ -100,6 +100,7 @@ function tierBadgeLabel(tier: string): string {
     fast: "⚡ Rápido",
     heavy: "🧠 Pesado",
     freellmapi: "🆓 FreeLLMAPI",
+    deepseek: "💎 DeepSeek (pago)",
     omniroute: "🤖 OmniRoute",
     "groq-fallback": "⚡ Groq (chave nativa)",
     "nvidia-fallback": "🟢 NVIDIA (chave nativa)",

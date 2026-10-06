@@ -11,8 +11,8 @@ import { readSecret, writeSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { ensureVerifiedOmniModels } from "@/core/router/omni-model-discovery";
 
-export type GatewayId = "freellmapi" | "omniroute";
-export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "omniroute"];
+export type GatewayId = "freellmapi" | "omniroute" | "deepseek";
+export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "omniroute", "deepseek"];
 
 export interface GatewayConfig {
   id: GatewayId;
@@ -22,9 +22,11 @@ export interface GatewayConfig {
   apiKey: string;
   modelFast: string | null;
   modelHeavy: string | null;
+  /** Gateway pago/forte: no tier pesado vem antes dos gratuitos (código dos nós). */
+  heavyFirst?: boolean;
 }
 
-export const GATEWAY_DEFAULTS: Record<GatewayId, { label: string; baseUrl: string; priority: number; modelFast: string | null; modelHeavy: string | null; pingPath: string; dashboardUrl: string }> = {
+export const GATEWAY_DEFAULTS: Record<GatewayId, { label: string; baseUrl: string; priority: number; modelFast: string | null; modelHeavy: string | null; pingPath: string; dashboardUrl: string; heavyFirst?: boolean }> = {
   freellmapi: {
     label: "FreeLLMAPI",
     baseUrl: "http://localhost:3100/v1",
@@ -45,6 +47,19 @@ export const GATEWAY_DEFAULTS: Record<GatewayId, { label: string; baseUrl: strin
     modelHeavy: null,
     pingPath: "/api/health",
     dashboardUrl: "http://localhost:20128",
+  },
+  deepseek: {
+    // API paga e direta (chave em Configurações > chaves nativas). Só no tier pesado: o código
+    // dos nós vai para ela primeiro; chat e Auditor Cego seguem no gratuito (modelo diferente
+    // do executor, como a arquitetura pede para o avaliador).
+    label: "DeepSeek (pago)",
+    baseUrl: "https://api.deepseek.com/v1",
+    priority: 2,
+    modelFast: null,
+    modelHeavy: "deepseek-v4-pro",
+    pingPath: "/models",
+    dashboardUrl: "https://platform.deepseek.com",
+    heavyFirst: true,
   },
 };
 
@@ -85,7 +100,11 @@ export async function loadGatewayConfigs(): Promise<GatewayConfig[]> {
       base.baseUrl = setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || def.baseUrl;
       base.apiKey = readSecret(setting?.omniRouteKey);
     }
-    if (id === "freellmapi" && !base.apiKey) continue;
+    if (id === "deepseek") {
+      base.apiKey = readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey);
+      base.heavyFirst = true;
+    }
+    if ((id === "freellmapi" || id === "deepseek") && !base.apiKey) continue;
     if (!base.enabled) continue;
     configs.push(base);
   }
@@ -266,8 +285,13 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     id === "omniroute"
       ? setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || def.baseUrl
       : row?.baseUrl || def.baseUrl;
-  const apiKey = id === "omniroute" ? readSecret(setting?.omniRouteKey) : readSecret(row?.apiKey);
-  const configuredModel = row?.modelFast ?? def.modelFast;
+  const apiKey =
+    id === "omniroute"
+      ? readSecret(setting?.omniRouteKey)
+      : id === "deepseek"
+        ? readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey)
+        : readSecret(row?.apiKey);
+  const configuredModel = row?.modelFast ?? def.modelFast ?? def.modelHeavy;
   // O diagnóstico testa o MESMO modelo que o roteador vai usar. No OmniRoute sem modelo fixo, o
   // roteador usa OMNIROUTE_MODEL ou os modelos verificados pela descoberta (não o combo auto/*).
   let model = configuredModel || process.env.OMNIROUTE_MODEL?.split(",")[0]?.trim() || "";
@@ -299,7 +323,7 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     action: null,
   };
 
-  const ping = await quickGet(`${rootUrl(baseUrl)}${def.pingPath}`, undefined, 3000);
+  const ping = await quickGet(`${rootUrl(baseUrl)}${def.pingPath}`, id === "deepseek" ? apiKey : undefined, 3000);
   health.reachable = Boolean(ping && ping.status < 500);
   if (!health.reachable) {
     const models = await quickGet(`${rootUrl(baseUrl)}/v1/models`, apiKey, 3000);

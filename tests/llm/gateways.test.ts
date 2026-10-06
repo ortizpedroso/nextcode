@@ -325,3 +325,78 @@ describe("Gateways LLM — classificação e diagnóstico real", () => {
     expect(freeChatCalls).toHaveLength(1);
   });
 });
+
+describe("Gateways LLM — modelo forte pago só no tier pesado", () => {
+  let paidServer: http.Server;
+  let paidUrl = "";
+  let paidCalls: string[] = [];
+
+  beforeAll(async () => {
+    paidServer = http.createServer(async (req, res) => {
+      const body = await readBody(req);
+      if (req.url === "/v1/chat/completions") {
+        paidCalls.push(body.model);
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "via pago" } }] }));
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    paidUrl = await listen(paidServer);
+  });
+  afterAll(async () => {
+    await new Promise<void>((r) => paidServer.close(() => r()));
+  });
+  beforeEach(() => {
+    paidCalls = [];
+  });
+
+  const paidGw = (): GatewayConfig => ({
+    id: "deepseek",
+    enabled: true,
+    priority: 2,
+    baseUrl: `${paidUrl}/v1`,
+    apiKey: "sk-pago",
+    modelFast: null,
+    modelHeavy: "deepseek-v4-pro",
+    heavyFirst: true,
+  });
+
+  it("tier pesado: o pago atende primeiro, mesmo listado depois do gratuito", async () => {
+    const res = await new SmartRouter().dispatchWithFallback({
+      messages,
+      tier: "heavy",
+      stream: false,
+      omniRouteUrl: `${omniUrl}/v1`,
+      gateways: [freeGw(), paidGw()],
+    });
+    expect(res.providerUsed).toBe("deepseek");
+    expect(res.badge).toContain("DeepSeek");
+    expect(paidCalls).toEqual(["deepseek-v4-pro"]);
+    expect(freeChatCalls).toHaveLength(0);
+  });
+
+  it("tier rápido: o pago (sem modelo rápido) nunca é chamado", async () => {
+    const res = await new SmartRouter().dispatchWithFallback({
+      messages,
+      tier: "fast",
+      stream: false,
+      omniRouteUrl: `${omniUrl}/v1`,
+      gateways: [paidGw(), freeGw()],
+    });
+    expect(res.providerUsed).toBe("freellmapi");
+    expect(paidCalls).toHaveLength(0);
+  });
+
+  it("pago fora do ar no tier pesado → gratuito assume", async () => {
+    const res = await new SmartRouter().dispatchWithFallback({
+      messages,
+      tier: "heavy",
+      stream: false,
+      omniRouteUrl: `${omniUrl}/v1`,
+      gateways: [{ ...paidGw(), baseUrl: "http://localhost:1/v1" }, freeGw()],
+    });
+    expect(res.providerUsed).toBe("freellmapi");
+    expect(freeChatCalls[0].model).toBe("auto:smart");
+  });
+});

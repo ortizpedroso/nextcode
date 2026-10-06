@@ -242,9 +242,9 @@ export interface DispatchOptions {
 
 export interface DispatchResult {
   response: Response;
-  providerUsed: "freellmapi" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
+  providerUsed: "freellmapi" | "deepseek" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
   badge: string;
-  tierTag: "freellmapi" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
+  tierTag: "freellmapi" | "deepseek" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
   modelUsed: string;
 }
 
@@ -809,9 +809,9 @@ export class SmartRouter {
       });
       return {
         response: attempt.response,
-        providerUsed: "freellmapi",
-        badge: `🆓 ${label} (${attempt.servedBy})`,
-        tierTag: "freellmapi",
+        providerUsed: gw.id === "deepseek" ? "deepseek" : "freellmapi",
+        badge: gw.id === "deepseek" ? `💎 ${label} (${attempt.servedBy})` : `🆓 ${label} (${attempt.servedBy})`,
+        tierTag: gw.id === "deepseek" ? "deepseek" : "freellmapi",
         modelUsed: attempt.servedBy,
       };
     }
@@ -1092,10 +1092,17 @@ export class SmartRouter {
     // OmniRoute sempre participa (salvo se desativado explicitamente): é a rota legada e os testes
     // existentes apontam para ele via omniRouteUrl.
     const omniDisabled = options.gateways ? !gateways.some((g) => g.id === "omniroute") : await isOmniRouteDisabled();
-    const gatewayOrder: GatewayConfig[] =
+    const withOmni: GatewayConfig[] =
       gateways.some((g) => g.id === "omniroute") || omniDisabled
         ? gateways
         : [...gateways, { id: "omniroute", enabled: true, priority: 99, baseUrl: "", apiKey: "", modelFast: null, modelHeavy: null }];
+    // Tier pesado (código dos nós): gateways pagos/fortes primeiro. Tier rápido: só gateways com
+    // modelo rápido (o pago não é gasto em chat e classificação). OmniRoute sem modelo = cascata.
+    const gatewayOrder: GatewayConfig[] = (
+      tier === "heavy"
+        ? [...withOmni.filter((g) => g.heavyFirst), ...withOmni.filter((g) => !g.heavyFirst)]
+        : withOmni
+    ).filter((g) => g.id === "omniroute" || modelForTier(g, tier) !== null);
     let aggregatorAlreadyTried = false;
     for (const gw of gatewayOrder) {
       if (signal?.aborted) break;
