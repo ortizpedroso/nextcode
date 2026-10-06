@@ -9,6 +9,11 @@ import { SmartRouter, type DispatchResult } from "@/core/router/smart-router";
 import { classifyMessage } from "@/core/orchestrator/message-intent";
 import { parseSpecDocument, renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { POST as postChat } from "@/app/api/chat/route";
+import { GET as getDag } from "@/app/api/dag/route";
+import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
+import { processSessionQueue } from "@/core/orchestrator/session-queue";
+import { claimJob, executeClaimedJob } from "@/core/orchestrator/job-queue";
+import * as nodeExecutorModule from "@/core/orchestrator/node-executor";
 
 function makeFakeDispatchResult(content: string): DispatchResult {
   return {
@@ -40,6 +45,7 @@ async function createTestProjectAndSession(opts: {
   phase?: string;
   phaseContext?: string;
   specApproved?: boolean;
+  specVersion?: number;
   canonicalSpec?: string | null;
   withTempDir?: boolean;
 }) {
@@ -63,6 +69,7 @@ async function createTestProjectAndSession(opts: {
       phase: opts.phase ?? "ENTRADA",
       phaseContext: opts.phaseContext ?? "{}",
       specApproved: opts.specApproved ?? false,
+      specVersion: opts.specVersion ?? 0,
       canonicalSpec: opts.canonicalSpec ?? null,
     },
   });
@@ -420,6 +427,287 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
 
     const parsedMessageSpec = parseSpecDocument(data.assistantMessage.content);
     expect(parsedMessageSpec?.status).toBe("aguardando_aprovacao");
+  });
+
+  it('6. Mensagem de mudança em EXECUCAO → fase SPEC_REVISAO; o laço do processSessionQueue para antes do próximo lote (nó pendente continua pending); nova aprovação → nós antigos pendentes "superseded", nova versão com nós novos e 1 Job', async () => {
+    const { session } = await createTestProjectAndSession({
+      title: "Mudanca durante EXECUCAO",
+      phase: "EXECUCAO",
+      specApproved: true,
+      specVersion: 1,
+      canonicalSpec: SAMPLE_SPEC_TWO_FILES,
+    });
+
+    // Dois lotes sequenciais na versão 1: node1 sem dependências, node2 depende de node1
+    const node1 = await prisma.taskNode.create({
+      data: {
+        id: `t6-n1-${Date.now()}`,
+        sessionId: session.id,
+        specVersion: 1,
+        title: "Implementar Produtos v1",
+        role: "Frontend Engineer",
+        status: "pending",
+        dependencies: "[]",
+        filesScope: JSON.stringify(["src/app/dashboard/products/page.tsx"]),
+      },
+    });
+    const node2 = await prisma.taskNode.create({
+      data: {
+        id: `t6-n2-${Date.now()}`,
+        sessionId: session.id,
+        specVersion: 1,
+        title: "Implementar Checkout v1",
+        role: "Frontend Engineer",
+        status: "pending",
+        dependencies: JSON.stringify([node1.id]),
+        filesScope: JSON.stringify(["src/app/dashboard/checkout/page.tsx"]),
+      },
+    });
+
+    const specV2Draft = renderCanonicalSpecDocument({
+      titulo: "Gateway de Pagamentos v2",
+      status: "aguardando_aprovacao",
+      data: "2026-10-05",
+      objetivo: "Implementar gateway com produtos, checkout e cupons.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [
+        { id: "MOD-1", nome: "Produtos", resumo: "Listagem e cadastro de produtos" },
+        { id: "MOD-2", nome: "Checkout", resumo: "Fluxo de pagamento" },
+        { id: "MOD-3", nome: "Cupons", resumo: "Descontos promocionais" },
+      ],
+      entidades: [{ nome: "Product", campos: [{ nome: "id", tipo: "string" }] }],
+      arquivosAfetados: [
+        "src/app/dashboard/products/page.tsx",
+        "src/app/dashboard/checkout/page.tsx",
+        "src/app/dashboard/coupons/page.tsx",
+      ],
+    });
+
+    let workerCallsForNode2 = 0;
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockResolvedValueOnce(
+      makeFakeDispatchResult(specV2Draft)
+    );
+
+    vi.spyOn(nodeExecutorModule, "executeTaskNode").mockImplementation(async (taskDb) => {
+      if (taskDb.id === node2.id) {
+        workerCallsForNode2++;
+      }
+      if (taskDb.id === node1.id) {
+        // Durante a execução do lote 1 (node1), o usuário envia pedido de mudança no chat
+        const chatRes = await postChat(
+          new NextRequest("http://localhost/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: session.id,
+              prompt: "Adicionar também o módulo de cupons de desconto",
+            }),
+          })
+        );
+        expect(chatRes.status).toBe(200);
+        const chatData = await chatRes.json();
+        expect(chatData.phase).toBe("SPEC_REVISAO");
+      }
+
+      const updated = await prisma.taskNode.update({
+        where: { id: taskDb.id },
+        data: { status: "completed", result: JSON.stringify({ success: true }) },
+      });
+      return {
+        success: true,
+        claimed: true,
+        executedTask: updated,
+        finalStatus: "completed",
+        promotionTarget: null,
+      };
+    });
+
+    // Roda processSessionQueue: lote 1 (node1) conclui, mas antes do lote 2 (node2) a fase virou SPEC_REVISAO e o laço para
+    const queueResult = await processSessionQueue(session.id);
+    expect(queueResult.processedCount).toBe(1);
+    expect(workerCallsForNode2).toBe(0);
+
+    const dbNode1BeforeReapproval = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: node1.id },
+    });
+    const dbNode2BeforeReapproval = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: node2.id },
+    });
+    const dbSessionInRevision = await prisma.session.findUniqueOrThrow({
+      where: { id: session.id },
+    });
+
+    expect(dbSessionInRevision.phase).toBe("SPEC_REVISAO");
+    expect(dbSessionInRevision.specApproved).toBe(false);
+    expect(dbNode1BeforeReapproval.status).toBe("completed");
+    expect(dbNode2BeforeReapproval.status).toBe("pending");
+
+    // Nova aprovação -> specVersion 2, nós pendentes antigos marcados como "superseded", novos nós criados e 1 Job
+    const approvalResult = await approveSpecAndStart(
+      session.id,
+      dbSessionInRevision.canonicalSpec!
+    );
+
+    expect(approvalResult.ok).toBe(true);
+    if (!approvalResult.ok) throw new Error("approveSpecAndStart failed");
+    expect(approvalResult.phase).toBe("EXECUCAO");
+    expect(approvalResult.tasks!.length).toBeGreaterThan(0);
+    expect(
+      approvalResult.tasks!.every((t) => t.specVersion === 2 && t.status === "pending")
+    ).toBe(true);
+
+    const dbSessionAfterReapproval = await prisma.session.findUniqueOrThrow({
+      where: { id: session.id },
+    });
+    expect(dbSessionAfterReapproval.phase).toBe("EXECUCAO");
+    expect(dbSessionAfterReapproval.specApproved).toBe(true);
+    expect(dbSessionAfterReapproval.specVersion).toBe(2);
+
+    const dbNode1AfterReapproval = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: node1.id },
+    });
+    const dbNode2AfterReapproval = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: node2.id },
+    });
+    expect(dbNode1AfterReapproval.status).toBe("completed");
+    expect(dbNode2AfterReapproval.status).toBe("superseded");
+
+    const activeJobs = await prisma.job.findMany({
+      where: { sessionId: session.id, activeKey: session.id },
+    });
+    expect(activeJobs).toHaveLength(1);
+    expect(activeJobs[0].id).toBe(approvalResult.jobId);
+
+    // GET /api/dag deve retornar apenas os nós da versão ativa (specVersion === 2)
+    const dagGetRes = await getDag(
+      new Request(`http://localhost/api/dag?sessionId=${session.id}`)
+    );
+    const dagGetData = await dagGetRes.json();
+    expect(dagGetData.tasks.every((t: { specVersion: number }) => t.specVersion === 2)).toBe(true);
+  });
+
+  it("7. ENTREGUE + pedido novo → ELICITACAO; aprovação → specVersion 2, nós novos, os nós da versão 1 intocados (completed), mensagem de conclusão só sobre a versão 2", async () => {
+    const { session } = await createTestProjectAndSession({
+      title: "Ciclo v1 ENTREGUE para v2",
+      phase: "SPEC_REVISAO",
+      specApproved: false,
+      canonicalSpec: SAMPLE_SPEC_TWO_FILES,
+    });
+
+    vi.spyOn(nodeExecutorModule, "executeTaskNode").mockImplementation(async (taskDb) => {
+      const updated = await prisma.taskNode.update({
+        where: { id: taskDb.id },
+        data: { status: "completed", result: JSON.stringify({ success: true }) },
+      });
+      return {
+        success: true,
+        claimed: true,
+        executedTask: updated,
+        finalStatus: "completed",
+        promotionTarget: null,
+      };
+    });
+
+    // 1. Aprova e conclui a versão 1 até ENTREGUE
+    const v1Start = await approveSpecAndStart(session.id, SAMPLE_SPEC_TWO_FILES);
+    expect(v1Start.ok).toBe(true);
+    if (!v1Start.ok) throw new Error("v1 approveSpecAndStart failed");
+    const v1TaskIds = v1Start.tasks!.map((t) => t.id);
+    expect(v1TaskIds.length).toBeGreaterThan(0);
+
+    const claimedV1 = await claimJob(v1Start.jobId!, "test-worker-v1");
+    expect(claimedV1).toBe(true);
+    await executeClaimedJob(v1Start.jobId!, "test-worker-v1");
+
+    const sessionAfterV1 = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(sessionAfterV1.phase).toBe("ENTREGUE");
+    expect(sessionAfterV1.specVersion).toBe(1);
+
+    // 2. Em ENTREGUE, envia pedido novo -> fase vai para ELICITACAO
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockResolvedValueOnce(
+      makeFakeDispatchResult(
+        "Ótimo! Para o novo módulo de relatórios, quais formatos de exportação você deseja?"
+      )
+    );
+
+    const newReqRes = await postChat(
+      new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.id,
+          prompt: "Criar um novo módulo de exportação de relatórios financeiros",
+        }),
+      })
+    );
+    expect(newReqRes.status).toBe(200);
+    const newReqData = await newReqRes.json();
+    expect(newReqData.phase).toBe("ELICITACAO");
+
+    const sessionInElicitacao = await prisma.session.findUniqueOrThrow({
+      where: { id: session.id },
+    });
+    expect(sessionInElicitacao.phase).toBe("ELICITACAO");
+
+    // 3. Aprova a Spec da versão 2 -> specVersion 2, nós novos, nós v1 intocados (completed)
+    const specV2 = renderCanonicalSpecDocument({
+      titulo: "Relatórios Financeiros v2",
+      status: "aguardando_aprovacao",
+      data: "2026-10-05",
+      objetivo: "Exportação de relatórios financeiros em CSV.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [{ id: "MOD-REL-1", nome: "Exportador CSV", resumo: "Gera CSV financeiro" }],
+      entidades: [{ nome: "ReportRow", campos: [{ nome: "total", tipo: "number" }] }],
+      arquivosAfetados: ["src/reports/csv-exporter.ts"],
+    });
+
+    const v2Start = await approveSpecAndStart(session.id, specV2);
+    expect(v2Start.ok).toBe(true);
+    if (!v2Start.ok) throw new Error("v2 approveSpecAndStart failed");
+    expect(v2Start.phase).toBe("EXECUCAO");
+    expect(v2Start.tasks!.length).toBeGreaterThan(0);
+    expect(v2Start.tasks!.every((t) => t.specVersion === 2)).toBe(true);
+
+    const sessionInV2Exec = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(sessionInV2Exec.specVersion).toBe(2);
+
+    // Verifica que os nós da versão 1 continuam intocados como completed
+    const v1TasksInDb = await prisma.taskNode.findMany({
+      where: { id: { in: v1TaskIds } },
+    });
+    expect(v1TasksInDb).toHaveLength(v1TaskIds.length);
+    expect(v1TasksInDb.every((t) => t.status === "completed" && t.specVersion === 1)).toBe(true);
+
+    // 4. Executa o Job da versão 2 até ENTREGUE e verifica a mensagem de conclusão da versão 2
+    const claimedV2 = await claimJob(v2Start.jobId!, "test-worker-v2");
+    expect(claimedV2).toBe(true);
+    await executeClaimedJob(v2Start.jobId!, "test-worker-v2");
+
+    const sessionAfterV2 = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(sessionAfterV2.phase).toBe("ENTREGUE");
+    expect(sessionAfterV2.specVersion).toBe(2);
+
+    const v2CompletionMessages = await prisma.message.findMany({
+      where: {
+        sessionId: session.id,
+        role: "assistant",
+        content: { contains: "Execução Autônoma Concluída! (Spec v2)" },
+      },
+    });
+    expect(v2CompletionMessages).toHaveLength(1);
+    const v2CompletionContent = v2CompletionMessages[0].content;
+
+    for (const v2Task of v2Start.tasks!) {
+      expect(v2CompletionContent).toContain(v2Task.title);
+    }
+    const bulletLines = v2CompletionContent
+      .split("\n")
+      .filter((line) => line.trim().startsWith("• **"));
+    expect(bulletLines).toHaveLength(v2Start.tasks!.length);
+    expect(v2CompletionContent).toContain("Relatórios Financeiros v2");
+    expect(v2CompletionContent).not.toContain("Gateway de Pagamentos");
+    expect(v2CompletionContent).not.toContain("src/app/dashboard/products/page.tsx");
   });
 
   it("8. O /api/chat nunca grava arquivo no projeto, nem com Spec aprovada e resposta com blocos de código (projeto temporário, compare a listagem do diretório antes e depois)", async () => {

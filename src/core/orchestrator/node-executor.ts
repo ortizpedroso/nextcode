@@ -78,7 +78,14 @@ export function appendFailureAttempt(existingHistoryJson: string | null | undefi
  * status no banco.
  */
 export async function cascadeBlockedNodes(sessionId: string): Promise<string[]> {
-  const sessionTasks = await prisma.taskNode.findMany({ where: { sessionId } });
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { specVersion: true },
+  });
+  const currentSpecVersion = session?.specVersion ?? 0;
+  const sessionTasks = await prisma.taskNode.findMany({
+    where: { sessionId, specVersion: currentSpecVersion },
+  });
   const knownIds = new Set(sessionTasks.map((t) => t.id));
   const engine = new DAGEngine(
     sessionTasks.map((t) => ({
@@ -102,7 +109,14 @@ export async function cascadeBlockedNodes(sessionId: string): Promise<string[]> 
  * Trava T6 (D-RANHO): quando um nó esgota o ciclo de tentativas automáticas, reporta ao humano no chat.
  */
 export async function reportBlockedNodeToHuman(sessionId: string, nodeId: string): Promise<void> {
-  const sessionTasks = await prisma.taskNode.findMany({ where: { sessionId } });
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { specVersion: true },
+  });
+  const currentSpecVersion = session?.specVersion ?? 0;
+  const sessionTasks = await prisma.taskNode.findMany({
+    where: { sessionId, specVersion: currentSpecVersion },
+  });
   const node = sessionTasks.find((t) => t.id === nodeId);
   if (!node) return;
 
@@ -235,20 +249,30 @@ export async function postCompletionMessageIfDone(
 }> {
   const { canonicalSpec, projectPath } = opts;
 
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { specVersion: true },
+  });
+  const currentSpecVersion = session?.specVersion ?? 0;
+
   const sessionTasks = await prisma.taskNode.findMany({
-    where: { sessionId },
+    where: { sessionId, specVersion: currentSpecVersion },
     orderBy: { createdAt: "asc" },
   });
 
-  const allCompleted = sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
+  const allCompleted =
+    sessionTasks.length > 0 && sessionTasks.every((t) => t.status === "completed");
   const specCompleteness = checkSpecCompletenessOnDisk(canonicalSpec, projectPath);
 
   if (allCompleted) {
+    const versionSuffix = currentSpecVersion > 1 ? ` (Spec v${currentSpecVersion})` : "";
+    const completionMarker = `Execução Autônoma Concluída!${versionSuffix}`;
+
     const existingCompletionMsg = await prisma.message.findFirst({
       where: {
         sessionId,
         role: "assistant",
-        content: { contains: "Execução Autônoma Concluída!" },
+        content: { contains: completionMarker },
       },
     });
 
@@ -279,7 +303,7 @@ export async function postCompletionMessageIfDone(
         data: {
           sessionId,
           role: "assistant",
-          content: `⚡ **[Skill ${skillHeader}] — Execução Autônoma Concluída!**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}${unverifiedBlock}`,
+          content: `⚡ **[Skill ${skillHeader}] — ${completionMarker}**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}${unverifiedBlock}`,
         },
       });
     }

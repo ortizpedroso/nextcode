@@ -195,9 +195,14 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         });
 
         if (!otherValidJob) {
+          const currentSession = await prisma.session.findUnique({
+            where: { id: job.sessionId },
+            select: { specVersion: true },
+          });
           const runningNodes = await prisma.taskNode.findMany({
             where: {
               sessionId: job.sessionId,
+              specVersion: currentSession?.specVersion ?? 0,
               status: "running",
             },
           });

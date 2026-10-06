@@ -51,9 +51,10 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
       }
 
+      const activeTasks = session.tasks.filter((t) => t.specVersion === session.specVersion);
       return NextResponse.json({
-        session,
-        tasks: session.tasks,
+        session: { ...session, tasks: activeTasks },
+        tasks: activeTasks,
         messages: session.messages,
       });
     }
@@ -72,9 +73,13 @@ export async function GET(request: Request) {
       },
     });
 
+    const latestActiveTasks = latestSession
+      ? latestSession.tasks.filter((t) => t.specVersion === latestSession.specVersion)
+      : [];
+
     return NextResponse.json({
-      session: latestSession,
-      tasks: latestSession?.tasks || [],
+      session: latestSession ? { ...latestSession, tasks: latestActiveTasks } : null,
+      tasks: latestActiveTasks,
       messages: latestSession?.messages || [],
     });
   } catch (error) {
@@ -146,13 +151,17 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const activeTasks = updatedSession
+        ? updatedSession.tasks.filter((t) => t.specVersion === updatedSession.specVersion)
+        : [];
+
       return NextResponse.json({
         success: true,
         sessionId: activeSessionId,
         intent,
-        tasks: updatedSession?.tasks || [],
+        tasks: activeTasks,
         messages: updatedSession?.messages || [],
-        session: updatedSession,
+        session: updatedSession ? { ...updatedSession, tasks: activeTasks } : null,
       });
     }
 
@@ -318,6 +327,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
       }
 
+      const sessionBeforeUnblock = await prisma.session.findUnique({
+        where: { id: targetTask.sessionId },
+        select: { phase: true, specVersion: true },
+      });
+      const currentSpecVersion = sessionBeforeUnblock?.specVersion ?? targetTask.specVersion;
+
       const logHumanUnblock = (t: typeof targetTask, cascade: boolean) =>
         TelemetryLogger.log({
           sessionId: t.sessionId,
@@ -339,7 +354,7 @@ export async function POST(request: NextRequest) {
       });
 
       const sessionTasks = await prisma.taskNode.findMany({
-        where: { sessionId: targetTask.sessionId },
+        where: { sessionId: targetTask.sessionId, specVersion: currentSpecVersion },
       });
 
       for (const task of sessionTasks) {
@@ -352,17 +367,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const sessionBeforeUnblock = await prisma.session.findUnique({
-        where: { id: targetTask.sessionId },
-        select: { phase: true },
-      });
       if (sessionBeforeUnblock?.phase === "BLOQUEADA") {
         await applyPhaseEvent(targetTask.sessionId, { type: "DESBLOQUEIO_HUMANO" });
       }
       await enqueueSessionQueueJob(targetTask.sessionId);
 
       const updatedTasks = await prisma.taskNode.findMany({
-        where: { sessionId: targetTask.sessionId },
+        where: { sessionId: targetTask.sessionId, specVersion: currentSpecVersion },
         orderBy: { createdAt: "asc" },
       });
 

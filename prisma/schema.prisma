@@ -83,6 +83,7 @@ model Session {
   projectId      String?
   title          String     @default("Nova Sessão")
   specApproved   Boolean    @default(false)
+  specVersion    Int        @default(0)
   phase          String     @default("ENTRADA")
   phaseContext   String     @default("{}")
   intakeScenario String?
@@ -99,6 +100,7 @@ model Session {
 model TaskNode {
   id             String   @id @default(uuid())
   sessionId      String
+  specVersion    Int      @default(0)
   title          String
   role           String   @default("worker")
   cluster        String   @default("backend")
@@ -106,7 +108,7 @@ model TaskNode {
   attempts       Int      @default(0)
   maxAttempts    Int      @default(3)
   quarantinePath String?
-  status         String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'quarantine'
+  status         String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed' | 'blocked' | 'quarantine' | 'superseded'
   dependencies   String   @default("[]") // JSON Array de IDs de tarefas dependentes
   mcpScope       String?  // Ferramentas MCP escopadas para este nó
   payload        String?  // JSON string contendo entrada / contexto do nó

@@ -57,7 +57,6 @@ export async function approveSpecAndStart(
   // PLANEJAMENTO | EXECUCAO | PAUSADA | BLOQUEADA | VERIFICACAO | ENTREGUE:
   // a execução já foi iniciada para a Spec atual — retorna idempotente sem chamar transition(),
   // sem criar nós, sem enfileirar e sem gerar PHASE_TRANSITION_REFUSED.
-  // TODO(passo-4b): um novo pedido depois de ENTREGUE na mesma sessão não ganha DAG nova.
   if (ALREADY_STARTED_PHASES.includes(initialPhase)) {
     const existingWait = inFlightBySession.get(sessionId);
     if (existingWait) {
@@ -219,15 +218,45 @@ export async function approveSpecAndStart(
     // Esta chamada venceu a transição SPEC_REVISAO → PLANEJAMENTO
     inFlightBySession.set(sessionId, inFlightPromise);
 
-    // 4. Grava specApproved: true (compatibilidade com a Trava T1 existente)
+    // 4. Incrementa specVersion e grava specApproved: true (Passo 4b.4 / 4b.5)
+    const sessionBeforeIncrement = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { specVersion: true },
+    });
+    const priorTasksCount = await prisma.taskNode.count({ where: { sessionId } });
+    const baseSpecVersion =
+      (sessionBeforeIncrement?.specVersion ?? 0) > 0
+        ? sessionBeforeIncrement!.specVersion
+        : priorTasksCount > 0
+          ? 1
+          : 0;
+    const currentSpecVersion = baseSpecVersion + 1;
+
     await prisma.session.update({
       where: { id: sessionId },
-      data: { specApproved: true },
+      data: {
+        specApproved: true,
+        specVersion: currentSpecVersion,
+      },
     });
 
-    // 5. Se a sessão ainda não tiver TaskNode, decompõe a canonicalSpec gravada e cria os nós
+    // 4b.4: Nós pendentes da versão anterior viram status "superseded" e nunca mais executam.
+    // Os completed ficam intocados como histórico.
+    await prisma.taskNode.updateMany({
+      where: {
+        sessionId,
+        specVersion: { lt: currentSpecVersion },
+        status: { in: ["pending", "standby"] },
+      },
+      data: {
+        status: "superseded",
+      },
+    });
+
+    // 5. Idempotência por versão: se ainda não existirem TaskNodes para a specVersion atual,
+    // decompõe a canonicalSpec gravada e cria os nós da nova versão
     const existingTasks = await prisma.taskNode.findMany({
-      where: { sessionId },
+      where: { sessionId, specVersion: currentSpecVersion },
       orderBy: { createdAt: "asc" },
     });
 
@@ -253,16 +282,27 @@ export async function approveSpecAndStart(
         specFilesScope
       );
 
+      // Garante IDs únicos por versão para não colidir se duas versões forem aprovadas no mesmo ms
+      const idMap = new Map<string, string>();
+      for (const node of decomposedNodes) {
+        const versionedId =
+          currentSpecVersion > 1 ? `${node.id}-v${currentSpecVersion}` : node.id;
+        idMap.set(node.id, versionedId);
+      }
+
       const createdTasks: TaskNode[] = [];
       for (const node of decomposedNodes) {
+        const nodeId = idMap.get(node.id) ?? node.id;
+        const mappedDeps = (node.dependencies || []).map((dep) => idMap.get(dep) ?? dep);
         const dbTask = await prisma.taskNode.create({
           data: {
-            id: node.id,
+            id: nodeId,
             sessionId,
+            specVersion: currentSpecVersion,
             title: node.title,
             role: node.role,
             status: "pending",
-            dependencies: JSON.stringify(node.dependencies),
+            dependencies: JSON.stringify(mappedDeps),
             filesScope: JSON.stringify(node.filesScope || []),
             mcpScope: node.mcpScope,
             payload: JSON.stringify({

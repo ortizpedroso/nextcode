@@ -27,10 +27,17 @@ export async function recoverZombieRunningNodes(
   sessionId: string,
   options: { ignoreStaleThreshold?: boolean } = {}
 ): Promise<number> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { specVersion: true },
+  });
+  const currentSpecVersion = session?.specVersion ?? 0;
+
   const staleThresholdMs = (Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000) + 30000;
   const staleRunningTasks = await prisma.taskNode.findMany({
     where: {
       sessionId,
+      specVersion: currentSpecVersion,
       status: "running",
       ...(options.ignoreStaleThreshold
         ? {}
@@ -100,8 +107,21 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
   let isProcessing = true;
 
   while (isProcessing) {
+    const currentSession = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { phase: true, specVersion: true, specApproved: true },
+    });
+    if (
+      !currentSession ||
+      (currentSession.phase !== "EXECUCAO" &&
+        !(currentSession.phase === "ENTRADA" && currentSession.specApproved))
+    ) {
+      isProcessing = false;
+      break;
+    }
+
     const currentDbTasks = await prisma.taskNode.findMany({
-      where: { sessionId },
+      where: { sessionId, specVersion: currentSession.specVersion },
       orderBy: { createdAt: "asc" },
     });
 
