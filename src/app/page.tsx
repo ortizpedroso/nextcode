@@ -406,6 +406,9 @@ export default function DashboardOrchestrator() {
         // do prompt do usuário ("criar", "fazer", "pode", "sim" etc. aparecem em qualquer pedido
         // normal e isso permitia executar a DAG sem o usuário jamais ter aprovado a Spec).
         setIsSpecApproved(Boolean(chatData.specApproved));
+        if (typeof chatData.canonicalSpec === "string" && chatData.canonicalSpec.trim()) {
+          setCanonicalSpec(chatData.canonicalSpec);
+        }
 
         if (chatData.specApproved) {
           await triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
@@ -721,9 +724,11 @@ export default function DashboardOrchestrator() {
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}
         onOpenSpecModal={(content) => {
-          // Usa a Spec real escrita pela IA na conversa (se o clique partiu de uma mensagem),
-          // em vez de deixar o modal reabrir com o estado antigo/desincronizado em canonicalSpec.
-          if (content) setCanonicalSpec(content);
+          // O rascunho cumulativo do servidor (canonicalSpec) tem prioridade; o conteúdo da
+          // mensagem clicada só entra se a sessão ainda não tiver rascunho no servidor (4b.3).
+          if (!canonicalSpec.trim() && content) {
+            setCanonicalSpec(content);
+          }
           setShowSpecModal(true);
         }}
         onOpenTelemetryModal={() => setShowTelemetryModal(true)}

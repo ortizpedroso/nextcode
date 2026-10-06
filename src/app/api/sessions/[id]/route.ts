@@ -56,16 +56,31 @@ export async function PATCH(
     const body = await request.json();
     const { title, projectId } = body;
 
+    const currentBeforePatch = await prisma.session.findUnique({
+      where: { id },
+      select: { phase: true, specApproved: true },
+    });
+    const frozenPhases = new Set([
+      "PLANEJAMENTO",
+      "EXECUCAO",
+      "PAUSADA",
+      "BLOQUEADA",
+      "VERIFICACAO",
+      "ENTREGUE",
+    ]);
+    const isSpecFrozen =
+      Boolean(currentBeforePatch?.specApproved) &&
+      frozenPhases.has(currentBeforePatch?.phase || "");
+
     const dataToUpdate: Record<string, unknown> = {};
     if (title !== undefined) dataToUpdate.title = String(title).trim();
     if (projectId !== undefined) {
       dataToUpdate.projectId = projectId ? String(projectId).trim() : null;
     }
-    if (body.specApproved === false) {
-      // TODO(passo-4b): revisar impacto na fase quando specApproved volta para false
+    if (body.specApproved === false && !isSpecFrozen) {
       dataToUpdate.specApproved = false;
     }
-    if (body.canonicalSpec !== undefined && body.specApproved !== true) {
+    if (body.canonicalSpec !== undefined && body.specApproved !== true && !isSpecFrozen) {
       dataToUpdate.canonicalSpec = String(body.canonicalSpec);
     }
 

@@ -25,6 +25,10 @@ import {
   classifyMessage,
   parseInterventionChoice,
 } from "@/core/orchestrator/message-intent";
+import {
+  applyCumulativeSpecGuard,
+  buildCumulativeSpecSystemPrompt,
+} from "@/core/orchestrator/spec-draft";
 import type { Phase } from "@/core/orchestrator/phase-machine";
 
 /**
@@ -501,8 +505,22 @@ export async function POST(request: NextRequest) {
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : IntakeEngine.getGovernanceSystemPrompt();
 
+    const isSpecDraftingPhase =
+      !isQuestionWithoutPhaseChange &&
+      (resultingPhase === "ELICITACAO" ||
+        resultingPhase === "ELICITACAO_CORRECAO" ||
+        resultingPhase === "SPEC_REVISAO");
+
     const dispatchMessages: DispatchMessage[] = [
       { role: "system", content: systemPromptContent },
+      ...(isSpecDraftingPhase && sessionBefore?.canonicalSpec?.trim()
+        ? [
+            {
+              role: "system" as const,
+              content: buildCumulativeSpecSystemPrompt(sessionBefore.canonicalSpec),
+            },
+          ]
+        : []),
       ...headroomRes.messages,
     ];
 
@@ -593,6 +611,29 @@ export async function POST(request: NextRequest) {
         // Se a resposta de dúvida avulsa vier com frontmatter de Spec, descarta o frontmatter e responde só o texto;
         // nunca altera a fase nem a canonicalSpec.
         aiResponseContent = stripSpecFrontmatterFromQuestionAnswer(aiResponseContent);
+      } else if (isSpecDraftingPhase) {
+        // 4b.3: Guarda cumulativa contra perda de módulos/arquivos + status: aguardando_aprovacao obrigatório
+        const guardRes = applyCumulativeSpecGuard(
+          sessionBefore?.canonicalSpec,
+          aiResponseContent,
+          targetPrompt
+        );
+        if (guardRes.isValidSpec && guardRes.finalSpec) {
+          aiResponseContent = guardRes.finalMessageContent;
+          await prisma.session.update({
+            where: { id: activeSessionId },
+            data: {
+              canonicalSpec: guardRes.finalSpec,
+              specApproved: false,
+            },
+          });
+          if (
+            resultingPhase === "ELICITACAO" ||
+            resultingPhase === "ELICITACAO_CORRECAO"
+          ) {
+            await applyPhaseEvent(activeSessionId, { type: "SPEC_PRONTA" });
+          }
+        }
       }
 
       if (!projectContextInjected && contextDiagnostics) {

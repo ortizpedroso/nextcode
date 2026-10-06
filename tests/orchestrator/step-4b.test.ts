@@ -282,6 +282,146 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     expect(data.assistantMessage.content).not.toContain("modulos:");
   });
 
+  it("4. Duas mensagens seguidas em ELICITACAO; o LLM falso devolve na 2ª uma Spec SEM um módulo da 1ª → o rascunho final contém os módulos das duas, e a resposta avisa a reinjeção", async () => {
+    const { session } = await createTestProjectAndSession({
+      title: "Spec cumulativa com guarda contra perda",
+      phase: "ELICITACAO",
+      specApproved: false,
+      canonicalSpec: null,
+    });
+
+    const specTurn1 = renderCanonicalSpecDocument({
+      titulo: "Gateway v1",
+      status: "aguardando_aprovacao",
+      data: "2026-10-05",
+      objetivo: "Módulo inicial de produtos.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [
+        { id: "MOD-PROD", nome: "Produtos", resumo: "Catálogo de produtos" },
+      ],
+      entidades: [{ nome: "Product", campos: [{ nome: "id", tipo: "string" }] }],
+      arquivosAfetados: ["src/app/dashboard/products/page.tsx"],
+    });
+
+    // Na 2ª mensagem, o LLM falso devolve apenas MOD-CHECKOUT e esquece MOD-PROD e seu arquivo
+    const specTurn2MissingFirst = renderCanonicalSpecDocument({
+      titulo: "Gateway v2",
+      status: "aguardando_aprovacao",
+      data: "2026-10-05",
+      objetivo: "Adicionado checkout.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [
+        { id: "MOD-CHECKOUT", nome: "Checkout", resumo: "Pagamento e carrinho" },
+      ],
+      entidades: [{ nome: "Order", campos: [{ nome: "id", tipo: "string" }] }],
+      arquivosAfetados: ["src/app/dashboard/checkout/page.tsx"],
+    });
+
+    const spy = vi
+      .spyOn(SmartRouter.prototype, "dispatchWithFallback")
+      .mockResolvedValueOnce(makeFakeDispatchResult(specTurn1))
+      .mockResolvedValueOnce(makeFakeDispatchResult(specTurn2MissingFirst));
+
+    // 1ª mensagem em ELICITACAO
+    const res1 = await postChat(
+      new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.id,
+          prompt: "Criar o módulo de produtos no dashboard",
+        }),
+      })
+    );
+    expect(res1.status).toBe(200);
+    const data1 = await res1.json();
+    expect(data1.phase).toBe("SPEC_REVISAO");
+
+    // 2ª mensagem pedindo para adicionar o checkout (sem pedir remoção)
+    const res2 = await postChat(
+      new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.id,
+          prompt: "Adicionar também o módulo de checkout no dashboard",
+        }),
+      })
+    );
+    expect(res2.status).toBe(200);
+    const data2 = await res2.json();
+
+    // Verifica que na 2ª chamada o prompt enviado ao LLM continha a Spec anterior e a instrução cumulativa
+    const secondCallMessages = spy.mock.calls[1][0].messages;
+    const systemTexts = secondCallMessages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content)
+      .join("\n");
+    expect(systemTexts).toContain("devolva a Spec COMPLETA atualizada");
+    expect(systemTexts).toContain("MOD-PROD");
+
+    // Rascunho final gravado no servidor contém os módulos e arquivos das duas mensagens
+    const dbSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    const parsedFinal = parseSpecDocument(dbSession.canonicalSpec || "");
+    expect(parsedFinal).not.toBeNull();
+    expect(parsedFinal!.modulos.map((m) => m.id)).toEqual(["MOD-PROD", "MOD-CHECKOUT"]);
+    expect(parsedFinal!.arquivosAfetados).toEqual([
+      "src/app/dashboard/products/page.tsx",
+      "src/app/dashboard/checkout/page.tsx",
+    ]);
+
+    // A resposta avisa a reinjeção dos 2 itens perdidos (1 módulo + 1 arquivo)
+    expect(data2.assistantMessage.content).toContain(
+      "Mantive 2 itens da versão anterior que não apareceram na nova."
+    );
+  });
+
+  it('5. LLM falso escreve status: "aprovada" → o rascunho gravado tem aguardando_aprovacao', async () => {
+    const { session } = await createTestProjectAndSession({
+      title: "LLM tenta escrever status aprovada",
+      phase: "ELICITACAO",
+      specApproved: false,
+      canonicalSpec: null,
+    });
+
+    const specWithSelfApprovedStatus = renderCanonicalSpecDocument({
+      titulo: "Sistema Auto-Aprovado pela IA",
+      status: "aprovada",
+      data: "2026-10-05",
+      objetivo: "Testar sobrescrita de status no servidor.",
+      stack: ["TypeScript"],
+      modulos: [{ id: "MOD-1", nome: "Core", resumo: "Módulo principal" }],
+      entidades: [],
+      arquivosAfetados: ["src/core.ts"],
+    });
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockResolvedValueOnce(
+      makeFakeDispatchResult(specWithSelfApprovedStatus)
+    );
+
+    const res = await postChat(
+      new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: session.id,
+          prompt: "Criar o módulo principal em src/core.ts",
+        }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+
+    const dbSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(dbSession.specApproved).toBe(false);
+    const parsedDraft = parseSpecDocument(dbSession.canonicalSpec || "");
+    expect(parsedDraft).not.toBeNull();
+    expect(parsedDraft!.status).toBe("aguardando_aprovacao");
+
+    const parsedMessageSpec = parseSpecDocument(data.assistantMessage.content);
+    expect(parsedMessageSpec?.status).toBe("aguardando_aprovacao");
+  });
+
   it("8. O /api/chat nunca grava arquivo no projeto, nem com Spec aprovada e resposta com blocos de código (projeto temporário, compare a listagem do diretório antes e depois)", async () => {
     const { session, projectDir } = await createTestProjectAndSession({
       title: "Chat nunca promove codigo para o disco",
