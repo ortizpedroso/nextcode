@@ -109,7 +109,6 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
   while (isProcessing) {
     const currentSession = await prisma.session.findUnique({
       where: { id: sessionId },
-      select: { phase: true, specVersion: true, specApproved: true },
     });
     if (
       !currentSession ||

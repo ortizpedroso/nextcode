@@ -58,7 +58,6 @@ export async function PATCH(
 
     const currentBeforePatch = await prisma.session.findUnique({
       where: { id },
-      select: { phase: true, specApproved: true },
     });
     const frozenPhases = new Set([
       "PLANEJAMENTO",
