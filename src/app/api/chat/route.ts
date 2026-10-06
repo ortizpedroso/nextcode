@@ -1,59 +1,176 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
-import * as path from "path";
 import prisma from "@/lib/prisma";
-import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
 import { pruneContextWithHeadroom } from "@/core/headroom/context-pruner";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
-
-import { resolveAvailableGeminiModel, invalidateGeminiModelCache } from "@/core/router/gemini-client";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 import { InputPreprocessorEngine } from "@/core/intake/input-preprocessor";
-import { EnvironmentWorkspaceAdapter } from "@/core/execution/environment-adapter";
-import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
-import { QuarantineManager } from "@/core/governance/quarantine-manager";
-import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
-import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
-import { isExplicitSpecApproval, isNewSpecRequest } from "@/core/intake/approval-intent";
-import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
+import { isExplicitSpecApproval } from "@/core/intake/approval-intent";
+import { parseSpecDocument } from "@/core/intake/spec-format";
+import { IncidentReporter, type FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
-import type { Setting } from "@prisma/client";
+import {
+  checkSpecCompletenessOnDisk,
+  describeUnverifiedBuild,
+} from "@/core/orchestrator/node-executor";
+import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import {
+  classifyMessage,
+  parseInterventionChoice,
+} from "@/core/orchestrator/message-intent";
+import type { Phase } from "@/core/orchestrator/phase-machine";
 
-/** Adapta o SmartRouter (tier fast, mesmas chaves BYOK já resolvidas na requisição) para o formato de dispatchFn que o DualLensAuditor espera — mesmo padrão usado em dag/route.ts, mantendo o auditor desacoplado dos provedores. */
-function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null): LLMDispatchFn {
-  return async (messages) => {
-    try {
-      const res = await smartRouter.dispatchWithFallback({
-        messages,
-        tier: "fast",
-        geminiKey: readSecret(setting?.geminiKey),
-        groqKey: readSecret((setting as any)?.groqKey),
-        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-        deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
-        stream: false,
-        // Trava T5: sem veredito da Lente Cega nada é aprovado — 10s derrubava auditorias em
-        // provedores lentos e virava rejeição; limite configurável via BLIND_AUDIT_TIMEOUT_MS.
-        signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
-      });
-      const json = await res.response.json().catch(() => null);
-      return (
-        json?.choices?.[0]?.message?.content ??
-        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
-        null
+/**
+ * Monta deterministamente o status da sessão a partir do banco e do disco, SEM chamar LLM (§3, regra 2 / 4b.2).
+ */
+async function buildDeterministicStatusResponse(sessionId: string): Promise<string> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      project: true,
+      tasks: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  if (!session) {
+    return "Sessão não encontrada.";
+  }
+
+  const currentPhase = (session.phase as Phase) || "ENTRADA";
+  const allTasks = session.tasks || [];
+  const currentSpecVersion = (session as { specVersion?: number }).specVersion ?? 0;
+  const tasks =
+    currentSpecVersion > 0
+      ? allTasks.filter(
+          (t) => ((t as { specVersion?: number }).specVersion ?? 0) === currentSpecVersion
+        )
+      : allTasks;
+
+  const lines: string[] = [
+    `📊 **Status Determinístico da Sessão**`,
+    `- **Fase atual:** \`${currentPhase}\``,
+    `- **Spec aprovada:** ${session.specApproved ? "Sim" : "Não"}`,
+  ];
+
+  if (tasks.length === 0) {
+    lines.push(`\n### Nós da DAG\nNenhum nó de execução criado para a versão atual.`);
+  } else {
+    lines.push(`\n### Nós da DAG (${tasks.length})`);
+    for (const t of tasks) {
+      lines.push(
+        `- **${t.title}** — status: \`${t.status}\` (tentativas: ${t.attempts}/${t.maxAttempts})`
       );
-    } catch {
-      return null;
     }
-  };
+  }
+
+  const completeness = checkSpecCompletenessOnDisk(
+    session.canonicalSpec,
+    session.project?.path
+  );
+  if (completeness) {
+    lines.push(`\n### Arquivos da Spec × Disco (${completeness.declaredFiles.length} declarados)`);
+    const missingSet = new Set(completeness.missingFiles);
+    for (const file of completeness.declaredFiles) {
+      const exists = !missingSet.has(file);
+      lines.push(`- ${exists ? "✅" : "❌"} \`${file}\` (${exists ? "presente no disco" : "faltante no disco"})`);
+    }
+    if (completeness.missingFiles.length > 0) {
+      lines.push(
+        `\n⚠️ **Faltam ${completeness.missingFiles.length} arquivo(s) no disco:** ${completeness.missingFiles
+          .map((f) => `\`${f}\``)
+          .join(", ")}`
+      );
+    } else {
+      lines.push(`\n✅ Todos os arquivos declarados na Spec estão presentes no disco.`);
+    }
+  } else {
+    lines.push(`\n### Arquivos da Spec × Disco\nNenhum arquivo declarado na Spec atual.`);
+  }
+
+  const unverifiedWarning = describeUnverifiedBuild(tasks, session.project?.path);
+  if (unverifiedWarning) {
+    lines.push(unverifiedWarning);
+  }
+
+  if (currentPhase === "BLOQUEADA") {
+    const blockedDetails = await buildBlockedIncidentSection(sessionId);
+    if (blockedDetails) {
+      lines.push(`\n${blockedDetails}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Monta o relatório de incidente mais recente e as opções para a fase BLOQUEADA (§3, regras 7 e 8 / 4b.2).
+ */
+async function buildBlockedIncidentSection(sessionId: string): Promise<string> {
+  const blockedTasks = await prisma.taskNode.findMany({
+    where: { sessionId, status: "blocked" },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  let reportText = "";
+  const latestBlocked = blockedTasks[0];
+  if (latestBlocked) {
+    let history: FailureAttemptRecord[] = [];
+    try {
+      history = JSON.parse(latestBlocked.failureHistory || "[]");
+    } catch {
+      history = [];
+    }
+    reportText = IncidentReporter.generateIncidentReport(
+      latestBlocked.id,
+      latestBlocked.title,
+      latestBlocked.cluster,
+      history,
+      { maxAttempts: latestBlocked.maxAttempts }
+    );
+  } else {
+    const lastIncidentMsg = await prisma.message.findFirst({
+      where: {
+        sessionId,
+        role: "assistant",
+        content: { contains: "intervenção humana necessária" },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (lastIncidentMsg) {
+      reportText = lastIncidentMsg.content;
+    }
+  }
+
+  return [
+    "🛑 **Sessão em fase `BLOQUEADA` — intervenção humana necessária.**",
+    reportText ? `\n${reportText}` : "",
+    "\n### Opções disponíveis:",
+    "1. **Retry (Re-tentar):** use o botão **Re-tentar** no painel da DAG para liberar o nó bloqueado mantendo a Spec atual (regra 7).",
+    "2. **Ajuste da Spec:** envie no chat o ajuste desejado na Spec para suspender os executores pendentes e revisar uma nova versão da Spec (regra 8).",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Em dúvida avulsa, remove qualquer YAML frontmatter de Spec se o LLM desobedecer ao system prompt (4b.2).
+ */
+function stripSpecFrontmatterFromQuestionAnswer(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("---") && parseSpecDocument(trimmed) === null) {
+    return content;
+  }
+  const withoutFrontmatter = trimmed.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
+  return withoutFrontmatter || "Explicação textual sobre o projeto (sem geração de Spec).";
 }
 
 export async function POST(request: NextRequest) {
@@ -90,41 +207,7 @@ export async function POST(request: NextRequest) {
       activeSessionId = session.id;
     }
 
-    // Trava T1: Garante que novas solicitações de Spec travem a sessão até aprovação explícita do usuário
-    // Palavra inteira + negação + pergunta (ver approval-intent.ts) — substring liberava a
-    // trava com "não vou aprovar" e a re-travava com "aspecto"/"especial".
-    // TODO(passo-4b): classificar intenções de mensagem pela máquina de fases e tratar mudanças em EXECUCAO/SPEC_REVISAO
-    const isNewSpec = isNewSpecRequest(targetPrompt);
-    const isExplicitApproval = isExplicitSpecApproval(targetPrompt);
-
-    let specApprovedNow: boolean;
-    let approvalTriggerResult: ApproveSpecResult | null = null;
-    if (isNewSpec && !isExplicitApproval) {
-      await prisma.session.update({
-        where: { id: activeSessionId },
-        data: { specApproved: false },
-      });
-      specApprovedNow = false;
-      console.log(`[CHAT_INTENT] Trava T1 BLOQUEADA na sessão ${activeSessionId} para aguardar aprovação da nova Spec.`);
-    } else if (isExplicitApproval) {
-      approvalTriggerResult = await approveSpecAndStart(activeSessionId);
-      if (approvalTriggerResult.ok) {
-        specApprovedNow = true;
-        console.log(`[CHAT_INTENT] Trava T1 liberada na sessão ${activeSessionId} por aprovação do usuário.`);
-      } else {
-        specApprovedNow = false;
-        console.log(
-          `[CHAT_INTENT] Aprovação explícita recusada na sessão ${activeSessionId}: ${approvalTriggerResult.reason}`
-        );
-      }
-    } else {
-      const sessionForLock = await prisma.session.findUnique({
-        where: { id: activeSessionId },
-      });
-      specApprovedNow = sessionForLock?.specApproved ?? false;
-    }
-
-    // 2. Registra mensagem do usuário no banco SQLite (armazenando a entrada tratada com YAML + MD)
+    // 2. Registra mensagem do usuário no banco SQLite
     const userMessage = await prisma.message.create({
       data: {
         sessionId: activeSessionId,
@@ -133,14 +216,58 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (approvalTriggerResult && !approvalTriggerResult.ok && approvalTriggerResult.reason === "SPEC_AUSENTE") {
-      const missingSpecMessage =
-        "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação.";
+    // 3. Aprovação explícita continua com isExplicitSpecApproval e NÃO é intenção de mensagem (4b.1 / 4b.3)
+    const isExplicitApproval = isExplicitSpecApproval(targetPrompt);
+    if (isExplicitApproval) {
+      const approvalTriggerResult: ApproveSpecResult = await approveSpecAndStart(activeSessionId);
+      if (!approvalTriggerResult.ok) {
+        const refusalText =
+          approvalTriggerResult.reason === "SPEC_AUSENTE"
+            ? "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação."
+            : `⚠️ Aprovação recusada (${approvalTriggerResult.reason}).`;
+
+        const assistantMessage = await prisma.message.create({
+          data: {
+            sessionId: activeSessionId,
+            role: "assistant",
+            content: refusalText,
+            tokens: 0,
+            tier: "fast",
+          },
+        });
+        const cleanMessages = await prisma.message.findMany({
+          where: {
+            sessionId: activeSessionId,
+            role: { in: ["user", "assistant"] },
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            reason: approvalTriggerResult.reason,
+            success: false,
+            sessionId: activeSessionId,
+            specApproved: false,
+            userMessage,
+            assistantMessage,
+            messages: cleanMessages,
+          },
+          { status: 200 }
+        );
+      }
+
+      const approvedSession = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+      });
+      const approvalConfirmText =
+        `✅ **Spec Canônica aprovada!** Fase atual: \`${approvalTriggerResult.phase}\`. ` +
+        `A implementação será executada exclusivamente pela fila da DAG no servidor.`;
       const assistantMessage = await prisma.message.create({
         data: {
           sessionId: activeSessionId,
           role: "assistant",
-          content: missingSpecMessage,
+          content: approvalConfirmText,
           tokens: 0,
           tier: "fast",
         },
@@ -152,22 +279,204 @@ export async function POST(request: NextRequest) {
         },
         orderBy: { createdAt: "asc" },
       });
-      return NextResponse.json(
-        {
-          ok: false,
-          reason: "SPEC_AUSENTE",
-          success: false,
-          sessionId: activeSessionId,
-          specApproved: false,
-          userMessage,
-          assistantMessage,
-          messages: cleanMessages,
-        },
-        { status: 200 }
-      );
+
+      const smartRouter = new SmartRouter();
+      const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
+
+      return NextResponse.json({
+        ok: true,
+        success: true,
+        sessionId: activeSessionId,
+        specApproved: approvedSession?.specApproved ?? true,
+        phase: approvalTriggerResult.phase,
+        canonicalSpec: approvedSession?.canonicalSpec ?? null,
+        userMessage,
+        assistantMessage,
+        messages: cleanMessages,
+        intent: rawAnalysis,
+        graphifySuggestion: null,
+        tokensSaved: 0,
+        projectContextInjected: false,
+      });
     }
 
-    // 3. Busca histórico da sessão
+    // 4. Lê a sessão atual e classifica / aplica o evento na máquina de fases (4b.2)
+    const sessionBefore = await prisma.session.findUnique({
+      where: { id: activeSessionId },
+      include: { project: true },
+    });
+    const phaseBefore = ((sessionBefore?.phase as Phase) || "ENTRADA");
+
+    // Na fase INTERVENCAO, verifica primeiro se a resposta do usuário escolhe um dos 3 caminhos por regex
+    // TODO(passo-6): adicionar botões para ESCOLHA_INTERVENCAO (criar / corrigir / conversar) na interface
+    const interventionChoice =
+      phaseBefore === "INTERVENCAO" ? parseInterventionChoice(targetPrompt) : null;
+
+    const classifiedIntention =
+      interventionChoice !== null
+        ? null
+        : await classifyMessage(targetPrompt, phaseBefore);
+
+    const transitionRes =
+      interventionChoice !== null
+        ? await applyPhaseEvent(activeSessionId, {
+            type: "ESCOLHA_INTERVENCAO",
+            escolha: interventionChoice,
+          })
+        : await applyPhaseEvent(activeSessionId, {
+            type: "MENSAGEM_CLASSIFICADA",
+            intencao: classifiedIntention!,
+          });
+
+    const smartRouter = new SmartRouter();
+    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
+
+    // Helper para persistir resposta determinística (sem chamar LLM) e devolver o JSON padrão da rota
+    const respondDeterministically = async (content: string) => {
+      const assistantMessage = await prisma.message.create({
+        data: {
+          sessionId: activeSessionId,
+          role: "assistant",
+          content,
+          tokens: 0,
+          tier: "fast",
+        },
+      });
+      const cleanMessages = await prisma.message.findMany({
+        where: {
+          sessionId: activeSessionId,
+          role: { in: ["user", "assistant"] },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      const currentSession = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+      });
+      return NextResponse.json({
+        success: true,
+        sessionId: activeSessionId,
+        specApproved: currentSession?.specApproved || false,
+        phase: currentSession?.phase || phaseBefore,
+        canonicalSpec: currentSession?.canonicalSpec ?? null,
+        userMessage,
+        assistantMessage,
+        messages: cleanMessages,
+        intent: rawAnalysis,
+        graphifySuggestion: null,
+        tokensSaved: 0,
+        projectContextInjected: false,
+      });
+    };
+
+    // 4a. Transição recusada -> responde com reason e allowedIntents / allowedEvents, SEM LLM (§3 regra 14 / Teste 11)
+    if (!transitionRes.ok) {
+      const allowedIntentsText =
+        transitionRes.allowedIntents && transitionRes.allowedIntents.length > 0
+          ? `Intenções permitidas nesta fase: ${transitionRes.allowedIntents.map((i) => `\`${i}\``).join(", ")}.`
+          : "";
+      const allowedEventsText =
+        transitionRes.allowedEvents && transitionRes.allowedEvents.length > 0
+          ? `Eventos permitidos: ${transitionRes.allowedEvents.map((e) => `\`${e}\``).join(", ")}.`
+          : "";
+      const blockedExtra =
+        phaseBefore === "BLOQUEADA"
+          ? `\n\n${await buildBlockedIncidentSection(activeSessionId)}`
+          : "";
+
+      const refusalMsg = [
+        `⚠️ **Ação não permitida na fase \`${phaseBefore}\`.**`,
+        `Motivo: ${transitionRes.reason}.`,
+        allowedIntentsText,
+        allowedEventsText,
+        blockedExtra,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return respondDeterministically(refusalMsg);
+    }
+
+    const resultingPhase = transitionRes.ctx.phase;
+    const effects = transitionRes.effects;
+
+    // 4b. Effect MOSTRAR_STATUS ('status' em qualquer fase) -> resposta determinística do banco e do disco, SEM LLM
+    if (effects.some((e) => e.type === "MOSTRAR_STATUS")) {
+      const statusText = await buildDeterministicStatusResponse(activeSessionId);
+      return respondDeterministically(statusText);
+    }
+
+    // 4c. Effect OFERECER_TRES_CAMINHOS (3ª rodada sem clareza -> INTERVENCAO) -> resposta determinística com os 3 caminhos
+    if (effects.some((e) => e.type === "OFERECER_TRES_CAMINHOS") || resultingPhase === "INTERVENCAO") {
+      // TODO(passo-6): exibir botões interativos para os três caminhos (criar, corrigir, conversar)
+      const interventionText = [
+        "🤔 Ainda não ficou claro qual caminho você deseja seguir. Escolha uma das três opções abaixo respondendo no chat:",
+        "1. **criar** — Quero criar uma funcionalidade ou projeto novo (iniciar Spec);",
+        "2. **corrigir** — Quero corrigir um problema ou bug existente (iniciar Spec de correção);",
+        "3. **conversar** — Quero apenas conversar ou tirar uma dúvida.",
+      ].join("\n");
+      return respondDeterministically(interventionText);
+    }
+
+    // 4d. Resposta direta à escolha de intervenção (ESCOLHA_INTERVENCAO: criar -> ELICITACAO, corrigir -> ELICITACAO_CORRECAO, conversar -> CONVERSA)
+    if (interventionChoice !== null) {
+      const choiceConfirmText =
+        interventionChoice === "criar"
+          ? "Perfeito! Entramos na fase `ELICITACAO`. Descreva o que você deseja criar para montarmos a Spec Canônica."
+          : interventionChoice === "corrigir"
+            ? "Perfeito! Entramos na fase `ELICITACAO_CORRECAO`. Descreva o bug ou comportamento que precisa ser corrigido."
+            : "Perfeito! Continuamos em `CONVERSA`. Qual é a sua dúvida?";
+      return respondDeterministically(choiceConfirmText);
+    }
+
+    // 4e. Effect SUSPENDER_EXECUTORES_PENDENTES ('mudanca_durante_execucao' em EXECUCAO ou ajuste em BLOQUEADA -> SPEC_REVISAO)
+    if (effects.some((e) => e.type === "SUSPENDER_EXECUTORES_PENDENTES")) {
+      await prisma.session.update({
+        where: { id: activeSessionId },
+        data: { specApproved: false },
+      });
+
+      const suspendMsg =
+        `⏸️ **Executores pendentes suspensos (fase atual: \`${resultingPhase}\`).**\n\n` +
+        `O seu pedido de mudança foi registrado e abrirá uma **nova versão da Spec** para aprovação. ` +
+        `O nó que já estava em execução termina normalmente e os nós pendentes aguardam a revisão e aprovação da nova versão da Spec.`;
+      return respondDeterministically(suspendMsg);
+    }
+
+    // 4f. Se a sessão está em BLOQUEADA e permaneceu em BLOQUEADA, mostra o relatório de incidente mais recente e as opções
+    if (phaseBefore === "BLOQUEADA" && resultingPhase === "BLOQUEADA") {
+      const blockedReport = await buildBlockedIncidentSection(activeSessionId);
+      return respondDeterministically(blockedReport);
+    }
+
+    // 4g. Se a sessão veio de ENTREGUE ou SPEC_REVISAO para ELICITACAO / ELICITACAO_CORRECAO, desmarca specApproved até nova aprovação
+    if (
+      (resultingPhase === "ELICITACAO" ||
+        resultingPhase === "ELICITACAO_CORRECAO" ||
+        resultingPhase === "CONVERSA") &&
+      sessionBefore?.specApproved
+    ) {
+      await prisma.session.update({
+        where: { id: activeSessionId },
+        data: { specApproved: false },
+      });
+    }
+
+    const isQuestionWithoutPhaseChange = effects.some(
+      (e) => e.type === "RESPONDER_SEM_MUDAR_FASE"
+    );
+
+    // 4h. Em PLANEJAMENTO, EXECUCAO ou VERIFICACAO, o chat NÃO implementa e NÃO gera Spec
+    if (
+      !isQuestionWithoutPhaseChange &&
+      (resultingPhase === "PLANEJAMENTO" ||
+        resultingPhase === "EXECUCAO" ||
+        resultingPhase === "VERIFICACAO")
+    ) {
+      const statusText = await buildDeterministicStatusResponse(activeSessionId);
+      return respondDeterministically(statusText);
+    }
+
+    // 5. Monta o contexto e chama o LLM fast (para dúvida avulsa, conversa ou elicitação de Spec)
     const history = await prisma.message.findMany({
       where: {
         sessionId: activeSessionId,
@@ -176,32 +485,33 @@ export async function POST(request: NextRequest) {
       orderBy: { createdAt: "asc" },
     });
 
-    // 4. Sanitiza e trunca contexto com o Headroom Token Guard
     const headroomRes = pruneContextWithHeadroom(
       history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
       { maxLogLines: 50 }
     );
 
-    // Substitui o último item do histórico pelo prompt pré-processado (YAML + Markdown) para a LLM
     if (headroomRes.messages.length > 0) {
-      headroomRes.messages[headroomRes.messages.length - 1].content = preprocessedInput.fullFormattedPrompt;
+      headroomRes.messages[headroomRes.messages.length - 1].content =
+        preprocessedInput.fullFormattedPrompt;
     }
 
-    // 4.5 Injeta as Leis Inegociáveis de Governança NextCode v5
+    const systemPromptContent = isQuestionWithoutPhaseChange
+      ? `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
+        `Responda apenas com explicação clara e objetiva. ` +
+        `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
+      : IntakeEngine.getGovernanceSystemPrompt();
+
     const dispatchMessages: DispatchMessage[] = [
-      { role: "system", content: IntakeEngine.getGovernanceSystemPrompt() },
+      { role: "system", content: systemPromptContent },
       ...headroomRes.messages,
     ];
+
     let projectContextInjected = false;
     let contextDiagnostics: string | null = null;
     let ctxProject: { id: string; name: string; path: string | null } | null = null;
     try {
-      const sessionForCtx = await prisma.session.findUnique({
-        where: { id: activeSessionId },
-        include: { project: true },
-      });
       ctxProject =
-        sessionForCtx?.project ??
+        sessionBefore?.project ??
         (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
       if (!ctxProject) {
         contextDiagnostics = "sessao sem projeto vinculado e sem projectId no body";
@@ -212,40 +522,31 @@ export async function POST(request: NextRequest) {
         if (contextBlock) {
           dispatchMessages.unshift({ role: "system", content: contextBlock });
           projectContextInjected = true;
-          console.log(`[PROJECT_CONTEXT] Contexto injetado p/ "${ctxProject.name}" (${ctxProject.path}) — ${contextBlock.length} chars.`);
         } else {
           contextDiagnostics = `caminho invalido ou ilegivel: "${ctxProject.path}"`;
         }
       }
-      if (contextDiagnostics) {
-        console.warn(`[PROJECT_CONTEXT] Sem contexto de projeto: ${contextDiagnostics}`);
-      }
     } catch (ctxErr) {
-      console.warn("[PROJECT_CONTEXT] Falha ao montar contexto (seguindo sem ele):", String(ctxErr));
       contextDiagnostics = `excecao: ${String(ctxErr)}`;
     }
 
-    // 4.6 RESOLUÇÃO E INJEÇÃO DE SKILLS DE IA (/skill-name [pedido])
-    try {
-      const targetDir = ctxProject?.path && fs.existsSync(ctxProject.path) ? ctxProject.path : process.cwd();
-      const skillRes = await resolveSkillOrCommand(targetPrompt, targetDir);
-      if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
-        // SEGURANÇA: blocos de skills built-in (/plan, /goal, /help) são texto fixo do
-        // próprio sistema e podem ir como role:"system" (confiança máxima). Já o conteúdo
-        // de skills instaladas (untrustedSource) é DADO de um arquivo de terceiros — vai
-        // como role:"user" para não herdar a autoridade máxima do system prompt, mitigando
-        // prompt injection via skill instalada maliciosa (ver skill-resolver.ts).
-        dispatchMessages.unshift({
-          role: skillRes.untrustedSource ? "user" : "system",
-          content: skillRes.skillBlock,
-        });
-        console.log(`[SKILL_INJECTOR] Skill "/${skillRes.commandName}" injetada com sucesso no contexto! (untrusted=${Boolean(skillRes.untrustedSource)})`);
+    // Injeção de skill quando aplicável (exceto em dúvida avulsa)
+    if (!isQuestionWithoutPhaseChange) {
+      try {
+        const targetDir =
+          ctxProject?.path && fs.existsSync(ctxProject.path) ? ctxProject.path : process.cwd();
+        const skillRes = await resolveSkillOrCommand(targetPrompt, targetDir);
+        if (skillRes.isSkillOrCommand && skillRes.skillBlock) {
+          dispatchMessages.unshift({
+            role: skillRes.untrustedSource ? "user" : "system",
+            content: skillRes.skillBlock,
+          });
+        }
+      } catch {
+        /* ignora falha de skill */
       }
-    } catch (skillErr) {
-      console.warn("[SKILL_INJECTOR] Falha ao resolver skill:", String(skillErr));
     }
 
-    // 5. Consulta chaves BYOK no banco SQLite e roda o SmartRouter
     const setting = await prisma.setting.findUnique({ where: { id: "default" } });
     const availableKeys: AvailableKeys = {
       hasGeminiKey: Boolean(setting?.geminiKey),
@@ -256,165 +557,52 @@ export async function POST(request: NextRequest) {
       hasOmniRouteKey: Boolean(setting?.omniRouteKey),
       customEndpoint: setting?.customEndpoint,
     };
-
-    const smartRouter = new SmartRouter();
-    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
     const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
 
-    const activeTier = modelOverride || intent.tier;
-    const modelName = intent.actualModelUsed;
-    const graphifyEligibilityPromise: Promise<{ eligible: boolean; reasoning: string } | null> =
-      Promise.resolve(null);
-
-    // 6. Geração da Resposta da IA via Cascata de Fallback, com Auto-Healing Feedback Loop:
-    // mesma lógica do DAG (dag/route.ts) — se a auditoria Anti-Hallucination rejeitar o
-    // código gerado, o erro real é injetado de volta no prompt e a IA tenta de novo em vez
-    // de simplesmente devolver o erro ao usuário e parar.
-    const MAX_AUTO_HEAL_ATTEMPTS = 3;
+    // 6. Remoção total da promoção de código no /api/chat (4b.2):
+    // O /api/chat NUNCA grava arquivo no projeto (ZeroHallucinationEngine removido daqui; implementação só pela DAG).
     let aiResponseContent = "";
-    let effectiveTier = activeTier;
-    let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
-    let zeroEngineRes: Awaited<ReturnType<typeof ZeroHallucinationEngine.processAndVerifyResponse>> | null = null;
-
-    // Motivo exato da rejeição de uma tentativa — alimenta o feedback da próxima tentativa e,
-    // ao esgotar o ciclo, o relatório direcionado ao humano (Trava T6).
-    const describeChatFailure = (res: NonNullable<typeof zeroEngineRes>): string => {
-      // Só os erros NOVOS que reprovaram a prova empírica (type-check ou ESLint). Usar a saída
-      // bruta do tsc misturaria erros que já existiam no projeto antes da alteração.
-      const empiricalErrorLines = res.empiricalFailure || "";
-      // A prova empírica só roda depois de Tipo 1+Tipo 2 aprovarem, então quando ela
-      // falha é o motivo real da rejeição — vem antes dos erros do auditor, que nesse
-      // caso só podem conter avisos não fatais ([CLEAN CODE VIOLATION]).
-      return (
-        empiricalErrorLines ||
-        res.type2Result?.rejectionReason ||
-        [
-          ...res.auditorResult.compilationErrors,
-          ...res.auditorResult.securityViolations,
-          ...res.auditorResult.testFailures,
-        ].join(" | ") ||
-        "Erros de compilação/sintaxe."
-      );
-    };
-    const chatFailureHistory: FailureAttemptRecord[] = [];
+    let effectiveTier: string = modelOverride || intent.tier || "fast";
 
     try {
-      for (let attempt = 1; attempt <= MAX_AUTO_HEAL_ATTEMPTS; attempt++) {
-        const attemptMessages = [...dispatchMessages];
-        if (attempt > 1 && zeroEngineRes && !zeroEngineRes.passed) {
-          const prevError = describeChatFailure(zeroEngineRes);
-          attemptMessages.push({
-            role: "system",
-            content: `⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${attempt}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevError}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`,
-          });
-        }
+      const dispatchRes = await smartRouter.dispatchWithFallback({
+        messages: dispatchMessages,
+        tier: "fast",
+        modelOverride,
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+        stream: false,
+      });
 
-        const dispatchRes = await smartRouter.dispatchWithFallback({
-          messages: attemptMessages,
-          tier: activeTier === "heavy" ? "heavy" : "fast",
-          modelOverride,
-          geminiKey: readSecret(setting?.geminiKey),
-          groqKey: readSecret((setting as any)?.groqKey),
-          nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-          deepseekKey: readSecret((setting as any)?.deepseekKey),
-          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-          omniRouteKey: readSecret(setting?.omniRouteKey),
-          stream: false,
-        });
+      effectiveTier = dispatchRes.tierTag;
 
-        effectiveTier = dispatchRes.tierTag;
-
-        const resJson = await dispatchRes.response.json().catch(() => ({}));
-        if (resJson.choices?.[0]?.message?.content) {
-          aiResponseContent = resJson.choices[0].message.content;
-        } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-          aiResponseContent = resJson.candidates[0].content.parts[0].text;
-        } else {
-          aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
-        }
-
-        // Trava T1 (enforcement): mesma trava já aplicada ao executor /autonomo (dag/route.ts)
-        // — aqui ela cobria só a escrita da flag no banco, mas nunca bloqueava a promoção de
-        // código no chat direto. Se a Spec Canônica não foi aprovada, qualquer bloco de código
-        // retornado pela IA é descartado antes de chegar ao ZeroHallucinationEngine: nada é
-        // extraído, auditado ou gravado em disco. Isso não bloqueia retomada do loop de
-        // auto-healing, pois não é um erro de compilação — é uma decisão de política.
-        if (!specApprovedNow && aiResponseContent.includes("```")) {
-          zeroEngineRes = null;
-          aiResponseContent = `⚠️ **[NextCode Anti-Hallucination Guard] Trava T1 Violada (Spec Approval Lock)** — nada foi promovido para o disco:\n\nA Spec Canônica precisa ser aprovada pelo usuário (botão "Aprovar Spec Canônica" ou aprovação explícita no chat) antes de qualquer alteração ser escrita no projeto.`;
-          break;
-        }
-
-        // 6.5 PROMOÇÃO E EXECUÇÃO COM ANCORAGEM ANTI-ALUCINAÇÃO (ZeroHallucinationEngine)
-        // Agora com Validador Tipo 2 (auditoria semântica cega), igual ao DAG: só promove
-        // para o disco se a Lente Cega confirmar que o código implementa o pedido real.
-        const taskId = `chat-exec-${Date.now()}-${attempt}`;
-        zeroEngineRes = await ZeroHallucinationEngine.processAndVerifyResponse(
-          taskId,
-          aiResponseContent,
-          targetPrompt,
-          ctxProject?.path || null,
-          makeBlindAuditDispatchFn(smartRouter, setting)
-        );
-
-        if (zeroEngineRes.passed) break;
-        chatFailureHistory.push({
-          attemptNumber: attempt,
-          rejectionReason: describeChatFailure(zeroEngineRes),
-          filesScope: zeroEngineRes.promotedFiles,
-          timestamp: new Date().toISOString(),
-        });
+      const resJson = await dispatchRes.response.json().catch(() => ({}));
+      if (resJson.choices?.[0]?.message?.content) {
+        aiResponseContent = resJson.choices[0].message.content;
+      } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+        aiResponseContent = resJson.candidates[0].content.parts[0].text;
+      } else {
+        aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
       }
 
-      // Trava T6 (D-RANHO): ciclo de autocorreção esgotado → reporta ao humano com o relatório
-      // direcionado ao erro (causa, erro exato de cada tentativa, se se repetiu, o que fazer),
-      // em vez de só "(Após 3 tentativas...)".
-      const healingExhausted =
-        zeroEngineRes !== null && !zeroEngineRes.passed && chatFailureHistory.length >= MAX_AUTO_HEAL_ATTEMPTS;
-      if (healingExhausted) {
-        TelemetryLogger.log({
-          sessionId: activeSessionId,
-          action: "CHAT_AUTO_HEAL_EXHAUSTED_HUMAN_NOTIFIED",
-          details: { attempts: chatFailureHistory.length },
-        });
+      if (isQuestionWithoutPhaseChange) {
+        // Se a resposta de dúvida avulsa vier com frontmatter de Spec, descarta o frontmatter e responde só o texto;
+        // nunca altera a fase nem a canonicalSpec.
+        aiResponseContent = stripSpecFrontmatterFromQuestionAnswer(aiResponseContent);
       }
-
-      aiResponseContent = zeroEngineRes
-        ? `${zeroEngineRes.groundedMessage}${
-            healingExhausted
-              ? `\n\n---\n\n🛑 **Autocorreção esgotada após ${chatFailureHistory.length} tentativas — intervenção humana necessária.**\n\n${IncidentReporter.generateIncidentReport(
-                  `chat-${activeSessionId}`,
-                  targetPrompt.length > 60 ? `${targetPrompt.slice(0, 60)}...` : targetPrompt,
-                  "chat",
-                  chatFailureHistory,
-                  {
-                    maxAttempts: MAX_AUTO_HEAL_ATTEMPTS,
-                    unblockHint:
-                      "ajuste o pedido ou a Spec Canônica conforme a ação acima e envie a mensagem novamente — um novo ciclo de tentativas começa do zero.",
-                  }
-                )}`
-              : ""
-          }`
-        : aiResponseContent;
 
       if (!projectContextInjected && contextDiagnostics) {
         aiResponseContent += `\n\nℹ️ _Análise do projeto indisponível: ${contextDiagnostics}. Cadastre a pasta local em Projetos → Editar Projeto._`;
-      }
-
-      const graphifyEligibility = await graphifyEligibilityPromise;
-      if (graphifyEligibility?.eligible && ctxProject?.id) {
-        graphifySuggestion = { reasoning: graphifyEligibility.reasoning, projectId: ctxProject.id };
-        TelemetryLogger.log({
-          sessionId: activeSessionId,
-          action: "GRAPHIFY_SUGGESTION_SHOWN",
-          details: { reasoning: graphifyEligibility.reasoning, projectId: ctxProject.id },
-        });
       }
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;
     }
 
-    // 7. Persiste APENAS a mensagem do assistente (sem poluir com notificações técnicas de DAG)
+    // 7. Persiste APENAS a mensagem do assistente
     const assistantMessage = await prisma.message.create({
       data: {
         sessionId: activeSessionId,
@@ -425,7 +613,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 8. Busca histórico limpo (apenas user e assistant)
     const cleanMessages = await prisma.message.findMany({
       where: {
         sessionId: activeSessionId,
@@ -441,12 +628,16 @@ export async function POST(request: NextRequest) {
         success: true,
         sessionId: activeSessionId,
         specApproved: currentSession?.specApproved || false,
+        phase: currentSession?.phase || resultingPhase,
+        canonicalSpec: currentSession?.canonicalSpec ?? null,
         userMessage,
         assistantMessage,
         messages: cleanMessages,
         intent,
-        graphifySuggestion,
-        tokensSaved: headroomRes.tokensSaved + (preprocessedInput.originalLength - preprocessedInput.processedLength),
+        graphifySuggestion: null,
+        tokensSaved:
+          headroomRes.tokensSaved +
+          (preprocessedInput.originalLength - preprocessedInput.processedLength),
         projectContextInjected,
         inputPreprocessorStats: {
           originalLength: preprocessedInput.originalLength,

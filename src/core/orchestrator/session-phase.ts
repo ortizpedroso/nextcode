@@ -148,20 +148,27 @@ export async function applyPhaseEvent(
     });
 
     if (updated.count === 1) {
-      await prisma.telemetryLog.create({
-        data: {
-          sessionId,
-          action: "PHASE_TRANSITION",
-          details: JSON.stringify({
-            from: ctx.phase,
-            to: result.ctx.phase,
-            event,
-            effects: result.effects,
-            ...(options?.extraDetails ?? {}),
-          }),
-          durationMs: 0,
-        },
-      });
+      const isNonTransitionQuery =
+        ctx.phase === result.ctx.phase &&
+        result.effects.some(
+          (e) => e.type === "RESPONDER_SEM_MUDAR_FASE" || e.type === "MOSTRAR_STATUS"
+        );
+      if (!isNonTransitionQuery) {
+        await prisma.telemetryLog.create({
+          data: {
+            sessionId,
+            action: "PHASE_TRANSITION",
+            details: JSON.stringify({
+              from: ctx.phase,
+              to: result.ctx.phase,
+              event,
+              effects: result.effects,
+              ...(options?.extraDetails ?? {}),
+            }),
+            durationMs: 0,
+          },
+        });
+      }
       return result;
     }
   }
