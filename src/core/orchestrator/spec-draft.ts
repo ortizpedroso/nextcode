@@ -1,5 +1,5 @@
 import {
-  parseSpecDocument,
+  parseSpecDocument, unwrapSpecDocument,
   renderCanonicalSpecDocument,
   type SpecEntity,
   type SpecModule,
@@ -48,6 +48,8 @@ export function applyCumulativeSpecGuard(
   newCandidateRaw: string,
   userMessageText: string
 ): CumulativeSpecGuardResult {
+  // A Spec gravada é sempre o documento puro, sem o bloco ```yaml em volta.
+  newCandidateRaw = unwrapSpecDocument(newCandidateRaw);
   const newParsed = parseSpecDocument(newCandidateRaw.trim());
   if (!newParsed) {
     return {

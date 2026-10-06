@@ -199,7 +199,30 @@ function parseYamlMapping(
  * Retorna null se o conteúdo não seguir esse formato (ex.: specs antigas em prosa livre),
  * permitindo que a UI caia de volta para a exibição em texto corrido.
  */
-export function parseSpecDocument(content: string): ParsedSpec | null {
+/**
+ * LLMs reais costumam embrulhar a Spec num bloco de código (```yaml ... ```), às vezes com
+ * uma frase antes. Extrai o documento "---
+..." de dentro do bloco; se não houver bloco,
+ * devolve o texto como veio. Sem isto o rascunho nunca era reconhecido nem gravado.
+ */
+export function unwrapSpecDocument(content: string): string {
+  if (!content) return content;
+  const trimmed = content.trim();
+  if (trimmed.startsWith("---")) return trimmed;
+  // Primeiro bloco ```yaml / ```yml / ``` do texto.
+  const fence = trimmed.match(/```(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/i);
+  if (!fence) return trimmed;
+  const inner = fence[1].trim();
+  const after = trimmed.slice((fence.index ?? 0) + fence[0].length).trim();
+  // Caso 1: o bloco já traz o documento completo (--- yaml --- markdown).
+  if (inner.startsWith("---")) return after ? `${inner}\n\n${after}` : inner;
+  // Caso 2 (visto com GLM/DeepSeek): só o YAML, sem os ---; o Markdown vem depois do bloco.
+  if (/^titulo\s*:/m.test(inner)) return `---\n${inner}\n---\n\n${after}`.trim();
+  return trimmed;
+}
+
+export function parseSpecDocument(rawContent: string): ParsedSpec | null {
+  const content = unwrapSpecDocument(rawContent);
   if (!content || !content.trim().startsWith("---")) return null;
 
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
