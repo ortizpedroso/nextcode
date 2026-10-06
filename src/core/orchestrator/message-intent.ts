@@ -126,6 +126,18 @@ export function classifyMessageDeterministic(
     return "criar_novo";
   }
 
+  // 6. Pergunta sem verbo de mudança ("o que o zod faz em nosso projeto?") é dúvida avulsa.
+  // Sem esta regra ela ia ao LLM, que costuma passar dos 3 s → 'incerto' → em SPEC_REVISAO
+  // virava pedido de ajuste e a sessão voltava para ELICITACAO (visto com o FreeLLMAPI real).
+  if (
+    isQuestion &&
+    !/\b(adicion|acrescent|inclu|remov|tir[ae]|exclu|alter|ajust|mud[ae]|troc|modific|atualiz|cri[ae]|implement|desenvolv|constru|ger[ae]|corrig|consert|arrum)\w*/i.test(
+      trimmed
+    )
+  ) {
+    return "duvida_avulsa";
+  }
+
   return null;
 }
 

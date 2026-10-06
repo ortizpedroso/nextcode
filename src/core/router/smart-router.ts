@@ -50,6 +50,7 @@ import {
   callGateway,
   GATEWAY_DEFAULTS,
   type GatewayConfig,
+  type GatewayFailureKind,
 } from "../llm/gateways";
 import prisma from "@/lib/prisma";
 
@@ -786,7 +787,7 @@ export class SmartRouter {
     tier: ModelTier,
     stream: boolean,
     signal?: AbortSignal
-  ): Promise<DispatchResult | null> {
+  ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
     const attempt = await callGateway(gw, {
@@ -817,7 +818,7 @@ export class SmartRouter {
       action: "llm.gateway_failure",
       details: { gateway: gw.id, requestedModel: model, kind: attempt.kind, status: attempt.status ?? null, detail: attempt.detail },
     });
-    return null;
+    return { failedKind: attempt.kind };
   }
 
   /**
@@ -1092,6 +1093,7 @@ export class SmartRouter {
       gateways.some((g) => g.id === "omniroute") || omniDisabled
         ? gateways
         : [...gateways, { id: "omniroute", enabled: true, priority: 99, baseUrl: "", apiKey: "", modelFast: null, modelHeavy: null }];
+    let aggregatorAlreadyTried = false;
     for (const gw of gatewayOrder) {
       if (signal?.aborted) break;
       if (gw.id === "omniroute") {
@@ -1109,13 +1111,20 @@ export class SmartRouter {
         continue;
       }
       const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal);
-      if (gatewayResult) return gatewayResult;
+      if ("response" in gatewayResult) return gatewayResult;
+      // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
+      // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.
+      if (gatewayResult.failedKind !== "network") aggregatorAlreadyTried = true;
+    }
+
+    if (aggregatorAlreadyTried && !signal?.aborted) {
+      console.warn("[ROUTER] Gateway agregador no ar já esgotou os provedores; rotas nativas (BYOK direto) puladas.");
     }
 
     // ----------------------------------------------------
     // TENTATIVA 2: Fallback — Groq Cloud API Direta
     // ----------------------------------------------------
-    if (groqKey) {
+    if (groqKey && !aggregatorAlreadyTried) {
       const groqRes = await this.tryGroqDirect(messages, groqKey, signal);
       if (groqRes) return groqRes;
     }
@@ -1123,7 +1132,7 @@ export class SmartRouter {
     // ----------------------------------------------------
     // TENTATIVA 3: Fallback — NVIDIA NIM API Direta
     // ----------------------------------------------------
-    if (nvidiaKey) {
+    if (nvidiaKey && !aggregatorAlreadyTried) {
       const nvidiaRes = await this.tryNvidiaDirect(messages, nvidiaKey, signal);
       if (nvidiaRes) return nvidiaRes;
     }
@@ -1131,7 +1140,7 @@ export class SmartRouter {
     // ----------------------------------------------------
     // TENTATIVA 4: Fallback — DeepSeek API Direta
     // ----------------------------------------------------
-    if (deepseekKey) {
+    if (deepseekKey && !aggregatorAlreadyTried) {
       const deepseekRes = await this.tryDeepseekDirect(messages, deepseekKey, signal);
       if (deepseekRes) return deepseekRes;
     }
@@ -1139,7 +1148,7 @@ export class SmartRouter {
     // ----------------------------------------------------
     // TENTATIVA 5: Fallback — Google Gemini Direto
     // ----------------------------------------------------
-    if (effectiveGeminiKey && !signal?.aborted) {
+    if (effectiveGeminiKey && !signal?.aborted && !aggregatorAlreadyTried) {
       recordGeminiFallback();
       const cleanApiKey = effectiveGeminiKey.trim();
 
@@ -1205,6 +1214,8 @@ export class SmartRouter {
           console.warn(`[ROUTER] Erro de rede ao conectar com Gemini Direto (${modelId}):`, geminiErr);
         }
       }
+    } else if (aggregatorAlreadyTried) {
+      lastGeminiFailure = "";
     } else {
       lastGeminiFailure = "nenhuma chave Gemini disponivel (readSecret vazio ou NEXTCODE_MASTER_KEY incorreta)";
     }

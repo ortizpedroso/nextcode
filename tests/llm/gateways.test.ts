@@ -223,6 +223,55 @@ describe("Gateways LLM — ordem e passagem ao próximo", () => {
   });
 });
 
+describe("Gateways LLM — rotas nativas (BYOK direto) depois do agregador", () => {
+  const groqHit = () => {
+    const calls: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any, init?: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("api.groq.com")) {
+        calls.push(url);
+        return new Response(JSON.stringify({ choices: [{ message: { content: "via groq" } }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    return { calls, restore: () => (globalThis.fetch = realFetch) };
+  };
+
+  it("FreeLLMAPI no ar mas esgotado → rotas nativas são puladas (não somam minutos com modelos fixos)", async () => {
+    freeMode = "exhausted";
+    const g = groqHit();
+    try {
+      const res = await new SmartRouter().dispatchWithFallback({
+        messages,
+        stream: false,
+        groqKey: "gsk_teste",
+        gateways: [freeGw()],
+      });
+      expect(g.calls).toHaveLength(0);
+      expect(res.providerUsed).toBe("none");
+    } finally {
+      g.restore();
+    }
+  });
+
+  it("FreeLLMAPI fora do ar (rede) → rotas nativas continuam como reserva", async () => {
+    const g = groqHit();
+    try {
+      const res = await new SmartRouter().dispatchWithFallback({
+        messages,
+        stream: false,
+        groqKey: "gsk_teste",
+        gateways: [freeGw({ baseUrl: "http://localhost:1/v1" })],
+      });
+      expect(g.calls.length).toBeGreaterThan(0);
+      expect(res.providerUsed).toBe("groq-fallback");
+    } finally {
+      g.restore();
+    }
+  });
+});
+
 describe("Gateways LLM — classificação e diagnóstico real", () => {
   it("classifica status como o opencode: chave, requisição inválida ou esgotado", () => {
     expect(classifyStatus(401)).toBe("auth");

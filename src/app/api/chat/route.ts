@@ -585,7 +585,8 @@ export async function POST(request: NextRequest) {
     try {
       const dispatchRes = await smartRouter.dispatchWithFallback({
         messages: dispatchMessages,
-        tier: "fast",
+        // Gerar/atualizar a Spec exige contexto grande (Spec inteira + histórico): modelo pesado.
+        tier: isSpecDraftingPhase ? "heavy" : "fast",
         modelOverride,
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
