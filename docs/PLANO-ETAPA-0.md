@@ -100,3 +100,51 @@ Elicitador com Laya → Jev, Analista, Microbriefs com `REQ`, Avaliador por clus
 ## Modo de execução
 
 Os passos podem ser implementados por outro agente (ex.: Antigravity). Cada passo é **auditado** antes do próximo: diff, testes, critérios do passo e aderência à arquitetura.
+
+## Revisão de 06/10/2026 — Motor de execução próprio (decisão do fundador)
+
+**Motivo:** em uso real, a execução em "um tiro só" falhou (sessão gateway, 05-06/10): o LLM escrevia
+todos os arquivos da etapa numa resposta (cortada pelo limite de saída), sem ler nada, sem compilar,
+e a única verificação era outro LLM dando nota. Os agentes de código maduros (Claude Code, Gemini CLI,
+opencode, DeepSeek Harness) trabalham em ciclo com ferramentas e são verificados pelo compilador.
+Decisão: o NextCode terá **o próprio** motor nesse padrão, orquestrado e gerenciado por ele.
+
+**Já feito:** gateways FreeLLMAPI → OmniRoute → BYOK (D3 revisada); Spec cumulativa; DAG por grupo de
+arquivos da Spec com o worker recebendo a Spec; **Jev ligado no classificador de mensagens**
+(regras → Jev → LLM, teto de 3 s, trilha `JEV_DECISION`).
+
+**Laya (D6): adiado.** O adaptador de decisão já existe (`src/core/decision/jev.ts`); o Laya entra
+atrás dele quando houver volume que justifique o custo do Jev e o conjunto de ~100 mensagens rotuladas
+para medir (D6). Exige serviço Python à parte (~2 GB de RAM).
+
+### Fases
+
+| Fase | Entrega | Prova |
+|---|---|---|
+| M1 | **Etapa de base sem IA**: `package.json` com dependências da stack, `tsconfig`, `npm install` antes do 1º executor. Compilação real vira o critério principal. | Spec de amostra entregue com `tsc` passando |
+| M2 | **Executor com ferramentas** em ciclo, na quarentena: `read_file`, `list_files`, `grep`, `write_file` (1 arquivo por chamada), `edit_file` (trecho), `run_check`, `finish`. Resposta cortada → continuação. Limite de passos por tentativa. | A etapa que bloqueou em 06/10 (`lib/asaas.ts` + `lib/database.ts`) entregue completa |
+| M3 | **Autoteste do executor** (ver regras abaixo) + **Relatório do Executor** no template do Microbrief (§5.7) | Relatório gravado por etapa; Lente 2 compara com a Lente 1 |
+| M4 | **Planejador**: mede tamanho/complexidade; **Jev** decide (simples/média/complexa, cabe numa resposta?); divide em lotes que o modelo aceita; modelo barato (`auto:fast`) ou forte (`auto:smart`/pago); escalada automática | Etapas grandes divididas sozinhas; chamadas e tempo por etapa medidos |
+| M5 | **Supervisor da fila**: a fila nunca para em silêncio (ver abaixo) | Teste com worker morto, job travado e provedor fora do ar |
+| M6 | Gateway do fundador de ponta a ponta | Projeto com build passando, entregue sem intervenção |
+
+### Regras do executor (fundador, 06/10)
+
+1. **Executa e se autotesta** antes de entregar: `tsc`, lint e testes do próprio escopo (ele escreve
+   os testes dos seus arquivos quando a Spec/Microbrief pede comportamento verificável), em ciclo,
+   corrigindo com `edit_file` até passar ou acabar o orçamento de passos.
+2. **Ciclo de 3 tentativas (T6) continua:** uma *tentativa* = uma entrega avaliada. Os passos de
+   autoteste dentro de uma tentativa não contam como tentativa. Falha de provedor (cota, timeout)
+   pausa e repete, sem consumir tentativa (P6, D4).
+3. **Ao final gera o Relatório do Executor** no mesmo template do Microbrief do Analista (§5.7):
+   o que ele diz que fez, por requisito, com os arquivos e o resultado do autoteste.
+4. **O Avaliador não muda:** Tipo 1 → Lente Cega (não lê o relatório) → Lente 2 (compara o veredito
+   cego com o relatório; divergência = sinal de alucinação, T5).
+
+### Supervisor da fila (M5)
+
+- Varredura periódica (não só na partida): sessão em `EXECUCAO` com nós pendentes e sem job ativo →
+  enfileira; job com lease vencido → retoma; nó em `running` além do teto → volta a pendente.
+- Heartbeat do worker visível no painel; worker parado → alerta no chat e reinício.
+- Sem LLM → `PAUSADA` com aviso em 1 minuto (passo 5), nunca falha de nó.
+- Evento `QUEUE_STALLED` na trilha sempre que o supervisor precisar intervir.
