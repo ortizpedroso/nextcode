@@ -8,6 +8,8 @@ export interface SpecModule {
   id: string;
   nome: string;
   resumo: string;
+  /** Arquivos que implementam o módulo (rastreabilidade módulo → arquivo, P12). */
+  arquivos?: string[];
 }
 
 export interface SpecEntityField {
@@ -109,6 +111,10 @@ export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string 
       lines.push(`  - id: ${m.id}`);
       lines.push(`    nome: ${yamlEscape(m.nome)}`);
       lines.push(`    resumo: ${yamlEscape(m.resumo)}`);
+      if (m.arquivos && m.arquivos.length > 0) {
+        lines.push("    arquivos:");
+        m.arquivos.forEach((f) => lines.push(`      - ${yamlEscape(f)}`));
+      }
     });
   }
 
@@ -277,6 +283,7 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
         id: typeof m.id === "string" ? m.id : "",
         nome: typeof m.nome === "string" ? m.nome : "",
         resumo: typeof m.resumo === "string" ? m.resumo : "",
+        ...(asStringList(m.arquivos).length ? { arquivos: asStringList(m.arquivos) } : {}),
       }))
     : [];
 

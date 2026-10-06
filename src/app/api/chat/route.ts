@@ -11,6 +11,7 @@ import { IntakeEngine } from "@/core/intake/intake-engine";
 import { InputPreprocessorEngine } from "@/core/intake/input-preprocessor";
 import { isExplicitSpecApproval } from "@/core/intake/approval-intent";
 import { parseSpecDocument } from "@/core/intake/spec-format";
+import { checkSpecStructure } from "@/core/intake/spec-check";
 import { IncidentReporter, type FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import {
   approveSpecAndStart,
@@ -588,10 +589,10 @@ export async function POST(request: NextRequest) {
     try {
       const dispatchRes = await smartRouter.dispatchWithFallback({
         messages: dispatchMessages,
-        // Medido no FreeLLMAPI real (06/10): com o prompt de Spec, auto:fast gera a Spec completa
-        // em ~6-23 s; auto:smart escolheu modelos piores e o teto de 8192 tokens deixava
-        // provedores lentos passarem de 90-120 s. Uma Spec cabe com folga em 4000 tokens.
-        tier: "fast",
+        // Spec: o fundador pediu para não economizar no Elicitador. Tier pesado = modelo forte
+        // pago (DeepSeek) quando configurado; o FreeLLMAPI gratuito é a reserva. Medido em 06/10:
+        // gpt-oss-20b (auto:fast) falhou em gerar Spec válida 1 de 3 vezes. Teto de 4000 tokens.
+        tier: isSpecDraftingPhase ? "heavy" : "fast",
         ...(isSpecDraftingPhase ? { maxTokens: 4000 } : {}),
         modelOverride,
         geminiKey: readSecret(setting?.geminiKey),
@@ -631,7 +632,7 @@ export async function POST(request: NextRequest) {
                 "A resposta acima não é a Spec. Responda AGORA somente com o documento da Spec, começando na primeira linha por --- e com valores reais (sem <placeholders>).",
             },
           ],
-          tier: "fast",
+          tier: isSpecDraftingPhase ? "heavy" : "fast",
           maxTokens: 4000,
           geminiKey: readSecret(setting?.geminiKey),
           omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
@@ -652,13 +653,51 @@ export async function POST(request: NextRequest) {
         aiResponseContent = stripSpecFrontmatterFromQuestionAnswer(aiResponseContent);
       } else if (isSpecDraftingPhase) {
         // 4b.3: Guarda cumulativa contra perda de módulos/arquivos + status: aguardando_aprovacao obrigatório
-        const guardRes = applyCumulativeSpecGuard(
+        let guardRes = applyCumulativeSpecGuard(
           sessionBefore?.canonicalSpec,
           aiResponseContent,
           targetPrompt
         );
+        // Conferência mecânica (P12): módulo sem arquivo, rota sem arquivo, objetivo vazio.
+        // Uma correção pedida à IA com a lista exata dos problemas antes de mostrar a Spec.
+        let structureProblems =
+          guardRes.isValidSpec && guardRes.finalSpec ? checkSpecStructure(parseSpecDocument(guardRes.finalSpec)!) : [];
+        if (structureProblems.length > 0) {
+          const fixRes = await smartRouter.dispatchWithFallback({
+            messages: [
+              ...dispatchMessages,
+              { role: "assistant", content: guardRes.finalSpec!.slice(0, 12000) },
+              {
+                role: "user",
+                content:
+                  "A Spec acima tem problemas que impedem a implementação. Corrija TODOS e devolva a Spec completa:\n" +
+                  structureProblems.map((p) => `- ${p}`).join("\n"),
+              },
+            ],
+            tier: isSpecDraftingPhase ? "heavy" : "fast",
+            maxTokens: 4000,
+            geminiKey: readSecret(setting?.geminiKey),
+            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+            omniRouteKey: readSecret(setting?.omniRouteKey),
+            stream: false,
+          });
+          const fixJson = await fixRes.response.json().catch(() => ({}));
+          const fixText: string = fixJson.choices?.[0]?.message?.content || "";
+          const fixedGuard = applyCumulativeSpecGuard(sessionBefore?.canonicalSpec, fixText, targetPrompt);
+          if (fixedGuard.isValidSpec && fixedGuard.finalSpec) {
+            const fixedProblems = checkSpecStructure(parseSpecDocument(fixedGuard.finalSpec)!);
+            if (fixedProblems.length < structureProblems.length) {
+              guardRes = fixedGuard;
+              structureProblems = fixedProblems;
+            }
+          }
+        }
         if (guardRes.isValidSpec && guardRes.finalSpec) {
-          aiResponseContent = guardRes.finalMessageContent;
+          aiResponseContent =
+            guardRes.finalMessageContent +
+            (structureProblems.length
+              ? `\n\n⚠️ **Antes de aprovar, ajuste:**\n${structureProblems.map((p) => `- ${p}`).join("\n")}`
+              : "");
           await prisma.session.update({
             where: { id: activeSessionId },
             data: {

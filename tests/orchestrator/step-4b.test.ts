@@ -304,7 +304,7 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       objetivo: "Módulo inicial de produtos.",
       stack: ["Next.js", "TypeScript"],
       modulos: [
-        { id: "MOD-PROD", nome: "Produtos", resumo: "Catálogo de produtos" },
+        { id: "MOD-PROD", nome: "Produtos", resumo: "Catálogo de produtos", arquivos: ["src/app/dashboard/products/page.tsx"] },
       ],
       entidades: [{ nome: "Product", campos: [{ nome: "id", tipo: "string" }] }],
       arquivosAfetados: ["src/app/dashboard/products/page.tsx"],
@@ -318,7 +318,7 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       objetivo: "Adicionado checkout.",
       stack: ["Next.js", "TypeScript"],
       modulos: [
-        { id: "MOD-CHECKOUT", nome: "Checkout", resumo: "Pagamento e carrinho" },
+        { id: "MOD-CHECKOUT", nome: "Checkout", resumo: "Pagamento e carrinho", arquivos: ["src/app/dashboard/checkout/page.tsx"] },
       ],
       entidades: [{ nome: "Order", campos: [{ nome: "id", tipo: "string" }] }],
       arquivosAfetados: ["src/app/dashboard/checkout/page.tsx"],

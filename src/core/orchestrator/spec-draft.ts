@@ -43,6 +43,8 @@ export function buildSpecWriterSystemPrompt(): string {
     "  - id: <id-curto>",
     '    nome: "<nome>"',
     '    resumo: "<o que o módulo faz, uma frase>"',
+    "    arquivos:",
+    '      - "<caminho/do/arquivo que implementa o módulo>"',
     "entidades:",
     "  - nome: <Entidade>",
     "    campos:",
@@ -62,6 +64,9 @@ export function buildSpecWriterSystemPrompt(): string {
     "<1 a 2 parágrafos com o objetivo e as regras de negócio principais>",
     "",
     "Regras: listas sempre uma por linha (nunca [a, b]); nenhum bloco de código; não invente que algo já existe ou foi implementado; cubra TODO o pedido do usuário em módulos, entidades e arquivos.",
+    "Cada módulo lista em `arquivos` os arquivos que o implementam, e todos eles aparecem em arquivos_afetados. Estado ou lógica usados por mais de um arquivo (ex.: armazenamento em memória, cliente de API, tipos) ficam num arquivo próprio em src/lib/ — nunca duplicados dentro das rotas.",
+    "Toda rota HTTP declarada tem o seu arquivo. Em Next.js use o App Router: /api/tarefas → src/app/api/tarefas/route.ts; /api/tarefas/:id → src/app/api/tarefas/[id]/route.ts; páginas em src/app/<caminho>/page.tsx.",
+    "O parágrafo de objetivo após o título é obrigatório.",
   ].join("\n");
 }
 
@@ -171,6 +176,14 @@ export function applyCumulativeSpecGuard(
       if (!exists) {
         mergedStack.push(prevTech);
       }
+    }
+  }
+
+  // Correção mecânica: todo arquivo declarado num módulo entra em arquivos_afetados (a DAG nasce
+  // de arquivos_afetados; um arquivo só do módulo nunca seria executado).
+  for (const m of mergedModulos) {
+    for (const f of m.arquivos ?? []) {
+      if (!mergedArquivos.includes(f)) mergedArquivos.push(f);
     }
   }
 
