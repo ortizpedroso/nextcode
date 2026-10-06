@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, type DispatchMessage } from "@/core/router/smart-router";
+import { askJevChoice } from "@/core/decision/jev";
 import type {
   InterventionChoice,
   MessageIntention,
@@ -17,6 +18,8 @@ const VALID_INTENTIONS: ReadonlySet<MessageIntention> = new Set<MessageIntention
 ]);
 
 const CLASSIFIER_TIMEOUT_MS = 3000;
+const JEV_MIN_CONFIDENCE = Number(process.env.JEV_MIN_CONFIDENCE) || 0.6;
+const JEV_BUDGET_MS = 1500;
 
 /**
  * Detecta deterministamente se o texto é um pedido de status/progresso da sessão.
@@ -169,12 +172,38 @@ export function parseInterventionChoice(text: string): InterventionChoice | null
  */
 export async function classifyMessage(
   text: string,
-  phase: Phase
+  phase: Phase,
+  sessionId?: string | null
 ): Promise<MessageIntention> {
   const deterministic = classifyMessageDeterministic(text, phase);
   if (deterministic !== null) {
     return deterministic;
   }
+
+  // 2. Jev (motor de decisão): pergunta tipada, ~0,3-0,7 s, com confiança. Abaixo do limiar ou
+  // indisponível → classificador LLM como reserva. O teto total da classificação continua sendo
+  // CLASSIFIER_TIMEOUT_MS: o Jev usa no máximo JEV_BUDGET_MS e a reserva fica com o restante.
+  const startedAt = Date.now();
+  const jev = await askJevChoice<MessageIntention>({
+    signal: AbortSignal.timeout(JEV_BUDGET_MS),
+    purpose: "classificacao_mensagem",
+    sessionId,
+    state: `Fase da sessão no NextCode: ${phase}.
+Mensagem do usuário: """${text.slice(0, 2000)}"""`,
+    instructions: "Qual é a intenção desta mensagem do usuário em relação ao projeto de software?",
+    criteria: {
+      criar_novo: "pede para criar um software novo ou acrescentar/alterar requisitos do que está sendo especificado",
+      corrigir_existente: "relata um erro ou bug e pede correção em algo que já existe",
+      duvida_avulsa: "faz uma pergunta ou pede explicação, sem pedir mudança no projeto",
+      mudanca_durante_execucao: "pede para mudar o projeto enquanto ele já está sendo implementado",
+      status: "pergunta pelo andamento, progresso ou o que falta",
+      incerto: "não dá para saber o que a pessoa quer",
+    },
+  });
+  if (jev && jev.confidence >= JEV_MIN_CONFIDENCE) {
+    return jev.choice;
+  }
+  const remainingMs = Math.max(500, CLASSIFIER_TIMEOUT_MS - (Date.now() - startedAt));
 
   const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -183,7 +212,7 @@ export async function classifyMessage(
     timeoutId = setTimeout(() => {
       controller.abort();
       resolve("incerto");
-    }, CLASSIFIER_TIMEOUT_MS);
+    }, remainingMs);
   });
 
   const llmPromise = (async (): Promise<MessageIntention> => {

@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
     const classifiedIntention =
       interventionChoice !== null
         ? null
-        : await classifyMessage(targetPrompt, phaseBefore);
+        : await classifyMessage(targetPrompt, phaseBefore, activeSessionId);
 
     const transitionRes =
       interventionChoice !== null
