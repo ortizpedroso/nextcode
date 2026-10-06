@@ -258,47 +258,13 @@ export async function POST(request: NextRequest) {
     };
 
     const smartRouter = new SmartRouter();
-    const rawAnalysis = await smartRouter.routeTaskSmart(
-      { prompt: targetPrompt },
-      {
-        geminiKey: readSecret(setting?.geminiKey),
-        groqKey: readSecret((setting as any)?.groqKey),
-        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-        deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
-      },
-      activeSessionId
-    );
+    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
     const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
 
     const activeTier = modelOverride || intent.tier;
     const modelName = intent.actualModelUsed;
-
-    // Telemetria "graphify": dispara em paralelo ao dispatch principal (nunca bloqueia a
-    // resposta do chat) um classificador LLM barato que decide se este pedido se beneficiaria
-    // de consultar/construir um grafo de conhecimento do projeto. Só roda quando há projeto com
-    // pasta local válida, a mensagem não é trivial (mesmo threshold de routeTaskSmart) e a skill
-    // ainda não foi instalada neste projeto — evita repetir a sugestão a cada turno.
-    const graphifyAlreadyInstalled = Boolean(
-      ctxProject?.path && fs.existsSync(path.join(ctxProject.path, ".gemini", "skills", "graphify", "SKILL.md"))
-    );
     const graphifyEligibilityPromise: Promise<{ eligible: boolean; reasoning: string } | null> =
-      ctxProject?.path && !graphifyAlreadyInstalled && rawAnalysis.estimatedTokens >= 15
-        ? smartRouter
-            .classifyGraphifyEligibility(
-              { prompt: targetPrompt },
-              {
-                geminiKey: readSecret(setting?.geminiKey),
-                groqKey: readSecret((setting as any)?.groqKey),
-                nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-                deepseekKey: readSecret((setting as any)?.deepseekKey),
-                omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-                omniRouteKey: readSecret(setting?.omniRouteKey),
-              }
-            )
-            .catch(() => null)
-        : Promise.resolve(null);
+      Promise.resolve(null);
 
     // 6. Geração da Resposta da IA via Cascata de Fallback, com Auto-Healing Feedback Loop:
     // mesma lógica do DAG (dag/route.ts) — se a auditoria Anti-Hallucination rejeitar o
