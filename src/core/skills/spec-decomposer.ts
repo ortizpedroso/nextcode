@@ -9,7 +9,75 @@ export interface DecompositionResult {
 
 export { extractFilePathsFromText };
 
+/** Arquivos que os demais importam: implementados primeiro, numa etapa própria. */
+const FOUNDATION_RE =
+  /(^|\/)(prisma\/|schema\.prisma$|package\.json$|tsconfig\.json$|next\.config|tailwind\.config|postcss\.config|\.env|middleware\.ts$|lib\/|types?\/|config\/|utils?\/)/i;
+
+/** Arquivos por etapa: uma resposta de LLM precisa caber o código COMPLETO de todos. */
+const FILES_PER_NODE = 4;
+
+function shortList(files: string[]): string {
+  const names = files.map((f) => f.split("/").slice(-2).join("/"));
+  return names.length <= 3 ? names.join(", ") : `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
+}
+
 export class SpecDecomposerSkill {
+  /**
+   * DAG a partir da Spec Canônica aprovada: uma etapa por grupo pequeno de arquivos de
+   * `arquivos_afetados`, com a base (schema, lib, tipos, config) primeiro e as demais
+   * dependendo dela. Cada etapa carrega a Spec inteira como contexto e a lista exata do que
+   * ela implementa (payload.nodeFiles) — o Auditor Cego julga só essa parte.
+   *
+   * Substitui o trio fixo "Análise / Desenvolvimento / Testes" para Specs com arquivos: a
+   * etapa de "Análise" gerava um .md e era reprovada por "não implementar a Spec inteira"
+   * (sessão gateway, 06/10), e a de "Desenvolvimento" pedia 15-30 arquivos numa resposta só.
+   */
+  public static decomposeSpec(specText: string, titulo: string | null, files: string[]): DecompositionResult {
+    const unique = Array.from(new Set(files.map((f) => f.trim()).filter(Boolean)));
+    const foundation = unique.filter((f) => FOUNDATION_RE.test(f));
+    const rest = unique.filter((f) => !FOUNDATION_RE.test(f)).sort();
+
+    const chunk = (list: string[]) => {
+      const out: string[][] = [];
+      for (let i = 0; i < list.length; i += FILES_PER_NODE) out.push(list.slice(i, i + FILES_PER_NODE));
+      return out;
+    };
+    const foundationGroups = chunk(foundation);
+    const restGroups = chunk(rest);
+    const total = foundationGroups.length + restGroups.length;
+    const stamp = Date.now();
+    const nodes: DAGNode[] = [];
+    let n = 0;
+
+    const makeNode = (groupFiles: string[], deps: string[], label: string): string => {
+      n++;
+      const id = `task-${label}-${stamp}-${n}`;
+      nodes.push({
+        id,
+        title: `Etapa ${n}/${total}: ${shortList(groupFiles)}`,
+        role: label === "base" ? "architect" : "developer",
+        status: "pending",
+        dependencies: deps,
+        filesScope: groupFiles,
+        mcpScope: "write_file,smart_patch",
+        payload: { goal: specText, titulo, step: "implementation", nodeFiles: groupFiles },
+      });
+      return id;
+    };
+
+    const foundationIds = foundationGroups.map((g, i) =>
+      makeNode(g, i === 0 ? [] : [nodes[nodes.length - 1].id], "base")
+    );
+    const lastFoundation = foundationIds.length > 0 ? [foundationIds[foundationIds.length - 1]] : [];
+    for (const g of restGroups) makeNode(g, lastFoundation, "impl");
+
+    return {
+      goal: specText,
+      nodes,
+      summary: `Spec decomposta em ${nodes.length} etapas (${foundation.length} arquivos de base, ${rest.length} de funcionalidade).`,
+    };
+  }
+
   /**
    * Inferência Dinâmica de Escopo de Arquivos (Sem limites hardcoded estáticos).
    * Projetada para decompor a árvore completa de módulos para QUALQUER tecnologia ou objetivo do mundo.

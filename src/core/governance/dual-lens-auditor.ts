@@ -8,6 +8,8 @@
  */
 
 import { BriefBuilder } from "../brief/brief-builder";
+import * as nodeFs from "fs";
+import * as nodePath from "path";
 
 export interface ValidationType1Result {
   passed: boolean;
@@ -132,10 +134,10 @@ export class DualLensAuditor {
       }
     }
     if (projectRoot && !batchReplacesDiskSchema) {
-      const diskSchemaPath = require("path").join(projectRoot, "prisma", "schema.prisma");
+      const diskSchemaPath = nodePath.join(projectRoot, "prisma", "schema.prisma");
       try {
-        if (require("fs").existsSync(diskSchemaPath)) {
-          collectModelAccessors(require("fs").readFileSync(diskSchemaPath, "utf-8"));
+        if (nodeFs.existsSync(diskSchemaPath)) {
+          collectModelAccessors(nodeFs.readFileSync(diskSchemaPath, "utf-8"));
         }
       } catch {
         // Leitura do schema em disco falhou — segue sem essa fonte, sem quebrar a auditoria.
@@ -236,7 +238,9 @@ export class DualLensAuditor {
       const syntaxErrors = SCRIPT_FILE_RE.test(filePath) ? DualLensAuditor.parseScriptSyntax(filePath, content) : null;
       if (syntaxErrors) {
         compilationErrors.push(...syntaxErrors);
-      } else {
+      } else if (!/\.(?:md|mdx|txt|ya?ml)$/i.test(filePath)) {
+        // Texto/Markdown/YAML: "(" sem ")" é prosa normal ("1) item"); a contagem reprovava
+        // documentos por "desbalanceamento de parênteses" (sessão gateway, 06/10).
         // Demais arquivos (ou typescript indisponível): balanço de chaves/parênteses.
         const openCurly = (content.match(/\{/g) || []).length;
         const closeCurly = (content.match(/\}/g) || []).length;
@@ -264,7 +268,7 @@ export class DualLensAuditor {
           const importPrefix = impMatch[1];
           const relativeModule = impMatch[2];
 
-          const path = require("path");
+          const path = nodePath;
           const fileDir = path.dirname(filePath).replace(/\\/g, "/");
 
           let resolvedPath = "";
@@ -280,7 +284,7 @@ export class DualLensAuditor {
           const existsInBatch = candidateKeys.includes(baseImportPath) || candidateKeys.includes(`${baseImportPath}/index`);
 
           if (!existsInBatch && projectRoot) {
-            const fs = require("fs");
+            const fs = nodeFs;
             let existsOnDisk = false;
             const possibleExtensions = ["", ".ts", ".tsx", ".js", ".jsx", ".css", ".json", "/index.ts", "/index.tsx", "/index.js"];
             for (const ext of possibleExtensions) {

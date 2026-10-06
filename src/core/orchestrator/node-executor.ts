@@ -181,13 +181,35 @@ export function checkSpecCompletenessOnDisk(
 }
 
 /** Reconstrói o Brief real da etapa para o Auditor Cego. */
-export function buildBriefMarkdown(task: { title: string; role?: string | null; filesScope?: string | null; payload?: string | null }): string {
-  let goal = "";
+/** Spec completa e arquivos desta etapa, gravados no payload pelo decompositor. */
+export function readNodePayload(payload?: string | null): { goal: string; nodeFiles: string[] } {
   try {
-    const parsed = task.payload ? JSON.parse(task.payload) : null;
-    if (parsed && typeof parsed.goal === "string") goal = parsed.goal;
+    const parsed = payload ? JSON.parse(payload) : null;
+    return {
+      goal: parsed && typeof parsed.goal === "string" ? parsed.goal : "",
+      nodeFiles: Array.isArray(parsed?.nodeFiles) ? parsed.nodeFiles.filter((f: unknown) => typeof f === "string") : [],
+    };
   } catch {
-    /* payload ausente/malformado */
+    return { goal: "", nodeFiles: [] };
+  }
+}
+
+export function buildBriefMarkdown(task: { title: string; role?: string | null; filesScope?: string | null; payload?: string | null }): string {
+  const { goal, nodeFiles } = readNodePayload(task.payload);
+  if (nodeFiles.length > 0) {
+    // Etapa de um grupo de arquivos: o Auditor Cego julga SÓ o que cabe a estes arquivos.
+    // Sem isso, cada etapa era reprovada por "não implementar a Spec inteira".
+    return [
+      `# Etapa: ${task.title}`,
+      "",
+      "## O que ESTA etapa entrega",
+      `Somente os arquivos: ${nodeFiles.join(", ")}.`,
+      "As demais partes da Spec são entregues por outras etapas da DAG e NÃO contam como pendência aqui.",
+      "Aprove se estes arquivos implementam, de forma real e completa, a parte da Spec que lhes corresponde.",
+      "",
+      "## Spec Canônica do projeto (contexto)",
+      goal || "(Spec indisponível)",
+    ].join("\n");
   }
   return `# Etapa: ${task.title}\n\n## Objetivo original (Brief)\n${
     goal || "(objetivo detalhado não disponível — avalie apenas pelo título da etapa)"
@@ -298,12 +320,15 @@ export async function postCompletionMessageIfDone(
           : "";
 
       const unverifiedBlock = describeUnverifiedBuild(sessionTasks, projectPath);
+      // As etapas são nomeadas por arquivos; o nome do projeto vem do título da Spec.
+      const specTitle = canonicalSpec ? parseSpecDocument(canonicalSpec)?.titulo : null;
+      const specTitleLine = specTitle ? `📋 **${specTitle}**\n\n` : "";
 
       await prisma.message.create({
         data: {
           sessionId,
           role: "assistant",
-          content: `⚡ **[Skill ${skillHeader}] — ${completionMarker}**\n\nTodas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}${unverifiedBlock}`,
+          content: `⚡ **[Skill ${skillHeader}] — ${completionMarker}**\n\n${specTitleLine}Todas as etapas da DAG foram executadas, auditadas e promovidas para o projeto:\n\n${completedSummary}\n\n📁 _Arquivos gravados e sincronizados em: \`${projectPath || process.cwd()}\`_${completenessBlock}${unverifiedBlock}`,
         },
       });
     }
@@ -404,6 +429,19 @@ DIRETRIZES DE EXECUÇÃO:
         dispatchMessages.push({ role: "system", content: feedbackText });
       }
     } catch {}
+  }
+
+  // O worker precisa da Spec aprovada: antes recebia só título, papel e lista de arquivos, e
+  // inventava o conteúdo (rotas com Math.random, dados fixos, testes expect(true)).
+  const nodePayload = readNodePayload(taskDb.payload);
+  if (nodePayload.goal) {
+    dispatchMessages.push({
+      role: "system",
+      content:
+        "SPEC CANÔNICA APROVADA (fonte da verdade — implemente exatamente o que ela define para os arquivos desta etapa; " +
+        "os demais arquivos são feitos por outras etapas e você pode importá-los pelos caminhos declarados):\n\n" +
+        nodePayload.goal,
+    });
   }
 
   dispatchMessages.push({

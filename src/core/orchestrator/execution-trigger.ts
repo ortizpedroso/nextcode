@@ -275,12 +275,14 @@ export async function approveSpecAndStart(
       const rawAnalysis = smartRouter.routeTask({ prompt: effectiveSpec });
       const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
 
-      const specFilesScope = parseSpecDocument(effectiveSpec)?.arquivosAfetados;
-      const { nodes: decomposedNodes } = SpecDecomposerSkill.decompose(
-        effectiveSpec,
-        undefined,
-        specFilesScope
-      );
+      const parsedSpec = parseSpecDocument(effectiveSpec);
+      const specFilesScope = parsedSpec?.arquivosAfetados;
+      // Spec com arquivos declarados → uma etapa por grupo pequeno de arquivos; sem arquivos,
+      // o trio legado (heurística de domínio).
+      const { nodes: decomposedNodes } =
+        specFilesScope && specFilesScope.length > 0
+          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope)
+          : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
 
       // Garante IDs únicos por versão para não colidir se duas versões forem aprovadas no mesmo ms
       const idMap = new Map<string, string>();
