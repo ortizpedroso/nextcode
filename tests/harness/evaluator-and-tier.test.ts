@@ -75,3 +75,23 @@ describe("Cadeia do avaliador pago (Gemini → Claude → DeepSeek)", () => {
     expect(r.independent).toBe(true);
   });
 });
+
+describe("Tamanho do Microbrief", () => {
+  it("critérios nunca são cortados, mesmo acima do limite; só o recorte da Spec encolhe", async () => {
+    const { renderMicrobriefMarkdown } = await import("@/core/templates/artifact-templates");
+    const longCrit = "x".repeat(3000);
+    const mb = {
+      documento: "microbrief", idMicrobrief: "n1", idMacrobrief: "m", idProjeto: "p", cluster: "core",
+      nivelModeloSugerido: "medio", dependeDe: [], reqsCobertos: ["REQ-001", "REQ-002"],
+      arquivosPermitidos: { criar: ["src/lib/a.ts"], modificar: [], lerContratos: [] },
+      statusExecucao: "PENDENTE", tentativaAtual: 0,
+      medidoPeloHarness: { compilou: null, testes: null, arquivosAlterados: [] },
+      interfacesConsome: [], interfacesProduz: "",
+      criteriosAceitePorReq: { "REQ-001": [longCrit + "FIM1"], "REQ-002": [longCrit + "FIM2"] },
+      registroCumprimento: [],
+    } as never;
+    const out = renderMicrobriefMarkdown(mb, { maxChars: 2000 });
+    expect(out).toContain("FIM1");
+    expect(out).toContain("FIM2");
+  });
+});

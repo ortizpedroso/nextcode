@@ -953,6 +953,8 @@ export function renderMicrobriefMarkdown(
     `Somente ${files.join(", ")} pertencem a esta etapa. Arquivos e REQ de outras etapas NÃO são pendência aqui.`
   );
 
+  // Contrato (YAML + critérios + fora do escopo) nunca é cortado; só o recorte da Spec é encurtado.
+  const contract = lines.join("\n");
   const parsed = context.spec ? parseSpecDocument(context.spec) : null;
   if (parsed) {
     const recorte: string[] = [];
@@ -969,8 +971,9 @@ export function renderMicrobriefMarkdown(
   }
 
   const max = context.maxChars ?? MICROBRIEF_MAX_CHARS;
-  let out = lines.join("\n");
-  if (out.length > max) out = out.slice(0, max - 40) + "\n\n[recorte da Spec encurtado]";
-  return out;
+  const out = lines.join("\n");
+  if (out.length <= max) return out;
+  const room = max - contract.length - 40;
+  return room > 200 ? out.slice(0, contract.length + room) + "\n\n[recorte da Spec encurtado]" : contract;
 }
 
