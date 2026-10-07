@@ -874,6 +874,9 @@ DIRETRIZES DE EXECUÇÃO:
       // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
       // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
       tier: executorTier === "rapido" ? "fast" : "heavy",
+      // Modelos de raciocínio (DeepSeek v4) gastam parte do limite pensando: com 8192 a resposta de
+      // uma etapa com tela era cortada no meio do 2º arquivo (teste real P2 de 07/10).
+      maxTokens: Number(process.env.EXECUTOR_MAX_TOKENS) || 32000,
       geminiKey: readSecret(setting?.geminiKey),
       groqKey: readSecret((setting as any)?.groqKey),
       nvidiaKey: readSecret((setting as any)?.nvidiaKey),
@@ -898,6 +901,13 @@ DIRETRIZES DE EXECUÇÃO:
       noLlmAvailable = true;
     } else if (dispatchRes) {
       const resJson = await dispatchRes.response.json().catch(() => ({}));
+      if (resJson.choices?.[0]?.finish_reason === "length") {
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "EXECUTOR_OUTPUT_TRUNCATED",
+          details: { nodeId: taskDb.id, modelUsed: dispatchRes.modelUsed, providerUsed: dispatchRes.providerUsed },
+        });
+      }
       if (resJson.choices?.[0]?.message?.content) {
         stepResultText = resJson.choices[0].message.content;
       } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {

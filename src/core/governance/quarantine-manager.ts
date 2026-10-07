@@ -274,6 +274,24 @@ export class QuarantineManager {
       index++;
     }
 
+    // Resposta cortada: um bloco aberto sem fechar (limite de saída do modelo). Antes o arquivo
+    // incompleto simplesmente sumia e o avaliador reprovava por "arquivo não fornecido".
+    if (((text.match(/```/g) || []).length % 2) === 1) {
+      this.extractionIssues.push(
+        "[TRUNCATED OUTPUT] A resposta foi cortada: o último bloco de código abriu e não fechou (limite de saída do modelo). Envie todos os arquivos completos."
+      );
+    }
+    if (options.strictPaths) {
+      const missing = fallbackFilesScope.filter(
+        (f) => !Object.prototype.hasOwnProperty.call(codeMap, f.trim().replace(/^\\|^\//, ""))
+      );
+      if (missing.length > 0 && Object.keys(codeMap).length > 0) {
+        this.extractionIssues.push(
+          `[MISSING FILE] A resposta não trouxe ${missing.join(", ")} — todos os arquivos do escopo devem vir completos, cada um com "// file: caminho" no topo.`
+        );
+      }
+    }
+
     // Fallback: Se nenhum bloco ``` foi extraído, procura por padrões de comando do PowerShell (Set-Content -Path "..." -Value "...")
     if (Object.keys(codeMap).length === 0 && text.includes("Set-Content")) {
       const psRegex = /Set-Content\s+-Path\s+["']([^"']+)["']\s+-Value\s+["']([^"']+)["']/gi;
