@@ -290,7 +290,7 @@ export async function approveSpecAndStart(
       // o trio legado (heurística de domínio).
       const { nodes: rawNodes } =
         specFilesScope && specFilesScope.length > 0
-          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope, parsedSpec?.stack ?? [])
+          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope, parsedSpec?.stack ?? [], sessionId)
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
 
       // Jev decide o nível de modelo de cada etapa (uma chamada para todas) e se alguma etapa mistura

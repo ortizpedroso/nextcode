@@ -308,6 +308,13 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       ],
       entidades: [{ nome: "Product", campos: [{ nome: "id", tipo: "string" }] }],
       arquivosAfetados: ["src/app/dashboard/products/page.tsx"],
+      requisitos: [
+        {
+          id: "REQ-001",
+          titulo: "Catálogo de produtos",
+          criterio: "src/app/dashboard/products/page.tsx exibe a lista de produtos.",
+        },
+      ],
     });
 
     // Na 2ª mensagem, o LLM falso devolve apenas MOD-CHECKOUT e esquece MOD-PROD e seu arquivo
@@ -322,6 +329,13 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       ],
       entidades: [{ nome: "Order", campos: [{ nome: "id", tipo: "string" }] }],
       arquivosAfetados: ["src/app/dashboard/checkout/page.tsx"],
+      requisitos: [
+        {
+          id: "REQ-001",
+          titulo: "Página de checkout",
+          criterio: "src/app/dashboard/checkout/page.tsx processa o pagamento.",
+        },
+      ],
     });
 
     const spy = vi
@@ -367,7 +381,7 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     expect(systemTexts).toContain("devolva a Spec COMPLETA atualizada");
     expect(systemTexts).toContain("MOD-PROD");
 
-    // Rascunho final gravado no servidor contém os módulos e arquivos das duas mensagens
+    // Rascunho final gravado no servidor contém os módulos, arquivos e requisitos das duas mensagens
     const dbSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
     const parsedFinal = parseSpecDocument(dbSession.canonicalSpec || "");
     expect(parsedFinal).not.toBeNull();
@@ -376,6 +390,7 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       "src/app/dashboard/products/page.tsx",
       "src/app/dashboard/checkout/page.tsx",
     ]);
+    expect(parsedFinal!.requisitos?.map((r) => r.id)).toEqual(["REQ-001", "REQ-002"]);
 
     // A resposta avisa a reinjeção dos 2 itens perdidos (1 módulo + 1 arquivo)
     expect(data2.assistantMessage.content).toContain(

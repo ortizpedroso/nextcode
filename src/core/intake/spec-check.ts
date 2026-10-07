@@ -56,5 +56,55 @@ export function checkSpecStructure(spec: ParsedSpec): string[] {
   if (PLACEHOLDER_OBJECTIVE.test(spec.objetivo.trim())) {
     problems.push("O texto de objetivo da Spec (parágrafo após o título) está vazio.");
   }
+
+  const reqs = spec.requisitos ?? [];
+  if (reqs.length === 0) {
+    problems.push(
+      "A Spec não declara nenhum requisito em requisitos (declare REQ-001, REQ-002… com titulo e criterio citando o arquivo)."
+    );
+  } else {
+    const seenIds = new Set<string>();
+    const filesArr = Array.from(files);
+    const normFiles = filesArr.map((f) => f.replace(/\\/g, "/"));
+    const citedNormFiles = new Set<string>();
+
+    reqs.forEach((req, idx) => {
+      const id = (req.id || "").trim();
+      const expectedId = `REQ-${String(idx + 1).padStart(3, "0")}`;
+      if (seenIds.has(id)) {
+        problems.push(`O requisito "${id}" está duplicado.`);
+      }
+      if (id) seenIds.add(id);
+      if (id !== expectedId) {
+        problems.push(
+          `O requisito na posição ${idx + 1} tem id "${id || "(vazio)"}" fora de sequência (esperado "${expectedId}").`
+        );
+      }
+
+      if (filesArr.length > 0) {
+        const normCriterio = (req.criterio || "").replace(/\\/g, "/");
+        const matched = normFiles.filter((nf) => normCriterio.includes(nf));
+        if (matched.length === 0) {
+          problems.push(
+            `O critério do requisito "${id || req.titulo}" não cita nenhum arquivo de arquivos_afetados.`
+          );
+        } else {
+          for (const mf of matched) citedNormFiles.add(mf);
+        }
+      }
+    });
+
+    if (filesArr.length > 0) {
+      for (const f of filesArr) {
+        const nf = f.replace(/\\/g, "/");
+        if (!citedNormFiles.has(nf)) {
+          problems.push(
+            `O arquivo "${f}" de arquivos_afetados não é citado por nenhum requisito em requisitos.`
+          );
+        }
+      }
+    }
+  }
+
   return problems;
 }

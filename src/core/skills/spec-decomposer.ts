@@ -9,6 +9,7 @@ import {
   type MechanicalValidationResult,
 } from "../templates/artifact-templates";
 import type { ClusterKind } from "../config/orchestration-policy";
+import { TelemetryLogger } from "../telemetry/telemetry-logger";
 
 export interface DecompositionResult {
   goal: string;
@@ -51,7 +52,8 @@ export class SpecDecomposerSkill {
     specText: string,
     titulo: string | null,
     files: string[],
-    stack: string[] = []
+    stack: string[] = [],
+    sessionId?: string
   ): DecompositionResult {
     const unique = Array.from(new Set(files.map((f) => f.trim()).filter(Boolean)));
     const foundation = unique.filter((f) => FOUNDATION_RE.test(f));
@@ -103,6 +105,18 @@ export class SpecDecomposerSkill {
       declaredReqs.length > 0
         ? declaredReqs.map((r) => r.id)
         : Array.from({ length: Math.max(1, total) }, (_, idx) => `REQ-${String(idx + 1).padStart(3, "0")}`);
+
+    if (declaredReqs.length === 0) {
+      TelemetryLogger.log({
+        sessionId,
+        action: "REQ_SINTETIZADOS",
+        details: {
+          titulo: titulo || parsedSpec?.titulo || null,
+          synthesizedReqs: allReqsForSpec,
+          filesCount: unique.length,
+        },
+      });
+    }
 
     const assignReqsForGroup = (
       groupFiles: string[],

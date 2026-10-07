@@ -703,7 +703,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
         {
           id: "REQ-001",
           titulo: "Módulo src/lib/gateway.ts",
-          criterio: "Exportar dispatchGateway com timeout e fallback.",
+          criterio: "src/lib/gateway.ts exporta dispatchGateway com timeout e fallback.",
         },
       ],
     });

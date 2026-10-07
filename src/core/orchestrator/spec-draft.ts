@@ -3,6 +3,7 @@ import {
   renderCanonicalSpecDocument,
   type SpecEntity,
   type SpecModule,
+  type SpecRequirementItem,
   type SpecRoute,
 } from "@/core/intake/spec-format";
 
@@ -55,6 +56,10 @@ export function buildSpecWriterSystemPrompt(): string {
     '    descricao: "<para que serve>"',
     "arquivos_afetados:",
     "  - <caminho/do/arquivo.ts>",
+    "requisitos:",
+    "  - id: REQ-001",
+    '    titulo: "<título curto do requisito>"',
+    '    criterio: "<critério verificável citando o caminho do arquivo de arquivos_afetados que o implementa>"',
     "notas_implementacao:",
     '  - "<aviso técnico não óbvio>"',
     "---",
@@ -63,9 +68,18 @@ export function buildSpecWriterSystemPrompt(): string {
     "",
     "<1 a 2 parágrafos com o objetivo e as regras de negócio principais>",
     "",
-    "Regras: listas sempre uma por linha (nunca [a, b]); nenhum bloco de código; não invente que algo já existe ou foi implementado; cubra TODO o pedido do usuário em módulos, entidades e arquivos.",
+    "Regras: listas sempre uma por linha (nunca [a, b]); nenhum bloco de código; não invente que algo já existe ou foi implementado; cubra TODO o pedido do usuário em módulos, entidades, arquivos e requisitos.",
     "Cada módulo lista em `arquivos` os arquivos que o implementam, e todos eles aparecem em arquivos_afetados. Estado ou lógica usados por mais de um arquivo (ex.: armazenamento em memória, cliente de API, tipos) ficam num arquivo próprio em src/lib/ — nunca duplicados dentro das rotas.",
     "Toda rota HTTP declarada tem o seu arquivo. Em Next.js use o App Router: /api/tarefas → src/app/api/tarefas/route.ts; /api/tarefas/:id → src/app/api/tarefas/[id]/route.ts; páginas em src/app/<caminho>/page.tsx.",
+    "A lista `requisitos` é OBRIGATÓRIA: `id` em sequência estrita (REQ-001, REQ-002…), `titulo` e `criterio` verificável que CITA explicitamente o caminho do arquivo de `arquivos_afetados` que o implementa. Todo arquivo de `arquivos_afetados` deve ser citado por pelo menos um requisito.",
+    "Exemplo curto de `requisitos`:",
+    "requisitos:",
+    "  - id: REQ-001",
+    '    titulo: "Armazenamento em memória (tarefas-store.ts)"',
+    '    criterio: "src/lib/tarefas-store.ts exporta tipo Tarefa {id, titulo, concluida} e funções listar(), criar(titulo) e concluir(id)."',
+    "  - id: REQ-002",
+    '    titulo: "Listar e criar tarefas (route.ts)"',
+    '    criterio: "src/app/api/tarefas/route.ts: GET devolve 200 com a lista; POST com titulo não vazio devolve 201, caso contrário 400."',
     "O parágrafo de objetivo após o título é obrigatório.",
   ].join("\n");
 }
@@ -114,6 +128,7 @@ export function applyCumulativeSpecGuard(
   let mergedEntidades: SpecEntity[] = [...newParsed.entidades];
   let mergedRotas: SpecRoute[] = [...newParsed.rotas];
   let mergedStack: string[] = [...newParsed.stack];
+  let mergedRequisitos: SpecRequirementItem[] = [...(newParsed.requisitos ?? [])];
   let reinjectedCount = 0;
 
   if (prevParsed && !userAskedRemoval) {
@@ -150,6 +165,47 @@ export function applyCumulativeSpecGuard(
     }
     if (lostFiles.length > 0) {
       mergedArquivos = [...lostFiles, ...newParsed.arquivosAfetados];
+    }
+
+    // Preserva requisitos da versão anterior se não apareceram na nova
+    const prevReqs = prevParsed.requisitos ?? [];
+    if (prevReqs.length > 0) {
+      const lostReqs: SpecRequirementItem[] = [];
+      for (const prevReq of prevReqs) {
+        const stillPresent = (newParsed.requisitos ?? []).some(
+          (r) =>
+            (prevReq.titulo &&
+              r.titulo &&
+              r.titulo.trim().toLowerCase() === prevReq.titulo.trim().toLowerCase()) ||
+            (prevReq.criterio &&
+              r.criterio &&
+              r.criterio.trim().toLowerCase() === prevReq.criterio.trim().toLowerCase()) ||
+            (prevReq.id &&
+              r.id &&
+              r.id.trim().toUpperCase() === prevReq.id.trim().toUpperCase() &&
+              !prevReq.titulo &&
+              !prevReq.criterio)
+        );
+        if (!stillPresent) {
+          lostReqs.push(prevReq);
+        }
+      }
+      if (lostReqs.length > 0) {
+        mergedRequisitos = [...lostReqs, ...(newParsed.requisitos ?? [])];
+        const seenIds = new Set<string>();
+        let hasDuplicateId = false;
+        for (const r of mergedRequisitos) {
+          const idUpper = r.id.trim().toUpperCase();
+          if (seenIds.has(idUpper)) hasDuplicateId = true;
+          seenIds.add(idUpper);
+        }
+        if (hasDuplicateId) {
+          mergedRequisitos = mergedRequisitos.map((r, idx) => ({
+            ...r,
+            id: `REQ-${String(idx + 1).padStart(3, "0")}`,
+          }));
+        }
+      }
     }
 
     // Preserva também entidades, rotas e stack existentes se não foram repetidos
@@ -198,6 +254,8 @@ export function applyCumulativeSpecGuard(
     rotas: mergedRotas,
     arquivosAfetados: mergedArquivos,
     notasImplementacao: newParsed.notasImplementacao,
+    requisitosIds: newParsed.requisitosIds ?? prevParsed?.requisitosIds,
+    requisitos: mergedRequisitos,
   });
 
   const reinjectionNotice =
