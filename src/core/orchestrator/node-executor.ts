@@ -7,12 +7,18 @@ import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
+import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
 import {
   resolveVerdictAction,
+  resolveExecutorTierForAttempt,
   loadOrchestrationPolicy,
   type ClusterKind,
 } from "@/core/config/orchestration-policy";
-import { inferClusterFromFilePath } from "@/core/templates/artifact-templates";
+import {
+  inferClusterFromFilePath,
+  renderMicrobriefMarkdown,
+  type MicrobriefAndReportDocument,
+} from "@/core/templates/artifact-templates";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
@@ -300,6 +306,27 @@ export function verifyProjectDeliveryT10(opts: {
   };
 }
 
+/** Nível de modelo planejado (Jev); nós antigos, sem plano, ficam no pesado como antes. */
+export function readPlannedTier(payload?: string | null): "rapido" | "medio" | "pesado" {
+  try {
+    const p = payload ? JSON.parse(payload) : null;
+    const t = p?.jevPlan?.nivelModelo ?? p?.microbrief?.nivelModeloSugerido;
+    return t === "rapido" || t === "medio" || t === "pesado" ? t : "pesado";
+  } catch {
+    return "pesado";
+  }
+}
+
+/** Microbrief gravado pelo decompositor no payload do nó (ausente em nós antigos). */
+export function readNodeMicrobrief(payload?: string | null): MicrobriefAndReportDocument | null {
+  try {
+    const mb = payload ? JSON.parse(payload)?.microbrief : null;
+    return mb && mb.documento === "microbrief" && Array.isArray(mb.reqsCobertos) && mb.arquivosPermitidos ? mb : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reconstrói o Brief real da etapa para o Auditor Cego. */
 /** Spec completa, arquivos, cluster e REQs desta etapa, gravados no payload pelo decompositor. */
 export function readNodePayload(payload?: string | null): {
@@ -363,6 +390,11 @@ export function resolveNodeCluster(task: {
 
 export function buildBriefMarkdown(task: { title: string; role?: string | null; filesScope?: string | null; payload?: string | null }): string {
   const { goal, nodeFiles } = readNodePayload(task.payload);
+  // Microbrief do analista (YAML + Markdown): critérios por REQ e só o recorte da Spec da etapa.
+  const microbrief = readNodeMicrobrief(task.payload);
+  if (microbrief) {
+    return renderMicrobriefMarkdown(microbrief, { titulo: task.title, spec: goal });
+  }
   if (nodeFiles.length > 0) {
     // Etapa de um grupo de arquivos: o Auditor Cego julga SÓ o que cabe a estes arquivos.
     // Sem isso, cada etapa era reprovada por "não implementar a Spec inteira".
@@ -384,8 +416,29 @@ export function buildBriefMarkdown(task: { title: string; role?: string | null; 
 }
 
 /** Adapta o SmartRouter para a função de despacho LLM que o DualLensAuditor espera. */
-export function makeBlindAuditDispatchFn(smartRouter: SmartRouter, setting: Setting | null): LLMDispatchFn {
+export function makeBlindAuditDispatchFn(
+  smartRouter: SmartRouter,
+  setting: Setting | null,
+  sessionId?: string
+): LLMDispatchFn {
   return async (messages) => {
+    // Avaliador forte e pago (Gemini → Claude → DeepSeek). Só cai na rota gratuita se nenhum responder.
+    const strong = await dispatchStrongEvaluator(messages, {
+      geminiKey: setting?.geminiKey,
+      claudeKey: (setting as { claudeKey?: string | null } | null)?.claudeKey,
+      deepseekKey: (setting as { deepseekKey?: string | null } | null)?.deepseekKey,
+    }).catch(() => null);
+    TelemetryLogger.log({
+      sessionId,
+      action: "EVALUATOR_MODEL",
+      details: {
+        provider: strong?.provider ?? "freellmapi-fallback",
+        model: strong?.model ?? null,
+        independentFromExecutor: strong?.independent ?? false,
+        failures: strong?.failures ?? [],
+      },
+    });
+    if (strong?.content) return strong.content;
     try {
       const res = await smartRouter.dispatchWithFallback({
         messages,
@@ -758,6 +811,15 @@ DIRETRIZES DE EXECUÇÃO:
   // O worker precisa da Spec aprovada: antes recebia só título, papel e lista de arquivos, e
   // inventava o conteúdo (rotas com Math.random, dados fixos, testes expect(true)).
   const nodePayload = readNodePayload(taskDb.payload);
+  const nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
+  if (nodeMicrobrief) {
+    dispatchMessages.push({
+      role: "system",
+      content:
+        "MICROBRIEF DESTA ETAPA (contrato: o Avaliador julga cada REQ abaixo contra estes critérios):\n\n" +
+        renderMicrobriefMarkdown(nodeMicrobrief, { titulo: taskDb.title, spec: nodePayload.goal }),
+    });
+  }
   if (nodePayload.goal) {
     dispatchMessages.push({
       role: "system",
@@ -783,15 +845,23 @@ DIRETRIZES DE EXECUÇÃO:
     content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
   });
 
+  const plannedTier = readPlannedTier(taskDb.payload);
+  const executorTier = resolveExecutorTierForAttempt(plannedTier, (taskDb.attempts || 0) + 1);
+  TelemetryLogger.log({
+    sessionId: taskDb.sessionId,
+    action: "EXECUTOR_TIER",
+    details: { nodeId: taskDb.id, plannedTier, attempt: (taskDb.attempts || 0) + 1, executorTier },
+  });
+
   let stepResultText = "";
   let noLlmAvailable = false;
   try {
     const stepSignal = AbortSignal.timeout(stepTimeoutMs);
     const dispatchPromise = smartRouter.dispatchWithFallback({
       messages: dispatchMessages,
-      // O worker gera o código do nó: modelo pesado do gateway (FreeLLMAPI: auto:smart).
-      // O Auditor Cego continua no rápido (makeBlindAuditDispatchFn).
-      tier: "heavy",
+      // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
+      // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
+      tier: executorTier === "rapido" ? "fast" : "heavy",
       geminiKey: readSecret(setting?.geminiKey),
       groqKey: readSecret((setting as any)?.groqKey),
       nvidiaKey: readSecret((setting as any)?.nvidiaKey),
@@ -917,7 +987,7 @@ DIRETRIZES DE EXECUÇÃO:
       buildBriefMarkdown(taskDb),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting),
+      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId),
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,

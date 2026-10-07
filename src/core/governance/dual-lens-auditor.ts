@@ -522,7 +522,7 @@ export class DualLensAuditor {
 
     const reqsInstruction =
       options?.expectedReqs && options.expectedReqs.length > 0
-        ? ` Avalie também cada requisito (${options.expectedReqs.join(", ")}) no campo opcional "reqVerdicts":[{"id":"REQ-001","status":"implementado"|"parcial"|"ausente","evidencia":"arquivo:linha"}].`
+        ? ` OBRIGATÓRIO: julgue CADA requisito (${options.expectedReqs.join(", ")}) separadamente, contra os critérios de aceite do Brief, no campo "reqVerdicts":[{"id":"REQ-001","status":"implementado"|"parcial"|"ausente","evidencia":"arquivo:linha"}]. Uma resposta sem todos esses REQ é descartada. Julgue só estes REQ e só os arquivos desta etapa.`
         : "";
 
     const messages: { role: "system" | "user"; content: string }[] = [
@@ -536,7 +536,9 @@ export class DualLensAuditor {
           reqsInstruction +
           " Responda SOMENTE com um JSON de uma linha, sem " +
           'markdown e sem texto extra, no formato exato: {"implemented":true|false,"missingRequirements":' +
-          '["..."],"justification":"motivo em até 40 palavras"}.' +
+          '["..."],"justification":"motivo em até 40 palavras"' +
+          (reqsInstruction ? ',"reqVerdicts":[...]' : "") +
+          "}." +
           skillBlock,
       },
       {
@@ -553,13 +555,22 @@ export class DualLensAuditor {
       const parsed = JSON.parse(match[0]);
       if (typeof parsed.implemented !== "boolean") return null;
 
-      const reqVerdicts: ReqBlindVerdictItem[] | undefined = Array.isArray(parsed.reqVerdicts || parsed.veredito_por_req)
+      let reqVerdicts: ReqBlindVerdictItem[] | undefined = Array.isArray(parsed.reqVerdicts || parsed.veredito_por_req)
         ? (parsed.reqVerdicts || parsed.veredito_por_req).map((r: any) => ({
             id: String(r.id || r.reqId || "REQ-001"),
             status: (["implementado", "parcial", "ausente"].includes(r.status) ? r.status : "ausente") as Lens1ReqStatus,
             evidencia: String(r.evidencia || ""),
           }))
         : undefined;
+
+      // Veredito por REQ obrigatório (P12): faltando algum REQ esperado, a resposta é descartada
+      // (null → o auditor pergunta de novo; persistindo, a etapa NÃO é aprovada). REQ inventado é ignorado.
+      const expected = options?.expectedReqs ?? [];
+      if (expected.length > 0) {
+        const got = new Set((reqVerdicts ?? []).map((r) => r.id));
+        if (!expected.every((id) => got.has(id))) return null;
+        reqVerdicts = (reqVerdicts ?? []).filter((r) => expected.includes(r.id));
+      }
 
       const ressalvas: string[] | undefined = Array.isArray(parsed.ressalvas)
         ? parsed.ressalvas.map((s: unknown) => String(s))

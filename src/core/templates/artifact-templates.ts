@@ -11,6 +11,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { parseSpecDocument } from "@/core/intake/spec-format";
+import { routeFileCandidates } from "@/core/intake/spec-check";
 import {
   isEvaluatorModelIndependent,
   type ClusterKind,
@@ -903,3 +905,72 @@ export function buildP1ProjectArtifacts(): {
 
   return { spec, macrobrief, microbriefs: [mb1, mb2, mb3] };
 }
+
+/** Limite do brief da etapa (caracteres). Acima disso o recorte da Spec é encurtado, nunca os critérios. */
+export const MICROBRIEF_MAX_CHARS = 6000;
+
+function yamlQuoted(value: string): string {
+  return JSON.stringify(value);
+}
+
+/**
+ * Renderiza o Microbrief da etapa em YAML (frontmatter) + Markdown — o contrato que executor e
+ * avaliador recebem. Leva só o que é DESTA etapa: arquivos, REQ com critérios, dependências e o
+ * recorte da Spec (módulos e rotas destes arquivos). A Spec inteira não entra: com ela o avaliador
+ * cobrava arquivos de outras etapas (teste real P1 de 07/10).
+ */
+export function renderMicrobriefMarkdown(
+  mb: MicrobriefAndReportDocument,
+  context: { titulo?: string; spec?: string | null; maxChars?: number } = {}
+): string {
+  const files = [...mb.arquivosPermitidos.criar, ...mb.arquivosPermitidos.modificar];
+  const lines: string[] = [
+    "---",
+    "documento: microbrief",
+    `id: ${yamlQuoted(mb.idMicrobrief)}`,
+    `cluster: ${mb.cluster}`,
+    `nivel_modelo: ${mb.nivelModeloSugerido}`,
+    "reqs_cobertos:",
+    ...mb.reqsCobertos.map((r) => `  - ${r}`),
+    "arquivos:",
+    ...mb.arquivosPermitidos.criar.map((f) => `  - { caminho: ${yamlQuoted(f)}, acao: criar }`),
+    ...mb.arquivosPermitidos.modificar.map((f) => `  - { caminho: ${yamlQuoted(f)}, acao: modificar }`),
+    "depende_de:",
+    ...(mb.dependeDe.length > 0 ? mb.dependeDe.map((d) => `  - ${yamlQuoted(d)}`) : ["  []"]),
+    "---",
+    "",
+    `# Etapa: ${context.titulo || mb.idMicrobrief}`,
+    "",
+    "## Critérios de aceite (cada REQ é julgado separadamente)",
+  ];
+  for (const req of mb.reqsCobertos) {
+    const criterios = mb.criteriosAceitePorReq[req] ?? [];
+    lines.push(`- **${req}**: ${criterios.length > 0 ? criterios.join(" | ") : "(sem critério declarado)"}`);
+  }
+  lines.push(
+    "",
+    "## Fora do escopo",
+    `Somente ${files.join(", ")} pertencem a esta etapa. Arquivos e REQ de outras etapas NÃO são pendência aqui.`
+  );
+
+  const parsed = context.spec ? parseSpecDocument(context.spec) : null;
+  if (parsed) {
+    const recorte: string[] = [];
+    if (parsed.objetivo) recorte.push(`Objetivo do projeto: ${parsed.objetivo.replace(/\s+/g, " ").trim()}`);
+    for (const m of parsed.modulos) {
+      if ((m.arquivos ?? []).some((f) => files.includes(f))) recorte.push(`Módulo ${m.nome}: ${m.resumo}`);
+    }
+    for (const r of parsed.rotas) {
+      if (routeFileCandidates(r.caminho).some((f) => files.includes(f))) {
+        recorte.push(`Rota ${r.caminho}: ${r.descricao}`);
+      }
+    }
+    if (recorte.length > 0) lines.push("", "## Recorte da Spec", ...recorte.map((l) => `- ${l}`));
+  }
+
+  const max = context.maxChars ?? MICROBRIEF_MAX_CHARS;
+  let out = lines.join("\n");
+  if (out.length > max) out = out.slice(0, max - 40) + "\n\n[recorte da Spec encurtado]";
+  return out;
+}
+

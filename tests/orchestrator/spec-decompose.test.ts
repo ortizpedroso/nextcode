@@ -61,8 +61,11 @@ describe("DAG a partir da Spec: uma etapa por grupo de arquivos", () => {
       filesScope: JSON.stringify(n.filesScope),
       payload: JSON.stringify(n.payload),
     });
-    expect(brief).toContain(`Somente os arquivos: ${n.filesScope.join(", ")}`);
-    expect(brief).toContain("NÃO contam como pendência");
+    // Microbrief (YAML + Markdown): só os arquivos e REQ da etapa, sem a Spec inteira.
+    expect(brief.startsWith("---\ndocumento: microbrief")).toBe(true);
+    expect(brief).toContain(`Somente ${n.filesScope.join(", ")} pertencem a esta etapa`);
+    expect(brief).toContain("NÃO são pendência aqui");
+    expect(brief).not.toContain("arquivos_afetados");
   });
 });
 

@@ -41,7 +41,7 @@ import { ensureVerifiedOmniModels, reportOmniModelFailure, reportOmniModelSucces
 // Imports estáticos: os antigos `require()` dentro de try/catch falhavam em silêncio quando o
 // módulo rodava como ESM (ex.: tsx) — a chave do OmniRoute virava "" e o gateway recebia
 // requisições ANÔNIMAS (catálogo 401; chat sem as conexões da conta).
-import { readSecret } from "../security/crypto";
+import { readSecret, isEncrypted } from "../security/crypto";
 import { getAvailableGeminiModels } from "./gemini-client";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import {
@@ -198,7 +198,9 @@ function buildDispatchDiagnostics(): string {
 export function resolveEffectiveGeminiKey(storedGeminiKey?: string | null): string {
   try {
     // readSecret aceita cifrado (enc:v1:) e legado texto-plano.
-    const plain = readSecret(storedGeminiKey);
+    // Quem chama costuma já passar a chave aberta: só descriptografa se vier cifrada (evita o
+    // falso alarme "chave legada em texto plano" a cada chamada).
+    const plain = isEncrypted(storedGeminiKey) ? readSecret(storedGeminiKey) : storedGeminiKey || "";
     if (plain && plain.trim() && !/^enc:v\d:/i.test(plain.trim())) return plain.trim();
   } catch {
     /* master key ausente/incorreta: segue para envs */
@@ -1072,7 +1074,7 @@ export class SmartRouter {
     const effectiveOmniRouteKey =
       (() => {
         try {
-          return readSecret(omniRouteKey);
+          return isEncrypted(omniRouteKey) ? readSecret(omniRouteKey) : omniRouteKey || "";
         } catch {
           return "";
         }

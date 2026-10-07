@@ -15,6 +15,13 @@ import { IntakeEngine } from "@/core/intake/intake-engine";
 import { UniversalDocsFetcher, createDefaultResearchBudget } from "@/core/intake/universal-docs-fetcher";
 import { measureJevSelectorComparison } from "@/core/decision/jev-decisions";
 
+/** Veredito por REQ obrigatório: o avaliador falso julga todos os REQ que o prompt pede. */
+function reqsVerdictsFromPrompt(sys: string): { id: string; status: "implementado"; evidencia: string }[] {
+  const m = sys.match(/julgue CADA requisito \(([^)]*)\)/);
+  const ids = m ? m[1].split(",").map((x) => x.trim()).filter(Boolean) : [];
+  return ids.map((id) => ({ id, status: "implementado", evidencia: "arquivo:1" }));
+}
+
 const createdSessionIds: string[] = [];
 const createdProjectIds: string[] = [];
 const tempDirs: string[] = [];
@@ -128,6 +135,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
             implemented: true,
             missingRequirements: [],
             justification: "Função saudar implementada com tipagem estrita.",
+            reqVerdicts: reqsVerdictsFromPrompt(sys),
           })
         );
       }
@@ -366,6 +374,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
             implemented: true,
             missingRequirements: [],
             justification: "Todos os REQs da etapa implementados e tipados.",
+            reqVerdicts: reqsVerdictsFromPrompt(sys),
           })
         );
       }
@@ -770,15 +779,12 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       const user = opts.messages.find((m) => m.role === "user")?.content || "";
 
       if (sys.includes("Auditor Cego")) {
-        const isCore = user.includes("Somente os arquivos: src/lib/gateway-client.ts");
         return makeOkDispatch(
           JSON.stringify({
             implemented: true,
             missingRequirements: [],
             justification: "Requisitos do Gateway implementados e compilados.",
-            reqVerdicts: isCore
-              ? [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/gateway-client.ts:1" }]
-              : [{ id: "REQ-002", status: "implementado", evidencia: "src/app/api/gateway/route.ts:1" }],
+            reqVerdicts: reqsVerdictsFromPrompt(sys),
           })
         );
       }

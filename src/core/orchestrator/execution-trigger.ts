@@ -6,6 +6,13 @@ import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { enqueueSessionQueueJob } from "@/core/orchestrator/job-queue";
 import type { Phase } from "@/core/orchestrator/phase-machine";
 import type { TaskNode } from "@prisma/client";
+import {
+  decideMicrobriefsPlanningBatch,
+  type MicrobriefPlanningDecision,
+  type MicrobriefPlanningInput,
+} from "@/core/decision/jev-decisions";
+import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 
 export type ApproveSpecResult =
   | {
@@ -292,6 +299,9 @@ export async function approveSpecAndStart(
         idMap.set(node.id, versionedId);
       }
 
+      // Jev decide o nível de modelo de cada etapa (uma chamada para todas). Sem Jev, reserva em código.
+      const jevPlan = await planNodeTiers(decomposedNodes, sessionId);
+
       const createdTasks: TaskNode[] = [];
       for (const node of decomposedNodes) {
         const nodeId = idMap.get(node.id) ?? node.id;
@@ -308,12 +318,15 @@ export async function approveSpecAndStart(
             dependencies: JSON.stringify(mappedDeps),
             filesScope: JSON.stringify(node.filesScope || []),
             mcpScope: node.mcpScope,
-            payload: JSON.stringify({
-              ...(typeof node.payload === "object" && node.payload !== null
-                ? node.payload
-                : { data: node.payload }),
-              intent,
-            }),
+            payload: JSON.stringify(withJevPlan(
+              {
+                ...(typeof node.payload === "object" && node.payload !== null
+                  ? (node.payload as Record<string, unknown>)
+                  : { data: node.payload }),
+                intent,
+              },
+              jevPlan.get(node.id)
+            )),
           },
         });
         createdTasks.push(dbTask);
@@ -349,4 +362,51 @@ export async function approveSpecAndStart(
       inFlightBySession.delete(sessionId);
     }
   }
+}
+
+type DecomposedNode = { id: string; payload?: unknown; filesScope?: string[] };
+
+/** Pergunta ao Jev o nível de modelo de cada etapa que tem Microbrief (a base sem IA fica de fora). */
+async function planNodeTiers(nodes: DecomposedNode[], sessionId: string): Promise<Map<string, MicrobriefPlanningDecision>> {
+  const inputs: MicrobriefPlanningInput[] = [];
+  for (const node of nodes) {
+    const mb = (node.payload as { microbrief?: MicrobriefAndReportDocument } | undefined)?.microbrief;
+    if (!mb) continue;
+    inputs.push({
+      id: node.id,
+      arquivos: node.filesScope ?? [],
+      reqsCobertos: mb.reqsCobertos,
+      resumo: Object.entries(mb.criteriosAceitePorReq)
+        .map(([req, c]) => `${req}: ${c.join(" ")}`)
+        .join("\n"),
+    });
+  }
+  const out = new Map<string, MicrobriefPlanningDecision>();
+  if (inputs.length === 0) return out;
+  const decisions = await decideMicrobriefsPlanningBatch({
+    microbriefs: inputs,
+    sessionId,
+    policy: loadOrchestrationPolicy(),
+  }).catch(() => []);
+  for (const d of decisions) out.set(d.id, d);
+  return out;
+}
+
+/** Grava a decisão no Microbrief (nivel_modelo) e em payload.jevPlan para o executor e a trilha. */
+function withJevPlan(
+  payload: Record<string, unknown>,
+  decision: MicrobriefPlanningDecision | undefined
+): Record<string, unknown> {
+  if (!decision) return payload;
+  const mb = payload.microbrief as MicrobriefAndReportDocument | undefined;
+  return {
+    ...payload,
+    ...(mb ? { microbrief: { ...mb, nivelModeloSugerido: decision.nivelModelo } } : {}),
+    jevPlan: {
+      nivelModelo: decision.nivelModelo,
+      source: decision.source,
+      precisaDividir: decision.precisaDividir,
+      clusterSugerido: decision.cluster,
+    },
+  };
 }
