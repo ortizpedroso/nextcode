@@ -10,6 +10,7 @@ import {
   checkSpecCompletenessOnDisk,
 } from "@/core/orchestrator/node-executor";
 import type { TaskNode } from "@prisma/client";
+import { enforceBudgetBeforeBatch } from "@/core/orchestrator/budget-guard";
 
 export interface SessionQueueResult {
   processedCount: number;
@@ -152,6 +153,12 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
     const executableNodes = dagEngine.getExecutableNodes();
 
     if (executableNodes.length === 0) {
+      isProcessing = false;
+      break;
+    }
+
+    // Teto de custo do projeto: confere antes de gastar com o próximo lote.
+    if (!(await enforceBudgetBeforeBatch(sessionId))) {
       isProcessing = false;
       break;
     }

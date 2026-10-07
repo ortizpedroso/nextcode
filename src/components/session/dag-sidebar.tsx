@@ -31,7 +31,18 @@ interface DagSidebarProps {
   onRetryNode?: (nodeId: string) => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
+  budget?: SessionBudget | null;
+  onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
 }
+
+export interface SessionBudget {
+  spentUsd: number;
+  limitUsd: number;
+  alertUsd: number;
+  status: "ok" | "alerta" | "teto";
+}
+
+const AUTHORIZE_STEP_USD = 0.5;
 
 export function DagSidebar({
   tasks,
@@ -43,7 +54,10 @@ export function DagSidebar({
   onRetryNode,
   onInspectQuarantine,
   onExportAuditReport,
+  budget,
+  onAuthorizeBudget,
 }: DagSidebarProps) {
+  const [authorizing, setAuthorizing] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
@@ -188,6 +202,43 @@ export function DagSidebar({
           </button>
         </div>
       </div>
+
+      {/* Custo do projeto (teto aprovado pelo fundador) */}
+      {budget && (
+        <div
+          className={`rounded-xl border p-2.5 text-[11px] ${
+            budget.status === "teto"
+              ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+              : budget.status === "alerta"
+                ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                : "border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span>Custo do projeto</span>
+            <span className="font-semibold">
+              US$ {budget.spentUsd.toFixed(2)} / US$ {budget.limitUsd.toFixed(2)}
+            </span>
+          </div>
+          {budget.status === "teto" && onAuthorizeBudget && (
+            <button
+              type="button"
+              disabled={authorizing}
+              onClick={async () => {
+                setAuthorizing(true);
+                try {
+                  await onAuthorizeBudget(AUTHORIZE_STEP_USD);
+                } finally {
+                  setAuthorizing(false);
+                }
+              }}
+              className="mt-2 w-full rounded-lg bg-rose-600 px-2 py-1.5 font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              {authorizing ? "Autorizando..." : `Autorizar mais verba (+US$ ${AUTHORIZE_STEP_USD.toFixed(2)})`}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Lista ou Grafo da DAG */}
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">

@@ -17,6 +17,7 @@ import {
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
+import { getSessionBudget, BUDGET_AUTHORIZED_ACTION } from "@/core/orchestrator/budget-guard";
 
 export async function GET(request: Request) {
   // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
@@ -52,10 +53,12 @@ export async function GET(request: Request) {
       }
 
       const activeTasks = session.tasks.filter((t) => t.specVersion === session.specVersion);
+      const budget = await getSessionBudget(session.id).catch(() => null);
       return NextResponse.json({
         session: { ...session, tasks: activeTasks },
         tasks: activeTasks,
         messages: session.messages,
+        budget,
       });
     }
 
@@ -317,6 +320,34 @@ export async function POST(request: NextRequest) {
         allCompleted,
         tasks: finalSessionTasks,
         specCompleteness,
+      });
+    }
+
+    // Ação 5: Autorização humana de mais verba depois do teto de custo (trilha BUDGET_AUTHORIZED)
+    if (action === "authorize_budget" && (sessionId || body.sessionId)) {
+      const targetSessionId: string = sessionId || body.sessionId;
+      const acrescimoUsd = Number(body.acrescimoUsd);
+      if (!Number.isFinite(acrescimoUsd) || acrescimoUsd <= 0 || acrescimoUsd > 50) {
+        return NextResponse.json({ error: "acrescimoUsd deve estar entre 0 e 50" }, { status: 400 });
+      }
+      const before = await getSessionBudget(targetSessionId);
+      await prisma.telemetryLog.create({
+        data: {
+          sessionId: targetSessionId,
+          action: BUDGET_AUTHORIZED_ACTION,
+          details: JSON.stringify({ acrescimoUsd, gastoAteAgoraUsd: before.spentUsd, tetoAnteriorUsd: before.limitUsd }),
+        },
+      });
+      const current = await prisma.session.findUnique({ where: { id: targetSessionId }, select: { phase: true } });
+      if (current?.phase === "BLOQUEADA") {
+        await applyPhaseEvent(targetSessionId, { type: "DESBLOQUEIO_HUMANO" });
+      }
+      await enqueueSessionQueueJob(targetSessionId);
+      const budget = await getSessionBudget(targetSessionId);
+      return NextResponse.json({
+        success: true,
+        message: `Teto do projeto ampliado para US$ ${budget.limitUsd.toFixed(2)}. Execução retomada.`,
+        budget,
       });
     }
 

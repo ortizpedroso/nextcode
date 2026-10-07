@@ -8,6 +8,7 @@ import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
 import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
+import { recordLlmCost } from "@/core/llm/cost";
 import {
   resolveVerdictAction,
   resolveExecutorTierForAttempt,
@@ -450,7 +451,10 @@ export function makeBlindAuditDispatchFn(
         failures: strong?.failures ?? [],
       },
     });
-    if (strong?.content) return strong.content;
+    if (strong?.content && strong.provider && strong.model) {
+      await recordLlmCost({ sessionId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
+      return strong.content;
+    }
     try {
       const res = await smartRouter.dispatchWithFallback({
         messages,
@@ -901,6 +905,13 @@ DIRETRIZES DE EXECUÇÃO:
       noLlmAvailable = true;
     } else if (dispatchRes) {
       const resJson = await dispatchRes.response.json().catch(() => ({}));
+      await recordLlmCost({
+        sessionId: taskDb.sessionId,
+        papel: "executor",
+        provider: String(dispatchRes.providerUsed),
+        model: String(dispatchRes.modelUsed || ""),
+        usage: resJson.usage,
+      });
       if (resJson.choices?.[0]?.finish_reason === "length") {
         TelemetryLogger.log({
           sessionId: taskDb.sessionId,

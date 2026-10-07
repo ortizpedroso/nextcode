@@ -47,6 +47,7 @@ export type PhaseEvent =
   | { type: 'SEM_LLM' }
   | { type: 'LLM_VOLTOU' }
   | { type: 'EXECUTOR_BLOQUEADO' }
+  | { type: 'TETO_CUSTO' }
   | { type: 'DESBLOQUEIO_HUMANO' }
   | { type: 'VERIFICACAO_COM_LACUNAS' }
   | { type: 'VERIFICACAO_OK' }
@@ -409,7 +410,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   EXECUCAO: {
-    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['mudanca_durante_execucao', 'duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_PENDENCIAS') {
@@ -427,6 +428,14 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas' }],
+        };
+      }
+      // Teto de custo: só sai com autorização humana (DESBLOQUEIO_HUMANO), nunca sozinho.
+      if (event.type === 'TETO_CUSTO') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'teto de custo do projeto atingido' }],
         };
       }
       if (

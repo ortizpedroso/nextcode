@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { authFetch, authDownload } from "@/lib/client-session";
 import { Sidebar, ProjectItem, SessionItem } from "@/components/layout/sidebar";
 import { Workspace, TaskNode, SessionMessage, GraphifyRunOutcome } from "@/components/layout/workspace";
+import type { SessionBudget } from "@/components/session/dag-sidebar";
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
 import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
@@ -27,6 +28,7 @@ export default function DashboardOrchestrator() {
 
   const [activeView, setActiveView] = useState<"dag" | "settings" | "docs">("dag");
   const [tasks, setTasks] = useState<TaskNode[]>([]);
+  const [budget, setBudget] = useState<SessionBudget | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
   const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
@@ -132,6 +134,7 @@ export default function DashboardOrchestrator() {
         setIsSpecApproved(Boolean(data.session.specApproved));
         setApprovedSpec(data.session.specApproved ? data.session.canonicalSpec || null : null);
         setTasks(data.tasks || []);
+        setBudget(data.budget || null);
         // Filtra estritamente para que APENAS mensagens do Usuário e do Assistente sejam exibidas
         const cleanMsgs = (data.messages || []).filter(
           (m: SessionMessage) => m.role === "user" || m.role === "assistant"
@@ -557,6 +560,23 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  const handleAuthorizeBudget = async (acrescimoUsd: number) => {
+    if (!activeSessionId) return;
+    try {
+      const res = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "authorize_budget", sessionId: activeSessionId, acrescimoUsd }),
+      });
+      const data = await res.json();
+      setConsoleLogs((prev) => [...prev, `[CUSTO] ${data.message || data.error || "Resposta sem mensagem"}`]);
+      if (res.ok && data.budget) setBudget(data.budget);
+      await fetchSessionDetails(activeSessionId);
+    } catch (err) {
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao autorizar verba: ${String(err)}`]);
+    }
+  };
+
   const handleRetryNode = async (nodeId: string) => {
     setConsoleLogs((prev) => [...prev, `[RETRY] Desbloqueando etapa e liberando fila no servidor...`]);
     try {
@@ -720,6 +740,8 @@ export default function DashboardOrchestrator() {
         onExecuteNode={handleExecuteNode}
         onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
         onRetryNode={handleRetryNode}
+        budget={budget}
+        onAuthorizeBudget={handleAuthorizeBudget}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}

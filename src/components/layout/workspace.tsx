@@ -23,7 +23,7 @@ import {
   Network,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
-import { DagSidebar } from "@/components/session/dag-sidebar";
+import { DagSidebar, type SessionBudget } from "@/components/session/dag-sidebar";
 import { PromptBar } from "@/components/session/prompt-bar";
 import { WebTerminal } from "@/components/session/web-terminal";
 import { SpecMessageRenderer } from "@/components/session/spec-message-renderer";
@@ -76,6 +76,8 @@ interface WorkspaceProps {
   onExecuteNode: (nodeId: string) => Promise<void>;
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
+  budget?: SessionBudget | null;
+  onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: (content?: string) => void;
@@ -130,6 +132,8 @@ export function Workspace({
   onExecuteNode,
   onRefreshTasks,
   onRetryNode,
+  budget,
+  onAuthorizeBudget,
   onInspectQuarantine,
   onExportAuditReport,
   onOpenSpecModal,
@@ -535,6 +539,8 @@ export function Workspace({
                 onRetryNode={onRetryNode}
                 onInspectQuarantine={onInspectQuarantine}
                 onExportAuditReport={onExportAuditReport}
+                budget={budget}
+                onAuthorizeBudget={onAuthorizeBudget}
               />
             )}
           </div>

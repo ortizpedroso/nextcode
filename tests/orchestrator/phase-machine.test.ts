@@ -585,6 +585,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
           'SEM_PENDENCIAS',
           'SEM_LLM',
           'EXECUTOR_BLOQUEADO',
+          'TETO_CUSTO',
           'MENSAGEM_CLASSIFICADA',
         ]);
         expect(res.allowedIntents).toEqual(['mudanca_durante_execucao', 'duvida_avulsa', 'status']);
@@ -676,6 +677,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'SEM_LLM' },
       { type: 'LLM_VOLTOU' },
       { type: 'EXECUTOR_BLOQUEADO' },
+      { type: 'TETO_CUSTO' },
       { type: 'DESBLOQUEIO_HUMANO' },
       { type: 'VERIFICACAO_COM_LACUNAS' },
       { type: 'VERIFICACAO_OK' },

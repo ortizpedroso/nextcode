@@ -6,6 +6,7 @@
  * Se nenhum pago responder, quem chama decide o que fazer (hoje: rota gratuita, marcada na trilha).
  */
 import { readSecret } from "@/core/security/crypto";
+import type { UsageLike } from "@/core/llm/cost";
 
 export type EvaluatorProvider = "gemini" | "claude" | "deepseek";
 
@@ -32,6 +33,8 @@ export interface EvaluatorCallResult {
   model: string | null;
   /** Família diferente do executor (o executor hoje é DeepSeek). */
   independent: boolean;
+  /** Uso de tokens informado pelo provedor (para o custo). */
+  usage?: UsageLike | null;
   failures: string[];
 }
 
@@ -59,7 +62,7 @@ async function callOne(
   apiKey: string,
   messages: ChatMessage[],
   signal: AbortSignal
-): Promise<{ ok: true; content: string } | { ok: false; status: number; body: string }> {
+): Promise<{ ok: true; content: string; usage: UsageLike | null } | { ok: false; status: number; body: string }> {
   if (c.provider === "claude") {
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -77,7 +80,7 @@ async function callOne(
     if (!res.ok) return { ok: false, status: res.status, body };
     const json = JSON.parse(body);
     const text = (json.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
-    return { ok: true, content: text };
+    return { ok: true, content: text, usage: json.usage ?? null };
   }
 
   const url =
@@ -93,7 +96,7 @@ async function callOne(
   const body = await res.text();
   if (!res.ok) return { ok: false, status: res.status, body };
   const json = JSON.parse(body);
-  return { ok: true, content: json?.choices?.[0]?.message?.content ?? "" };
+  return { ok: true, content: json?.choices?.[0]?.message?.content ?? "", usage: json?.usage ?? null };
 }
 
 export async function dispatchStrongEvaluator(
@@ -116,7 +119,14 @@ export async function dispatchStrongEvaluator(
     try {
       const r = await callOne(c, apiKey, messages, AbortSignal.timeout(opts.timeoutMs ?? 120_000));
       if (r.ok && r.content.trim()) {
-        return { content: r.content, provider: c.provider, model: c.model, independent: c.provider !== executorFamily, failures };
+        return {
+          content: r.content,
+          provider: c.provider,
+          model: c.model,
+          independent: c.provider !== executorFamily,
+          failures,
+          usage: r.usage,
+        };
       }
       if (!r.ok) {
         if (isAccountProblem(r.status, r.body)) skippedUntil.set(c.provider, Date.now() + SKIP_MS);
