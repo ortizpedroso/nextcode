@@ -190,14 +190,21 @@ export async function classifyMessage(
     sessionId,
     state: `Fase da sessão no NextCode: ${phase}.
 Mensagem do usuário: """${text.slice(0, 2000)}"""`,
-    instructions: "Qual é a intenção desta mensagem do usuário em relação ao projeto de software?",
+    instructions:
+      "What is the primary intent of this user message regarding the software project in the current NextCode session phase?",
     criteria: {
-      criar_novo: "pede para criar um software novo ou acrescentar/alterar requisitos do que está sendo especificado",
-      corrigir_existente: "relata um erro ou bug e pede correção em algo que já existe",
-      duvida_avulsa: "faz uma pergunta ou pede explicação, sem pedir mudança no projeto",
-      mudanca_durante_execucao: "pede para mudar o projeto enquanto ele já está sendo implementado",
-      status: "pergunta pelo andamento, progresso ou o que falta",
-      incerto: "não dá para saber o que a pessoa quer",
+      mudanca_durante_execucao:
+        "The user asks to modify, add, or change something in the project while implementation is already running.",
+      corrigir_existente:
+        "The user reports an error, bug, or broken behavior and asks to fix something that already exists.",
+      criar_novo:
+        "The user asks to create new software or add/modify requirements in the specification being drafted.",
+      duvida_avulsa:
+        "The user asks a question or requests an explanation without asking for any change to the project.",
+      status:
+        "The user asks about current progress, execution status, or what remains to be done.",
+      incerto:
+        "The message is too vague, ambiguous, or off-topic to determine what the user wants.",
     },
   });
   if (jev && jev.confidence >= JEV_MIN_CONFIDENCE) {

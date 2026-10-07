@@ -89,7 +89,7 @@ niveis_modelo:
   # Nível rápido: tarefas mecânicas e isoladas de 1-2 arquivos com especificação completa.
   rapido:
     gateway: "freellmapi"
-    endpoint: "https://freellmapi.com/v1"
+    endpoint: "http://localhost:3100/v1"
     modelo: "auto:fast"
     custo_por_chamada_usd: 0.0 # Gateway agregador de tiers gratuitos
 
@@ -99,7 +99,7 @@ niveis_modelo:
     endpoint: "https://api.deepseek.com/v1"
     modelo: "deepseek-v4-pro"
     fallback_gateway: "freellmapi"
-    fallback_modelo: "auto:reasoning"
+    fallback_modelo: "auto:smart"
 
   # Nível pesado / forte (Executor): arquitetura, lógica densa de domínio, segurança e escalada final.
   pesado:
@@ -108,19 +108,15 @@ niveis_modelo:
     modelo: "deepseek-v4-pro"
 
   # Nível do Avaliador: OBRIGATORIAMENTE forte e de família DIFERENTE do Executor (Trava T4).
+  # Decisão do Fundador (06/10/2026): usar FreeLLMAPI (auto:smart) garantindo família diferente do DeepSeek.
   avaliador_forte:
     regra_independencia: "forte_e_diferente_do_executor"
     familia_proibida_se_executor_deepseek: "deepseek"
-    # TODO [BLOQUEIO DE INFRAESTRUTURA - DEFINIR COM O FUNDADOR]:
-    # O Executor pesado atual é DeepSeek (deepseek-v4-pro). Para cumprir a Trava T4
-    # (modelo forte e DIFERENTE do executor sem cair em rate-limit de tier gratuito),
-    # falta ativar o provedor pago independente para o Avaliador:
-    # Opção A: Google Gemini (gemini-2.5-pro) com billing ativo no Google AI Studio / Vertex; ou
-    # Opção B: Anthropic Claude (claude-sonnet-4-20250514 / claude-opus-4) com crédito ativo.
-    gateway_primario_planejado: "TODO_ATIVAR_PROVEDOR_PAGO_GEMINI_OU_CLAUDE"
-    modelo_primario_planejado: "TODO_DEFINIR_GEMINI_2_5_PRO_OU_CLAUDE_SONNET_4"
-    gateway_contingencia_temporaria: "freellmapi"
-    modelo_contingencia_temporaria: "auto:smart" # Atenção: sujeito a cota/rate-limit do tier gratuito
+    gateway: "freellmapi"
+    endpoint: "http://localhost:3100/v1"
+    modelo: "auto:smart"
+    # TODO [EVOLUÇÃO FUTURA]: Quando ativar billing dedicado em Gemini (gemini-2.5-pro) ou
+    # Claude (claude-sonnet-4-20250514), promover para gateway primário e manter FreeLLMAPI como fallback.
 
 # ------------------------------------------------------------------------------
 # 3. LIMIARES DE CONFIANÇA DO JEV (Ref: docs/rascunhos/JEV-DECISOES.md)
@@ -179,6 +175,11 @@ tentativas:
   falha_provedor_conta_como_tentativa: false
   acao_falha_provedor: "pausar_backoff_ou_trocar_gateway_sem_incrementar_tentativa"
 
+  # Decisão do Fundador (06/10/2026): Em APROVADO_COM_RESSALVA (100% REQs atendidos, 0 críticos),
+  # executa 1 rodada rápida de polimento se ainda houver tentativas disponíveis; senão promove com ressalvas.
+  acao_aprovado_com_ressalva: "polir_1_rodada_se_houver_tentativa_senao_promover"
+  max_rodadas_polimento_ressalva: 1
+
 # ------------------------------------------------------------------------------
 # 5. RODADAS DE CORREÇÃO INTERNA E ESCALADA DE MODELO (Padrão Superpowers)
 # ------------------------------------------------------------------------------
@@ -201,9 +202,10 @@ rodadas_e_escalada:
 # ------------------------------------------------------------------------------
 # 6. ORÇAMENTO E TETO DE CUSTO POR PROJETO (Trava T8)
 # ------------------------------------------------------------------------------
+# Decisão do Fundador (06/10/2026): US$ 0.50 por projeto (alerta em 80% = US$ 0.40).
 orcamento:
-  # Valor máximo em dólares (USD) permitido para um único projeto somando Jev + Executores + Avaliadores.
-  teto_custo_por_projeto_usd: "DEFINIR COM O FUNDADOR"
+  teto_custo_por_projeto_usd: 0.50
+  alerta_custo_usd: 0.40
   alerta_percentual_teto: 80
   acao_ao_atingir_teto: "pausar_orquestracao_e_exigir_autorizacao_humana"
 

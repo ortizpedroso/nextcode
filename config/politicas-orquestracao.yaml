@@ -1,0 +1,155 @@
+# ==============================================================================
+# POLÍTICAS DE ORQUESTRAÇÃO DO HARNESS NEXTCODE (config/politicas-orquestracao.yaml)
+# ==============================================================================
+# Regra Arquitetural: Este arquivo DESCREVE os parâmetros declarativos da
+# orquestração; o HARNESS em código TypeScript (src/core/) LÊ e APLICA cada
+# regra mecanicamente. O orquestrador nunca é uma skill.
+# ==============================================================================
+
+versao_politica: "1.0.0"
+
+papeis:
+  elicitador:
+    skill_principal: "skills/elicitador/SKILL.md"
+    nivel_modelo_padrao: "forte"
+
+  analista:
+    skill_principal: "skills/analista/SKILL.md"
+    nivel_modelo_padrao: "forte"
+
+  executores:
+    core:
+      skill_principal: "skills/executor-core/SKILL.md"
+      skills_apoio_permitidas:
+        - "apoio_dominio_typescript"
+    backend:
+      skill_principal: "skills/executor-backend/SKILL.md"
+      skills_apoio_permitidas:
+        - "apoio_api_rest_validation"
+        - "apoio_dominio_typescript"
+    frontend:
+      skill_principal: "skills/executor-frontend/SKILL.md"
+      skills_apoio_permitidas:
+        - "apoio_ui_web_guidelines"
+        - "react_best_practices_critical_high"
+        - "ui_ux_pro_max_rules"
+        - "taste_skill_publico_selecionado"
+    integration:
+      skill_principal: "skills/executor-integration/SKILL.md"
+      skills_apoio_permitidas:
+        - "apoio_api_rest_validation"
+
+  avaliadores:
+    base_generica: "skills/avaliador/SKILL.md"
+    por_cluster:
+      core:
+        skill_principal: "skills/avaliador-core/SKILL.md"
+        herda_de: "skills/avaliador/SKILL.md"
+        referencias_obrigatorias: []
+      backend:
+        skill_principal: "skills/avaliador-backend/SKILL.md"
+        herda_de: "skills/avaliador/SKILL.md"
+        referencias_obrigatorias: []
+      frontend:
+        skill_principal: "skills/avaliador-frontend/SKILL.md"
+        herda_de: "skills/avaliador/SKILL.md"
+        referencias_obrigatorias:
+          - "skills/avaliador-frontend/references/web-interface-guidelines-command.md"
+          - "skills/avaliador-frontend/references/react-best-practices-critical-high.md"
+          - "skills/avaliador-frontend/references/ui-ux-pro-max-checklist.md"
+          - "skills/avaliador-frontend/references/taste-skill-preflight-publico.md"
+      integration:
+        skill_principal: "skills/avaliador-integration/SKILL.md"
+        herda_de: "skills/avaliador/SKILL.md"
+        referencias_obrigatorias: []
+
+niveis_modelo:
+  decisor_jev:
+    gateway: "typesafe_systemone"
+    endpoint: "https://api.typesafe.ai/v1/systemone"
+    modelo: "jev-1.13.0"
+    preco_entrada_por_milhao_usd: 0.042
+    preco_saida_por_milhao_usd: 0.0
+
+  rapido:
+    gateway: "freellmapi"
+    endpoint: "http://localhost:3100/v1"
+    modelo: "auto:fast"
+    custo_por_chamada_usd: 0.0
+
+  medio:
+    gateway: "deepseek"
+    endpoint: "https://api.deepseek.com/v1"
+    modelo: "deepseek-v4-pro"
+    fallback_gateway: "freellmapi"
+    fallback_modelo: "auto:smart"
+
+  pesado:
+    gateway: "deepseek"
+    endpoint: "https://api.deepseek.com/v1"
+    modelo: "deepseek-v4-pro"
+
+  avaliador_forte:
+    regra_independencia: "forte_e_diferente_do_executor"
+    familia_proibida_se_executor_deepseek: "deepseek"
+    gateway: "freellmapi"
+    endpoint: "http://localhost:3100/v1"
+    modelo: "auto:smart"
+
+jev_limiares:
+  intencao_mensagem:
+    confianca_minima_choice: 0.75
+    probabilidade_minima_aprovacao_incondicional_noul: 0.80
+    acao_abaixo_do_limiar: "pedir_confirmacao_explicita_ao_usuario"
+
+  clareza_spec:
+    score_minimo_clareza: 2.0
+    confianca_minima_score: 0.65
+    probabilidade_minima_escopo_fechado_noul: 0.75
+    probabilidade_minima_sem_contradicoes_noul: 0.80
+    acao_abaixo_do_limiar: "elicitador_refina_ou_pergunta_ao_usuario"
+
+  planejamento_microbrief:
+    confianca_minima_complexidade: 0.65
+    acao_baixa_confianca_complexidade: "subir_um_nivel_de_modelo"
+    probabilidade_dividir_microbrief_noul: 0.70
+    confianca_minima_cluster: 0.70
+
+  sugestao_skills:
+    probabilidade_minima_taste_skill_publico_noul: 0.75
+    probabilidade_minima_react_perf_noul: 0.30
+
+  cascata_sde:
+    limiar_disparo_fire_t: 0.70
+
+  seguranca_pesquisa_t7:
+    probabilidade_minima_fonte_oficial_noul: 0.80
+    probabilidade_maxima_prompt_injection_noul: 0.15
+    acao_violacao_ou_erro_jev: "bloquear_trecho_fail_closed"
+
+tentativas:
+  max_tentativas_por_executor: 3
+  max_reenvios_so_relatorio: 2
+  reenvio_relatorio_conta_como_tentativa: false
+  falha_provedor_conta_como_tentativa: false
+  acao_falha_provedor: "pausar_backoff_ou_trocar_gateway_sem_incrementar_tentativa"
+  acao_aprovado_com_ressalva: "polir_1_rodada_se_houver_tentativa_senao_promover"
+  max_rodadas_polimento_ressalva: 1
+
+rodadas_e_escalada:
+  max_rodadas_internas_tipo_1_por_tentativa: 2
+  escalada_por_tentativa:
+    tentativa_1: "usar_nivel_sugerido_pelo_jev"
+    tentativa_2: "subir_no_minimo_para_medio"
+    tentativa_3: "forcar_nivel_pesado"
+  acao_apos_esgotar_tentativas: "interromper_cluster_e_escalar_para_humano"
+
+orcamento:
+  teto_custo_por_projeto_usd: 0.50
+  alerta_custo_usd: 0.40
+  alerta_percentual_teto: 80
+  acao_ao_atingir_teto: "pausar_orquestracao_e_exigir_autorizacao_humana"
+
+execucao_paralela:
+  paralelismo_maximo: 3
+  exigir_conjuntos_arquivos_disjuntos: true

@@ -27,6 +27,12 @@ export interface SpecRoute {
   descricao: string;
 }
 
+export interface SpecRequirementItem {
+  id: string;
+  titulo: string;
+  criterio: string;
+}
+
 export interface SpecFrontmatterInput {
   titulo: string;
   status: string;
@@ -38,6 +44,8 @@ export interface SpecFrontmatterInput {
   arquivosAfetados: string[];
   rotas?: SpecRoute[];
   notasImplementacao?: string[];
+  requisitosIds?: string[];
+  requisitos?: SpecRequirementItem[];
 }
 
 export interface ParsedSpec {
@@ -50,6 +58,8 @@ export interface ParsedSpec {
   arquivosAfetados: string[];
   rotas: SpecRoute[];
   notasImplementacao: string[];
+  requisitosIds?: string[];
+  requisitos?: SpecRequirementItem[];
   objetivo: string;
   raw: string;
 }
@@ -122,6 +132,15 @@ export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string 
   lines.push(...renderRotas(spec.rotas ?? []));
   lines.push(...yamlStringList("arquivos_afetados", spec.arquivosAfetados));
   lines.push(...yamlStringList("notas_implementacao", spec.notasImplementacao ?? []));
+  lines.push(...yamlStringList("requisitos_ids", spec.requisitosIds ?? []));
+  if (spec.requisitos && spec.requisitos.length > 0) {
+    lines.push("requisitos:");
+    spec.requisitos.forEach((req) => {
+      lines.push(`  - id: ${req.id}`);
+      lines.push(`    titulo: ${yamlEscape(req.titulo)}`);
+      lines.push(`    criterio: ${yamlEscape(req.criterio)}`);
+    });
+  }
   lines.push("---");
 
   const yaml = lines.join("\n");
@@ -308,6 +327,15 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
       }))
     : [];
 
+  const requisitosIds = asStringList(root.requisitos_ids);
+  const requisitos: SpecRequirementItem[] = Array.isArray(root.requisitos)
+    ? (root.requisitos as Record<string, YamlValue>[]).map((req) => ({
+        id: typeof req.id === "string" ? req.id : "",
+        titulo: typeof req.titulo === "string" ? req.titulo : "",
+        criterio: typeof req.criterio === "string" ? req.criterio : "",
+      }))
+    : [];
+
   const trimmedBody = body.trim();
   const objetivoMatch = trimmedBody.match(/^#.*(?:\r?\n)+([\s\S]*?)(?:\r?\n#{1,6}\s|$)/);
   // A Spec é conceitual: blocos de código no corpo (implementação) são descartados.
@@ -326,6 +354,8 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
     arquivosAfetados: asStringList(root.arquivos_afetados),
     rotas,
     notasImplementacao: asStringList(root.notas_implementacao),
+    ...(requisitosIds.length > 0 ? { requisitosIds } : {}),
+    ...(requisitos.length > 0 ? { requisitos } : {}),
     objetivo,
     raw: content,
   };
