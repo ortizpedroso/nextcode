@@ -139,13 +139,14 @@ export class SpecDecomposerSkill {
       groupFiles: string[],
       deps: string[],
       label: string,
-      cluster: ClusterKind
+      cluster: ClusterKind,
+      extraContracts: string[] = []
     ): string => {
       const groupIdx = n;
       n++;
       const id = `task-${label}-${stamp}-${n}`;
       const assigned = assignReqsForGroup(groupFiles, groupIdx);
-      const contractFiles = label === "base" ? [] : foundation;
+      const contractFiles = label === "base" ? [] : [...foundation, ...extraContracts];
       const nonScaffoldDeps = deps.filter((d) => !d.startsWith("task-scaffold-"));
 
       const microbrief: MicrobriefAndReportDocument = {
@@ -221,8 +222,21 @@ export class SpecDecomposerSkill {
       makeNode(g, i === 0 ? [scaffoldId] : [nodes[nodes.length - 1].id], "base", "core")
     );
     const lastFoundation = foundationIds.length > 0 ? [foundationIds[foundationIds.length - 1]] : [scaffoldId];
+    // A tela consome a API: o frontend espera o backend/integração terminar e recebe o código real
+    // das rotas como contrato. Antes rodava em paralelo e adivinhava o formato (teste P2 de 07/10:
+    // a API devolvia {erro} e a tela lia {message}, e os dois avaliadores aprovaram).
+    const apiIds: string[] = [];
+    const apiFiles: string[] = [];
     for (const grp of restClusterGroups) {
-      makeNode(grp.files, lastFoundation, "impl", grp.cluster);
+      if (grp.cluster === "frontend") {
+        makeNode(grp.files, [...lastFoundation, ...apiIds], "impl", grp.cluster, apiFiles);
+      } else {
+        const id = makeNode(grp.files, lastFoundation, "impl", grp.cluster);
+        if (grp.cluster === "backend" || grp.cluster === "integration") {
+          apiIds.push(id);
+          apiFiles.push(...grp.files);
+        }
+      }
     }
 
     // Garante que todos os REQs declarados estejam cobertos em pelo menos um Microbrief (Trava T8b)

@@ -998,7 +998,14 @@ DIRETRIZES DE EXECUÇÃO:
     );
     const type2Res = await DualLensAuditor.validateType2(
       type1Res,
-      buildBriefMarkdown(taskDb),
+      // O avaliador também vê o código real das dependências (só leitura), para conferir chamadas,
+      // formatos de resposta e tipos entre etapas (ex.: a tela lê o campo de erro que a API devolve).
+      buildBriefMarkdown(taskDb) +
+        (dependencyBlock
+          ? "\n\n## Contratos das dependências (somente leitura — já aprovados; NÃO são pendência desta etapa, " +
+            "mas o código desta etapa deve usá-los corretamente)\n" +
+            dependencyBlock.slice(0, 20000)
+          : ""),
       stepResultText,
       codeContentMap,
       makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId),

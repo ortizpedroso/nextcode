@@ -487,7 +487,8 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     expect(frontendNode.role).toBe("executor-frontend");
     // Backend e Frontend dependem apenas do Core (Onda 2 paralela)
     expect(backendNode.dependencies).toEqual([coreNode.id]);
-    expect(frontendNode.dependencies).toEqual([coreNode.id]);
+    // A tela espera a API terminar e recebe o código real das rotas como contrato.
+    expect(frontendNode.dependencies).toEqual([coreNode.id, backendNode.id]);
 
     // 2. Divergência plantada na Lente 2:
     // O relatório do executor afirma que REQ-001 e REQ-002 foram "atendido" e cita linha 250 num arquivo de 4 linhas,

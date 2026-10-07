@@ -42,7 +42,12 @@ describe("DAG a partir da Spec: uma etapa por grupo de arquivos", () => {
     const base = nodes[0];
     expect(base.filesScope).toEqual(expect.arrayContaining(["prisma/schema.prisma", "src/lib/prisma.ts"]));
     expect(base.dependencies).toEqual([scaffold.id]);
-    for (const n of nodes.slice(1)) expect(n.dependencies).toEqual([base.id]);
+    for (const n of nodes.slice(1)) {
+      expect(n.dependencies[0]).toBe(base.id);
+      // A tela espera a API (contrato real das rotas); as demais etapas só dependem da base.
+      const apiIds = nodes.filter((x) => x.cluster === "backend" || x.cluster === "integration").map((x) => x.id);
+      expect(n.dependencies.slice(1)).toEqual(n.cluster === "frontend" ? apiIds : []);
+    }
   });
 
   it("títulos legíveis (sem YAML cru) e Spec inteira no payload de cada etapa", () => {
