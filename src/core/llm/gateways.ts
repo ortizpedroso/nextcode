@@ -275,6 +275,15 @@ async function quickGet(url: string, apiKey: string | undefined, timeoutMs: numb
   }
 }
 
+/**
+ * Teste barato de disponibilidade (sem gastar tokens): GET /v1/models com a chave do gateway.
+ * Só conta como disponível com HTTP 200 — chave inválida (401/403) ou servidor caído não contam.
+ */
+export async function isGatewayAnswering(gw: GatewayConfig, timeoutMs = 3000): Promise<boolean> {
+  const res = await quickGet(`${rootUrl(gw.baseUrl)}/v1/models`, gw.apiKey || undefined, timeoutMs);
+  return Boolean(res && res.ok);
+}
+
 export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
   const def = GATEWAY_DEFAULTS[id];
   const [row, setting] = await Promise.all([

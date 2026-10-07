@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { readSecret } from "@/core/security/crypto";
+import { loadGatewayConfigs, isGatewayAnswering } from "@/core/llm/gateways";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import {
   enqueueSessionQueueJob,
@@ -28,36 +28,22 @@ export function getProcessWorkerId(): string {
 }
 
 /**
- * Verifica se há ao menos um gateway LLM disponível (endpoint local/FreeLLMAPI respondendo 200
- * em /healthz ou /v1/models, ou chave BYOK configurada).
+ * Verifica se há ao menos um gateway LLM ativo respondendo de verdade (GET /v1/models com a chave,
+ * HTTP 200). Ter uma chave salva não basta: DeepSeek sem crédito ou FreeLLMAPI parado não contam.
+ * O resultado fica em cache por 30 s para o supervisor (que roda a cada ciclo) não martelar a rede.
  */
+const REACHABILITY_CACHE_MS = 30_000;
+let reachabilityCache: { at: number; value: boolean } | null = null;
+
 export async function isAnyLlmGatewayReachable(): Promise<boolean> {
-  const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
-  const hasByok =
-    Boolean(readSecret(setting?.deepseekKey) || process.env.DEEPSEEK_API_KEY) ||
-    Boolean(readSecret(setting?.geminiKey) || process.env.GEMINI_API_KEY) ||
-    Boolean(readSecret((setting as any)?.groqKey) || process.env.GROQ_API_KEY) ||
-    Boolean(readSecret((setting as any)?.nvidiaKey) || process.env.NVIDIA_API_KEY);
-  if (hasByok) return true;
-
-  const omniUrl = (setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || "").replace(
-    /\/+$/,
-    ""
-  );
-  if (!omniUrl) return false;
-
-  try {
-    const res = await fetch(`${omniUrl}/healthz`, { signal: AbortSignal.timeout(2000) });
-    if (res.ok) return true;
-  } catch {
-    /* tenta /v1/models */
+  if (reachabilityCache && Date.now() - reachabilityCache.at < REACHABILITY_CACHE_MS) {
+    return reachabilityCache.value;
   }
-  try {
-    const res = await fetch(`${omniUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+  const gateways = await loadGatewayConfigs().catch(() => []);
+  const checks = await Promise.all(gateways.map((gw) => isGatewayAnswering(gw).catch(() => false)));
+  const value = checks.some(Boolean);
+  reachabilityCache = { at: Date.now(), value };
+  return value;
 }
 
 /**

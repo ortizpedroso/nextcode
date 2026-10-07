@@ -23,8 +23,13 @@ export async function GET(request: Request) {
   const gateways = GATEWAY_IDS.map((id) => {
     const row = byId.get(id);
     const def = GATEWAY_DEFAULTS[id];
+    // A chave da DeepSeek mora em Setting.deepseekKey (a mesma que o roteador lê).
     const key =
-      id === "omniroute" ? readSecret(setting?.omniRouteKey) : readSecret(row?.apiKey);
+      id === "omniroute"
+        ? readSecret(setting?.omniRouteKey)
+        : id === "deepseek"
+          ? readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey)
+          : readSecret(row?.apiKey);
     return {
       id,
       label: def.label,
@@ -104,6 +109,23 @@ export async function POST(request: NextRequest) {
       await saveGatewayConfig("omniroute", {
         enabled: item.enabled,
         priority: item.priority,
+        modelFast: item.modelFast,
+        modelHeavy: item.modelHeavy,
+      });
+    } else if (item.id === "deepseek") {
+      // Mesma fonte que o roteador e a aba de chaves nativas: Setting.deepseekKey (criptografada).
+      if (item.apiKey !== undefined) {
+        const deepseekKey = item.apiKey ? writeSecret(item.apiKey) : null;
+        await prisma.setting.upsert({
+          where: { id: "default" },
+          update: { deepseekKey },
+          create: { id: "default", deepseekKey },
+        });
+      }
+      await saveGatewayConfig("deepseek", {
+        enabled: item.enabled,
+        priority: item.priority,
+        baseUrl: item.baseUrl,
         modelFast: item.modelFast,
         modelHeavy: item.modelHeavy,
       });
