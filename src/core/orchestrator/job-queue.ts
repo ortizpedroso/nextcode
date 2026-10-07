@@ -6,6 +6,8 @@ import {
   type SessionQueueResult,
 } from "@/core/orchestrator/session-queue";
 import { verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
+import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
+import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import type { Job } from "@prisma/client";
 
@@ -294,6 +296,28 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           // Decisão do fundador (07/10): entrega estrita — todos os REQ aprovados + build conferido.
           requireFullBuild: true,
         });
+        // Verificação de tela (decisão do fundador, 07/10): com páginas, só entrega se o site
+        // gerar o build e abrir sem erro no celular e no desktop.
+        let uiCheck: UiCheckReport | null = null;
+        const projectPath = sessionAfterQueue.project?.path;
+        const uiPages = pagesFromSpecFiles(parseSpecDocument(sessionAfterQueue.canonicalSpec || "")?.arquivosAfetados ?? []);
+        if (deliveryT10.passed && projectPath && uiPages.length > 0) {
+          uiCheck = await runUiCheck(projectPath, uiPages).catch(
+            (err): UiCheckReport => ({ ok: false, stage: "docker", error: String(err) })
+          );
+          TelemetryLogger.log({
+            sessionId: job.sessionId,
+            action: uiCheck.ok ? "UI_CHECK_PASSED" : "UI_CHECK_FAILED",
+            details: { pages: uiPages, stage: uiCheck.stage, problems: uiCheck.problems ?? [], error: uiCheck.error, skipped: uiCheck.skipped ?? false },
+          });
+          if (!uiCheck.ok) {
+            deliveryT10.passed = false;
+            deliveryT10.gaps.push(`Verificação de tela reprovada (${uiCheck.stage}).`);
+            await prisma.message.create({
+              data: { sessionId: job.sessionId, role: "assistant", content: describeUiCheckFailure(uiCheck) },
+            });
+          }
+        }
         if (deliveryT10.passed) {
           await applyPhaseEvent(
             job.sessionId,

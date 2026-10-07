@@ -42,5 +42,6 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
    - Estados de foco visíveis (`focus-visible:ring-*`), nunca `outline-none` sem substituto;
    - Responsividade limpa em `375×812` (mobile) e `1440×900` (desktop);
    - Proibido usar emojis como ícones funcionais.
-4. **Performance (`react-best-practices`):** Evite waterfalls de fetch (`Promise.all` para buscas independentes) e nunca guarde estado de requisição em variável mutável de módulo.
-5. **Relatório no template do Microbrief (P12):** Preencha cada `REQ-xxx` na seção `## 4` com `arquivo:linha` verificados.
+4. **Estilo: Tailwind CSS v4 já configurado pela base do projeto** (`postcss.config.mjs`, `globals.css` com `@import "tailwindcss";` importado no layout raiz). Use classes utilitárias do Tailwind; não instale outro framework de CSS nem crie `tailwind.config.js` (o v4 não precisa).
+5. **Performance (`react-best-practices`):** Evite waterfalls de fetch (`Promise.all` para buscas independentes) e nunca guarde estado de requisição em variável mutável de módulo.
+6. **Relatório no template do Microbrief (P12):** Preencha cada `REQ-xxx` na seção `## 4` com `arquivo:linha` verificados.

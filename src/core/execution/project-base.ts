@@ -110,6 +110,13 @@ export async function ensureProjectBase(
 ): Promise<ProjectBaseResult> {
   const manifest = buildBaseManifest(stack);
   const changedFiles: string[] = [];
+  // Projeto com tela (App Router): Tailwind CSS v4 pela receita oficial para Next.js
+  // (tailwindcss + @tailwindcss/postcss + postcss, postcss.config.mjs, @import em globals.css).
+  // Os executores já escrevem classes Tailwind; sem isto a tela do P2 saiu sem estilo (07/10).
+  const layoutDirs = manifest.usesNext ? appRouterDirsNeedingLayout(specFiles) : [];
+  const uiDirs = manifest.usesNext ? appRouterDirsWithPages(specFiles) : [];
+  const useTailwind = uiDirs.length > 0;
+  if (useTailwind) Object.assign(manifest.devDependencies, TAILWIND_DEV_DEPENDENCIES);
   fs.mkdirSync(projectRoot, { recursive: true });
 
   const pkgPath = path.join(projectRoot, "package.json");
@@ -148,14 +155,27 @@ export async function ensureProjectBase(
   // App Router: o Next exige um layout raiz para qualquer página. Sem ele o tsc passa, mas o
   // `next build` falha (teste real P2 de 07/10, pego pela verificação de tela em contêiner).
   // É estrutura, não funcionalidade: entra na base (sem IA) se a Spec não declarar o seu.
-  if (manifest.usesNext) {
-    for (const appDir of appRouterDirsNeedingLayout(specFiles)) {
-      const layoutPath = path.join(projectRoot, appDir, "layout.tsx");
-      if (!fs.existsSync(layoutPath)) {
-        fs.mkdirSync(path.dirname(layoutPath), { recursive: true });
-        fs.writeFileSync(layoutPath, ROOT_LAYOUT_TSX, "utf8");
-        changedFiles.push(`${appDir}/layout.tsx`);
+  if (useTailwind) {
+    const postcssPath = path.join(projectRoot, "postcss.config.mjs");
+    if (!fs.existsSync(postcssPath)) {
+      fs.writeFileSync(postcssPath, POSTCSS_CONFIG_MJS, "utf8");
+      changedFiles.push("postcss.config.mjs");
+    }
+    for (const appDir of uiDirs) {
+      const cssPath = path.join(projectRoot, appDir, "globals.css");
+      if (!fs.existsSync(cssPath)) {
+        fs.mkdirSync(path.dirname(cssPath), { recursive: true });
+        fs.writeFileSync(cssPath, '@import "tailwindcss";\n', "utf8");
+        changedFiles.push(`${appDir}/globals.css`);
       }
+    }
+  }
+  for (const appDir of layoutDirs) {
+    const layoutPath = path.join(projectRoot, appDir, "layout.tsx");
+    if (!fs.existsSync(layoutPath)) {
+      fs.mkdirSync(path.dirname(layoutPath), { recursive: true });
+      fs.writeFileSync(layoutPath, useTailwind ? `import "./globals.css";\n${ROOT_LAYOUT_TSX}` : ROOT_LAYOUT_TSX, "utf8");
+      changedFiles.push(`${appDir}/layout.tsx`);
     }
   }
 
@@ -181,6 +201,27 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   );
 }
 `;
+
+export const TAILWIND_DEV_DEPENDENCIES: Record<string, string> = {
+  tailwindcss: "^4",
+  "@tailwindcss/postcss": "^4",
+  postcss: "^8",
+};
+
+const POSTCSS_CONFIG_MJS = `const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+export default config;
+`;
+
+/** Pastas do App Router (src/app ou app) com páginas na Spec. */
+export function appRouterDirsWithPages(specFiles: string[]): string[] {
+  return ["src/app", "app"].filter((dir) =>
+    specFiles.some((f) => f.startsWith(`${dir}/`) && /\/page\.(tsx|jsx|ts|js)$/.test(f))
+  );
+}
 
 /** Pastas do App Router (src/app ou app) com páginas na Spec e sem layout raiz declarado. */
 export function appRouterDirsNeedingLayout(specFiles: string[]): string[] {

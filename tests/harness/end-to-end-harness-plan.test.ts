@@ -10,6 +10,7 @@ import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
 import { claimJob, executeClaimedJob } from "@/core/orchestrator/job-queue";
 import { runOnce, supervisePausedSessions } from "@/core/orchestrator/job-worker";
 import { setScaffoldInstallerForTests, verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
+import { setUiCheckRunnerForTests, pagesFromSpecFiles } from "@/core/execution/ui-check";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 import { UniversalDocsFetcher, createDefaultResearchBudget } from "@/core/intake/universal-docs-fetcher";
@@ -128,6 +129,67 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     // 2 quedas grátis + a 3ª conta: o laço da fila não pode girar para sempre.
     expect(result.evaluatorOutageStreak).toBeGreaterThanOrEqual(3);
     expect(node.attempts).toBe(result.evaluatorOutageStreak - 2);
+  });
+
+  it.each([
+    { label: "reprova", ok: false, expectedPhase: "PLANEJAMENTO" },
+    { label: "aprova", ok: true, expectedPhase: "ENTREGUE" },
+  ])("Verificação de tela na entrega: quando $label, a sessão termina em $expectedPhase", async ({ ok, expectedPhase }) => {
+    const projectDir = makeTempProjectDir();
+    const project = await prisma.project.create({ data: { name: "Projeto com Tela", path: projectDir } });
+    createdProjectIds.push(project.id);
+    const files = ["src/lib/saudar.ts", "src/app/saudacao/page.ts"];
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Saudacao com Tela",
+      status: "aprovada",
+      data: "2026-10-07",
+      stack: ["TypeScript"],
+      modulos: [
+        { id: "lib", nome: "Lib", resumo: "Função saudar", arquivos: [files[0]] },
+        { id: "tela", nome: "Tela", resumo: "Página de saudação", arquivos: [files[1]] },
+      ],
+      entidades: [],
+      arquivosAfetados: files,
+      objetivo: "Função saudar e página que a usa.",
+    });
+    const session = await prisma.session.create({
+      data: { title: "Sessão Tela", projectId: project.id, canonicalSpec: spec },
+    });
+    createdSessionIds.push(session.id);
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: reqsVerdictsFromPrompt(sys) }));
+      }
+      const scope = opts.messages.find((m) => m.content.includes("Escopo de Arquivos:"))?.content || "";
+      const code = scope.includes(files[1])
+        ? ["```typescript", `// file: ${files[1]}`, 'import { saudar } from "../../lib/saudar";', "export default function Page(): string {", '  return saudar("mundo");', "}", "```"]
+        : ["```typescript", `// file: ${files[0]}`, "export function saudar(nome: string): string {", "  return `Olá, ${nome}!`;", "}", "```"];
+      return makeOkDispatch(code.join("\n"));
+    });
+
+    const calls: string[][] = [];
+    setUiCheckRunnerForTests(async (_path, pages) => {
+      calls.push(pages);
+      return ok
+        ? { ok: true, stage: "browser", problems: [] }
+        : { ok: false, stage: "browser", problems: ["/saudacao (celular): erro no console — boom"] };
+    });
+    try {
+      const startRes = await approveSpecAndStart(session.id, spec);
+      if (!startRes.ok) throw new Error("approveSpecAndStart falhou");
+      await claimJob(startRes.jobId!, "w-ui");
+      await executeClaimedJob(startRes.jobId!, "w-ui");
+    } finally {
+      setUiCheckRunnerForTests(null);
+    }
+
+    expect(calls).toEqual([["/saudacao"]]);
+    const final = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(final.phase).toBe(expectedPhase);
+    const msgs = await prisma.message.findMany({ where: { sessionId: session.id, role: "assistant" } });
+    expect(msgs.some((m) => m.content.includes("verificação de tela reprovou"))).toBe(!ok);
   });
 
   it("Item 1 (Fila nunca para): gateway fora do ar → sessão vai para PAUSADA com 0 tentativas gastas; gateway volta → supervisor emite LLM_VOLTOU, retoma EXECUCAO e conclui em ENTREGUE", async () => {
