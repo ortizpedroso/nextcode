@@ -291,6 +291,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           canonicalSpec: sessionAfterQueue.canonicalSpec,
           projectPath: sessionAfterQueue.project?.path,
           tasks: queueResult.tasks,
+          // Decisão do fundador (07/10): entrega estrita — todos os REQ aprovados + build conferido.
+          requireFullBuild: true,
         });
         if (deliveryT10.passed) {
           await applyPhaseEvent(

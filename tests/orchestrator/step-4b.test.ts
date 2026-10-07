@@ -609,6 +609,13 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       };
     });
 
+    // Este teste é sobre o ciclo de versões, não sobre a entrega (T10 estrita tem teste próprio):
+    // o executor falso não escreve arquivos, então a conferência de entrega é simulada como aprovada.
+    vi.spyOn(nodeExecutorModule, "verifyProjectDeliveryT10").mockReturnValue({
+      passed: true, specFilesComplete: true, allReqsApproved: true, buildVerified: true,
+      missingFiles: [], unapprovedReqs: [], gaps: [],
+    });
+
     // 1. Aprova e conclui a versão 1 até ENTREGUE
     const v1Start = await approveSpecAndStart(session.id, SAMPLE_SPEC_TWO_FILES);
     expect(v1Start.ok).toBe(true);
