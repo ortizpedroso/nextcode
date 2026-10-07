@@ -12,6 +12,8 @@ import {
   type MicrobriefPlanningInput,
 } from "@/core/decision/jev-decisions";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { splitNodesByJev } from "@/core/orchestrator/node-split";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 
 export type ApproveSpecResult =
@@ -286,10 +288,24 @@ export async function approveSpecAndStart(
       const specFilesScope = parsedSpec?.arquivosAfetados;
       // Spec com arquivos declarados → uma etapa por grupo pequeno de arquivos; sem arquivos,
       // o trio legado (heurística de domínio).
-      const { nodes: decomposedNodes } =
+      const { nodes: rawNodes } =
         specFilesScope && specFilesScope.length > 0
           ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope, parsedSpec?.stack ?? [])
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
+
+      // Jev decide o nível de modelo de cada etapa (uma chamada para todas) e se alguma etapa mistura
+      // responsabilidades; nesse caso ela é dividida (uma parte por arquivo). Sem Jev, reserva em código.
+      const jevPlan = await planNodeTiers(rawNodes, sessionId);
+      const splitRes = splitNodesByJev(rawNodes, (id) => jevPlan.get(id)?.divisaoPorJev === true);
+      if (splitRes.split.length > 0 || splitRes.skipped.length > 0) {
+        TelemetryLogger.log({
+          sessionId,
+          action: "JEV_NODE_SPLIT",
+          details: { split: splitRes.split, skipped: splitRes.skipped },
+        });
+      }
+      const decomposedNodes = splitRes.nodes;
+      const planFor = (id: string) => jevPlan.get(id) ?? jevPlan.get(id.replace(/-p\d+$/, ""));
 
       // Garante IDs únicos por versão para não colidir se duas versões forem aprovadas no mesmo ms
       const idMap = new Map<string, string>();
@@ -298,9 +314,6 @@ export async function approveSpecAndStart(
           currentSpecVersion > 1 ? `${node.id}-v${currentSpecVersion}` : node.id;
         idMap.set(node.id, versionedId);
       }
-
-      // Jev decide o nível de modelo de cada etapa (uma chamada para todas). Sem Jev, reserva em código.
-      const jevPlan = await planNodeTiers(decomposedNodes, sessionId);
 
       const createdTasks: TaskNode[] = [];
       for (const node of decomposedNodes) {
@@ -325,7 +338,7 @@ export async function approveSpecAndStart(
                   : { data: node.payload }),
                 intent,
               },
-              jevPlan.get(node.id)
+              planFor(node.id)
             )),
           },
         });

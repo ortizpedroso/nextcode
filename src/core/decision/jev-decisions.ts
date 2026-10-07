@@ -229,6 +229,8 @@ export interface MicrobriefPlanningDecision {
   id: string;
   nivelModelo: "rapido" | "medio" | "pesado";
   precisaDividir: boolean;
+  /** Só o julgamento do Jev ("mistura responsabilidades"), sem as regras mecânicas. */
+  divisaoPorJev: boolean;
   cluster: ClusterKind;
   skillApoioPrincipal: string;
   aplicarTasteSkillPublico: boolean;
@@ -361,6 +363,7 @@ export async function decideMicrobriefsPlanningBatch(params: {
           id: mb.id,
           nivelModelo: tier,
           precisaDividir,
+          divisaoPorJev: divAns.noul >= limPlan.probabilidadeDividirMicrobriefNoul,
           cluster,
           skillApoioPrincipal: skillAns.choice,
           aplicarTasteSkillPublico:
@@ -379,6 +382,7 @@ export async function decideMicrobriefsPlanningBatch(params: {
       id: mb.id,
       nivelModelo: fallbackTier,
       precisaDividir: mechanicalSplit,
+      divisaoPorJev: false,
       cluster: fallbackCluster,
       skillApoioPrincipal:
         fallbackCluster === "frontend"

@@ -306,6 +306,18 @@ export function verifyProjectDeliveryT10(opts: {
   };
 }
 
+/** Quedas seguidas do avaliador que não gastam tentativa do executor. */
+export const MAX_FREE_EVALUATOR_RETRIES = 2;
+
+export function readEvaluatorOutageStreak(result?: string | null): number {
+  try {
+    const n = result ? JSON.parse(result)?.evaluatorOutageStreak : 0;
+    return typeof n === "number" && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Nível de modelo planejado (Jev); nós antigos, sem plano, ficam no pesado como antes. */
 export function readPlannedTier(payload?: string | null): "rapido" | "medio" | "pesado" {
   try {
@@ -961,6 +973,8 @@ DIRETRIZES DE EXECUÇÃO:
   let empiricalFailureStage: EmpiricalStage | null = null;
   let empiricalGateErrors: string[] = [];
   let mcpRes: Record<string, unknown>;
+  let evaluatorOutageStreak = 0;
+  let evaluatorOutageFreeRetry = false;
   let newFailureHistory: string | undefined;
   let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
@@ -995,6 +1009,19 @@ DIRETRIZES DE EXECUÇÃO:
     );
     if (type2Res.skillUsed) {
       evaluatorSkillUsed = type2Res.skillUsed;
+    }
+
+    // Falha do AVALIADOR (nenhum modelo devolveu veredito válido) não é culpa do executor: não gasta
+    // tentativa, até MAX_FREE_EVALUATOR_RETRIES vezes seguidas (depois conta, para não girar para sempre).
+    const evaluatorOutage = type1Res.passed && type2Res.method === "heuristic_fallback";
+    if (evaluatorOutage) {
+      evaluatorOutageStreak = readEvaluatorOutageStreak(taskDb.result) + 1;
+      evaluatorOutageFreeRetry = evaluatorOutageStreak <= MAX_FREE_EVALUATOR_RETRIES;
+      TelemetryLogger.log({
+        sessionId: taskDb.sessionId,
+        action: "EVALUATOR_UNAVAILABLE",
+        details: { nodeId: taskDb.id, streak: evaluatorOutageStreak, attemptConsumed: !evaluatorOutageFreeRetry },
+      });
     }
 
     if (type2Res.divergenceDetected) {
@@ -1047,7 +1074,7 @@ DIRETRIZES DE EXECUÇÃO:
         finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
       }
     } else {
-      finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
+      finalStatus = wouldReachBlockThreshold && !evaluatorOutageFreeRetry ? "blocked" : "failed";
       qm.purgeWorkspace(taskDb.id);
 
       TelemetryLogger.log({
@@ -1103,6 +1130,7 @@ DIRETRIZES DE EXECUÇÃO:
       reqVerdicts: type2Res.reqVerdicts,
       reqDivergences: type2Res.reqDivergences,
       auditMethod: type2Res.method,
+      evaluatorOutageStreak,
       promotedPath: promotionTarget,
       empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
       rejectionReason,
@@ -1138,7 +1166,7 @@ DIRETRIZES DE EXECUÇÃO:
   }
 
   const updatedAttempts =
-    finalStatus === "failed" || finalStatus === "blocked"
+    (finalStatus === "failed" || finalStatus === "blocked") && !evaluatorOutageFreeRetry
       ? newAttempts
       : taskDb.attempts;
 

@@ -89,6 +89,47 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     }
   });
 
+  it("Avaliador fora do ar não gasta tentativa do executor (até 2 vezes seguidas); a 3ª queda passa a contar", async () => {
+    const projectDir = makeTempProjectDir();
+    const project = await prisma.project.create({ data: { name: "Projeto Avaliador Fora", path: projectDir } });
+    createdProjectIds.push(project.id);
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Utilitario de Saudacao",
+      status: "aprovada",
+      data: "2026-10-07",
+      stack: ["TypeScript"],
+      modulos: [{ id: "mod-saudacao", nome: "Saudacao", resumo: "Utilitário de saudação", arquivos: ["src/lib/saudar.ts"] }],
+      entidades: [],
+      arquivosAfetados: ["src/lib/saudar.ts"],
+      objetivo: "Criar função saudar(nome: string): string.",
+    });
+    const session = await prisma.session.create({
+      data: { title: "Sessão Avaliador Fora", projectId: project.id, canonicalSpec: spec },
+    });
+    createdSessionIds.push(session.id);
+
+    // Executor responde código; o avaliador nunca devolve um veredito válido.
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch("não sei");
+      return makeOkDispatch(
+        ["```typescript", "// file: src/lib/saudar.ts", "export function saudar(nome: string): string {", "  return `Olá, ${nome}!`;", "}", "```"].join("\n")
+      );
+    });
+
+    const startRes = await approveSpecAndStart(session.id, spec);
+    if (!startRes.ok) throw new Error("approveSpecAndStart falhou");
+    await claimJob(startRes.jobId!, "w-eval-1");
+    await executeClaimedJob(startRes.jobId!, "w-eval-1");
+
+    const node = await prisma.taskNode.findFirstOrThrow({ where: { sessionId: session.id, role: { not: "scaffold" } } });
+    const result = JSON.parse(node.result || "{}");
+    expect(result.auditMethod).toBe("heuristic_fallback");
+    // 2 quedas grátis + a 3ª conta: o laço da fila não pode girar para sempre.
+    expect(result.evaluatorOutageStreak).toBeGreaterThanOrEqual(3);
+    expect(node.attempts).toBe(result.evaluatorOutageStreak - 2);
+  });
+
   it("Item 1 (Fila nunca para): gateway fora do ar → sessão vai para PAUSADA com 0 tentativas gastas; gateway volta → supervisor emite LLM_VOLTOU, retoma EXECUCAO e conclui em ENTREGUE", async () => {
     const projectDir = makeTempProjectDir();
     const project = await prisma.project.create({
