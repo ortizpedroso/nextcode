@@ -42,4 +42,12 @@ Você implementa exclusivamente os arquivos autorizados em `arquivos_permitidos`
    - Proteja `await request.json()` com `try/catch` retornando HTTP `400` em caso de JSON malformado;
    - Valide todos os campos obrigatórios e opcionais especificados nos `REQ-xxx`;
    - Retorne exatamente os códigos HTTP (`200`, `201`, `204`, `400`, `404`) e chaves JSON (`{ erro: string }`) definidos no Microbrief.
-4. **Relatório no template do Microbrief (P12):** Preencha `status_execucao: CONCLUIDO` e cada `REQ-xxx` na seção `## 4` com `arquivo:linha` exatos. Os campos de `medido_pelo_harness` são preenchidos pelo harness, nunca pelo modelo.
+4. **Relatório no template do Microbrief (P12):** Depois dos blocos de código, escreva UM bloco `relatorio_executor` listando cada `REQ-xxx` do seu Microbrief com linhas reais do arquivo entregue:
+   ```yaml relatorio_executor
+   reqs:
+     - id: REQ-001
+       status: atendido | parcial | nao_atendido
+       arquivo_linha: "src/app/api/x/route.ts:10-25"
+       como: "uma frase"
+   ```
+   Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.

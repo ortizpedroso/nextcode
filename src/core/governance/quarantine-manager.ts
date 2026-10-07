@@ -166,6 +166,7 @@ export class QuarantineManager {
   private static readonly NON_FILE_LANGS = new Set([
     "bash", "sh", "shell", "zsh", "powershell", "ps1", "cmd", "bat",
     "console", "text", "plaintext", "txt", "log", "output", "diff", "",
+    "yaml", "yml", "relatorio_executor",
   ]);
 
   /**

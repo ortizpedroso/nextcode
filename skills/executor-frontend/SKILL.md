@@ -44,4 +44,12 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
    - Proibido usar emojis como ícones funcionais.
 4. **Estilo: Tailwind CSS v4 já configurado pela base do projeto** (`postcss.config.mjs`, `globals.css` com `@import "tailwindcss";` importado no layout raiz). Use classes utilitárias do Tailwind; não instale outro framework de CSS nem crie `tailwind.config.js` (o v4 não precisa).
 5. **Performance (`react-best-practices`):** Evite waterfalls de fetch (`Promise.all` para buscas independentes) e nunca guarde estado de requisição em variável mutável de módulo.
-6. **Relatório no template do Microbrief (P12):** Preencha cada `REQ-xxx` na seção `## 4` com `arquivo:linha` verificados.
+6. **Relatório no template do Microbrief (P12):** Depois dos blocos de código, escreva UM bloco `relatorio_executor` listando cada `REQ-xxx` do seu Microbrief com linhas reais do arquivo entregue:
+   ```yaml relatorio_executor
+   reqs:
+     - id: REQ-001
+       status: atendido | parcial | nao_atendido
+       arquivo_linha: "src/app/x/page.tsx:10-25"
+       como: "uma frase"
+   ```
+   Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.

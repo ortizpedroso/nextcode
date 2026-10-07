@@ -946,4 +946,152 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     expect(t10Check.buildVerified).toBe(true);
     expect(t10Check.gaps).toEqual([]);
   });
+
+  it("Item 5 (Relatório do Executor): erro só no relatório pede só o relatório de novo (até 2 vezes) SEM gastar tentativa, grava executorReport validado no resultado e registra EXECUTOR_REPORT_INVALID na trilha", async () => {
+    const projectDir = makeTempProjectDir();
+    const project = await prisma.project.create({
+      data: { name: "Projeto Relatório Executor", path: projectDir },
+    });
+    createdProjectIds.push(project.id);
+
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Utilitario de Saudacao com Relatorio",
+      status: "aprovada",
+      data: "2026-10-07",
+      stack: ["TypeScript"],
+      modulos: [
+        {
+          id: "mod-saudacao",
+          nome: "Saudacao",
+          resumo: "Utilitário de saudação",
+          arquivos: ["src/lib/saudar.ts"],
+        },
+      ],
+      entidades: [],
+      arquivosAfetados: ["src/lib/saudar.ts"],
+      objetivo: "Criar função saudar(nome: string): string.",
+      requisitosIds: ["REQ-001"],
+      requisitos: [
+        {
+          id: "REQ-001",
+          titulo: "Função saudar em src/lib/saudar.ts",
+          criterio: "O arquivo src/lib/saudar.ts deve exportar saudar(nome: string): string.",
+        },
+      ],
+    });
+
+    const session = await prisma.session.create({
+      data: {
+        title: "Sessão Reenvio Relatório Executor",
+        projectId: project.id,
+        canonicalSpec: spec,
+      },
+    });
+    createdSessionIds.push(session.id);
+
+    let reportRetryCount = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const allContent = opts.messages.map((m) => m.content).join("\n");
+      if (allContent.includes("Auditor Cego")) {
+        return makeOkDispatch(
+          JSON.stringify({
+            implemented: true,
+            missingRequirements: [],
+            justification: "REQ-001 implementado.",
+            reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/saudar.ts:1-3" }],
+          })
+        );
+      }
+
+      if (allContent.includes("REENVIO SÓ DO RELATÓRIO")) {
+        reportRetryCount += 1;
+        // No 1º reenvio ainda manda REQ inventado; no 2º reenvio manda o relatório válido!
+        if (reportRetryCount === 1) {
+          return makeOkDispatch(
+            [
+              "```yaml relatorio_executor",
+              "reqs:",
+              "  - id: REQ-001",
+              "    status: atendido",
+              '    arquivo_linha: "src/lib/saudar.ts:1-3"',
+              '    como: "Função saudar exportada"',
+              "  - id: REQ-999",
+              "    status: atendido",
+              '    arquivo_linha: "src/lib/saudar.ts:1-3"',
+              '    como: "REQ inventado"',
+              "```",
+            ].join("\n")
+          );
+        }
+        return makeOkDispatch(
+          [
+            "```yaml relatorio_executor",
+            "reqs:",
+            "  - id: REQ-001",
+            "    status: atendido",
+            '    arquivo_linha: "src/lib/saudar.ts:1-3"',
+            '    como: "Função saudar implementada e tipada em src/lib/saudar.ts"',
+            "```",
+          ].join("\n")
+        );
+      }
+
+      // 1ª chamada do executor: código válido (3 linhas), mas relatório cita linha 99 inexistente
+      return makeOkDispatch(
+        [
+          "```typescript",
+          "// file: src/lib/saudar.ts",
+          "export function saudar(nome: string): string {",
+          "  return `Olá, ${nome}!`;",
+          "}",
+          "```",
+          "",
+          "```yaml relatorio_executor",
+          "reqs:",
+          "  - id: REQ-001",
+          "    status: atendido",
+          '    arquivo_linha: "src/lib/saudar.ts:1-99"',
+          '    como: "Função saudar implementada"',
+          "```",
+        ].join("\n")
+      );
+    });
+
+    const startRes = await approveSpecAndStart(session.id, spec);
+    expect(startRes.ok).toBe(true);
+    if (!startRes.ok) throw new Error("approveSpecAndStart falhou");
+
+    await claimJob(startRes.jobId!, "w-report-retry");
+    await executeClaimedJob(startRes.jobId!, "w-report-retry");
+
+    expect(reportRetryCount).toBe(2);
+
+    const codeNode = await prisma.taskNode.findFirstOrThrow({
+      where: { sessionId: session.id, role: { not: "scaffold" } },
+    });
+    expect(codeNode.status).toBe("completed");
+    // Reenvio só do relatório NÃO gasta tentativa do executor
+    expect(codeNode.attempts).toBe(0);
+
+    const parsedResult = JSON.parse(codeNode.result || "{}");
+    expect(parsedResult.executorReport).toBeTruthy();
+    expect(parsedResult.executorReport.documento).toBe("relatorio_executor");
+    expect(parsedResult.executorReport.medidoPeloHarness.compilou).toBe(true);
+    expect(parsedResult.executorReport.registroCumprimento).toEqual([
+      {
+        reqId: "REQ-001",
+        statusDeclarado: "atendido",
+        arquivoLinha: "src/lib/saudar.ts:1-3",
+        comoFoiImplementado: "Função saudar implementada e tipada em src/lib/saudar.ts",
+      },
+    ]);
+
+    const invalidLogs = await prisma.telemetryLog.findMany({
+      where: { sessionId: session.id, action: "EXECUTOR_REPORT_INVALID" },
+    });
+    expect(invalidLogs.length).toBe(2);
+    expect(invalidLogs[0].details).toContain("possui 4 linha(s)");
+    expect(invalidLogs[1].details).toContain("REQ-999");
+  });
 });
+

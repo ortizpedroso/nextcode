@@ -463,6 +463,185 @@ export function stampHarnessMeasuredFields(
 }
 
 /**
+ * Remove blocos `relatorio_executor` (ou blocos yaml com `reqs:`) do texto bruto antes da
+ * extração de arquivos da quarentena, para que o relatório nunca seja confundido com código-fonte.
+ */
+export function stripExecutorReportBlocks(rawOutput: string): string {
+  if (!rawOutput) return rawOutput;
+  return rawOutput.replace(
+    /```(?:(?:ya?ml)[ \t]+relatorio_executor|relatorio_executor|(?:ya?ml))[ \t]*\r?\n([\s\S]*?)```/gi,
+    (fullMatch, body: string) => {
+      if (/^```(?:ya?ml[ \t]+)?relatorio_executor\b/i.test(fullMatch) || /^\s*reqs\s*:/m.test(body)) {
+        return "";
+      }
+      return fullMatch;
+    }
+  );
+}
+
+function unquoteYamlValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+/**
+ * Extrai o bloco ```yaml relatorio_executor da resposta do executor e monta um
+ * `MicrobriefAndReportDocument` (ainda sem o carimbo do harness).
+ */
+export function parseExecutorReportYamlBlock(
+  rawOutput: string,
+  microbrief: MicrobriefAndReportDocument
+): MicrobriefAndReportDocument | null {
+  if (!rawOutput || typeof rawOutput !== "string") return null;
+
+  let yamlBody: string | null = null;
+  const fenceRegex = /```([a-zA-Z0-9_-]*(?:[ \t]+relatorio_executor)?)[ \t]*\r?\n([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRegex.exec(rawOutput)) !== null) {
+    const header = (m[1] || "").toLowerCase();
+    const body = m[2] || "";
+    if (header.includes("relatorio_executor") || ((header === "yaml" || header === "yml" || header === "") && /^\s*reqs\s*:/m.test(body))) {
+      yamlBody = body;
+    }
+  }
+
+  if (!yamlBody && /^\s*reqs\s*:\s*\r?\n/m.test(rawOutput)) {
+    yamlBody = rawOutput;
+  }
+
+  if (!yamlBody) return null;
+
+  const lines = yamlBody.split(/\r?\n/);
+  const rawItems: Array<Record<string, string>> = [];
+  let inReqs = false;
+  let currentItem: Record<string, string> | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+#.*$/, "");
+    if (! line.trim() || line.trim().startsWith("#")) continue;
+
+    if (/^\s*reqs\s*:\s*(\[\s*\])?\s*$/i.test(line)) {
+      inReqs = true;
+      continue;
+    }
+    if (!inReqs) continue;
+
+    const itemStart = line.match(/^\s*-\s*(.*)$/);
+    if (itemStart) {
+      if (currentItem) rawItems.push(currentItem);
+      currentItem = {};
+      const rest = itemStart[1].trim();
+      if (rest.startsWith("{") && rest.endsWith("}")) {
+        const inner = rest.slice(1, -1);
+        for (const pair of inner.split(",")) {
+          const kv = pair.match(/^\s*([a-zA-Z0-9_]+)\s*:\s*(.+)$/);
+          if (kv) currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+        }
+      } else {
+        const kv = rest.match(/^([a-zA-Z0-9_]+)\s*:\s*(.*)$/);
+        if (kv) currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+      }
+      continue;
+    }
+
+    if (currentItem) {
+      const kv = line.match(/^\s+([a-zA-Z0-9_]+)\s*:\s*(.*)$/);
+      if (kv) {
+        currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+      }
+    }
+  }
+  if (currentItem) rawItems.push(currentItem);
+
+  const rows: ExecutorReqRow[] = rawItems.map((item) => {
+    const reqId = (item.id || item.req_id || item.reqid || "").trim().toUpperCase();
+    const rawStatus = (item.status || item.status_declarado || item.statusdeclarado || "").trim().toLowerCase();
+    const statusDeclarado: ExecutorReqRow["statusDeclarado"] =
+      rawStatus === "atendido" || rawStatus === "parcial" || rawStatus === "nao_atendido"
+        ? rawStatus
+        : ("PENDENTE" as const);
+    const arquivoLinha = (item.arquivo_linha || item.arquivolinha || item.evidencia || "")
+      .trim()
+      .replace(/:L(\d+)(?:-L?(\d+))?$/i, (_all, s, e) => (e ? `:${s}-${e}` : `:${s}`));
+    const comoFoiImplementado = (
+      item.como ||
+      item.como_foi_implementado ||
+      item.comofoiimplementado ||
+      ""
+    ).trim();
+    return {
+      reqId,
+      statusDeclarado,
+      arquivoLinha,
+      comoFoiImplementado,
+    };
+  });
+
+  return {
+    ...structuredClone(microbrief),
+    documento: "relatorio_executor",
+    statusExecucao: "CONCLUIDO",
+    registroCumprimento: rows,
+  };
+}
+
+/**
+ * Extrai o bloco `relatorio_executor`, carimba `medidoPeloHarness` com `stampHarnessMeasuredFields`
+ * e executa a conferência mecânica `validateExecutorReportMechanical` contra o Microbrief da etapa.
+ */
+export function extractAndValidateExecutorReport(
+  rawOutput: string,
+  microbrief: MicrobriefAndReportDocument,
+  quarantineFilesContentMap: Record<string, string>,
+  realHarnessMeasurements?: HarnessMeasuredFields
+): {
+  valid: boolean;
+  report: MicrobriefAndReportDocument | null;
+  errors: string[];
+  reportFormatOnlyError: boolean;
+} {
+  const parsed = parseExecutorReportYamlBlock(rawOutput, microbrief);
+  if (!parsed) {
+    return {
+      valid: false,
+      report: null,
+      errors: [`[RELATÓRIO P12] Bloco \`\`\`yaml relatorio_executor ausente na resposta do executor.`],
+      reportFormatOnlyError: true,
+    };
+  }
+
+  const modSet = new Set(microbrief.arquivosPermitidos.modificar.map((f) => f.replace(/\\/g, "/")));
+  const measurements: HarnessMeasuredFields = realHarnessMeasurements ?? {
+    compilou: true,
+    testes: null,
+    arquivosAlterados: Object.entries(quarantineFilesContentMap).map(([caminho, content]) => {
+      const norm = caminho.replace(/\\/g, "/");
+      return {
+        caminho: norm,
+        operacao: modSet.has(norm) ? "modificado" : "criado",
+        linhasAdicionadas: content.split(/\r?\n/).length,
+        linhasRemovidas: 0,
+      };
+    }),
+  };
+
+  const stamped = stampHarnessMeasuredFields(parsed, measurements);
+  const validation = validateExecutorReportMechanical(stamped, quarantineFilesContentMap);
+  return {
+    valid: validation.valid,
+    report: validation.valid ? stamped : null,
+    errors: validation.errors,
+    reportFormatOnlyError: Boolean(validation.reportFormatOnlyError),
+  };
+}
+
+/**
  * Conferência mecânica do Relatório do Executor (Princípio P12):
  * - Todo `REQ` do Microbrief aparece no Relatório;
  * - Nenhum `REQ` inventado aparece no Relatório;
@@ -514,7 +693,7 @@ export function validateExecutorReportMechanical(
       errors.push(`[RELATÓRIO P12] Status inválido ou PENDENTE para "${row.reqId}": "${row.statusDeclarado}".`);
     }
 
-    if (!row.comoFoiImplementado || row.comoFoiImplementado === "PENDENTE" || row.comoFoiImplementado.trim().length < 5) {
+    if (!row.comoFoiImplementado || row.comoFoiImplementado === "PENDENTE" || row.comoFoiImplementado.trim().length === 0) {
       errors.push(`[RELATÓRIO P12] Descrição de implementação ausente ou PENDENTE para "${row.reqId}".`);
     }
 

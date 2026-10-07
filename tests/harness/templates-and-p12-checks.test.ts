@@ -6,6 +6,8 @@ import {
   validateMicrobriefMechanical,
   stampHarnessMeasuredFields,
   validateExecutorReportMechanical,
+  extractAndValidateExecutorReport,
+  stripExecutorReportBlocks,
   classifyLens2Divergence,
   validateEvaluatorVerdictMechanical,
   type EvaluatorVerdictDocument,
@@ -244,4 +246,125 @@ describe("Templates Canônicos (P1) e Conferências Mecânicas (P12 / T2 / T3 / 
     expect(vCheck.valid).toBe(false);
     expect(vCheck.enforcedDecision).toBe("REPROVADO");
   });
+
+  it("extrai o bloco ```yaml relatorio_executor, carimba medidoPeloHarness e valida: relatório válido, REQ faltando, REQ inventado, arquivo fora do escopo e linha inexistente", () => {
+    const { microbriefs } = buildP1ProjectArtifacts();
+    const mb2 = structuredClone(microbriefs[1]); // REQs: REQ-002, REQ-003; arquivo: src/app/api/tarefas/route.ts
+    const code12Lines = Array.from({ length: 12 }, (_, i) => `export const l${i + 1} = ${i + 1};`).join("\n");
+    const quarantineMap = { "src/app/api/tarefas/route.ts": code12Lines };
+
+    // 1. Relatório válido
+    const validRaw = [
+      "```typescript",
+      "// file: src/app/api/tarefas/route.ts",
+      code12Lines,
+      "```",
+      "",
+      "```yaml relatorio_executor",
+      "reqs:",
+      "  - id: REQ-002",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6"',
+      '    como: "Handler GET retorna array de tarefas com status 200"',
+      "  - id: REQ-003",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+      '    como: "Handler POST valida titulo e cria tarefa com status 201"',
+      "```",
+    ].join("\n");
+
+    const stripped = stripExecutorReportBlocks(validRaw);
+    expect(stripped).not.toContain("relatorio_executor");
+    expect(stripped).toContain("// file: src/app/api/tarefas/route.ts");
+
+    const okRes = extractAndValidateExecutorReport(validRaw, mb2, quarantineMap);
+    expect(okRes.valid).toBe(true);
+    expect(okRes.errors).toEqual([]);
+    expect(okRes.report).not.toBeNull();
+    expect(okRes.report?.documento).toBe("relatorio_executor");
+    expect(okRes.report?.medidoPeloHarness.compilou).toBe(true);
+    expect(okRes.report?.medidoPeloHarness.arquivosAlterados).toEqual([
+      {
+        caminho: "src/app/api/tarefas/route.ts",
+        operacao: "criado",
+        linhasAdicionadas: 12,
+        linhasRemovidas: 0,
+      },
+    ]);
+
+    // 2. REQ faltando (falta REQ-003)
+    const missingReqRaw = [
+      "```yaml relatorio_executor",
+      "reqs:",
+      "  - id: REQ-002",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6"',
+      '    como: "GET implementado"',
+      "```",
+    ].join("\n");
+    const missingRes = extractAndValidateExecutorReport(missingReqRaw, mb2, quarantineMap);
+    expect(missingRes.valid).toBe(false);
+    expect(missingRes.report).toBeNull();
+    expect(missingRes.reportFormatOnlyError).toBe(true);
+    expect(missingRes.errors.some((e) => e.includes('O requisito obrigatório "REQ-003"') && e.includes("ausente"))).toBe(true);
+
+    // 3. REQ inventado (REQ-999)
+    const inventedReqRaw = [
+      "```yaml relatorio_executor",
+      "reqs:",
+      "  - id: REQ-002",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6"',
+      '    como: "GET implementado"',
+      "  - id: REQ-003",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+      '    como: "POST implementado"',
+      "  - id: REQ-999",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:1-2"',
+      '    como: "REQ inventado"',
+      "```",
+    ].join("\n");
+    const inventedRes = extractAndValidateExecutorReport(inventedReqRaw, mb2, quarantineMap);
+    expect(inventedRes.valid).toBe(false);
+    expect(inventedRes.errors.some((e) => e.includes('Requisito inventado "REQ-999"'))).toBe(true);
+
+    // 4. Arquivo fora do escopo
+    const outOfScopeRaw = [
+      "```yaml relatorio_executor",
+      "reqs:",
+      "  - id: REQ-002",
+      "    status: atendido",
+      '    arquivo_linha: "src/lib/tarefas-store.ts:1-5"',
+      '    como: "Citou arquivo de outra etapa"',
+      "  - id: REQ-003",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+      '    como: "POST implementado"',
+      "```",
+    ].join("\n");
+    const scopeRes = extractAndValidateExecutorReport(outOfScopeRaw, mb2, quarantineMap);
+    expect(scopeRes.valid).toBe(false);
+    expect(scopeRes.errors.some((e) => e.includes("não pertence ao escopo permitido"))).toBe(true);
+
+    // 5. Linha inexistente (cita 7-50 num arquivo de 12 linhas)
+    const badLineRaw = [
+      "```yaml relatorio_executor",
+      "reqs:",
+      "  - id: REQ-002",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6"',
+      '    como: "GET implementado"',
+      "  - id: REQ-003",
+      "    status: atendido",
+      '    arquivo_linha: "src/app/api/tarefas/route.ts:7-50"',
+      '    como: "POST implementado"',
+      "```",
+    ].join("\n");
+    const badLineRes = extractAndValidateExecutorReport(badLineRaw, mb2, quarantineMap);
+    expect(badLineRes.valid).toBe(false);
+    expect(badLineRes.errors.some((e) => e.includes("cita linhas 7-50") && e.includes("possui 12 linha(s)"))).toBe(true);
+  });
 });
+

@@ -18,6 +18,8 @@ import {
 import {
   inferClusterFromFilePath,
   renderMicrobriefMarkdown,
+  stripExecutorReportBlocks,
+  extractAndValidateExecutorReport,
   type MicrobriefAndReportDocument,
 } from "@/core/templates/artifact-templates";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
@@ -816,7 +818,16 @@ DIRETRIZES DE EXECUÇÃO:
 // file: caminho/relativo/do/arquivo.ts
 <código completo aqui>
 \`\`\`
-3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.${executorSkillInstructions}`;
+3. Depois dos blocos de código, escreva UM bloco \`relatorio_executor\` listando cada requisito (REQ) desta etapa com o arquivo do escopo e as linhas reais (1-indexadas):
+\`\`\`yaml relatorio_executor
+reqs:
+  - id: REQ-001
+    status: atendido
+    arquivo_linha: "src/lib/x.ts:10-25"
+    como: "uma frase"
+\`\`\`
+Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou\`, \`testes\`, \`arquivos_alterados\`) NÃO vêm do modelo: o harness carimba com \`stampHarnessMeasuredFields\`.
+4. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e o bloco \`relatorio_executor\`.${executorSkillInstructions}`;
 
   const dispatchMessages: DispatchMessage[] = [
     { role: "system", content: autonomousWorkerPrompt },
@@ -1029,7 +1040,12 @@ DIRETRIZES DE EXECUÇÃO:
     const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
     const targetProjectRoot = taskDb.session.project?.path || process.cwd();
 
-    const codeContentMap = qm.extractAndWriteCodeBlocks(taskDb.id, stepResultText, filesScopeArr, { strictPaths: true });
+    const codeContentMap = qm.extractAndWriteCodeBlocks(
+      taskDb.id,
+      stripExecutorReportBlocks(stepResultText),
+      filesScopeArr,
+      { strictPaths: true }
+    );
 
     const type1Res = DualLensAuditor.validateType1(
       codeContentMap,
@@ -1038,6 +1054,119 @@ DIRETRIZES DE EXECUÇÃO:
       filesScopeArr,
       qm.extractionIssues
     );
+
+    let validatedExecutorReport: MicrobriefAndReportDocument | null = null;
+    if (type1Res.passed && nodeMicrobrief && nodeMicrobrief.reqsCobertos.length > 0) {
+      let reportCheck = extractAndValidateExecutorReport(stepResultText, nodeMicrobrief, codeContentMap);
+      const maxReportRetries = policy.tentativas.maxReenviosSoRelatorio ?? 2;
+      let reportRetriesUsed = 0;
+
+      while (!reportCheck.valid && reportCheck.reportFormatOnlyError && reportRetriesUsed < maxReportRetries) {
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "EXECUTOR_REPORT_INVALID",
+          details: {
+            nodeId: taskDb.id,
+            attempt: newAttempts,
+            retryIndex: reportRetriesUsed,
+            reason: reportCheck.errors.join(" | "),
+            errors: reportCheck.errors,
+          },
+        });
+        reportRetriesUsed += 1;
+
+        const fileLineSummary = Object.entries(codeContentMap)
+          .map(([f, c]) => {
+            const total = c.split(/\r?\n/).length;
+            return `- ${f}: ${total} linha(s) (intervalo válido: 1-${total})`;
+          })
+          .join("\n");
+        const retryMessages: DispatchMessage[] = [
+          {
+            role: "system",
+            content:
+              "O código desta etapa já compilou e passou na validação sintática. NÃO reescreva o código. " +
+              "Responda APENAS com o bloco ```yaml relatorio_executor corrigindo os apontamentos abaixo.",
+          },
+          {
+            role: "user",
+            content: [
+              `[REENVIO SÓ DO RELATÓRIO #${reportRetriesUsed}/${maxReportRetries} — NÃO REFAÇA O CÓDIGO]`,
+              `Requisitos obrigatórios desta etapa: ${nodeMicrobrief.reqsCobertos.join(", ")}`,
+              `Arquivos entregues na quarentena e total de linhas reais:\n${fileLineSummary}`,
+              `Motivo da invalidação do relatório anterior:\n${reportCheck.errors.map((e) => `- ${e}`).join("\n")}`,
+              "",
+              "Retorne SOMENTE o bloco abaixo preenchido com linhas existentes nos arquivos:",
+              "```yaml relatorio_executor",
+              "reqs:",
+              ...nodeMicrobrief.reqsCobertos.flatMap((r) => [
+                `  - id: ${r}`,
+                "    status: atendido",
+                `    arquivo_linha: "${filesScopeArr[0] || "src/index.ts"}:1-1"`,
+                '    como: "uma frase"',
+              ]),
+              "```",
+            ].join("\n"),
+          },
+        ];
+
+        try {
+          const retrySignal = AbortSignal.timeout(stepTimeoutMs);
+          const retryRes = await smartRouter.dispatchWithFallback({
+            messages: retryMessages,
+            tier: executorTier === "rapido" ? "fast" : "heavy",
+            maxTokens: 2048,
+            geminiKey: readSecret(setting?.geminiKey),
+            groqKey: readSecret((setting as any)?.groqKey),
+            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+            deepseekKey: readSecret((setting as any)?.deepseekKey),
+            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+            omniRouteKey: readSecret(setting?.omniRouteKey),
+            stream: false,
+            signal: retrySignal,
+          });
+          if (retryRes && retryRes.providerUsed !== "none" && retryRes.tierTag !== "exhausted") {
+            const retryJson = await retryRes.response.json().catch(() => ({}));
+            await recordLlmCost({
+              sessionId: taskDb.sessionId,
+              papel: "executor",
+              provider: String(retryRes.providerUsed),
+              model: String(retryRes.modelUsed || ""),
+              usage: retryJson.usage,
+            });
+            const retryText =
+              retryJson.choices?.[0]?.message?.content ||
+              retryJson.candidates?.[0]?.content?.parts?.[0]?.text ||
+              "";
+            if (retryText) {
+              stepResultText = `${stepResultText}\n\n${retryText}`;
+              reportCheck = extractAndValidateExecutorReport(retryText, nodeMicrobrief, codeContentMap);
+            }
+          }
+        } catch {
+          /* se o reenvio do relatório falhar por rede/timeout, segue sem relatório válido */
+        }
+      }
+
+      if (reportCheck.valid && reportCheck.report) {
+        validatedExecutorReport = reportCheck.report;
+      } else {
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "EXECUTOR_REPORT_INVALID",
+          details: {
+            nodeId: taskDb.id,
+            attempt: newAttempts,
+            retryIndex: reportRetriesUsed,
+            persistedInvalid: true,
+            reason: reportCheck.errors.join(" | "),
+            errors: reportCheck.errors,
+          },
+        });
+        validatedExecutorReport = null;
+      }
+    }
+
     const type2Res = await DualLensAuditor.validateType2(
       type1Res,
       // O avaliador também vê o código real das dependências (só leitura), para conferir chamadas,
@@ -1172,6 +1301,7 @@ DIRETRIZES DE EXECUÇÃO:
       executorSkillUsed: executorSkillName,
       evaluatorSkillUsed,
       output: stepResultText,
+      executorReport: validatedExecutorReport,
       auditVerdict: type2Res.verdict,
       rawVerdict: type2Res.rawVerdict,
       ressalvas: type2Res.ressalvas,
