@@ -9,7 +9,12 @@
 
 import { BriefBuilder } from "../brief/brief-builder";
 import { loadRoleSkill, buildSkillSystemPrompt } from "../skills/skill-runtime";
-import { classifyLens2Divergence, type Lens1ReqStatus, type Lens2DivergenceKind } from "../templates/artifact-templates";
+import {
+  classifyLens2Divergence,
+  type Lens1ReqStatus,
+  type Lens2DivergenceKind,
+  type MicrobriefAndReportDocument,
+} from "../templates/artifact-templates";
 import type { ClusterKind } from "../config/orchestration-policy";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
@@ -35,12 +40,20 @@ export interface ReqLens2DivergenceItem {
   detalhe: string;
 }
 
+export interface ReqLens2ComparisonItem {
+  reqId: string;
+  statusLente1: Lens1ReqStatus;
+  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido" | "nao_declarado";
+  tipoDivergencia: Lens2DivergenceKind;
+}
+
 export interface ValidationType2Result {
   verdict: "APPROVED" | "REJECTED";
   rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
   ressalvas?: string[];
   reqVerdicts?: ReqBlindVerdictItem[];
   reqDivergences?: ReqLens2DivergenceItem[];
+  lens2ByReq?: ReqLens2ComparisonItem[];
   skillUsed?: string;
   lens1BlindReport: string;
   lens2CrossVerification: string;
@@ -72,6 +85,7 @@ export interface ValidateType2Options {
   cluster?: ClusterKind;
   expectedReqs?: string[];
   isPublicPage?: boolean;
+  executorReport?: MicrobriefAndReportDocument | null;
 }
 
 /** Função de despacho LLM injetada pelo chamador (desacopla o auditor do SmartRouter/provedores). */
@@ -649,30 +663,79 @@ export class DualLensAuditor {
       if (blindOutcome) {
         const { verdict: blindVerdict, skillUsed } = blindOutcome;
         const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport);
-        const verdict: "APPROVED" | "REJECTED" = blindVerdict.implemented ? "APPROVED" : "REJECTED";
 
-        // Lente 2: verificação cruzada por REQ e por citação arquivo:linha contra o relatório do executor
-        const executorClaims = DualLensAuditor.parseExecutorReqClaims(workerExecutionReport);
+        // Lente 2: compara o veredito da Lente Cega por REQ com o executorReport validado.
+        // Quando há relatório validado (ou quando a etapa usa REQs), NÃO usa a heurística de texto livre.
+        // Sem relatório válido: marca "nao_declarado" e NÃO acusa divergência por isso.
+        const hasExplicitExecutorReportOption = Boolean(options && "executorReport" in options);
+        const validatedReport = options?.executorReport ?? null;
+        const executorClaims = new Map<
+          string,
+          { statusDeclarado: "atendido" | "parcial" | "nao_atendido"; evidenciaCitada: string }
+        >();
+        if (validatedReport && Array.isArray(validatedReport.registroCumprimento)) {
+          for (const row of validatedReport.registroCumprimento) {
+            if (
+              row.reqId &&
+              (row.statusDeclarado === "atendido" ||
+                row.statusDeclarado === "parcial" ||
+                row.statusDeclarado === "nao_atendido")
+            ) {
+              executorClaims.set(row.reqId.toUpperCase(), {
+                statusDeclarado: row.statusDeclarado,
+                evidenciaCitada: row.arquivoLinha || "",
+              });
+            }
+          }
+        } else if (!hasExplicitExecutorReportOption) {
+          for (const [k, v] of DualLensAuditor.parseExecutorReqClaims(workerExecutionReport)) {
+            executorClaims.set(k, v);
+          }
+        }
+
         const reqDivergences: ReqLens2DivergenceItem[] = [];
+        const lens2ByReq: ReqLens2ComparisonItem[] = [];
 
         if (blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0) {
           for (const rv of blindVerdict.reqVerdicts) {
             const claim = executorClaims.get(rv.id);
-            const declaredStatus = claim ? claim.statusDeclarado : claimedSuccess ? "atendido" : "nao_atendido";
+            if (!claim) {
+              const div = classifyLens2Divergence(rv.status, "nao_declarado");
+              lens2ByReq.push({
+                reqId: rv.id,
+                statusLente1: rv.status,
+                declaradoPeloExecutor: "nao_declarado",
+                tipoDivergencia: div.tipoDivergencia,
+              });
+              continue;
+            }
+            const declaredStatus = claim.statusDeclarado;
             let citedLineExists = true;
-            if (claim?.evidenciaCitada) {
-              const [citedFile, citedLineStr] = claim.evidenciaCitada.split(":");
-              const normCited = normalizeScopePath(citedFile);
-              const matchedFileContent = Object.entries(codeContentMap).find(
-                ([k]) => normalizeScopePath(k) === normCited
-              )?.[1];
-              const lineNum = Number(citedLineStr);
-              if (!matchedFileContent || (Number.isFinite(lineNum) && lineNum > matchedFileContent.split(/\r?\n/).length)) {
+            if (claim.evidenciaCitada) {
+              const lineMatch = claim.evidenciaCitada.trim().match(/^([^:\s]+):(\d+)(?:-(\d+))?$/);
+              if (!lineMatch) {
                 citedLineExists = false;
+              } else {
+                const normCited = normalizeScopePath(lineMatch[1]);
+                const matchedFileContent = Object.entries(codeContentMap).find(
+                  ([k]) => normalizeScopePath(k) === normCited
+                )?.[1];
+                const startLine = Number(lineMatch[2]);
+                const endLine = lineMatch[3] ? Number(lineMatch[3]) : startLine;
+                const totalLines = matchedFileContent ? matchedFileContent.split(/\r?\n/).length : 0;
+                if (!matchedFileContent || startLine < 1 || endLine < startLine || endLine > totalLines) {
+                  citedLineExists = false;
+                }
               }
             }
             const baseDiv = classifyLens2Divergence(rv.status, declaredStatus);
             const divType: Lens2DivergenceKind = !citedLineExists ? "alucinacao_grave" : baseDiv.tipoDivergencia;
+            lens2ByReq.push({
+              reqId: rv.id,
+              statusLente1: rv.status,
+              declaradoPeloExecutor: declaredStatus,
+              tipoDivergencia: divType,
+            });
             if (
               divType === "alucinacao_grave" ||
               divType === "divergencia_otimista" ||
@@ -684,14 +747,27 @@ export class DualLensAuditor {
                 declaradoPeloExecutor: declaredStatus,
                 tipoDivergencia: divType,
                 detalhe: !citedLineExists
-                  ? `Executor citou evidência inexistente (${claim?.evidenciaCitada}) para ${rv.id}.`
+                  ? `Executor citou evidência inexistente (${claim.evidenciaCitada}) para ${rv.id}.`
                   : `Executor declarou ${rv.id} como "${declaredStatus}", mas a Lente 1 Cega constatou "${rv.status}" (${rv.evidencia}).`,
               });
             }
           }
         }
 
-        const divergence = claimedSuccess !== blindVerdict.implemented || reqDivergences.length > 0;
+        const hasCriticalDivergence = reqDivergences.some(
+          (d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista"
+        );
+        const verdict: "APPROVED" | "REJECTED" =
+          blindVerdict.implemented && !hasCriticalDivergence ? "APPROVED" : "REJECTED";
+        const effectiveRawVerdict = verdict === "REJECTED" ? "REPROVADO" : blindVerdict.rawVerdict;
+
+        const hasReqContext = Boolean(
+          (blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0) ||
+            hasExplicitExecutorReportOption
+        );
+        const divergence = hasReqContext
+          ? reqDivergences.length > 0
+          : claimedSuccess !== blindVerdict.implemented || reqDivergences.length > 0;
 
         const reqsSummaryBlock =
           blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0
@@ -700,7 +776,7 @@ export class DualLensAuditor {
 
         const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (LLM - ${skillUsed})]
 - Arquivos auditados: ${filesInScope.join(", ")}
-- Veredito independente: ${blindVerdict.implemented ? "IMPLEMENTADO" : "NÃO IMPLEMENTADO"} (${blindVerdict.rawVerdict || verdict})
+- Veredito independente: ${blindVerdict.implemented ? "IMPLEMENTADO" : "NÃO IMPLEMENTADO"} (${effectiveRawVerdict || verdict})
 - Justificativa: ${blindVerdict.justification}${reqsSummaryBlock}${
           blindVerdict.missingRequirements.length
             ? `\n- Requisitos ausentes: ${blindVerdict.missingRequirements.join("; ")}`
@@ -715,28 +791,40 @@ export class DualLensAuditor {
           reqDivergences.length > 0
             ? `\n- Divergências por REQ: ${reqDivergences.map((d) => `${d.reqId} [${d.tipoDivergencia}]: ${d.detalhe}`).join(" | ")}`
             : "";
+        const lens2DeclaredBlock =
+          lens2ByReq.length > 0
+            ? `\n- Declaração do Executor por REQ: ${lens2ByReq.map((r) => `${r.reqId}=${r.declaradoPeloExecutor}`).join(", ")}`
+            : "";
 
         const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
-- Relatório do Worker alega conclusão: ${claimedSuccess ? "SIM" : "NÃO"}
+- Relatório do Worker alega conclusão: ${hasReqContext ? (executorClaims.size > 0 ? "SIM (relatório validado)" : "nao_declarado") : claimedSuccess ? "SIM" : "NÃO"}${lens2DeclaredBlock}
 - Veredito independente da Lente Cega: ${blindVerdict.implemented ? "SIM" : "NÃO"}
 - Divergência detectada: ${divergence ? "SIM — alegação do worker não confere com a leitura real do código" : "NÃO"}${reqDivBlock}`;
 
+        const criticalDivDetails = reqDivergences
+          .filter((d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista")
+          .map((d) => d.detalhe)
+          .join("; ");
+
         return {
           verdict,
-          rawVerdict: blindVerdict.rawVerdict,
+          rawVerdict: effectiveRawVerdict,
           ressalvas: blindVerdict.ressalvas,
           reqVerdicts: blindVerdict.reqVerdicts,
           reqDivergences: reqDivergences.length > 0 ? reqDivergences : undefined,
+          lens2ByReq: lens2ByReq.length > 0 ? lens2ByReq : undefined,
           skillUsed,
           lens1BlindReport,
           lens2CrossVerification,
           rejectionReason:
             verdict === "REJECTED"
-              ? `Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: ${blindVerdict.justification}${
-                  blindVerdict.missingRequirements.length
-                    ? ` | Pendências: ${blindVerdict.missingRequirements.join("; ")}`
-                    : ""
-                }`
+              ? !blindVerdict.implemented
+                ? `Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: ${blindVerdict.justification}${
+                    blindVerdict.missingRequirements.length
+                      ? ` | Pendências: ${blindVerdict.missingRequirements.join("; ")}`
+                      : ""
+                  }`
+                : `Divergência crítica na Lente 2: ${criticalDivDetails}`
               : undefined,
           method: "llm_blind",
           divergenceDetected: divergence,

@@ -137,7 +137,7 @@ export interface Lens1EvaluationRow {
 export interface Lens2EvaluationRow {
   reqId: string;
   statusLente1: Lens1ReqStatus;
-  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido";
+  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido" | "nao_declarado";
   tipoDivergencia: Lens2DivergenceKind;
   evidenciaDivergencia: string;
 }
@@ -755,8 +755,14 @@ export function validateExecutorReportMechanical(
  */
 export function classifyLens2Divergence(
   statusLente1: Lens1ReqStatus,
-  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido"
+  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido" | "nao_declarado"
 ): { tipoDivergencia: Lens2DivergenceKind; isCriticalHallucination: boolean } {
+  if (declaradoPeloExecutor === "nao_declarado") {
+    return {
+      tipoDivergencia: statusLente1 === "implementado" ? "convergente" : "convergente_com_pendencia",
+      isCriticalHallucination: false,
+    };
+  }
   if (statusLente1 === "implementado" && declaradoPeloExecutor === "atendido") {
     return { tipoDivergencia: "convergente", isCriticalHallucination: false };
   }

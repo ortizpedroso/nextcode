@@ -1093,5 +1093,125 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     expect(invalidLogs[0].details).toContain("possui 4 linha(s)");
     expect(invalidLogs[1].details).toContain("REQ-999");
   });
+
+  it("Item 6 (Lente 2 usando o relatório): pega divergência otimista plantada contra executorReport validado e marca nao_declarado SEM gerar divergência quando o relatório está ausente", async () => {
+    const codeMap = {
+      "src/app/api/notas/route.ts": [
+        "export async function GET(): Promise<Response> {",
+        "  return new Response('[]', { status: 200 });",
+        "}",
+      ].join("\n"),
+    };
+    const type1 = DualLensAuditor.validateType1(
+      codeMap,
+      [],
+      process.cwd(),
+      ["src/app/api/notas/route.ts"],
+      []
+    );
+    expect(type1.passed).toBe(true);
+
+    // Caso 1: Divergência otimista plantada no executorReport validado (executor diz "atendido" para REQ-002, Lente Cega diz "ausente")
+    const validatedReportWithLie = {
+      documento: "relatorio_executor" as const,
+      idMicrobrief: "MB-NOTAS",
+      idMacrobrief: "MACRO-NOTAS",
+      idProjeto: "proj-notas",
+      cluster: "backend" as const,
+      nivelModeloSugerido: "medio" as const,
+      dependeDe: [],
+      reqsCobertos: ["REQ-001", "REQ-002"],
+      arquivosPermitidos: { criar: ["src/app/api/notas/route.ts"], modificar: [], lerContratos: [] },
+      statusExecucao: "CONCLUIDO" as const,
+      tentativaAtual: 1,
+      medidoPeloHarness: { compilou: true, testes: null, arquivosAlterados: [] },
+      interfacesConsome: [],
+      interfacesProduz: "GET, POST",
+      criteriosAceitePorReq: {},
+      registroCumprimento: [
+        {
+          reqId: "REQ-001",
+          statusDeclarado: "atendido" as const,
+          arquivoLinha: "src/app/api/notas/route.ts:1-3",
+          comoFoiImplementado: "GET implementado",
+        },
+        {
+          reqId: "REQ-002",
+          statusDeclarado: "atendido" as const,
+          arquivoLinha: "src/app/api/notas/route.ts:1-3",
+          comoFoiImplementado: "POST implementado",
+        },
+      ],
+    };
+
+    const resDivergent = await DualLensAuditor.validateType2(
+      type1,
+      "# Microbrief Backend\nImplementar REQ-001 e REQ-002.",
+      "texto livre sem palavras-chave",
+      codeMap,
+      async () =>
+        JSON.stringify({
+          implemented: false,
+          missingRequirements: ["REQ-002 ausente"],
+          justification: "Falta POST (REQ-002).",
+          reqVerdicts: [
+            { id: "REQ-001", status: "implementado", evidencia: "src/app/api/notas/route.ts:1" },
+            { id: "REQ-002", status: "ausente", evidencia: "src/app/api/notas/route.ts:1" },
+          ],
+        }),
+      {
+        cluster: "backend",
+        expectedReqs: ["REQ-001", "REQ-002"],
+        executorReport: validatedReportWithLie,
+      }
+    );
+
+    expect(resDivergent.verdict).toBe("REJECTED");
+    expect(resDivergent.divergenceDetected).toBe(true);
+    expect(resDivergent.reqDivergences).toHaveLength(1);
+    expect(resDivergent.reqDivergences![0]).toMatchObject({
+      reqId: "REQ-002",
+      statusLente1: "ausente",
+      declaradoPeloExecutor: "atendido",
+      tipoDivergencia: "alucinacao_grave",
+    });
+
+    // Caso 2: Sem relatório válido (executorReport: null) e sem palavras de sucesso no texto -> marca "nao_declarado" e NÃO acusa divergência
+    const resNoReport = await DualLensAuditor.validateType2(
+      type1,
+      "# Microbrief Backend\nImplementar REQ-001.",
+      "```typescript\n// file: src/app/api/notas/route.ts\nexport async function GET() { return new Response('[]'); }\n```",
+      codeMap,
+      async () =>
+        JSON.stringify({
+          implemented: true,
+          missingRequirements: [],
+          justification: "REQ-001 implementado.",
+          reqVerdicts: [
+            { id: "REQ-001", status: "implementado", evidencia: "src/app/api/notas/route.ts:1" },
+          ],
+        }),
+      {
+        cluster: "backend",
+        expectedReqs: ["REQ-001"],
+        executorReport: null,
+      }
+    );
+
+    expect(resNoReport.verdict).toBe("APPROVED");
+    expect(resNoReport.divergenceDetected).toBe(false);
+    expect(resNoReport.reqDivergences).toBeUndefined();
+    expect(resNoReport.lens2ByReq).toEqual([
+      {
+        reqId: "REQ-001",
+        statusLente1: "implementado",
+        declaradoPeloExecutor: "nao_declarado",
+        tipoDivergencia: "convergente",
+      },
+    ]);
+    expect(resNoReport.lens2CrossVerification).toContain("REQ-001=nao_declarado");
+    expect(resNoReport.lens2CrossVerification).toContain("Divergência detectada: NÃO");
+  });
 });
+
 

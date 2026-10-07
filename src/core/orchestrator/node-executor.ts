@@ -1183,6 +1183,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,
+        ...(nodeMicrobrief ? { executorReport: validatedExecutorReport } : {}),
       }
     );
     if (type2Res.skillUsed) {
@@ -1308,6 +1309,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       verdictAction: verdictAction?.action,
       reqVerdicts: type2Res.reqVerdicts,
       reqDivergences: type2Res.reqDivergences,
+      lens2ByReq: type2Res.lens2ByReq,
       auditMethod: type2Res.method,
       evaluatorOutageStreak,
       promotedPath: promotionTarget,
