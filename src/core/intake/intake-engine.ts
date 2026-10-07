@@ -7,7 +7,21 @@
  * - Scenario D: Dúvida / Consultivo (Resposta LLM direta, bypass de DAG/IO)
  */
 
-import { renderCanonicalSpecDocument } from "./spec-format";
+import { renderCanonicalSpecDocument, parseSpecDocument } from "./spec-format";
+import { checkSpecStructure } from "./spec-check";
+import { loadRoleSkill } from "@/core/skills/skill-runtime";
+import { SpecDecomposerSkill, type DecompositionResult } from "@/core/skills/spec-decomposer";
+import {
+  validateSpecMechanical,
+  validateMacrobriefMechanical,
+  type MacrobriefDocument,
+  type MicrobriefAndReportDocument,
+} from "@/core/templates/artifact-templates";
+import {
+  transition,
+  type PhaseContext,
+  type ConferenceCulprit,
+} from "@/core/orchestrator/phase-machine";
 
 export type IntakeScenario = "SCENARIO_A" | "SCENARIO_B" | "SCENARIO_C" | "SCENARIO_D";
 
@@ -17,6 +31,29 @@ export interface IntakeAnalysisResult {
   requiresSpecApproval: boolean;
   requiresIntervention: boolean;
   suggestedAction: string;
+}
+
+export interface ElicitadorAnalistaCycleOptions {
+  initialSpec: string;
+  onRepairCycle?: (
+    cycleNumber: number,
+    culprit: ConferenceCulprit,
+    problems: string[],
+    currentSpec: string
+  ) => Promise<string> | string;
+}
+
+export interface ElicitadorAnalistaCycleResult {
+  ok: boolean;
+  cyclesUsed: number;
+  elicitadorSkillLoaded: string;
+  analistaSkillLoaded: string;
+  finalPhaseContext: PhaseContext;
+  finalSpec: string;
+  macrobrief?: MacrobriefDocument;
+  microbriefs?: MicrobriefAndReportDocument[];
+  decomposition?: DecompositionResult;
+  problems: string[];
 }
 
 export class IntakeEngine {
@@ -157,11 +194,6 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
   /**
    * Gera uma Spec Canônica mínima no formato YAML Frontmatter + Markdown enxuto, como
    * fallback determinístico antes da IA produzir a Spec real tailored ao pedido do usuário.
-   *
-   * Não injeta um exemplo de domínio fixo (ex.: gateway de pagamentos) — isso fazia a Spec
-   * parecer "aleatória" quando o pedido do usuário não tinha nada a ver com esse exemplo.
-   * Os campos de domínio (módulos, entidades, arquivos) ficam vazios aqui; é responsabilidade
-   * da IA (via getGovernanceSystemPrompt -> spec_output_format) preenchê-los de fato.
    */
   public static generateCanonicalSpec(title: string, rawPrompt: string): string {
     return renderCanonicalSpecDocument({
@@ -176,5 +208,146 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
       rotas: [],
       notasImplementacao: [],
     });
+  }
+
+  /**
+   * Item 7 do PLANO-DE-ACAO.md (Trava T8a + T8b):
+   * Executa o ciclo de conferência entre a skill `elicitador` e a skill `analista` (até 3 ciclos de reparo;
+   * na 4ª falha bloqueia a sessão com AVISAR_HUMANO).
+   */
+  public static async runElicitadorAndAnalistaCycle(
+    options: ElicitadorAnalistaCycleOptions
+  ): Promise<ElicitadorAnalistaCycleResult> {
+    const elicitadorSkill = loadRoleSkill("elicitador");
+    const analistaSkill = loadRoleSkill("analista");
+
+    let currentSpec = options.initialSpec;
+    let ctx: PhaseContext = {
+      phase: "SPEC_REVISAO",
+      rodadasSemClareza: 0,
+      voltasConferencia: 0,
+    };
+
+    const approveStep = transition(ctx, { type: "SPEC_APROVADA" }, { etapa1Ativa: true });
+    if (approveStep.ok) ctx = approveStep.ctx;
+
+    let cyclesUsed = 0;
+
+    while (true) {
+      if (ctx.phase === "MACROBRIEF" || ctx.phase === "SPEC_REVISAO") {
+        if (ctx.phase === "SPEC_REVISAO") {
+          const stepA = transition(ctx, { type: "SPEC_APROVADA" }, { etapa1Ativa: true });
+          if (stepA.ok) ctx = stepA.ctx;
+        }
+        const stepM = transition(ctx, { type: "MACROBRIEF_PRONTO" }, { etapa1Ativa: true });
+        if (stepM.ok) ctx = stepM.ctx;
+      }
+
+      cyclesUsed += 1;
+      const parsed = parseSpecDocument(currentSpec);
+      const specProblems: string[] = [];
+
+      if (!parsed) {
+        specProblems.push("Frontmatter YAML da Spec inválido ou ausente.");
+      } else {
+        specProblems.push(...checkSpecStructure(parsed));
+        const reqIds = parsed.requisitosIds ?? [];
+        if (reqIds.length === 0) {
+          specProblems.push("A Spec deve declarar requisitos_ids (REQ-001...) no frontmatter.");
+        } else {
+          const validStatus =
+            parsed.status === "rascunho" ||
+            parsed.status === "aguardando_aprovacao" ||
+            parsed.status === "aprovada"
+              ? parsed.status
+              : "aprovada";
+          const reqTable = (parsed.requisitos ?? []).map((r) => ({
+            id: r.id,
+            titulo: r.titulo || `Requisito ${r.id}`,
+            descricaoECriterio: `${r.titulo}: ${r.criterio} (Critério de aceite verificável para ${r.id})`,
+          }));
+          const mechSpec = validateSpecMechanical({
+            documento: "spec",
+            projeto: parsed.titulo || "projeto",
+            versao: 1,
+            status: validStatus,
+            criadoEm: parsed.data || "2026-10-06",
+            atualizadoEm: parsed.data || "2026-10-06",
+            tipoInterface: "nenhuma_somente_api",
+            requisitosIds: reqIds,
+            duvidasEmAberto: [],
+            requisitosTabela:
+              reqTable.length > 0
+                ? reqTable
+                : reqIds.map((id) => ({
+                    id,
+                    titulo: `Requisito ${id}`,
+                    descricaoECriterio: `Implementação completa e verificável do requisito ${id}.`,
+                  })),
+          });
+          if (!mechSpec.valid) {
+            specProblems.push(...mechSpec.errors);
+          }
+        }
+      }
+
+      if (specProblems.length === 0 && parsed) {
+        const decomp = SpecDecomposerSkill.decomposeSpec(
+          currentSpec,
+          parsed.titulo,
+          parsed.arquivosAfetados,
+          parsed.stack
+        );
+        const macroCheck = decomp.macrobrief
+          ? validateMacrobriefMechanical(decomp.macrobrief, parsed.requisitosIds ?? [])
+          : { valid: false, errors: ["Macrobrief não gerado."] };
+
+        if (macroCheck.valid && decomp.macrobrief && decomp.microbriefs) {
+          const okStep = transition(ctx, { type: "CONFERENCIA_OK" }, { etapa1Ativa: true });
+          if (okStep.ok) ctx = okStep.ctx;
+          return {
+            ok: true,
+            cyclesUsed,
+            elicitadorSkillLoaded: elicitadorSkill.name,
+            analistaSkillLoaded: analistaSkill.name,
+            finalPhaseContext: ctx,
+            finalSpec: currentSpec,
+            macrobrief: decomp.macrobrief,
+            microbriefs: decomp.microbriefs,
+            decomposition: decomp,
+            problems: [],
+          };
+        }
+
+        specProblems.push(...macroCheck.errors);
+      }
+
+      const culprit: ConferenceCulprit = specProblems.some((p) => p.includes("Macrobrief") || p.includes("Microbrief"))
+        ? "macrobrief"
+        : "spec";
+
+      const failStep = transition(
+        ctx,
+        { type: "CONFERENCIA_FALHOU", culpa: culprit },
+        { etapa1Ativa: true }
+      );
+      if (failStep.ok) {
+        ctx = failStep.ctx;
+      }
+
+      if (ctx.phase === "BLOQUEADA" || !options.onRepairCycle) {
+        return {
+          ok: false,
+          cyclesUsed,
+          elicitadorSkillLoaded: elicitadorSkill.name,
+          analistaSkillLoaded: analistaSkill.name,
+          finalPhaseContext: ctx,
+          finalSpec: currentSpec,
+          problems: specProblems,
+        };
+      }
+
+      currentSpec = await options.onRepairCycle(cyclesUsed, culprit, specProblems, currentSpec);
+    }
   }
 }

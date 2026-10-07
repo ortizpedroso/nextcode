@@ -6,6 +6,7 @@
  */
 
 import { safeFetch } from "@/core/security/safe-fetch";
+import { decideExternalDocsSafetyT7 } from "@/core/decision/jev-decisions";
 
 export interface DocSearchResult {
   url: string;
@@ -20,6 +21,30 @@ export interface UniversalDocsResult {
   query: string;
   topResults: DocSearchResult[];
   aggregatedDocsContext: string;
+}
+
+export interface ResearchBudgetState {
+  maxSearches: number;
+  maxPages: number;
+  maxCharsPerPage: number;
+  searchesUsed: number;
+  pagesUsed: number;
+}
+
+export interface GovernedDocsResult extends UniversalDocsResult {
+  budget: ResearchBudgetState;
+  budgetExceeded: boolean;
+  rejectedSources: { url: string; reason: "unofficial_source" | "prompt_injection" | "budget_exceeded" }[];
+}
+
+export function createDefaultResearchBudget(): ResearchBudgetState {
+  return {
+    maxSearches: 3,
+    maxPages: 5,
+    maxCharsPerPage: 8000,
+    searchesUsed: 0,
+    pagesUsed: 0,
+  };
 }
 
 export class UniversalDocsFetcher {
@@ -220,6 +245,110 @@ export class UniversalDocsFetcher {
       query: techQuery,
       topResults: results,
       aggregatedDocsContext,
+    };
+  }
+
+  /**
+   * Trava T7 (Item 7 do PLANO-DE-ACAO.md): Pesquisa oficial com orçamento estrito
+   * (máx. 3 buscas, 5 páginas, 8.000 caracteres/página) e verificação de fonte oficial
+   * e anti-prompt-injection via Jev (`decideResearchSourceSafety`).
+   */
+  public static async fetchOfficialDocsWithGovernance(
+    techQuery: string,
+    budget: ResearchBudgetState = createDefaultResearchBudget(),
+    options?: {
+      candidatePages?: { url: string; title: string; content: string }[];
+      jevApiKey?: string | null;
+    }
+  ): Promise<GovernedDocsResult> {
+    const rejectedSources: GovernedDocsResult["rejectedSources"] = [];
+    const acceptedResults: DocSearchResult[] = [];
+
+    if (budget.searchesUsed >= budget.maxSearches || budget.pagesUsed >= budget.maxPages) {
+      return {
+        query: techQuery,
+        topResults: [],
+        aggregatedDocsContext: `Orçamento de pesquisa T7 esgotado (${budget.searchesUsed}/${budget.maxSearches} buscas, ${budget.pagesUsed}/${budget.maxPages} páginas).`,
+        budget,
+        budgetExceeded: true,
+        rejectedSources: [{ url: techQuery, reason: "budget_exceeded" }],
+      };
+    }
+
+    budget.searchesUsed += 1;
+
+    const rawCandidates: { url: string; title: string; content: string }[] = options?.candidatePages
+      ? options.candidatePages
+      : (await this.fetchOfficialDocs(techQuery)).topResults.map((r) => ({
+          url: r.url,
+          title: r.title,
+          content: r.sanitizedContent || r.snippet || "",
+        }));
+
+    for (const candidate of rawCandidates) {
+      if (budget.pagesUsed >= budget.maxPages) {
+        rejectedSources.push({ url: candidate.url, reason: "budget_exceeded" });
+        continue;
+      }
+
+      budget.pagesUsed += 1;
+      const truncatedContent = this.sanitizeDocHtml(candidate.content).slice(0, budget.maxCharsPerPage);
+      const auth = this.scoreUrlAuthority(candidate.url);
+      const hasDeterministicInjection =
+        /ignore\s+(all\s+)?previous\s+instructions|system\s+prompt|you\s+must\s+now\s+act\s+as|disregard\s+all\s+rules/i.test(
+          truncatedContent
+        );
+
+      if (hasDeterministicInjection) {
+        rejectedSources.push({ url: candidate.url, reason: "prompt_injection" });
+        continue;
+      }
+
+      if (!auth.isPrimary) {
+        rejectedSources.push({ url: candidate.url, reason: "unofficial_source" });
+        continue;
+      }
+
+      const safety = await decideExternalDocsSafetyT7({
+        urlOrigem: candidate.url,
+        trechoExtraido: truncatedContent,
+      });
+
+      if (safety.source === "jev" && !safety.allowedIntoContext) {
+        const isInj = safety.promptInjectionProb > 0.15;
+        rejectedSources.push({
+          url: candidate.url,
+          reason: isInj ? "prompt_injection" : "unofficial_source",
+        });
+        continue;
+      }
+
+      acceptedResults.push({
+        url: candidate.url,
+        title: candidate.title,
+        authorityScore: auth.score,
+        isPrimarySource: true,
+        sanitizedContent: truncatedContent,
+      });
+    }
+
+    const aggregatedDocsContext =
+      acceptedResults.length > 0
+        ? acceptedResults
+            .map(
+              (r) =>
+                `--- DOCUMENTAÇÃO PRIMÁRIA VERIFICADA (T7): ${r.url} (Score: ${r.authorityScore}) ---\n${r.sanitizedContent}`
+            )
+            .join("\n\n")
+        : `Nenhuma fonte primária segura aprovada pela Trava T7 para "${techQuery}".`;
+
+    return {
+      query: techQuery,
+      topResults: acceptedResults,
+      aggregatedDocsContext,
+      budget,
+      budgetExceeded: false,
+      rejectedSources,
     };
   }
 }

@@ -5,6 +5,7 @@ import {
   recoverZombieRunningNodes,
   type SessionQueueResult,
 } from "@/core/orchestrator/session-queue";
+import { verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import type { Job } from "@prisma/client";
 
@@ -278,7 +279,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
 
     const sessionAfterQueue = await prisma.session.findUnique({
       where: { id: job.sessionId },
-      select: { phase: true },
+      include: { project: true },
     });
     if (sessionAfterQueue?.phase === "EXECUCAO") {
       const hasBlockedNode = queueResult.tasks.some((t) => t.status === "blocked");
@@ -286,12 +287,24 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" });
       } else if (queueResult.allCompleted) {
         await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
-        // TODO(etapa-1): verificação real de lacunas
-        await applyPhaseEvent(
-          job.sessionId,
-          { type: "VERIFICACAO_OK" },
-          { extraDetails: { specCompleteness: queueResult.specCompleteness } }
-        );
+        const deliveryT10 = verifyProjectDeliveryT10({
+          canonicalSpec: sessionAfterQueue.canonicalSpec,
+          projectPath: sessionAfterQueue.project?.path,
+          tasks: queueResult.tasks,
+        });
+        if (deliveryT10.passed) {
+          await applyPhaseEvent(
+            job.sessionId,
+            { type: "VERIFICACAO_OK" },
+            { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 } }
+          );
+        } else {
+          await applyPhaseEvent(
+            job.sessionId,
+            { type: "VERIFICACAO_COM_LACUNAS" },
+            { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 } }
+          );
+        }
       }
     }
 

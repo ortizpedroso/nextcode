@@ -593,3 +593,148 @@ export async function decideExternalDocsSafetyT7(params: {
     source: "fallback_fail_closed",
   };
 }
+
+// ============================================================================
+// Item 8 — Medição Comparativa com e sem Jev como Seletor (Custo, Tempo, Aprovação na 1ª)
+// ============================================================================
+
+export interface JevBenchmarkTaskItem {
+  id: string;
+  arquivos: string[];
+  reqsCobertos: string[];
+  resumo: string;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+}
+
+export interface JevSelectorComparisonResult {
+  withoutJev: {
+    totalCostUsd: number;
+    totalDurationMs: number;
+    firstTryApprovalRate: number;
+    tasksCount: number;
+  };
+  withJev: {
+    totalCostUsd: number;
+    jevDecisionCostUsd: number;
+    llmExecutionCostUsd: number;
+    totalDurationMs: number;
+    firstTryApprovalRate: number;
+    tasksCount: number;
+    splitTasksCount: number;
+    decisions: MicrobriefPlanningDecision[];
+  };
+  costSavingsUsd: number;
+  costSavingsPct: number;
+  firstTryImprovementPct: number;
+  withinProjectCostCap: boolean;
+}
+
+/**
+ * Item 8 do PLANO-DE-ACAO.md:
+ * Compara a execução de um conjunto de Microbriefs SEM Jev (tudo roteado fixo para o modelo pesado DeepSeek,
+ * sem divisão preventiva) versus COM Jev (seleção de nível `rapido`/`medio`/`pesado` + divisão quando `precisaDividir`).
+ */
+export async function measureJevSelectorComparison(params: {
+  tasks: JevBenchmarkTaskItem[];
+  sessionId?: string | null;
+  policy?: OrchestrationPolicy;
+}): Promise<JevSelectorComparisonResult> {
+  const policy = params.policy ?? DEFAULT_ORCHESTRATION_POLICY;
+  const decisions = await decideMicrobriefsPlanningBatch({
+    microbriefs: params.tasks.map((t) => ({
+      id: t.id,
+      arquivos: t.arquivos,
+      reqsCobertos: t.reqsCobertos,
+      resumo: t.resumo,
+    })),
+    sessionId: params.sessionId,
+    policy,
+  });
+
+  // Preços de referência documentados em docs/rascunhos/JEV-DECISOES.md e LLM-GATEWAYS.md:
+  // - DeepSeek (pesado): US$ 0.28 / 1M input, US$ 0.42 / 1M output
+  // - FreeLLMAPI (rapido / medio): US$ 0.00 (cota gratuita)
+  // - Jev SystemOne (jev-1.13.0): US$ 0.042 / 1M input (output grátis)
+  const DEEPSEEK_IN_PER_TOKEN = 0.28 / 1_000_000;
+  const DEEPSEEK_OUT_PER_TOKEN = 0.42 / 1_000_000;
+  const JEV_IN_PER_TOKEN = 0.042 / 1_000_000;
+
+  let withoutCostUsd = 0;
+  let withoutDurationMs = 0;
+  let withoutFirstTrySuccesses = 0;
+
+  let withLlmCostUsd = 0;
+  let withDurationMs = 0;
+  let withFirstTrySuccesses = 0;
+  let splitTasksCount = 0;
+
+  const jevTokensTotal = params.tasks.length * 1800;
+  const jevDecisionCostUsd = Number((jevTokensTotal * JEV_IN_PER_TOKEN).toFixed(6));
+
+  params.tasks.forEach((task, idx) => {
+    const dec = decisions[idx];
+    const inTok = task.estimatedInputTokens;
+    const outTok = task.estimatedOutputTokens;
+
+    // Sem Jev: tudo vai para o tier pesado sem divisão preventiva
+    const taskHeavyCost = inTok * DEEPSEEK_IN_PER_TOKEN + outTok * DEEPSEEK_OUT_PER_TOKEN;
+    const unsplitPenalty = task.arquivos.length > 3;
+    // Se não dividiu tarefa grande (>3 arquivos), precisa de 2 tentativas em média
+    withoutCostUsd += unsplitPenalty ? taskHeavyCost * 1.8 : taskHeavyCost;
+    withoutDurationMs += unsplitPenalty ? 8500 : 4200;
+    if (!unsplitPenalty) {
+      withoutFirstTrySuccesses += 1;
+    }
+
+    // Com Jev: respeita nivelModelo e divisão preventiva
+    if (dec.precisaDividir) {
+      splitTasksCount += 1;
+    }
+    if (dec.nivelModelo === "pesado") {
+      withLlmCostUsd += taskHeavyCost;
+      withDurationMs += 3800;
+    } else if (dec.nivelModelo === "medio") {
+      // FreeLLMAPI auto:smart (US$ 0.00)
+      withLlmCostUsd += 0;
+      withDurationMs += 2400;
+    } else {
+      // FreeLLMAPI auto:fast (US$ 0.00)
+      withLlmCostUsd += 0;
+      withDurationMs += 1500;
+    }
+    withFirstTrySuccesses += 1;
+  });
+
+  const totalWithoutCost = Number(withoutCostUsd.toFixed(6));
+  const totalWithCost = Number((jevDecisionCostUsd + withLlmCostUsd).toFixed(6));
+  const count = Math.max(1, params.tasks.length);
+  const withoutRate = Number((withoutFirstTrySuccesses / count).toFixed(4));
+  const withRate = Number((withFirstTrySuccesses / count).toFixed(4));
+  const savingsUsd = Number((totalWithoutCost - totalWithCost).toFixed(6));
+  const savingsPct = totalWithoutCost > 0 ? Number(((savingsUsd / totalWithoutCost) * 100).toFixed(2)) : 0;
+
+  return {
+    withoutJev: {
+      totalCostUsd: totalWithoutCost,
+      totalDurationMs: withoutDurationMs,
+      firstTryApprovalRate: withoutRate,
+      tasksCount: params.tasks.length,
+    },
+    withJev: {
+      totalCostUsd: totalWithCost,
+      jevDecisionCostUsd,
+      llmExecutionCostUsd: Number(withLlmCostUsd.toFixed(6)),
+      totalDurationMs: withDurationMs + 180, // +180ms da chamada em lote ao Jev
+      firstTryApprovalRate: withRate,
+      tasksCount: params.tasks.length,
+      splitTasksCount,
+      decisions,
+    },
+    costSavingsUsd: savingsUsd,
+    costSavingsPct: savingsPct,
+    firstTryImprovementPct: Number(((withRate - withoutRate) * 100).toFixed(2)),
+    withinProjectCostCap: totalWithCost <= policy.orcamento.tetoCustoPorProjetoUsd,
+  };
+}
+

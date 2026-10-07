@@ -189,6 +189,117 @@ export function checkSpecCompletenessOnDisk(
   return { complete: missingFiles.length === 0, declaredFiles, missingFiles };
 }
 
+export interface DeliveryVerificationT10Result {
+  passed: boolean;
+  specFilesComplete: boolean;
+  allReqsApproved: boolean;
+  buildVerified: boolean;
+  missingFiles: string[];
+  unapprovedReqs: string[];
+  gaps: string[];
+}
+
+/**
+ * Item 9 do PLANO-DE-ACAO.md (Trava T10 — Entrega):
+ * Garante que o projeto só seja considerado "Entregue" (VERIFICACAO -> ENTREGUE) quando:
+ * 1) Todos os arquivos declarados na Spec existem no disco do projeto;
+ * 2) Todos os requisitos (`REQ-001...`) foram aprovados como implementados;
+ * 3) O build do projeto foi verificado sem falhas empíricas.
+ */
+export function verifyProjectDeliveryT10(opts: {
+  canonicalSpec?: string | null;
+  projectPath?: string | null;
+  tasks: TaskNode[];
+  requireFullBuild?: boolean;
+}): DeliveryVerificationT10Result {
+  const gaps: string[] = [];
+  const specCompleteness = checkSpecCompletenessOnDisk(opts.canonicalSpec, opts.projectPath);
+
+  const hasRealPromotionRecord = opts.tasks.some(
+    (t) => typeof t.result === "string" && t.result.includes('"promotedPath"')
+  );
+  const checkDiskStrict = Boolean(
+    opts.requireFullBuild || (opts.projectPath && hasRealPromotionRecord)
+  );
+  const missingFiles =
+    checkDiskStrict && specCompleteness && !specCompleteness.complete
+      ? specCompleteness.missingFiles
+      : [];
+  const specFilesComplete = missingFiles.length === 0;
+  if (!specFilesComplete) {
+    gaps.push(`Arquivos da Spec ausentes no disco: ${missingFiles.join(", ")}`);
+  }
+
+  const parsedSpec = opts.canonicalSpec ? parseSpecDocument(opts.canonicalSpec) : null;
+  const declaredReqs = parsedSpec?.requisitosIds ?? [];
+  const approvedReqsSet = new Set<string>();
+  const failedReqsSet = new Set<string>();
+  let anyEmpiricalBuildFailed = false;
+
+  for (const t of opts.tasks) {
+    if (t.role === "scaffold") continue;
+    const payload = readNodePayload(t.payload);
+    let parsedResult: Record<string, any> | null = null;
+    try {
+      parsedResult = t.result ? JSON.parse(t.result) : null;
+    } catch {
+      parsedResult = null;
+    }
+
+    if (parsedResult?.empiricalBuildPassed === false) {
+      anyEmpiricalBuildFailed = true;
+    }
+
+    if (Array.isArray(parsedResult?.reqVerdicts) && parsedResult.reqVerdicts.length > 0) {
+      for (const rv of parsedResult.reqVerdicts) {
+        if (rv.status === "implementado") {
+          approvedReqsSet.add(String(rv.id));
+        } else {
+          failedReqsSet.add(String(rv.id));
+        }
+      }
+    } else if (t.status === "completed" && parsedResult?.auditVerdict === "APPROVED") {
+      for (const reqId of payload.reqsCobertos ?? []) {
+        approvedReqsSet.add(reqId);
+      }
+    }
+  }
+
+  for (const reqId of declaredReqs) {
+    if (failedReqsSet.has(reqId) || (!approvedReqsSet.has(reqId) && opts.requireFullBuild)) {
+      failedReqsSet.add(reqId);
+    }
+  }
+
+  const unapprovedReqs = Array.from(failedReqsSet);
+  const allReqsApproved = unapprovedReqs.length === 0;
+  if (!allReqsApproved) {
+    gaps.push(`Requisitos não aprovados: ${unapprovedReqs.join(", ")}`);
+  }
+
+  const unverifiedWarning = opts.requireFullBuild
+    ? describeUnverifiedBuild(opts.tasks, opts.projectPath)
+    : "";
+  const buildVerified = !anyEmpiricalBuildFailed && unverifiedWarning === "";
+  if (!buildVerified) {
+    gaps.push(
+      anyEmpiricalBuildFailed
+        ? "Falha na verificação empírica de build em uma ou mais etapas."
+        : "Build do projeto não verificado (tsconfig.json ou package.json ausente)."
+    );
+  }
+
+  return {
+    passed: specFilesComplete && allReqsApproved && buildVerified,
+    specFilesComplete,
+    allReqsApproved,
+    buildVerified,
+    missingFiles,
+    unapprovedReqs,
+    gaps,
+  };
+}
+
 /** Reconstrói o Brief real da etapa para o Auditor Cego. */
 /** Spec completa, arquivos, cluster e REQs desta etapa, gravados no payload pelo decompositor. */
 export function readNodePayload(payload?: string | null): {
