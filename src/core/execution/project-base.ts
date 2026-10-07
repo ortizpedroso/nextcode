@@ -105,7 +105,8 @@ export interface ProjectBaseResult {
 export async function ensureProjectBase(
   projectRoot: string,
   stack: string[],
-  install: Installer = npmInstaller
+  install: Installer = npmInstaller,
+  specFiles: string[] = []
 ): Promise<ProjectBaseResult> {
   const manifest = buildBaseManifest(stack);
   const changedFiles: string[] = [];
@@ -144,6 +145,20 @@ export async function ensureProjectBase(
     changedFiles.push("next-env.d.ts");
   }
 
+  // App Router: o Next exige um layout raiz para qualquer página. Sem ele o tsc passa, mas o
+  // `next build` falha (teste real P2 de 07/10, pego pela verificação de tela em contêiner).
+  // É estrutura, não funcionalidade: entra na base (sem IA) se a Spec não declarar o seu.
+  if (manifest.usesNext) {
+    for (const appDir of appRouterDirsNeedingLayout(specFiles)) {
+      const layoutPath = path.join(projectRoot, appDir, "layout.tsx");
+      if (!fs.existsSync(layoutPath)) {
+        fs.mkdirSync(path.dirname(layoutPath), { recursive: true });
+        fs.writeFileSync(layoutPath, ROOT_LAYOUT_TSX, "utf8");
+        changedFiles.push(`${appDir}/layout.tsx`);
+      }
+    }
+  }
+
   const needsInstall = changedFiles.includes("package.json") || !fs.existsSync(path.join(projectRoot, "node_modules"));
   if (!needsInstall) return { ok: true, changedFiles, installed: false, log: "dependências já instaladas" };
 
@@ -154,6 +169,28 @@ export async function ensureProjectBase(
     installed: res.success,
     log: res.success ? "npm install concluído" : `npm install falhou: ${(res.stderr || res.stdout).slice(-1500)}`,
   };
+}
+
+const ROOT_LAYOUT_TSX = `import type { ReactNode } from "react";
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="pt-BR">
+      <body>{children}</body>
+    </html>
+  );
+}
+`;
+
+/** Pastas do App Router (src/app ou app) com páginas na Spec e sem layout raiz declarado. */
+export function appRouterDirsNeedingLayout(specFiles: string[]): string[] {
+  const out: string[] = [];
+  for (const dir of ["src/app", "app"]) {
+    const hasPage = specFiles.some((f) => f.startsWith(`${dir}/`) && /\/page\.(tsx|jsx|ts|js)$/.test(f));
+    const declaresLayout = specFiles.some((f) => /^layout\.(tsx|jsx|ts|js)$/.test(f.slice(dir.length + 1)) && f.startsWith(`${dir}/`));
+    if (hasPage && !declaresLayout) out.push(dir);
+  }
+  return out;
 }
 
 /** Pacotes que o tsc diz faltar: módulo inexistente (TS2307) ou sem tipos (TS7016). */

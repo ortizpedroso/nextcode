@@ -650,7 +650,8 @@ async function runScaffoldNode(
   const maxAttempts = taskDb.maxAttempts || 3;
   let base: ProjectBaseResult;
   try {
-    base = await ensureProjectBase(projectRoot, stack, scaffoldInstaller);
+    const specFiles = parseSpecDocument(readNodePayload(taskDb.payload).goal || "")?.arquivosAfetados ?? [];
+    base = await ensureProjectBase(projectRoot, stack, scaffoldInstaller, specFiles);
   } catch (err) {
     base = { ok: false, changedFiles: [], installed: false, log: `exceção: ${String(err)}` };
   }
