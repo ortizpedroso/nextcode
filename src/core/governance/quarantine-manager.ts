@@ -281,6 +281,11 @@ export class QuarantineManager {
         "[TRUNCATED OUTPUT] A resposta foi cortada: o último bloco de código abriu e não fechou (limite de saída do modelo). Envie todos os arquivos completos."
       );
     }
+    if (options.strictPaths && fallbackFilesScope.length > 0 && Object.keys(codeMap).length === 0) {
+      this.extractionIssues.push(
+        "[NO FILES] A resposta não trouxe nenhum arquivo do escopo (resposta vazia, cortada ou sem blocos \"// file:\"). Nada a avaliar."
+      );
+    }
     if (options.strictPaths) {
       const missing = fallbackFilesScope.filter(
         (f) => !Object.prototype.hasOwnProperty.call(codeMap, f.trim().replace(/^\\|^\//, ""))

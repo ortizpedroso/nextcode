@@ -93,8 +93,16 @@ describe("Jev no classificador de mensagens", () => {
   it("decisão registrada na trilha com probabilidades (JEV_DECISION)", async () => {
     const before = new Date(Date.now() - 1);
     await classifyMessage(ambiguous, "SPEC_REVISAO", null);
-    await new Promise((r) => setTimeout(r, 50));
-    const log = await prisma.telemetryLog.findFirst({ where: { action: "JEV_DECISION", createdAt: { gte: before } } });
+    // A trilha é gravada em segundo plano e outros testes também registram JEV_DECISION (planejamento):
+    // procura a decisão DESTE propósito, esperando até 2 s.
+    let log = null;
+    for (let i = 0; i < 40 && !log; i++) {
+      log = await prisma.telemetryLog.findFirst({
+        where: { action: "JEV_DECISION", createdAt: { gte: before }, details: { contains: '"classificacao_mensagem"' } },
+        orderBy: { createdAt: "desc" },
+      });
+      if (!log) await new Promise((r) => setTimeout(r, 50));
+    }
     expect(JSON.parse(log!.details!)).toMatchObject({ purpose: "classificacao_mensagem", choice: "duvida_avulsa" });
   });
 

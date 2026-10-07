@@ -8,6 +8,7 @@ import {
   reportBlockedNodeToHuman,
   postCompletionMessageIfDone,
   checkSpecCompletenessOnDisk,
+  getStepTimeoutMs,
 } from "@/core/orchestrator/node-executor";
 import type { TaskNode } from "@prisma/client";
 import { enforceBudgetBeforeBatch } from "@/core/orchestrator/budget-guard";
@@ -34,7 +35,7 @@ export async function recoverZombieRunningNodes(
   });
   const currentSpecVersion = session?.specVersion ?? 0;
 
-  const staleThresholdMs = (Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000) + 30000;
+  const staleThresholdMs = getStepTimeoutMs() + 30000;
   const staleRunningTasks = await prisma.taskNode.findMany({
     where: {
       sessionId,

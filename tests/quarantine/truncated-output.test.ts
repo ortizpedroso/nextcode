@@ -24,3 +24,12 @@ describe("Resposta do executor cortada ou incompleta", () => {
     qm.purgeWorkspace("t-ok");
   });
 });
+
+describe("Resposta sem nenhum arquivo", () => {
+  it("texto sem blocos → [NO FILES] (reprova no Tipo 1, sem chamar o avaliador)", () => {
+    const qm = new QuarantineManager();
+    qm.extractAndWriteCodeBlocks("t-empty", "Etapa executada pelo motor autônomo.", scope, { strictPaths: true });
+    expect(qm.extractionIssues.some((i) => i.startsWith("[NO FILES]"))).toBe(true);
+    qm.purgeWorkspace("t-empty");
+  });
+});

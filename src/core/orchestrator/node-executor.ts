@@ -307,6 +307,17 @@ export function verifyProjectDeliveryT10(opts: {
   };
 }
 
+/**
+ * Limite de uma etapa (chamada do executor + leitura da resposta). 90 s cortava a resposta de
+ * modelos de raciocínio em etapas de tela (~9 mil tokens; teste real P2 de 07/10): a resposta
+ * chegava vazia e ia para o avaliador. Padrão: 5 min.
+ */
+export const DEFAULT_STEP_TIMEOUT_MS = 300_000;
+export function getStepTimeoutMs(): number {
+  const raw = Number(process.env.DAG_STEP_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_STEP_TIMEOUT_MS;
+}
+
 /** Quedas seguidas do avaliador que não gastam tentativa do executor. */
 export const MAX_FREE_EVALUATOR_RETRIES = 2;
 
@@ -716,7 +727,7 @@ export async function executeTaskNode(
   taskDb: TaskNode & { session: { id: string; canonicalSpec?: string | null; project?: { id: string; name: string; path?: string | null } | null } },
   _opts: NodeExecutionOptions = {}
 ): Promise<NodeExecutionResult> {
-  const stepTimeoutMs = Number(process.env.DAG_STEP_TIMEOUT_MS) || 90000;
+  const stepTimeoutMs = getStepTimeoutMs();
 
   // Reserva atômica do nó (Passo 4a - 4.5): só executa se conseguir transicionar de pending/failed para running
   const claimRes = await prisma.taskNode.updateMany({
@@ -905,7 +916,16 @@ DIRETRIZES DE EXECUÇÃO:
     if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
       noLlmAvailable = true;
     } else if (dispatchRes) {
-      const resJson = await dispatchRes.response.json().catch(() => ({}));
+      const resJson = await dispatchRes.response.json().catch((err: unknown) => {
+        // Leitura da resposta abortada (limite da etapa) ou corpo inválido: registra e segue vazio —
+        // o Validador Tipo 1 reprova "sem arquivos" sem gastar o avaliador.
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "EXECUTOR_RESPONSE_UNREADABLE",
+          details: { nodeId: taskDb.id, aborted: stepSignal.aborted, error: String(err).slice(0, 200) },
+        });
+        return {};
+      });
       await recordLlmCost({
         sessionId: taskDb.sessionId,
         papel: "executor",
