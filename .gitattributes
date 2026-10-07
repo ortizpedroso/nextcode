@@ -1,0 +1,5 @@
+
+# Scripts que rodam em contêiner Linux: sempre LF
+docker/**/*.sh text eol=lf
+docker/**/*.mjs text eol=lf
+docker/**/Dockerfile text eol=lf
