@@ -179,8 +179,13 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
       })
     );
 
-    const claimedResults = batchResults.filter((res) => res.claimed);
+    const claimedResults = batchResults.filter((res) => res.claimed && res.finalStatus !== "paused");
     processedCount += claimedResults.length;
+
+    if (batchResults.some((res) => res.finalStatus === "paused")) {
+      isProcessing = false;
+      break;
+    }
 
     if (claimedResults.some((res) => res.finalStatus === "blocked")) {
       await cascadeBlockedNodes(sessionId);

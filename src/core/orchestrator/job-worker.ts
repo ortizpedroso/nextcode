@@ -1,5 +1,7 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
+import { readSecret } from "@/core/security/crypto";
+import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import {
   enqueueSessionQueueJob,
   claimJob,
@@ -23,6 +25,78 @@ const defaultProcessWorkerId = `worker-${crypto.randomUUID()}`;
 
 export function getProcessWorkerId(): string {
   return defaultProcessWorkerId;
+}
+
+/**
+ * Verifica se há ao menos um gateway LLM disponível (endpoint local/FreeLLMAPI respondendo 200
+ * em /healthz ou /v1/models, ou chave BYOK configurada).
+ */
+export async function isAnyLlmGatewayReachable(): Promise<boolean> {
+  const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
+  const hasByok =
+    Boolean(readSecret(setting?.deepseekKey) || process.env.DEEPSEEK_API_KEY) ||
+    Boolean(readSecret(setting?.geminiKey) || process.env.GEMINI_API_KEY) ||
+    Boolean(readSecret((setting as any)?.groqKey) || process.env.GROQ_API_KEY) ||
+    Boolean(readSecret((setting as any)?.nvidiaKey) || process.env.NVIDIA_API_KEY);
+  if (hasByok) return true;
+
+  const omniUrl = (setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || "").replace(
+    /\/+$/,
+    ""
+  );
+  if (!omniUrl) return false;
+
+  try {
+    const res = await fetch(`${omniUrl}/healthz`, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) return true;
+  } catch {
+    /* tenta /v1/models */
+  }
+  try {
+    const res = await fetch(`${omniUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Supervisor periódico da fila (Item 1 do PLANO-DE-ACAO):
+ * Verifica sessões em `PAUSADA` (que possuem `faseAntesDaPausa` registrada por `SEM_LLM`).
+ * Quando um gateway de LLM volta a responder, emite `LLM_VOLTOU` (`PAUSADA -> EXECUCAO`)
+ * e reenfileira o Job da sessão sem ter consumido nenhuma tentativa das etapas.
+ */
+export async function supervisePausedSessions(
+  probeGatewayFn: () => Promise<boolean> = isAnyLlmGatewayReachable
+): Promise<number> {
+  const pausedSessions = await prisma.session.findMany({
+    where: {
+      phase: "PAUSADA",
+      phaseContext: {
+        contains: "faseAntesDaPausa",
+      },
+    },
+    select: { id: true },
+  });
+
+  if (pausedSessions.length === 0) {
+    return 0;
+  }
+
+  const reachable = await probeGatewayFn().catch(() => false);
+  if (!reachable) {
+    return 0;
+  }
+
+  let resumedCount = 0;
+  for (const session of pausedSessions) {
+    const res = await applyPhaseEvent(session.id, { type: "LLM_VOLTOU" });
+    if (res.ok && res.ctx.phase === "EXECUCAO") {
+      await enqueueSessionQueueJob(session.id);
+      resumedCount++;
+    }
+  }
+  return resumedCount;
 }
 
 /**
@@ -60,6 +134,8 @@ export async function recoverOrphanExecutionSessions(): Promise<number> {
  * Retorna quantos jobs foram reservados e executados neste ciclo.
  */
 export async function runOnce(workerId: string = defaultProcessWorkerId): Promise<number> {
+  await supervisePausedSessions().catch(() => 0);
+
   const concurrency = getWorkerConcurrency();
   const now = new Date();
 

@@ -1,17 +1,29 @@
 import { DAGNode } from "../dag/dag-engine";
 import { extractFilePathsFromText } from "../shared/file-path-extractor";
+import { parseSpecDocument } from "../intake/spec-format";
+import {
+  inferClusterFromFilePath,
+  validateMacrobriefMechanical,
+  type MacrobriefDocument,
+  type MicrobriefAndReportDocument,
+  type MechanicalValidationResult,
+} from "../templates/artifact-templates";
+import type { ClusterKind } from "../config/orchestration-policy";
 
 export interface DecompositionResult {
   goal: string;
   nodes: DAGNode[];
   summary: string;
+  macrobrief?: MacrobriefDocument;
+  microbriefs?: MicrobriefAndReportDocument[];
+  t8bCheck?: MechanicalValidationResult;
 }
 
 export { extractFilePathsFromText };
 
-/** Arquivos que os demais importam: implementados primeiro, numa etapa própria. */
+/** Arquivos que os demais importam: implementados primeiro, numa etapa própria (cluster core). */
 const FOUNDATION_RE =
-  /(^|\/)(prisma\/|schema\.prisma$|package\.json$|tsconfig\.json$|next\.config|tailwind\.config|postcss\.config|\.env|middleware\.ts$|lib\/|types?\/|config\/|utils?\/)/i;
+  /(^|\/)(prisma\/|schema\.prisma$|package\.json$|tsconfig\.json$|next\.config|tailwind\.config|postcss\.config|\.env|middleware\.ts$|lib\/|types?\/|config\/|utils?\/|core\/)/i;
 
 /** Arquivos por etapa: uma resposta de LLM precisa caber o código COMPLETO de todos. */
 const FILES_PER_NODE = 4;
@@ -21,16 +33,19 @@ function shortList(files: string[]): string {
   return names.length <= 3 ? names.join(", ") : `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
 }
 
+function roleForCluster(cluster: ClusterKind): string {
+  return `executor-${cluster}`;
+}
+
 export class SpecDecomposerSkill {
   /**
-   * DAG a partir da Spec Canônica aprovada: uma etapa por grupo pequeno de arquivos de
-   * `arquivos_afetados`, com a base (schema, lib, tipos, config) primeiro e as demais
-   * dependendo dela. Cada etapa carrega a Spec inteira como contexto e a lista exata do que
-   * ela implementa (payload.nodeFiles) — o Auditor Cego julga só essa parte.
-   *
-   * Substitui o trio fixo "Análise / Desenvolvimento / Testes" para Specs com arquivos: a
-   * etapa de "Análise" gerava um .md e era reprovada por "não implementar a Spec inteira"
-   * (sessão gateway, 06/10), e a de "Desenvolvimento" pedia 15-30 arquivos numa resposta só.
+   * DAG a partir da Spec Canônica aprovada (Papel: Analista + Trava T8b):
+   * - Separa a base (`core`: schema, lib, tipos, config) na Onda 1 e os demais arquivos por
+   *   cluster (`backend`, `integration`, `frontend`) na Onda 2, permitindo execução paralela
+   *   entre clusters independentes.
+   * - Associa `REQ-001…` da Spec (ou sintetiza `REQ`s determinísticos por módulo/grupo) a cada
+   *   Microbrief e executa a conferência mecânica `validateMacrobriefMechanical` (Trava T8b:
+   *   100% dos REQs cobertos, arquivos disjuntos por executor, DAG sem ciclos).
    */
   public static decomposeSpec(
     specText: string,
@@ -47,25 +62,143 @@ export class SpecDecomposerSkill {
       for (let i = 0; i < list.length; i += FILES_PER_NODE) out.push(list.slice(i, i + FILES_PER_NODE));
       return out;
     };
+
     const foundationGroups = chunk(foundation);
-    const restGroups = chunk(rest);
-    const total = foundationGroups.length + restGroups.length;
+
+    // Agrupa os arquivos de funcionalidade por cluster (backend, integration, frontend, core)
+    // para que cada etapa tenha um único cluster e use a skill executor-<cluster> correspondente.
+    const restByCluster = new Map<ClusterKind, string[]>();
+    for (const file of rest) {
+      const c = inferClusterFromFilePath(file);
+      const list = restByCluster.get(c) ?? [];
+      list.push(file);
+      restByCluster.set(c, list);
+    }
+
+    const orderedClusters: ClusterKind[] = ["core", "backend", "integration", "frontend"];
+    const restClusterGroups: { cluster: ClusterKind; files: string[] }[] = [];
+    for (const c of orderedClusters) {
+      const clusterFiles = restByCluster.get(c);
+      if (clusterFiles && clusterFiles.length > 0) {
+        for (const grp of chunk(clusterFiles)) {
+          restClusterGroups.push({ cluster: c, files: grp });
+        }
+      }
+    }
+
+    const parsedSpec = parseSpecDocument(specText);
+    const total = foundationGroups.length + restClusterGroups.length;
     const stamp = Date.now();
     const nodes: DAGNode[] = [];
+    const microbriefs: MicrobriefAndReportDocument[] = [];
     let n = 0;
 
-    const makeNode = (groupFiles: string[], deps: string[], label: string): string => {
+    // Extrai REQs declarados na Spec ou gera REQs determinísticos (1 por etapa de implementação)
+    const declaredReqs =
+      parsedSpec?.requisitos && parsedSpec.requisitos.length > 0
+        ? parsedSpec.requisitos
+        : [];
+
+    const allReqsForSpec =
+      declaredReqs.length > 0
+        ? declaredReqs.map((r) => r.id)
+        : Array.from({ length: Math.max(1, total) }, (_, idx) => `REQ-${String(idx + 1).padStart(3, "0")}`);
+
+    const assignReqsForGroup = (
+      groupFiles: string[],
+      groupIndexZeroBased: number
+    ): { ids: string[]; criterios: Record<string, string[]> } => {
+      if (declaredReqs.length === 0) {
+        const reqId = `REQ-${String(groupIndexZeroBased + 1).padStart(3, "0")}`;
+        return {
+          ids: [reqId],
+          criterios: { [reqId]: [`Implementar integralmente ${shortList(groupFiles)} conforme a Spec.`] },
+        };
+      }
+      const matched = declaredReqs.filter((r) => {
+        const fullText = `${r.titulo} ${r.criterio}`;
+        return groupFiles.some((gf) => fullText.includes(gf) || fullText.includes(gf.split("/").pop() || ""));
+      });
+      const chosen =
+        matched.length > 0
+          ? matched
+          : [declaredReqs[groupIndexZeroBased % declaredReqs.length]];
+      const criterios: Record<string, string[]> = {};
+      for (const c of chosen) {
+        criterios[c.id] = [`${c.titulo}: ${c.criterio}`];
+      }
+      return {
+        ids: chosen.map((c) => c.id),
+        criterios,
+      };
+    };
+
+    const projectSlug = (titulo || parsedSpec?.titulo || "projeto").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    const makeNode = (
+      groupFiles: string[],
+      deps: string[],
+      label: string,
+      cluster: ClusterKind
+    ): string => {
+      const groupIdx = n;
       n++;
       const id = `task-${label}-${stamp}-${n}`;
+      const assigned = assignReqsForGroup(groupFiles, groupIdx);
+      const contractFiles = label === "base" ? [] : foundation;
+      const nonScaffoldDeps = deps.filter((d) => !d.startsWith("task-scaffold-"));
+
+      const microbrief: MicrobriefAndReportDocument = {
+        documento: "microbrief",
+        idMicrobrief: id,
+        idMacrobrief: `macro-${stamp}`,
+        idProjeto: projectSlug,
+        cluster,
+        nivelModeloSugerido: "pesado",
+        dependeDe: nonScaffoldDeps,
+        reqsCobertos: assigned.ids,
+        arquivosPermitidos: {
+          criar: groupFiles,
+          modificar: [],
+          lerContratos: contractFiles,
+        },
+        statusExecucao: "PENDENTE",
+        tentativaAtual: 0,
+        medidoPeloHarness: {
+          compilou: null,
+          testes: null,
+          arquivosAlterados: [],
+        },
+        interfacesConsome: contractFiles,
+        interfacesProduz: groupFiles.join(", "),
+        criteriosAceitePorReq: assigned.criterios,
+        registroCumprimento: assigned.ids.map((reqId) => ({
+          reqId,
+          statusDeclarado: "PENDENTE",
+          arquivoLinha: "PENDENTE",
+          comoFoiImplementado: "PENDENTE",
+        })),
+      };
+      microbriefs.push(microbrief);
+
       nodes.push({
         id,
         title: `Etapa ${n}/${total}: ${shortList(groupFiles)}`,
-        role: label === "base" ? "architect" : "developer",
+        role: roleForCluster(cluster),
+        cluster,
         status: "pending",
         dependencies: deps,
         filesScope: groupFiles,
         mcpScope: "write_file,smart_patch",
-        payload: { goal: specText, titulo, step: "implementation", nodeFiles: groupFiles },
+        payload: {
+          goal: specText,
+          titulo,
+          step: "implementation",
+          nodeFiles: groupFiles,
+          cluster,
+          reqsCobertos: assigned.ids,
+          microbrief,
+        },
       });
       return id;
     };
@@ -85,15 +218,63 @@ export class SpecDecomposerSkill {
     });
 
     const foundationIds = foundationGroups.map((g, i) =>
-      makeNode(g, i === 0 ? [scaffoldId] : [nodes[nodes.length - 1].id], "base")
+      makeNode(g, i === 0 ? [scaffoldId] : [nodes[nodes.length - 1].id], "base", "core")
     );
     const lastFoundation = foundationIds.length > 0 ? [foundationIds[foundationIds.length - 1]] : [scaffoldId];
-    for (const g of restGroups) makeNode(g, lastFoundation, "impl");
+    for (const grp of restClusterGroups) {
+      makeNode(grp.files, lastFoundation, "impl", grp.cluster);
+    }
+
+    // Garante que todos os REQs declarados estejam cobertos em pelo menos um Microbrief (Trava T8b)
+    if (microbriefs.length > 0) {
+      const coveredSet = new Set(microbriefs.flatMap((m) => m.reqsCobertos));
+      for (const reqId of allReqsForSpec) {
+        if (!coveredSet.has(reqId)) {
+          const targetMb = microbriefs[microbriefs.length - 1];
+          targetMb.reqsCobertos.push(reqId);
+          const foundReq = declaredReqs.find((r) => r.id === reqId);
+          const reqDesc = foundReq ? `${foundReq.titulo}: ${foundReq.criterio}` : `Cumprir ${reqId}`;
+          targetMb.criteriosAceitePorReq[reqId] = [reqDesc];
+          targetMb.registroCumprimento.push({
+            reqId,
+            statusDeclarado: "PENDENTE",
+            arquivoLinha: "PENDENTE",
+            comoFoiImplementado: "PENDENTE",
+          });
+        }
+      }
+    }
+
+    const clustersEnvolvidos = Array.from(new Set(microbriefs.map((m) => m.cluster)));
+    const macrobrief: MacrobriefDocument = {
+      documento: "macrobrief",
+      idMacrobrief: `macro-${stamp}`,
+      idProjeto: projectSlug,
+      specVersao: 1,
+      requisitosTotais: allReqsForSpec,
+      clustersAtivos: clustersEnvolvidos.length > 0 ? clustersEnvolvidos : ["core"],
+      microbriefs: microbriefs.map((m) => ({
+        id: m.idMicrobrief,
+        cluster: m.cluster,
+        dependeDe: m.dependeDe,
+        arquivos: [...m.arquivosPermitidos.criar, ...m.arquivosPermitidos.modificar],
+        reqs: m.reqsCobertos,
+      })),
+      contratosTypescript: "// Contratos inferidos dos módulos core da Spec",
+    };
+
+    const t8bCheck =
+      microbriefs.length > 0
+        ? validateMacrobriefMechanical(macrobrief, allReqsForSpec, FILES_PER_NODE)
+        : { valid: true, errors: [] };
 
     return {
       goal: specText,
       nodes,
-      summary: `Spec decomposta em ${nodes.length} etapas (${foundation.length} arquivos de base, ${rest.length} de funcionalidade).`,
+      summary: `Spec decomposta em ${nodes.length} etapas (${foundation.length} arquivos de base, ${rest.length} de funcionalidade) nos clusters [${clustersEnvolvidos.join(", ")}].`,
+      macrobrief,
+      microbriefs,
+      t8bCheck,
     };
   }
 

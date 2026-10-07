@@ -8,6 +8,9 @@
  */
 
 import { BriefBuilder } from "../brief/brief-builder";
+import { loadRoleSkill, buildSkillSystemPrompt } from "../skills/skill-runtime";
+import { classifyLens2Divergence, type Lens1ReqStatus, type Lens2DivergenceKind } from "../templates/artifact-templates";
+import type { ClusterKind } from "../config/orchestration-policy";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
 
@@ -18,8 +21,27 @@ export interface ValidationType1Result {
   testFailures: string[];
 }
 
+export interface ReqBlindVerdictItem {
+  id: string;
+  status: Lens1ReqStatus;
+  evidencia: string;
+}
+
+export interface ReqLens2DivergenceItem {
+  reqId: string;
+  statusLente1: Lens1ReqStatus;
+  declaradoPeloExecutor: "atendido" | "parcial" | "nao_atendido";
+  tipoDivergencia: Lens2DivergenceKind;
+  detalhe: string;
+}
+
 export interface ValidationType2Result {
   verdict: "APPROVED" | "REJECTED";
+  rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
+  ressalvas?: string[];
+  reqVerdicts?: ReqBlindVerdictItem[];
+  reqDivergences?: ReqLens2DivergenceItem[];
+  skillUsed?: string;
   lens1BlindReport: string;
   lens2CrossVerification: string;
   rejectionReason?: string;
@@ -31,12 +53,8 @@ export interface ValidationType2Result {
    */
   method: "llm_blind" | "heuristic_fallback" | "n/a";
   /**
-   * true quando a alegação do worker (claimedSuccess) diverge do veredito independente da
-   * Lente Cega (blindVerdict.implemented) — só é calculável no método "llm_blind". O verdict
-   * final já é decidido exclusivamente pela Lente Cega (a única leitura real do código), então
-   * essa divergência nunca muda o resultado — ela é sinal de telemetria: um worker que relata
-   * conclusão de forma recorrentemente desalinhada da realidade do código é o próprio padrão de
-   * alucinação que esta trava existe para detectar, mesmo quando o código final acaba aprovado.
+   * true quando a alegação do worker (claimedSuccess ou tabela por REQ) diverge do veredito independente da
+   * Lente Cega (blindVerdict.implemented / reqVerdicts) — só é calculável no método "llm_blind".
    */
   divergenceDetected?: boolean;
 }
@@ -45,6 +63,15 @@ export interface BlindAuditVerdict {
   implemented: boolean;
   missingRequirements: string[];
   justification: string;
+  rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
+  ressalvas?: string[];
+  reqVerdicts?: ReqBlindVerdictItem[];
+}
+
+export interface ValidateType2Options {
+  cluster?: ClusterKind;
+  expectedReqs?: string[];
+  isPublicPage?: boolean;
 }
 
 /** Função de despacho LLM injetada pelo chamador (desacopla o auditor do SmartRouter/provedores). */
@@ -418,20 +445,45 @@ export class DualLensAuditor {
   }
 
   /**
+   * Extrai alegações por REQ (ex.: "| REQ-001 | atendido | src/lib/x.ts:10 |") do relatório do executor
+   * para a Verificação Cruzada da Lente 2.
+   */
+  public static parseExecutorReqClaims(
+    workerExecutionReport: string
+  ): Map<string, { statusDeclarado: "atendido" | "parcial" | "nao_atendido"; evidenciaCitada: string }> {
+    const map = new Map<string, { statusDeclarado: "atendido" | "parcial" | "nao_atendido"; evidenciaCitada: string }>();
+    const lines = workerExecutionReport.split(/\r?\n/);
+    for (const line of lines) {
+      const reqMatch = line.match(/\b(REQ-\d{3,})\b/i);
+      if (!reqMatch) continue;
+      const reqId = reqMatch[1].toUpperCase();
+      const lower = line.toLowerCase();
+      let statusDeclarado: "atendido" | "parcial" | "nao_atendido" = "atendido";
+      if (lower.includes("nao_atendido") || lower.includes("não atendido") || lower.includes("ausente")) {
+        statusDeclarado = "nao_atendido";
+      } else if (lower.includes("parcial")) {
+        statusDeclarado = "parcial";
+      }
+      const fileLineMatch = line.match(/([a-zA-Z0-9_./\[\]-]+\.[a-zA-Z0-9]+):(\d+)/);
+      map.set(reqId, {
+        statusDeclarado,
+        evidenciaCitada: fileLineMatch ? `${fileLineMatch[1]}:${fileLineMatch[2]}` : "",
+      });
+    }
+    return map;
+  }
+
+  /**
    * Lente 1 real: envia ao LLM APENAS o Brief original e o conteúdo real dos arquivos gerados
    * (NUNCA o relatório do worker) e pede um veredito independente sobre se o código de fato
-   * implementa o que foi pedido. Isso é o que torna a auditoria "cega" de verdade — antes, a
-   * Lente 1 nunca lia o código nem o Brief, só respondia PASS incondicionalmente.
+   * implementa o que foi pedido, usando a skill declarativa do cluster (`avaliador-<cluster>`).
    */
   private static async runBlindLens(
     briefMarkdown: string,
     codeContentMap: Record<string, string>,
-    dispatchFn: LLMDispatchFn
-  ): Promise<BlindAuditVerdict | null> {
-    // Antes: 2.500 caracteres por arquivo e 9.000 no total. Um arquivo real de 120 linhas passa
-    // disso; o auditor via o código cortado e reprovava por "arquivo termina abruptamente" — o
-    // bloqueio da etapa lib/asaas.ts (06/10) foi causado por este corte, não pelo executor.
-    // O corte agora é só teto de segurança e, quando acontece, é declarado ao auditor.
+    dispatchFn: LLMDispatchFn,
+    options?: ValidateType2Options
+  ): Promise<{ verdict: BlindAuditVerdict; skillUsed: string } | null> {
     const MAX_FILE_CHARS = Number(process.env.BLIND_AUDIT_MAX_FILE_CHARS) || 24000;
     const MAX_TOTAL_CHARS = Number(process.env.BLIND_AUDIT_MAX_TOTAL_CHARS) || 80000;
     let budget = MAX_TOTAL_CHARS;
@@ -451,6 +503,28 @@ export class DualLensAuditor {
       budget -= shown.length;
     }
 
+    const cluster = options?.cluster;
+    const skillName = cluster ? `avaliador-${cluster}` : "avaliador";
+    let skillBlock = "";
+    try {
+      const loadedSkill = loadRoleSkill(skillName);
+      skillBlock =
+        "\n\n[INSTRUÇÕES DECLARATIVAS DA SKILL " +
+        loadedSkill.name.toUpperCase() +
+        "]\n" +
+        buildSkillSystemPrompt(loadedSkill, {
+          includeLocalReferences: cluster === "frontend",
+          includeTasteSkillPublic: Boolean(options?.isPublicPage),
+        });
+    } catch {
+      /* fallback silencioso caso o diretório skills/ não esteja presente em algum ambiente isolado */
+    }
+
+    const reqsInstruction =
+      options?.expectedReqs && options.expectedReqs.length > 0
+        ? ` Avalie também cada requisito (${options.expectedReqs.join(", ")}) no campo opcional "reqVerdicts":[{"id":"REQ-001","status":"implementado"|"parcial"|"ausente","evidencia":"arquivo:linha"}].`
+        : "";
+
     const messages: { role: "system" | "user"; content: string }[] = [
       {
         role: "system",
@@ -458,9 +532,12 @@ export class DualLensAuditor {
           "Você é um Auditor Cego de código. Você NÃO viu nenhum relatório de execução do worker, apenas o " +
           "Brief original e o conteúdo real dos arquivos gerados abaixo. Sua única tarefa é verificar, com base " +
           "EXCLUSIVAMENTE na lógica real do código (nunca em nomes de arquivo, comentários ou alegações), se os " +
-          "requisitos do Brief foram de fato implementados. Responda SOMENTE com um JSON de uma linha, sem " +
+          "requisitos do Brief foram de fato implementados." +
+          reqsInstruction +
+          " Responda SOMENTE com um JSON de uma linha, sem " +
           'markdown e sem texto extra, no formato exato: {"implemented":true|false,"missingRequirements":' +
-          '["..."],"justification":"motivo em até 40 palavras"}.',
+          '["..."],"justification":"motivo em até 40 palavras"}.' +
+          skillBlock,
       },
       {
         role: "user",
@@ -471,16 +548,47 @@ export class DualLensAuditor {
     try {
       const raw = await dispatchFn(messages);
       if (!raw) return null;
-      const match = raw.match(/\{[\s\S]*?"implemented"\s*:\s*(?:true|false)[\s\S]*?\}/i);
+      const match = raw.match(/\{[\s\S]*?"implemented"\s*:\s*(?:true|false)[\s\S]*\}/i);
       if (!match) return null;
       const parsed = JSON.parse(match[0]);
       if (typeof parsed.implemented !== "boolean") return null;
+
+      const reqVerdicts: ReqBlindVerdictItem[] | undefined = Array.isArray(parsed.reqVerdicts || parsed.veredito_por_req)
+        ? (parsed.reqVerdicts || parsed.veredito_por_req).map((r: any) => ({
+            id: String(r.id || r.reqId || "REQ-001"),
+            status: (["implementado", "parcial", "ausente"].includes(r.status) ? r.status : "ausente") as Lens1ReqStatus,
+            evidencia: String(r.evidencia || ""),
+          }))
+        : undefined;
+
+      const ressalvas: string[] | undefined = Array.isArray(parsed.ressalvas)
+        ? parsed.ressalvas.map((s: unknown) => String(s))
+        : undefined;
+
+      // Se houver reqVerdicts explícitos e algum estiver parcial ou ausente, implemented é false (P12)
+      const hasIncompleteReq = reqVerdicts ? reqVerdicts.some((r) => r.status !== "implementado") : false;
+      const effectiveImplemented = hasIncompleteReq ? false : Boolean(parsed.implemented);
+
+      const rawVerdict: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO" = !effectiveImplemented
+        ? "REPROVADO"
+        : parsed.rawVerdict === "APROVADO_COM_RESSALVA" ||
+            parsed.veredito_final === "APROVADO_COM_RESSALVA" ||
+            (ressalvas && ressalvas.length > 0)
+          ? "APROVADO_COM_RESSALVA"
+          : "APROVADO";
+
       return {
-        implemented: parsed.implemented,
-        missingRequirements: Array.isArray(parsed.missingRequirements)
-          ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
-          : [],
-        justification: String(parsed.justification || "").slice(0, 300),
+        skillUsed: skillName,
+        verdict: {
+          implemented: effectiveImplemented,
+          missingRequirements: Array.isArray(parsed.missingRequirements)
+            ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
+            : [],
+          justification: String(parsed.justification || "").slice(0, 300),
+          rawVerdict,
+          ressalvas,
+          reqVerdicts,
+        },
       };
     } catch {
       return null;
@@ -493,20 +601,16 @@ export class DualLensAuditor {
    * Lente 1 (Cega): se `dispatchFn` for fornecido, lê o Brief + o código real gerado via LLM
    * e emite um veredito independente de implementação — sem nunca ver o relatório do worker.
    * Lente 2 (Verificação Cruzada): confronta esse veredito independente com a alegação do
-   * worker e reporta explicitamente qualquer divergência (sinal direto de alucinação).
-   *
-   * Sem `dispatchFn` (ou se o LLM falhar/timeout/responder algo não-parseável), cai no
-   * fallback heurístico, que REJEITA (method: "heuristic_fallback") — sem leitura semântica
-   * real não há aprovação; a falha entra no ciclo normal de retry/bloqueio.
+   * worker (inclusive por REQ e citações arquivo:linha) e reporta qualquer divergência.
    */
   public static async validateType2(
     type1Result: ValidationType1Result,
     briefMarkdown: string,
     workerExecutionReport: string,
     codeContentMap: Record<string, string>,
-    dispatchFn?: LLMDispatchFn
+    dispatchFn?: LLMDispatchFn,
+    options?: ValidateType2Options
   ): Promise<ValidationType2Result> {
-    // Se o Validador Tipo 1 falhou, o Validador Tipo 2 nem é processado (Economia de tokens)
     if (!type1Result.passed) {
       return {
         verdict: "REJECTED",
@@ -524,37 +628,95 @@ export class DualLensAuditor {
     const filesInScope = Object.keys(codeContentMap);
 
     if (dispatchFn) {
-      // Sem veredito da Lente Cega o fallback rejeita — então uma instabilidade momentânea do
-      // provedor (timeout, JSON truncado) custaria uma tentativa inteira do nó, com nova
-      // geração do worker. Uma nova chamada só ao auditor é muito mais barata.
-      let blindVerdict: BlindAuditVerdict | null = null;
-      for (let call = 1; call <= DualLensAuditor.BLIND_LENS_MAX_CALLS && !blindVerdict; call++) {
-        blindVerdict = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn).catch(
+      let blindOutcome: { verdict: BlindAuditVerdict; skillUsed: string } | null = null;
+      for (let call = 1; call <= DualLensAuditor.BLIND_LENS_MAX_CALLS && !blindOutcome; call++) {
+        blindOutcome = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn, options).catch(
           () => null
         );
       }
 
-      if (blindVerdict) {
+      if (blindOutcome) {
+        const { verdict: blindVerdict, skillUsed } = blindOutcome;
         const claimedSuccess = DualLensAuditor.workerClaimedSuccess(workerExecutionReport);
         const verdict: "APPROVED" | "REJECTED" = blindVerdict.implemented ? "APPROVED" : "REJECTED";
-        const divergence = claimedSuccess !== blindVerdict.implemented;
 
-        const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (LLM)]
+        // Lente 2: verificação cruzada por REQ e por citação arquivo:linha contra o relatório do executor
+        const executorClaims = DualLensAuditor.parseExecutorReqClaims(workerExecutionReport);
+        const reqDivergences: ReqLens2DivergenceItem[] = [];
+
+        if (blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0) {
+          for (const rv of blindVerdict.reqVerdicts) {
+            const claim = executorClaims.get(rv.id);
+            const declaredStatus = claim ? claim.statusDeclarado : claimedSuccess ? "atendido" : "nao_atendido";
+            let citedLineExists = true;
+            if (claim?.evidenciaCitada) {
+              const [citedFile, citedLineStr] = claim.evidenciaCitada.split(":");
+              const normCited = normalizeScopePath(citedFile);
+              const matchedFileContent = Object.entries(codeContentMap).find(
+                ([k]) => normalizeScopePath(k) === normCited
+              )?.[1];
+              const lineNum = Number(citedLineStr);
+              if (!matchedFileContent || (Number.isFinite(lineNum) && lineNum > matchedFileContent.split(/\r?\n/).length)) {
+                citedLineExists = false;
+              }
+            }
+            const baseDiv = classifyLens2Divergence(rv.status, declaredStatus);
+            const divType: Lens2DivergenceKind = !citedLineExists ? "alucinacao_grave" : baseDiv.tipoDivergencia;
+            if (
+              divType === "alucinacao_grave" ||
+              divType === "divergencia_otimista" ||
+              divType === "divergencia_conservadora"
+            ) {
+              reqDivergences.push({
+                reqId: rv.id,
+                statusLente1: rv.status,
+                declaradoPeloExecutor: declaredStatus,
+                tipoDivergencia: divType,
+                detalhe: !citedLineExists
+                  ? `Executor citou evidência inexistente (${claim?.evidenciaCitada}) para ${rv.id}.`
+                  : `Executor declarou ${rv.id} como "${declaredStatus}", mas a Lente 1 Cega constatou "${rv.status}" (${rv.evidencia}).`,
+              });
+            }
+          }
+        }
+
+        const divergence = claimedSuccess !== blindVerdict.implemented || reqDivergences.length > 0;
+
+        const reqsSummaryBlock =
+          blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0
+            ? `\n- Veredito por REQ: ${blindVerdict.reqVerdicts.map((r) => `${r.id}=${r.status} (${r.evidencia})`).join(", ")}`
+            : "";
+
+        const lens1BlindReport = `[LENTE 1 - RELATÓRIO CEGO DE AUDITORIA (LLM - ${skillUsed})]
 - Arquivos auditados: ${filesInScope.join(", ")}
-- Veredito independente: ${blindVerdict.implemented ? "IMPLEMENTADO" : "NÃO IMPLEMENTADO"}
-- Justificativa: ${blindVerdict.justification}${
+- Veredito independente: ${blindVerdict.implemented ? "IMPLEMENTADO" : "NÃO IMPLEMENTADO"} (${blindVerdict.rawVerdict || verdict})
+- Justificativa: ${blindVerdict.justification}${reqsSummaryBlock}${
           blindVerdict.missingRequirements.length
             ? `\n- Requisitos ausentes: ${blindVerdict.missingRequirements.join("; ")}`
             : ""
+        }${
+          blindVerdict.ressalvas && blindVerdict.ressalvas.length
+            ? `\n- Ressalvas: ${blindVerdict.ressalvas.join("; ")}`
+            : ""
         }`;
+
+        const reqDivBlock =
+          reqDivergences.length > 0
+            ? `\n- Divergências por REQ: ${reqDivergences.map((d) => `${d.reqId} [${d.tipoDivergencia}]: ${d.detalhe}`).join(" | ")}`
+            : "";
 
         const lens2CrossVerification = `[LENTE 2 - VERIFICAÇÃO CRUZADA]
 - Relatório do Worker alega conclusão: ${claimedSuccess ? "SIM" : "NÃO"}
 - Veredito independente da Lente Cega: ${blindVerdict.implemented ? "SIM" : "NÃO"}
-- Divergência detectada: ${divergence ? "SIM — alegação do worker não confere com a leitura real do código" : "NÃO"}`;
+- Divergência detectada: ${divergence ? "SIM — alegação do worker não confere com a leitura real do código" : "NÃO"}${reqDivBlock}`;
 
         return {
           verdict,
+          rawVerdict: blindVerdict.rawVerdict,
+          ressalvas: blindVerdict.ressalvas,
+          reqVerdicts: blindVerdict.reqVerdicts,
+          reqDivergences: reqDivergences.length > 0 ? reqDivergences : undefined,
+          skillUsed,
           lens1BlindReport,
           lens2CrossVerification,
           rejectionReason:

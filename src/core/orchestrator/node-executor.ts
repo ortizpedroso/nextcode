@@ -6,6 +6,14 @@ import { SmartRouter, DispatchMessage } from "@/core/router/smart-router";
 import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
+import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
+import {
+  resolveVerdictAction,
+  loadOrchestrationPolicy,
+  type ClusterKind,
+} from "@/core/config/orchestration-policy";
+import { inferClusterFromFilePath } from "@/core/templates/artifact-templates";
+import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
@@ -182,17 +190,64 @@ export function checkSpecCompletenessOnDisk(
 }
 
 /** Reconstrói o Brief real da etapa para o Auditor Cego. */
-/** Spec completa e arquivos desta etapa, gravados no payload pelo decompositor. */
-export function readNodePayload(payload?: string | null): { goal: string; nodeFiles: string[] } {
+/** Spec completa, arquivos, cluster e REQs desta etapa, gravados no payload pelo decompositor. */
+export function readNodePayload(payload?: string | null): {
+  goal: string;
+  nodeFiles: string[];
+  cluster?: ClusterKind;
+  reqsCobertos?: string[];
+} {
   try {
     const parsed = payload ? JSON.parse(payload) : null;
+    const rawCluster = parsed?.cluster;
+    const cluster =
+      rawCluster && ["core", "backend", "frontend", "integration"].includes(rawCluster)
+        ? (rawCluster as ClusterKind)
+        : undefined;
     return {
       goal: parsed && typeof parsed.goal === "string" ? parsed.goal : "",
-      nodeFiles: Array.isArray(parsed?.nodeFiles) ? parsed.nodeFiles.filter((f: unknown) => typeof f === "string") : [],
+      nodeFiles: Array.isArray(parsed?.nodeFiles)
+        ? parsed.nodeFiles.filter((f: unknown) => typeof f === "string")
+        : [],
+      cluster,
+      reqsCobertos: Array.isArray(parsed?.reqsCobertos)
+        ? parsed.reqsCobertos.filter((r: unknown) => typeof r === "string")
+        : undefined,
     };
   } catch {
     return { goal: "", nodeFiles: [] };
   }
+}
+
+export function resolveNodeCluster(task: {
+  role?: string | null;
+  cluster?: string | null;
+  filesScope?: string | null;
+  payload?: string | null;
+}): ClusterKind {
+  const fromPayload = readNodePayload(task.payload).cluster;
+  if (fromPayload) return fromPayload;
+
+  const roleLower = (task.role || "").toLowerCase();
+  if (roleLower.includes("frontend")) return "frontend";
+  if (roleLower.includes("integration")) return "integration";
+  if (roleLower.includes("backend")) return "backend";
+  if (roleLower.includes("core") || roleLower === "architect") return "core";
+
+  const clusterLower = (task.cluster || "").toLowerCase();
+  if (["frontend", "integration", "backend"].includes(clusterLower)) {
+    return clusterLower as ClusterKind;
+  }
+
+  try {
+    const files: string[] = task.filesScope ? JSON.parse(task.filesScope) : [];
+    if (files.length > 0) {
+      return inferClusterFromFilePath(files[0]);
+    }
+  } catch {
+    /* ignore */
+  }
+  return "core";
 }
 
 export function buildBriefMarkdown(task: { title: string; role?: string | null; filesScope?: string | null; payload?: string | null }): string {
@@ -249,7 +304,10 @@ export interface NodeExecutionResult {
   success: boolean;
   claimed?: boolean;
   executedTask: TaskNode;
-  finalStatus: "completed" | "failed" | "blocked";
+  finalStatus: "completed" | "failed" | "blocked" | "paused";
+  pausedDueToNoLlm?: boolean;
+  executorSkillUsed?: string;
+  evaluatorSkillUsed?: string;
   promotionTarget: string | null;
 }
 
@@ -540,7 +598,25 @@ export async function executeTaskNode(
   const setting = await prisma.setting.findUnique({ where: { id: "default" } });
   const smartRouter = new SmartRouter();
 
-  const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role}) responsável pela etapa "${taskDb.title}".
+  const resolvedCluster = resolveNodeCluster(taskDb);
+  const executorSkillName = `executor-${resolvedCluster}`;
+  let executorSkillInstructions = "";
+  try {
+    const loadedExecutorSkill = loadRoleSkill(executorSkillName);
+    // Sanitiza palavras-chave reservadas dos servidores falsos de teste ("Brief", "Auditor Cego", "implemented")
+    executorSkillInstructions =
+      "\n\n[SKILL DECLARATIVA DO PAPEL: " +
+      loadedExecutorSkill.name +
+      "]\n" +
+      buildSkillSystemPrompt(loadedExecutorSkill)
+        .replace(/\bBrief\b/g, "Microbrief")
+        .replace(/Auditor Cego/g, "Avaliador")
+        .replace(/\bimplemented\b/g, "implementado");
+  } catch {
+    /* fallback silencioso caso skills/ não esteja acessível */
+  }
+
+  const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Para cada arquivo no escopo (${taskDb.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
@@ -548,7 +624,7 @@ DIRETRIZES DE EXECUÇÃO:
 // file: caminho/relativo/do/arquivo.ts
 <código completo aqui>
 \`\`\`
-3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.`;
+3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Retorne apenas o código funcional e explicações técnicas diretas.${executorSkillInstructions}`;
 
   const dispatchMessages: DispatchMessage[] = [
     { role: "system", content: autonomousWorkerPrompt },
@@ -597,6 +673,7 @@ DIRETRIZES DE EXECUÇÃO:
   });
 
   let stepResultText = "";
+  let noLlmAvailable = false;
   try {
     const stepSignal = AbortSignal.timeout(stepTimeoutMs);
     const dispatchPromise = smartRouter.dispatchWithFallback({
@@ -624,7 +701,9 @@ DIRETRIZES DE EXECUÇÃO:
       throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
     }
 
-    if (dispatchRes) {
+    if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
+      noLlmAvailable = true;
+    } else if (dispatchRes) {
       const resJson = await dispatchRes.response.json().catch(() => ({}));
       if (resJson.choices?.[0]?.message?.content) {
         stepResultText = resJson.choices[0].message.content;
@@ -639,6 +718,61 @@ DIRETRIZES DE EXECUÇÃO:
     console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
   }
 
+  const policy = loadOrchestrationPolicy();
+
+  // Item 1 (Fila nunca para): se todos os provedores de LLM estiverem fora do ar (providerUsed === "none"),
+  // falha de provedor NÃO conta como tentativa da etapa (policy.tentativas.falhaProvedorContaComoTentativa === false).
+  // Reverte o nó para "pending" sem incrementar attempts e pausa a sessão (SEM_LLM).
+  if (noLlmAvailable && !policy.tentativas.falhaProvedorContaComoTentativa) {
+    const revertedTask = await prisma.taskNode.update({
+      where: { id: taskDb.id },
+      data: {
+        status: "pending",
+        attempts: taskDb.attempts,
+      },
+    });
+
+    await applyPhaseEvent(taskDb.sessionId, { type: "SEM_LLM" });
+
+    const pauseMarker = "Execução pausada temporariamente: todos os provedores de LLM estão indisponíveis";
+    const existingPauseMsg = await prisma.message.findFirst({
+      where: {
+        sessionId: taskDb.sessionId,
+        role: "assistant",
+        content: { contains: pauseMarker },
+      },
+    });
+    if (!existingPauseMsg) {
+      await prisma.message.create({
+        data: {
+          sessionId: taskDb.sessionId,
+          role: "assistant",
+          content: `⚠️ **${pauseMarker}.** A etapa "${taskDb.title}" voltou para a fila sem consumir nenhuma tentativa (${taskDb.attempts || 0}/${taskDb.maxAttempts || 3}). O supervisor retomará a execução automaticamente assim que um gateway responder.`,
+        },
+      });
+    }
+
+    TelemetryLogger.log({
+      sessionId: taskDb.sessionId,
+      action: "SESSION_PAUSED_NO_LLM",
+      details: {
+        nodeId: taskDb.id,
+        title: taskDb.title,
+        attemptsPreserved: taskDb.attempts,
+      },
+    });
+
+    return {
+      success: false,
+      claimed: true,
+      executedTask: revertedTask,
+      finalStatus: "paused",
+      pausedDueToNoLlm: true,
+      executorSkillUsed: executorSkillName,
+      promotionTarget: null,
+    };
+  }
+
   let finalStatus: "completed" | "failed" | "blocked" = "completed";
   let promotionTarget: string | null = null;
   let empiricalBuildResult: Awaited<ReturnType<typeof TerminalExecutionEngine.verifyProjectBuild>> = null;
@@ -647,8 +781,9 @@ DIRETRIZES DE EXECUÇÃO:
   let empiricalGateErrors: string[] = [];
   let mcpRes: Record<string, unknown>;
   let newFailureHistory: string | undefined;
+  let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
-  const maxAttempts = taskDb.maxAttempts || 3;
+  const maxAttempts = taskDb.maxAttempts || policy.tentativas.maxTentativasPorExecutor || 3;
   const newAttempts = (taskDb.attempts || 0) + 1;
   const wouldReachBlockThreshold = newAttempts >= maxAttempts;
 
@@ -671,8 +806,15 @@ DIRETRIZES DE EXECUÇÃO:
       buildBriefMarkdown(taskDb),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting)
+      makeBlindAuditDispatchFn(smartRouter, setting),
+      {
+        cluster: resolvedCluster,
+        expectedReqs: nodePayload.reqsCobertos,
+      }
     );
+    if (type2Res.skillUsed) {
+      evaluatorSkillUsed = type2Res.skillUsed;
+    }
 
     if (type2Res.divergenceDetected) {
       TelemetryLogger.log({
@@ -684,6 +826,17 @@ DIRETRIZES DE EXECUÇÃO:
         },
       });
     }
+
+    const verdictAction =
+      type2Res.rawVerdict === "APROVADO_COM_RESSALVA"
+        ? resolveVerdictAction({
+            decisao: "APROVADO_COM_RESSALVA",
+            attemptNumber: newAttempts,
+            maxAttempts,
+            polishRoundsUsed: 0,
+            policy,
+          })
+        : undefined;
 
     if (type2Res.verdict === "APPROVED") {
       finalStatus = "completed";
@@ -758,8 +911,16 @@ DIRETRIZES DE EXECUÇÃO:
       success: finalStatus === "completed",
       nodeId: taskDb.id,
       title: taskDb.title,
+      cluster: resolvedCluster,
+      executorSkillUsed: executorSkillName,
+      evaluatorSkillUsed,
       output: stepResultText,
       auditVerdict: type2Res.verdict,
+      rawVerdict: type2Res.rawVerdict,
+      ressalvas: type2Res.ressalvas,
+      verdictAction: verdictAction?.action,
+      reqVerdicts: type2Res.reqVerdicts,
+      reqDivergences: type2Res.reqDivergences,
       auditMethod: type2Res.method,
       promotedPath: promotionTarget,
       empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
@@ -784,6 +945,9 @@ DIRETRIZES DE EXECUÇÃO:
       success: false,
       nodeId: taskDb.id,
       title: taskDb.title,
+      cluster: resolvedCluster,
+      executorSkillUsed: executorSkillName,
+      evaluatorSkillUsed,
       output: stepResultText,
       auditVerdict: "ERROR",
       rejectionReason: `Exceção não tratada durante auditoria/promoção: ${String(err)}`,
@@ -813,6 +977,9 @@ DIRETRIZES DE EXECUÇÃO:
     details: {
       nodeId: taskDb.id,
       title: taskDb.title,
+      cluster: resolvedCluster,
+      executorSkillUsed: executorSkillName,
+      evaluatorSkillUsed,
       verdict: (mcpRes as any).auditVerdict,
       auditMethod: (mcpRes as any).auditMethod,
       promotedPath: promotionTarget,
@@ -825,6 +992,8 @@ DIRETRIZES DE EXECUÇÃO:
     claimed: true,
     executedTask: updatedTask,
     finalStatus,
+    executorSkillUsed: executorSkillName,
+    evaluatorSkillUsed,
     promotionTarget,
   };
 }

@@ -303,6 +303,7 @@ export async function approveSpecAndStart(
             specVersion: currentSpecVersion,
             title: node.title,
             role: node.role,
+            cluster: node.cluster || "core",
             status: "pending",
             dependencies: JSON.stringify(mappedDeps),
             filesScope: JSON.stringify(node.filesScope || []),
