@@ -5,6 +5,18 @@
 
 ---
 
+## 08/10/2026 (13) — prompt R1 v3 final entregue
+
+**Feito:** `5e3cbaa` esclarece no prompt v3 que perfil vazio no YAML cai no padrão vazio (sem mexer em `extractScalarString`). Prompt final entregue ao fundador (`docs/prompts/R1-continuacao-v3.md`, partida = commit que contém este diário).
+
+**Onde parou:** aguardando o Antigravity executar R1.3 (conclusão) → R1.3b → R1.4 → R1.5 → R1.6.
+
+**Próximo passo:** auditar o relatório do R1 (compilar cada commit isolado, suíte 2×, `git diff -U0` dos testes antigos, `X-Routed-Via` só `custom/`). Depois: regravar P0 (sem o 0.3) → P1 núcleo do Jev → P3 avaliador/elicitador no FreeLLMAPI.
+
+**Pendências do fundador:** criar perfis pagos no FreeLLMAPI (opcional); crédito Claude/Gemini para avaliador de outra família; stack/recorte do Gateway; teto de custo (proposta US$ 3,00); privacidade do Jev.
+
+---
+
 ## 08/10/2026 (12) — DeepSeek pago funcionando pelo FreeLLMAPI
 
 - Fundador corrigiu o ID no painel. Conferido: `deepseek-v4-pro` e `deepseek-flash` → 200, `X-Routed-Via: custom/...`.
