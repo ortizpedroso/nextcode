@@ -16,7 +16,10 @@ import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { promoteWithEmpiricalGate } from "@/core/governance/empirical-gate";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
-import { defaultRunTypecheckInQuarantine } from "@/core/skills/executor-tool-loop";
+import {
+  defaultRunTypecheckInQuarantine,
+  parseExecutorToolAction,
+} from "@/core/skills/executor-tool-loop";
 
 const createdSessionIds: string[] = [];
 const createdProjectIds: string[] = [];
@@ -157,6 +160,21 @@ async function setupSingleTaskSession(projectDir: string) {
   }
 
   return { project, session, task: microbriefTask!, jobId: startRes.jobId! };
+}
+
+async function waitForTelemetryLogs(sessionId: string, action: string) {
+  for (let i = 0; i < 30; i++) {
+    const rows = await prisma.telemetryLog.findMany({
+      where: { sessionId, action },
+      orderBy: { createdAt: "asc" },
+    });
+    if (rows.length > 0) return rows;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  return prisma.telemetryLog.findMany({
+    where: { sessionId, action },
+    orderBy: { createdAt: "asc" },
+  });
 }
 
 describe("Laço de ferramentas do executor (Item 2)", () => {
@@ -315,9 +333,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
       fs.existsSync(path.join(projectDir, "src", "fora-do-escopo.ts"))
     ).toBe(false);
 
-    const deniedLogs = await prisma.telemetryLog.findMany({
-      where: { sessionId: session.id, action: "SKILL_TOOL_DENIED" },
-    });
+    const deniedLogs = await waitForTelemetryLogs(session.id, "SKILL_TOOL_DENIED");
     expect(deniedLogs.length).toBeGreaterThanOrEqual(1);
     const details = JSON.parse(deniedLogs[0].details!);
     expect(details.ferramenta).toBe("write_file");
@@ -375,9 +391,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(secondTurnReceivedProtectedPathError).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".env"))).toBe(false);
 
-    const deniedLogs = await prisma.telemetryLog.findMany({
-      where: { sessionId: session.id, action: "SKILL_TOOL_DENIED" },
-    });
+    const deniedLogs = await waitForTelemetryLogs(session.id, "SKILL_TOOL_DENIED");
     expect(deniedLogs.length).toBeGreaterThanOrEqual(1);
     expect(deniedLogs[0].details).toContain("[SKILL PROTECTED PATH]");
   });
@@ -429,9 +443,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(res.success).toBe(true);
     expect(receivedToolDenied).toBe(true);
 
-    const deniedLogs = await prisma.telemetryLog.findMany({
-      where: { sessionId: session.id, action: "SKILL_TOOL_DENIED" },
-    });
+    const deniedLogs = await waitForTelemetryLogs(session.id, "SKILL_TOOL_DENIED");
     expect(deniedLogs.length).toBeGreaterThanOrEqual(1);
     expect(deniedLogs[0].details).toContain("[SKILL TOOL DENIED]");
   });
@@ -811,6 +823,84 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
       qm.purgeWorkspace(task1);
       qm.purgeWorkspace(task2);
       qm.purgeWorkspace(task3);
+    }
+  });
+
+  it("parseExecutorToolAction a) formato oficial com quebra de linha → ok", () => {
+    const res = parseExecutorToolAction(
+      '```json acao\n{"ferramenta": "list_files", "args": {"pasta": "src"}}\n```'
+    );
+    expect(res).toEqual({
+      ok: true,
+      action: { ferramenta: "list_files", args: { pasta: "src" } },
+    });
+  });
+
+  it('parseExecutorToolAction b) "```json acao{...}```" sem quebra → ok', () => {
+    const res = parseExecutorToolAction(
+      '```json acao{"ferramenta": "list_files", "args": {"pasta": "src"}}```'
+    );
+    expect(res).toEqual({
+      ok: true,
+      action: { ferramenta: "list_files", args: { pasta: "src" } },
+    });
+  });
+
+  it('parseExecutorToolAction c) "```json\\n{...}```" sem "acao" → ok', () => {
+    const res = parseExecutorToolAction(
+      '```json\n{"ferramenta": "read_file", "args": {"caminho": "src/greet.ts"}}\n```'
+    );
+    expect(res).toEqual({
+      ok: true,
+      action: { ferramenta: "read_file", args: { caminho: "src/greet.ts" } },
+    });
+  });
+
+  it("parseExecutorToolAction d) resposta que é só o objeto JSON → ok", () => {
+    const res = parseExecutorToolAction(
+      '  {"ferramenta": "run_check", "args": {"comando": "typecheck"}}  '
+    );
+    expect(res).toEqual({
+      ok: true,
+      action: { ferramenta: "run_check", args: { comando: "typecheck" } },
+    });
+  });
+
+  it("parseExecutorToolAction e) dois blocos válidos → erro", () => {
+    const res1 = parseExecutorToolAction(
+      '```json acao\n{"ferramenta": "list_files", "args": {"pasta": "src"}}\n```\n```json acao\n{"ferramenta": "read_file", "args": {"caminho": "src/a.ts"}}\n```'
+    );
+    expect(res1.ok).toBe(false);
+    if (!res1.ok) {
+      expect(res1.error).toContain("```json acao");
+    }
+
+    const res2 = parseExecutorToolAction(
+      '```json\n{"ferramenta": "list_files", "args": {"pasta": "src"}}\n```\n```json\n{"ferramenta": "read_file", "args": {"caminho": "src/a.ts"}}\n```'
+    );
+    expect(res2.ok).toBe(false);
+    if (!res2.ok) {
+      expect(res2.error).toContain("```json acao");
+    }
+  });
+
+  it("parseExecutorToolAction f) prosa sem JSON → erro", () => {
+    const res = parseExecutorToolAction(
+      "Vou primeiro verificar os arquivos existentes no diretório src."
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toContain("```json acao");
+    }
+  });
+
+  it('parseExecutorToolAction g) bloco ```json com objeto SEM "ferramenta" (ex.: o relatorio_executor) → erro', () => {
+    const res = parseExecutorToolAction(
+      '```json\n{"reqs": [{"id": "REQ-001", "status": "atendido", "arquivo_linha": "src/a.ts:1-2", "como": "ok"}]}\n```'
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error).toContain("```json acao");
     }
   });
 });

@@ -28,59 +28,132 @@ export type ParseToolActionResult =
   | { ok: true; action: ParsedToolAction }
   | { ok: false; error: string };
 
+const OFFICIAL_FORMAT_REMINDER =
+  'Responda com EXATAMENTE UM bloco ```json acao contendo {"ferramenta": "<nome>", "args": { ... }}.';
+
+function validateActionObject(parsed: unknown): ParseToolActionResult {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      error: `O conteúdo do bloco \`\`\`json acao deve ser um objeto JSON. ${OFFICIAL_FORMAT_REMINDER}`,
+    };
+  }
+  const ferramenta = (parsed as Record<string, unknown>).ferramenta;
+  if (typeof ferramenta !== "string" || !ferramenta.trim()) {
+    return {
+      ok: false,
+      error: `O JSON deve conter o campo string "ferramenta". ${OFFICIAL_FORMAT_REMINDER}`,
+    };
+  }
+  const rawArgs = (parsed as Record<string, unknown>).args;
+  if (rawArgs !== undefined && (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs))) {
+    return {
+      ok: false,
+      error: `O campo "args" deve ser um objeto JSON. ${OFFICIAL_FORMAT_REMINDER}`,
+    };
+  }
+  return {
+    ok: true,
+    action: {
+      ferramenta: ferramenta.trim(),
+      args: (rawArgs as Record<string, unknown>) ?? {},
+    },
+  };
+}
+
 /**
- * Extrai exatamente UM bloco ```json acao da resposta do modelo.
- * Turno sem bloco ou com mais de um bloco ou JSON inválido é tratado como turno inválido.
+ * Extrai exatamente UMA ação de ferramenta da resposta do modelo, tentando na ordem:
+ * 1. Blocos "```json acao" com qualquer espaço em branco (inclusive nenhum) entre "acao" e o JSON;
+ * 2. Blocos "```json" ou "```" sem rótulo cujo JSON seja um objeto com "ferramenta" (string não vazia);
+ * 3. A resposta inteira (sem espaços nas pontas) como objeto JSON com "ferramenta".
  */
 export function parseExecutorToolAction(text: string): ParseToolActionResult {
-  const regex = /```json[ \t]+acao[ \t]*\r?\n([\s\S]*?)```/gi;
-  const matches: string[] = [];
+  // 1. Blocos "```json acao" com qualquer espaço em branco (inclusive nenhum) entre "acao" e o JSON
+  const stage1Regex = /```json[ \t]+acao\s*([\s\S]*?)```/gi;
+  const stage1Matches: string[] = [];
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    matches.push(match[1].trim());
+  while ((match = stage1Regex.exec(text)) !== null) {
+    stage1Matches.push(match[1].trim());
   }
 
-  if (matches.length === 0) {
+  if (stage1Matches.length > 1) {
     return {
       ok: false,
-      error:
-        'Nenhum bloco ```json acao encontrado. Responda com EXATAMENTE UM bloco ```json acao contendo {"ferramenta": "<nome>", "args": { ... }}.',
-    };
-  }
-
-  if (matches.length > 1) {
-    return {
-      ok: false,
-      error: `Foram encontrados ${matches.length} blocos \`\`\`json acao no mesmo turno. Envie EXATAMENTE UM bloco por turno.`,
+      error: `Foram encontrados ${stage1Matches.length} blocos \`\`\`json acao no mesmo turno. Envie EXATAMENTE UM bloco \`\`\`json acao por turno.`,
     };
   }
 
-  try {
-    const parsed = JSON.parse(matches[0]);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { ok: false, error: "O conteúdo do bloco ```json acao deve ser um objeto JSON." };
+  if (stage1Matches.length === 1) {
+    try {
+      const parsed = JSON.parse(stage1Matches[0]);
+      return validateActionObject(parsed);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `JSON inválido no bloco \`\`\`json acao: ${err instanceof Error ? err.message : String(err)}. ${OFFICIAL_FORMAT_REMINDER}`,
+      };
     }
-    const ferramenta = (parsed as Record<string, unknown>).ferramenta;
-    if (typeof ferramenta !== "string" || !ferramenta.trim()) {
-      return { ok: false, error: 'O JSON deve conter o campo string "ferramenta".' };
+  }
+
+  // 2. Blocos "```json" ou "```" sem rótulo cujo conteúdo, após JSON.parse, seja um objeto com "ferramenta"
+  const stage2Regex = /```(?:json)?(?=[ \t]*[\r\n{])\s*([\s\S]*?)```/gi;
+  const stage2Candidates: string[] = [];
+  while ((match = stage2Regex.exec(text)) !== null) {
+    stage2Candidates.push(match[1].trim());
+  }
+
+  const stage2ValidActions: ParseToolActionResult[] = [];
+  for (const rawBlock of stage2Candidates) {
+    try {
+      const parsed = JSON.parse(rawBlock);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as Record<string, unknown>).ferramenta === "string" &&
+        ((parsed as Record<string, unknown>).ferramenta as string).trim().length > 0
+      ) {
+        stage2ValidActions.push(validateActionObject(parsed));
+      }
+    } catch {
+      // Ignora bloco sem JSON válido; se nenhum candidato for válido, retorna erro ao final
     }
-    const rawArgs = (parsed as Record<string, unknown>).args;
-    if (rawArgs !== undefined && (typeof rawArgs !== "object" || rawArgs === null || Array.isArray(rawArgs))) {
-      return { ok: false, error: 'O campo "args" deve ser um objeto JSON.' };
-    }
-    return {
-      ok: true,
-      action: {
-        ferramenta: ferramenta.trim(),
-        args: (rawArgs as Record<string, unknown>) ?? {},
-      },
-    };
-  } catch (err) {
+  }
+
+  if (stage2ValidActions.length > 1) {
     return {
       ok: false,
-      error: `JSON inválido no bloco \`\`\`json acao: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Foram encontrados ${stage2ValidActions.length} blocos de ação no mesmo turno. ${OFFICIAL_FORMAT_REMINDER}`,
     };
   }
+
+  if (stage2ValidActions.length === 1) {
+    return stage2ValidActions[0];
+  }
+
+  // 3. A resposta inteira, sem espaços nas pontas, é um objeto JSON com "ferramenta"
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as Record<string, unknown>).ferramenta === "string" &&
+        ((parsed as Record<string, unknown>).ferramenta as string).trim().length > 0
+      ) {
+        return validateActionObject(parsed);
+      }
+    } catch {
+      // Segue para o erro padrão abaixo
+    }
+  }
+
+  return {
+    ok: false,
+    error: `Nenhum bloco \`\`\`json acao encontrado. ${OFFICIAL_FORMAT_REMINDER}`,
+  };
 }
 
 export function formatToolResultMessage(toolName: string, rawOutput: string): string {
