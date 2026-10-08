@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # Plano da Etapa 0 — Fundação medida
 
 > **Status:** aprovado pelo fundador em 04/10/2026.

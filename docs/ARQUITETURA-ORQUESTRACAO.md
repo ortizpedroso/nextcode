@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # NextCode — Arquitetura de Orquestração (v4)
 
 > **Status:** papéis aprovados em 04/10/2026; execução, tokens, roteamento, chaves, roadmap de escala, catálogo, segredos e ponte única aprovados em 04/10/2026. Decisões tomadas e em aberto na §15.

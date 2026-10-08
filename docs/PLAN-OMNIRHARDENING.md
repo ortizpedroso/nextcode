@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # 📐 Plano de Hardening — OmniRoute & Segurança (NextCode)
 
 **Estado atual:** commit `24c6e8c` em `main` (fixes de estabilidade/roteamento já mesclados).

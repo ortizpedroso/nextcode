@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # Plano de ação — NextCode como harness de skills
 
 > **Fonte única do trabalho a partir de 06/10/2026.** Substitui as listas M1–M6 e R1–R7.

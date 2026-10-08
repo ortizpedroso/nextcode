@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # 📋 SPEC CANÔNICA NEXTCODE v5.0
 > **Documento Mestre de Especificação Técnica, Governança e Segurança**  
 > *Este documento é o padrão oficial obrigatório para a especificação e criação de qualquer sistema ou módulo dentro da plataforma NextCode.*

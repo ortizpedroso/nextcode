@@ -1,3 +1,5 @@
+> **Referência atual:** [`NEXTCODE-REFERENCIA.md`](NEXTCODE-REFERENCIA.md) (08/10/2026). Este documento é histórico/detalhe; quando divergir, vale a referência.
+
 # Gateways de LLM
 
 > Decisão D3 (revisada em 05/10/2026): ver `docs/ARQUITETURA-ORQUESTRACAO.md` §D3.
