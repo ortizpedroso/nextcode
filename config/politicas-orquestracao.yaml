@@ -153,3 +153,6 @@ orcamento:
 execucao_paralela:
   paralelismo_maximo: 3
   exigir_conjuntos_arquivos_disjuntos: true
+
+execucao:
+  modo_executor: laco

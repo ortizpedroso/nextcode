@@ -821,8 +821,7 @@ export async function executeTaskNode(
   const policy = loadOrchestrationPolicy();
   const nodePayload = readNodePayload(taskDb.payload);
   const nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
-  const policyExecutorMode: ExecutorMode =
-    (policy as { execucao?: { modoExecutor?: ExecutorMode } }).execucao?.modoExecutor ?? "chamada_unica";
+  const policyExecutorMode: ExecutorMode = policy.execucao?.modoExecutor ?? "laco";
   const effectiveExecutorMode: ExecutorMode = executorModeOverrideForTests ?? policyExecutorMode;
   const useToolLoop = Boolean(effectiveExecutorMode === "laco" && nodeMicrobrief && loadedExecutorSkill);
 

@@ -9,7 +9,7 @@ import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
 import { claimJob, executeClaimedJob } from "@/core/orchestrator/job-queue";
 import { runOnce, supervisePausedSessions } from "@/core/orchestrator/job-worker";
-import { setScaffoldInstallerForTests, verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
+import { setScaffoldInstallerForTests, setExecutorModeForTests, verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
 import { setUiCheckRunnerForTests, pagesFromSpecFiles } from "@/core/execution/ui-check";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { IntakeEngine } from "@/core/intake/intake-engine";
@@ -65,6 +65,7 @@ function makeExhaustedDispatch(): DispatchResult {
 
 describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", () => {
   beforeEach(() => {
+    setExecutorModeForTests("chamada_unica");
     setScaffoldInstallerForTests(async (cwd) => {
       fs.mkdirSync(path.join(cwd, "node_modules"), { recursive: true });
       return { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 };
@@ -72,6 +73,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
   });
 
   afterEach(async () => {
+    setExecutorModeForTests(null);
     setScaffoldInstallerForTests(null);
     vi.restoreAllMocks();
     if (createdSessionIds.length > 0) {

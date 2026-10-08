@@ -102,6 +102,9 @@ export interface OrchestrationPolicy {
     paralelismoMaximo: number;
     exigirConjuntosArquivosDisjuntos: boolean;
   };
+  execucao: {
+    modoExecutor: "laco" | "chamada_unica";
+  };
 }
 
 export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
@@ -262,6 +265,9 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     paralelismoMaximo: 3,
     exigirConjuntosArquivosDisjuntos: true,
   },
+  execucao: {
+    modoExecutor: "laco",
+  },
 };
 
 function extractScalarNumber(yamlText: string, key: string, fallback: number): number {
@@ -397,6 +403,11 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
     "exigir_conjuntos_arquivos_disjuntos",
     policy.execucaoParalela.exigirConjuntosArquivosDisjuntos
   );
+
+  const modoExecutorRaw = extractScalarString(raw, "modo_executor", policy.execucao.modoExecutor);
+  if (modoExecutorRaw === "laco" || modoExecutorRaw === "chamada_unica") {
+    policy.execucao.modoExecutor = modoExecutorRaw;
+  }
 
   return policy;
 }
