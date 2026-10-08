@@ -5,6 +5,26 @@
 
 ---
 
+## 08/10/2026 (6) — "pago primeiro" e prompt R1
+
+**Decisão do fundador:** o Jev analisa o que precisa de pago e manda para o pago; o resto ele decide se divide para caber no gratuito. Revisar código antes de decidir.
+
+**Revisão do código (fatos)**
+- `decideMicrobriefsPlanningBatch` escolhe `rapido|medio|pesado` só pela complexidade; reserva sem Jev manda 1 arquivo para o gratuito.
+- `splitNodesByJev` já divide uma parte por arquivo (só quando REQ cabe em um arquivo); hoje só dispara por "mistura responsabilidades".
+- Executor: `rapido` → FreeLLMAPI; `medio`/`pesado` → DeepSeek; 2ª tentativa sobe (`resolveExecutorTierForAttempt`).
+- **Achado:** `jev_limiares` do YAML não é lido por `loadOrchestrationPolicy` (só padrões do código).
+
+**Feito**
+- Regra "pago primeiro" na referência §5.2 (limiares 0,35 / 0,85 / 0,80, configuráveis); R1 antes do P0 em §5.3.
+- `docs/prompts/R1-roteamento-pago-primeiro.md` (R1.1 política, R1.2 decisão do Jev com 2 perguntas novas, R1.3 divisão para o gratuito + `JEV_ROTA_MODELO`, R1.4 P1/P2 reais + relatório).
+- P0 marcado "não enviar ainda" (hash será atualizado após o R1).
+
+**Próximo passo**
+- Auditar o relatório do R1 → regravar P0 com novo hash → P1 (núcleo do Jev, inclui ler `jev_limiares` de verdade).
+
+---
+
 ## 08/10/2026 (5) — política de modelos final e prompt P0
 
 **Decisão do fundador (registrada em `memory/decisoes.md`)**

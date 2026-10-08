@@ -27,3 +27,4 @@
 | 08/10 manhã | Crédito hoje só no **DeepSeek** (Claude e Gemini depois). **Elicitador fixo no modelo forte; executor não economiza; o restante o Jev gerencia (inclusive a escolha do provedor)**. Já houve testes de custo e de divisão da execução | esta sessão |
 | 08/10 manhã | Documentar tudo antes de executar; memória obrigatória; prompts ao Antigravity com travas e relatórios para auditoria | esta sessão |
 | 08/10 tarde | **Elicitador (Spec, Macrobrief), executor e avaliador: não economizar se precisar — quem decide é o Jev**, inclusive a divisão. Modelo gratuito só quando não prejudicar o projeto; observado: gratuitos dão respostas incompletas/erradas na execução. Ordem de implementação: Claude decide | esta sessão |
+| 08/10 tarde (2) | **Pago primeiro**: o Jev analisa o que precisa de provedor pago e manda para o pago; o resto o próprio Jev decide se **divide** a tarefa para caber no gratuito. Revisar código e documentação antes de decidir | esta sessão |

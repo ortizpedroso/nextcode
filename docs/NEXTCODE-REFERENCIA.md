@@ -281,11 +281,19 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 | **Avaliador** | **Jev** dentro da cadeia `evaluator-models.ts` (outra família quando houver crédito) | idem |
 | **Todo o resto** | **Jev** | gratuito para o simples, pago para o complexo |
 
-**Trava de qualidade (proposta técnica do Claude, configurável em `politicas-orquestracao.yaml`, calibrada no bench):**
-como o fundador observou que modelos gratuitos entregam respostas incompletas/erradas na execução, para os três papéis
-críticos o Jev só pode escolher o gratuito com **confiança ≥ 0,85** de que a tarefa é simples; abaixo disso, o pago.
-**Da 2ª tentativa em diante, nunca gratuito.** Toda escolha vai para a trilha com a probabilidade, para o bench medir
-se o gratuito prejudicou (reprovação, tentativa extra) e ajustar o limiar.
+**Regra "pago primeiro" (fundador, 08/10 tarde) — implementação no prompt R1:**
+para cada Microbrief, o Jev responde numa só chamada (lote M3 de `decideMicrobriefsPlanningBatch`):
+1. `precisa_modelo_pago` (noul) — um gratuito provavelmente erraria? Se **≥ 0,35** → modelo pago (nunca `rapido`).
+2. senão, complexidade `rapido` com **confiança ≥ 0,85** → gratuito, etapa inteira.
+3. senão, `partes_cabem_no_gratuito` (noul) **≥ 0,80** e 2+ arquivos → **divide uma parte por arquivo** (`splitNodesByJev`) e cada parte vai ao gratuito; se a divisão não for possível (REQ que cita dois arquivos), a etapa fica inteira no **pago**.
+4. senão → pago.
+Sem resposta do Jev → reserva **paga** (`medio` até 3 arquivos, `pesado` acima). Da 2ª tentativa em diante nunca gratuito
+(`resolveExecutorTierForAttempt` já faz). Cada escolha vai para a trilha (`JEV_ROTA_MODELO`). Os três limiares ficam em
+`config/politicas-orquestracao.yaml` (`roteamento_pago_primeiro`) e são calibrados com as medições.
+Hoje vale para o **executor** (onde a escolha de nível já existe); elicitador e avaliador entram no mesmo modelo de decisão no P3.
+
+**Achado (08/10):** o bloco `jev_limiares` do YAML **não é lido** pelo `loadOrchestrationPolicy` — só os padrões do código valem.
+O R1 lê as chaves novas de verdade; corrigir as antigas fica para o P1.
 
 Crédito hoje: só **DeepSeek** (`deepseek-v4-pro`). Com Claude/Gemini, o Jev ganha opções e o avaliador muda de família.
 A **cascata** (barato → Jev confere → caro, `decideSdeCascadeEscalation`) vale para "todo o resto", **não** para Spec nem executor.
@@ -313,6 +321,7 @@ Recomendação já feita (08/10 00:34): **adotar o SDK oficial `@typesafe-ai/sdk
 
 ### 5.3 Pacotes (ordem decidida pelo Claude em 08/10, por delegação do fundador; 1 pacote = 1 prompt = 1 relatório)
 
+**R1 (roteamento pago primeiro) vem antes de tudo**, por decisão do fundador (08/10 tarde); P0 segue depois, com o hash atualizado.
 Por que nesta ordem: **P0** remove o teste intermitente (sem isso a trava "suíte verde a cada commit" para o Antigravity à toa) e o segredo
 em texto puro; **P1** é a base de todo uso do Jev (SDK oficial, novas tentativas, estado por estrutura, limiares por risco);
 **P2** dá números reais antes de mudar o roteamento; **P3** liga a política de modelos acima; depois, entrada, execução, fila.

@@ -1,6 +1,7 @@
 # Prompt P0 — Arrumação (para o Antigravity)
 
 > Pacote P0 de `docs/NEXTCODE-REFERENCIA.md` §5.3. Escrito pelo Claude em 08/10/2026.
+> ⚠️ **Não enviar ainda:** o R1 vai antes (decisão de 08/10 tarde). Depois da auditoria do R1, o Claude regrava este arquivo (novo commit) e a trava T-A passa a valer contra esse commit.
 > Copie TUDO abaixo da linha e cole no Antigravity.
 
 ---
