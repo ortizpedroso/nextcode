@@ -38,6 +38,7 @@ import {
   verifyStageEvidenceWithJev,
   type JevFailureDiagnosis,
 } from "@/core/decision/jev-execution-checks";
+import { checkSecretsInCodeWithJev } from "@/core/governance/secret-guard";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
@@ -1138,6 +1139,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         { strictPaths: true }
       );
 
+    const secretGuardRes = await checkSecretsInCodeWithJev({
+      sessionId: taskDb.sessionId,
+      nodeId: taskDb.id,
+      codeContentMap,
+      modo: policy.jevExecucao.guardaSegredosCodigo,
+      limiarSegredoNoul: policy.jevExecucao.limiarSegredoNoul,
+    });
+
     const type1Res = DualLensAuditor.validateType1(
       codeContentMap,
       [],
@@ -1346,7 +1355,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           })
         : undefined;
 
-    if (type2Res.verdict === "APPROVED") {
+    if (secretGuardRes.blocked) {
+      finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
+      qm.purgeWorkspace(taskDb.id);
+    } else if (type2Res.verdict === "APPROVED") {
       finalStatus = "completed";
       const gate = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr);
       empiricalBuildResult = gate.buildResult;
@@ -1396,13 +1408,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       : undefined;
 
     const rejectionReason =
+      (secretGuardRes.blocked ? secretGuardRes.rejectionReasons.join("\n") : undefined) ||
       empiricalFailureReason ||
       (type2Res.verdict !== "APPROVED"
         ? type2Res.rejectionReason || "Divergência semântica."
         : undefined);
 
     let jevDiagnostico: JevFailureDiagnosis | null = null;
-    if (finalStatus === "failed" && !evaluatorOutageFreeRetry) {
+    if (finalStatus === "failed" && !evaluatorOutageFreeRetry && !secretGuardRes.blocked) {
       let prevHistory: FailureAttemptRecord[] = [];
       try {
         prevHistory = taskDb.failureHistory ? JSON.parse(taskDb.failureHistory) : [];
@@ -1501,8 +1514,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       evaluatorSkillUsed,
       output: stepResultText,
       executorReport: validatedExecutorReport,
-      auditVerdict: type2Res.verdict,
-      rawVerdict: type2Res.rawVerdict,
+      auditVerdict: secretGuardRes.blocked ? "REJECTED" : type2Res.verdict,
+      rawVerdict: secretGuardRes.blocked ? "REPROVADO" : type2Res.rawVerdict,
       ressalvas: type2Res.ressalvas,
       verdictAction: verdictAction?.action,
       reqVerdicts: type2Res.reqVerdicts,
