@@ -5,6 +5,20 @@
 
 ---
 
+## 08/10/2026 (15) — auditoria do P0 (aceito) e prompt P1
+
+**P0 (Antigravity):** `77b3adb` (McpServer.env cifrado/mascarado) e `bc2095a` (causa do teste intermitente + relatório).
+**Auditoria:** escopo ok; `77b3adb` compila isolado; sem segredo no diff; suíte 86/621 verde no HEAD (auditor, 2×); código conferido (`mcp-env.ts`, rotas GET/POST/PATCH mascaram, 400 em env inválido). Causa do intermitente: dois `EXECUTOR_REPORT_INVALID` no mesmo ms sem ordem; teste agora ordena por `retryIndex`; timeout 60 s e `try/catch` vazio de `9e88b59` desfeitos. Banco real: 1 servidor MCP sem env (nada a migrar). **Veredito: aceito.**
+
+**Achados para o P1 (lendo `jev.ts`):** custo do Jev fora do `LLM_COST` (teto não vê); sem nova tentativa em 429/529; 422 sem alerta; `askJevBatch` e 4 chamadores cortam o JSON do estado no meio; `score.probabilities` lido como array (API devolve objeto); `jev_limiares` do YAML não é lido.
+**Decisão:** não adotar o SDK da TypeSafe agora (`memory/decisoes.md`).
+
+**Feito:** `docs/prompts/P1-nucleo-jev.md`.
+**Próximo passo:** Antigravity executa P1 → auditar. Depois: P2 (bench real) ou P3 (avaliador/elicitador pelo FreeLLMAPI) — decidir com o fundador.
+**Pendências do fundador:** crédito Claude/Gemini no FreeLLMAPI (avaliador independente); stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 08/10/2026 (14) — auditoria do R1: aceito com ressalvas; P0 pronto
 
 **Feito (Antigravity):** R1 completo — `69d8a94` `51e141e` `a2c9b2c` `9a9d539` `6ab284e` `88ab558` + relatório `143b975`.
