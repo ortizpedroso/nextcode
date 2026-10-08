@@ -5,6 +5,24 @@
 
 ---
 
+## 08/10/2026 (5) — política de modelos final e prompt P0
+
+**Decisão do fundador (registrada em `memory/decisoes.md`)**
+- Elicitador, executor e avaliador: não economizar se precisar; **o Jev decide** modelo e divisão; gratuito só sem prejuízo (gratuitos deram respostas incompletas/erradas). Ordem: Claude decide.
+
+**Feito**
+- Referência §5.2: Jev escolhe o modelo de todos os papéis + trava de qualidade proposta (gratuito só com confiança ≥ 0,85 nos papéis críticos; nunca na 2ª tentativa em diante; calibrar no bench).
+- Referência §5.3: ordem P0 → P1 → P2 → P3 → … com justificativa.
+- `docs/prompts/P0-arrumacao.md` (0.1 `McpServer.env` cifrado; 0.2 causa do teste intermitente; 0.3 OmniRoute por digest), com travas T-A…T-K e relatório em `docs/relatorios/P0-arrumacao.md`.
+
+**Onde parou**
+- Prompt P0 entregue ao fundador; aguardando o relatório do Antigravity.
+
+**Próximo passo**
+- Auditar o relatório do P0 (§8.5 da referência) → escrever o prompt P1 (núcleo do Jev com `@typesafe-ai/sdk`).
+
+---
+
 ## 08/10/2026 (4) — correção: eu tinha ignorado o histórico
 
 **Erro desta sessão (para não repetir)**

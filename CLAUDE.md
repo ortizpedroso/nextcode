@@ -15,7 +15,7 @@
 5. Um passo por vez; commit por passo com `tsc` e `vitest` **daquele commit**.
 6. Discordar com veredito técnico quando a ideia estiver errada (ver memória `push-back-honestly`).
 7. Nenhum segredo em texto puro e nenhum segredo sai da máquina (nem para LLM, nem para o Jev).
-8. **Modelos:** elicitador fixo no mais forte; executor nunca economiza; o resto o Jev gerencia, inclusive o provedor (`memory/decisoes.md`).
+8. **Modelos (08/10 tarde):** o Jev escolhe modelo e divisão de todos os papéis; elicitador, executor e avaliador não economizam se precisar; gratuito só sem prejuízo (trava de qualidade na referência §5.2).
 
 ## Projeto
 | Nome | O que é |

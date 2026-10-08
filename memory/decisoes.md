@@ -26,3 +26,4 @@
 | 08/10 01:04 | Ordem: fechar item 2 → item 10 (grupo A do Jev) → item 7 → item 1 → item 8 → item 9 | f9358986 |
 | 08/10 manhã | Crédito hoje só no **DeepSeek** (Claude e Gemini depois). **Elicitador fixo no modelo forte; executor não economiza; o restante o Jev gerencia (inclusive a escolha do provedor)**. Já houve testes de custo e de divisão da execução | esta sessão |
 | 08/10 manhã | Documentar tudo antes de executar; memória obrigatória; prompts ao Antigravity com travas e relatórios para auditoria | esta sessão |
+| 08/10 tarde | **Elicitador (Spec, Macrobrief), executor e avaliador: não economizar se precisar — quem decide é o Jev**, inclusive a divisão. Modelo gratuito só quando não prejudicar o projeto; observado: gratuitos dão respostas incompletas/erradas na execução. Ordem de implementação: Claude decide | esta sessão |

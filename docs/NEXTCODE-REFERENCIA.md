@@ -274,12 +274,18 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 > ⚠️ Correção de 08/10: a versão anterior desta seção (M1–M5) **contradizia** as decisões do fundador
 > (dizia que o Jev não escolhe provedor). Substituída por esta.
 
-| Papel | Quem escolhe o modelo | Regra |
+| Papel | Quem escolhe o modelo | Regra (decisão de 08/10 tarde) |
 |---|---|---|
-| **Elicitador** (Spec, Macrobrief) | **fixo** | sempre o mais forte disponível ("não pode economizar", 06/10) |
-| **Executor** | Jev decide **divisão** e **qual modelo forte**; nunca o gratuito | "não deve economizar" (06/10 e 08/10) |
-| **Avaliador** | cadeia `evaluator-models.ts` | forte e de outra família (Gemini → Claude → DeepSeek); "não economizar tokens" (06/10) — **confirmar se continua fora do roteamento do Jev** |
-| **Todo o resto** (conversa do chat, analista, reenvio de relatório, diagnósticos, sugestões, resumos) | **Jev escolhe o provedor** pela dificuldade (catálogo item 7) | gratuito para o simples, pago para o complexo; "o restante fica no gerenciamento dele" (08/10) |
+| **Elicitador** (Spec, Macrobrief) | **Jev** | não economizar se precisar; gratuito só se não prejudicar |
+| **Executor** | **Jev** (modelo e divisão) | idem |
+| **Avaliador** | **Jev** dentro da cadeia `evaluator-models.ts` (outra família quando houver crédito) | idem |
+| **Todo o resto** | **Jev** | gratuito para o simples, pago para o complexo |
+
+**Trava de qualidade (proposta técnica do Claude, configurável em `politicas-orquestracao.yaml`, calibrada no bench):**
+como o fundador observou que modelos gratuitos entregam respostas incompletas/erradas na execução, para os três papéis
+críticos o Jev só pode escolher o gratuito com **confiança ≥ 0,85** de que a tarefa é simples; abaixo disso, o pago.
+**Da 2ª tentativa em diante, nunca gratuito.** Toda escolha vai para a trilha com a probabilidade, para o bench medir
+se o gratuito prejudicou (reprovação, tentativa extra) e ajustar o limiar.
 
 Crédito hoje: só **DeepSeek** (`deepseek-v4-pro`). Com Claude/Gemini, o Jev ganha opções e o avaliador muda de família.
 A **cascata** (barato → Jev confere → caro, `decideSdeCascadeEscalation`) vale para "todo o resto", **não** para Spec nem executor.
@@ -305,14 +311,19 @@ A **cascata** (barato → Jev confere → caro, `decideSdeCascadeEscalation`) va
 
 Recomendação já feita (08/10 00:34): **adotar o SDK oficial `@typesafe-ai/sdk`** (MIT; novas tentativas e limite de requisição prontos) no lugar do HTTP feito à mão.
 
-### 5.3 Pacotes (ordem proposta; cada pacote = 1 prompt ao Antigravity = 1 relatório)
+### 5.3 Pacotes (ordem decidida pelo Claude em 08/10, por delegação do fundador; 1 pacote = 1 prompt = 1 relatório)
+
+Por que nesta ordem: **P0** remove o teste intermitente (sem isso a trava "suíte verde a cada commit" para o Antigravity à toa) e o segredo
+em texto puro; **P1** é a base de todo uso do Jev (SDK oficial, novas tentativas, estado por estrutura, limiares por risco);
+**P2** dá números reais antes de mudar o roteamento; **P3** liga a política de modelos acima; depois, entrada, execução, fila.
+
 
 | Pacote | Conteúdo | Usos do Jev | Pronto quando |
 |---|---|---|---|
 | **P0 — Arrumação** | `McpServer.env` cifrado + migração; causa do teste intermitente; OmniRoute com versão fixa | — | valor em claro some do banco; 10 rodadas verdes |
 | **P1 — Núcleo do Jev** | cliente v2: nova tentativa com espera em 429/529, 422 para e alerta; **montador de estado por estrutura** (nunca corta JSON); catálogo versionado de perguntas em `config/jev-perguntas.yaml`; critérios estruturados (R5); **política de confiança por risco** (piso / ação comum / ação cara) e **faixa "incerto"** para noul; helper de **ordem invertida**; evento único `JEV_DECISION` com `usage`, probabilidades, modo e versão do catálogo | base de todos (R4–R8, R20–R22) | testes com servidor falso; nenhuma decisão existente muda de resultado |
 | **P2 — Medição** | P1–P4 com testes de aceite escritos à mão; `npm run bench` real (Docker sem rede); remove o benchmark simulado; relatório com custo, tempo, aprovação na 1ª, tokens do Jev | J7 medição | pontuação de partida registrada aqui |
-| **P3 — Modelos** | aplicar §5.2: executor sem nível gratuito; Jev roteando "todo o resto" (catálogo 7) com cascata; teto de custo novo | catálogo 3, 7 | P1/P2 do bench com executor sempre forte |
+| **P3 — Modelos** | aplicar §5.2: Jev escolhe o modelo de **todos** os papéis com a trava de qualidade; cascata no "resto"; teto de custo novo | catálogo 3, 7 | P1/P2 do bench com executor sempre forte |
 | **P4 — Chat: 1 chamada Jev por mensagem (fan-out)** | junta numa só pergunta-lote: intenção (J1), revisão da Spec (J2), comando→ação (J3), mudança durante execução (J4), guardrail de entrada (J5), perfil (J7); o código escolhe o que usar | R6, R7, R8, R15, R17 | testes de cada rota + latência p95 ≤ 1 s |
 | **P5 — Entrada como pensada** | chat carrega a skill `elicitador` (O1); Jev na Spec em 1 lote: lacunas obrigatórias (J8), tipo/stack (J9), clareza por REQ (J10), rastreio de cada REQ ao pedido (J11); `etapa1Ativa: true` (O2); Macrobrief + CONFERENCIA com skill `analista` + J14; analista gera Microbriefs (O3) com J15 cluster e J16 divisão | R1, R3, R9, R14, R16 | P1–P4 pelo chat, fases MACROBRIEF/CONFERENCIA na trilha |
 | **P6 — Execução assertiva** | J18 contexto relevante (busca por linha + re-ranking sobre os arquivos do projeto); J19 skill/referência certa; J20 injeção em arquivo lido; J23 com ordem invertida; J25 com ordem invertida | R12, R13, R16, R17, R19 | bench: aprovação na 1ª sobe ou tokens por REQ caem, sem piorar o outro |
