@@ -13,11 +13,42 @@
  * com as permissões do usuário, fora de qualquer sandbox. tsc e ESLint só analisam o código.
  */
 
+import * as path from "path";
 import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
 import { repairEnvironment } from "../execution/project-base";
 
 export type EmpiricalStage = "typecheck" | "lint";
+
+const projectBuildLocks = new Map<string, Promise<unknown>>();
+
+/**
+ * Mutex em memória por projectRoot para serializar promoções temporárias (run_check) e
+ * promoções definitivas (promoteWithEmpiricalGate) entre etapas paralelas no mesmo projeto.
+ */
+export async function withProjectBuildLock<T>(
+  projectRoot: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  const key = path.resolve(projectRoot).replace(/\\/g, "/").toLowerCase();
+  const prev = projectBuildLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chained = prev.then(() => current);
+  projectBuildLocks.set(key, chained);
+
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (projectBuildLocks.get(key) === chained) {
+      projectBuildLocks.delete(key);
+    }
+  }
+}
 
 export interface EmpiricalGateResult {
   /** true quando a promoção não introduziu nenhum erro novo (ou as verificações não se aplicam). */
@@ -68,70 +99,72 @@ export async function promoteWithEmpiricalGate(
   projectRoot: string,
   filesScope: string[]
 ): Promise<EmpiricalGateResult> {
-  const promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
-  let preexistingFailure = false;
+  return withProjectBuildLock(projectRoot, async () => {
+    const promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
+    let preexistingFailure = false;
 
-  // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
-  // ambiente é corrigido (nunca o código) e o tsc roda mais uma vez antes de julgar.
-  let after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-  if (after && !after.success) {
-    const repair = await repairEnvironment(projectRoot, `${after.stdout}\n${after.stderr}`);
-    if (repair.changed) after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-  }
-  if (after && !after.success) {
-    qm.rollbackPromotion(taskId);
-    const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-    const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
-    const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
-
-    if (!(baseline && !baseline.success && newErrors.length === 0)) {
-      return {
-        passed: false,
-        buildResult: after,
-        lintResult: null,
-        rolledBack: true,
-        preexistingFailure: false,
-        newErrors,
-        failedStage: "typecheck",
-        failureLine: firstBuildErrorLine(after, newErrors),
-      };
+    // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
+    // ambiente é corrigido (nunca o código) e o tsc roda mais uma vez antes de julgar.
+    let after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+    if (after && !after.success) {
+      const repair = await repairEnvironment(projectRoot, `${after.stdout}\n${after.stderr}`);
+      if (repair.changed) after = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
     }
-    qm.reapplyPromotion(taskId);
-    preexistingFailure = true;
-  }
+    if (after && !after.success) {
+      qm.rollbackPromotion(taskId);
+      const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+      const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
+      const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
 
-  // Etapa 2: ESLint só nos arquivos promovidos (erros de lint são por arquivo).
-  const lintAfter = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
-  if (lintAfter && lintAfter.errors.length > 0) {
-    qm.rollbackPromotion(taskId);
-    // Baseline: as versões anteriores dos mesmos arquivos (os que não existiam somem do lint).
-    const lintBaseline = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
-    const baselineKeys = new Set(lintBaseline?.errors || []);
-    const newErrors = lintAfter.errors.filter((k) => !baselineKeys.has(k));
-
-    if (newErrors.length > 0) {
-      return {
-        passed: false,
-        buildResult: after,
-        lintResult: lintAfter.result,
-        rolledBack: true,
-        preexistingFailure: false,
-        newErrors,
-        failedStage: "lint",
-        failureLine: newErrors[0],
-      };
+      if (!(baseline && !baseline.success && newErrors.length === 0)) {
+        return {
+          passed: false,
+          buildResult: after,
+          lintResult: null,
+          rolledBack: true,
+          preexistingFailure: false,
+          newErrors,
+          failedStage: "typecheck",
+          failureLine: firstBuildErrorLine(after, newErrors),
+        };
+      }
+      qm.reapplyPromotion(taskId);
+      preexistingFailure = true;
     }
-    qm.reapplyPromotion(taskId);
-    preexistingFailure = true;
-  }
 
-  return {
-    passed: true,
-    buildResult: after,
-    lintResult: lintAfter?.result || null,
-    rolledBack: false,
-    preexistingFailure,
-    newErrors: [],
-    failedStage: null,
-  };
+    // Etapa 2: ESLint só nos arquivos promovidos (erros de lint são por arquivo).
+    const lintAfter = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
+    if (lintAfter && lintAfter.errors.length > 0) {
+      qm.rollbackPromotion(taskId);
+      // Baseline: as versões anteriores dos mesmos arquivos (os que não existiam somem do lint).
+      const lintBaseline = await TerminalExecutionEngine.verifyProjectLint(projectRoot, promotedFiles);
+      const baselineKeys = new Set(lintBaseline?.errors || []);
+      const newErrors = lintAfter.errors.filter((k) => !baselineKeys.has(k));
+
+      if (newErrors.length > 0) {
+        return {
+          passed: false,
+          buildResult: after,
+          lintResult: lintAfter.result,
+          rolledBack: true,
+          preexistingFailure: false,
+          newErrors,
+          failedStage: "lint",
+          failureLine: newErrors[0],
+        };
+      }
+      qm.reapplyPromotion(taskId);
+      preexistingFailure = true;
+    }
+
+    return {
+      passed: true,
+      buildResult: after,
+      lintResult: lintAfter?.result || null,
+      rolledBack: false,
+      preexistingFailure,
+      newErrors: [],
+      failedStage: null,
+    };
+  });
 }

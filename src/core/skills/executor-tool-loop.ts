@@ -4,6 +4,7 @@ import type { DispatchMessage, SmartRouter } from "@/core/router/smart-router";
 import { enforceSkillToolPermission, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
 import type { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { QuarantineManager as QuarantineManagerClass } from "@/core/governance/quarantine-manager";
+import { withProjectBuildLock } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
 import { recordLlmCost } from "@/core/llm/cost";
@@ -250,39 +251,41 @@ export async function defaultRunTypecheckInQuarantine(params: {
   quarantinedFiles: Map<string, string>;
 }): Promise<string> {
   const { qm, taskId, projectRoot, allowedScopeFiles, quarantinedFiles } = params;
-  const snapshot = new Map<string, string>(quarantinedFiles);
+  return withProjectBuildLock(projectRoot, async () => {
+    const snapshot = new Map<string, string>(quarantinedFiles);
 
-  qm.promoteToMainRepo(taskId, projectRoot, allowedScopeFiles);
-  try {
-    const buildRes = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
-    if (!buildRes) {
-      return "Verificação de tipos indisponível (tsconfig.json ausente).";
+    qm.promoteToMainRepo(taskId, projectRoot, allowedScopeFiles);
+    try {
+      const buildRes = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
+      if (!buildRes) {
+        return "Verificação de tipos indisponível (tsconfig.json ausente).";
+      }
+      if (buildRes.success) {
+        return "tsc --noEmit: 0 erros.";
+      }
+      const combined = `${buildRes.stdout}\n${buildRes.stderr}`;
+      const allErrorLines = combined
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.includes("error TS"));
+      const normalizedScope = allowedScopeFiles.map(normalizeScopePath);
+      const scopeErrorLines = allErrorLines.filter((line) => {
+        const normalizedLine = line.replace(/\\/g, "/");
+        return normalizedScope.some((scopeFile) => normalizedLine.includes(scopeFile));
+      });
+      const selected = scopeErrorLines.slice(0, 10);
+      return [
+        `tsc --noEmit falhou (${allErrorLines.length} erro(s) no total, ${scopeErrorLines.length} no escopo da etapa):`,
+        ...selected.map((e) => `- ${e}`),
+      ].join("\n");
+    } finally {
+      qm.rollbackPromotion(taskId);
+      qm.prepareWorkspace(taskId);
+      for (const [relPath, content] of snapshot.entries()) {
+        qm.writeFile(taskId, relPath, content);
+      }
     }
-    if (buildRes.success) {
-      return "tsc --noEmit: 0 erros.";
-    }
-    const combined = `${buildRes.stdout}\n${buildRes.stderr}`;
-    const allErrorLines = combined
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter((l) => l.includes("error TS"));
-    const normalizedScope = allowedScopeFiles.map(normalizeScopePath);
-    const scopeErrorLines = allErrorLines.filter((line) => {
-      const normalizedLine = line.replace(/\\/g, "/");
-      return normalizedScope.some((scopeFile) => normalizedLine.includes(scopeFile));
-    });
-    const selected = (scopeErrorLines.length > 0 ? scopeErrorLines : allErrorLines).slice(0, 10);
-    return [
-      `tsc --noEmit falhou (${allErrorLines.length} erro(s) no total, ${scopeErrorLines.length} no escopo da etapa):`,
-      ...selected.map((e) => `- ${e}`),
-    ].join("\n");
-  } finally {
-    qm.rollbackPromotion(taskId);
-    qm.prepareWorkspace(taskId);
-    for (const [relPath, content] of snapshot.entries()) {
-      qm.writeFile(taskId, relPath, content);
-    }
-  }
+  });
 }
 
 export interface ExecutorToolLoopParams {
