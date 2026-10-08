@@ -144,3 +144,301 @@ export async function diagnoseStageFailureWithJev(params: {
 
   return diagnosis;
 }
+
+export type JevEvidenceRelation = "supports" | "contradicts" | "unrelated";
+
+export const EVIDENCE_CHECK_CRITERIA: Record<JevEvidenceRelation, string> = {
+  supports: "the excerpt implements what the criterion requires",
+  contradicts: "the excerpt does something different from or opposite to the criterion",
+  unrelated: "the excerpt does not address the criterion",
+};
+
+export interface JevEvidenceChoiceAnswer {
+  choice: JevEvidenceRelation;
+  confidence: number;
+  probabilities: Record<string, number>;
+}
+
+export interface JevEvidenceReqResult {
+  reqId: string;
+  criterio: string;
+  executorStatus?: string;
+  executorArquivoLinha?: string;
+  trechoExecutor: string;
+  executorJev: JevEvidenceChoiceAnswer | null;
+  avaliadorStatus?: string;
+  avaliadorEvidencia?: string;
+  trechoAvaliador: string;
+  avaliadorJev: JevEvidenceChoiceAnswer | null;
+}
+
+export interface JevEvidenceDivergence {
+  reqId: string;
+  origem: "executor" | "avaliador";
+  statusDeclarado: string;
+  vereditoJev: JevEvidenceRelation;
+  confianca: number;
+  probabilidades: Record<string, number>;
+}
+
+export interface JevEvidenceCheckResult {
+  modo: JevExecutionMode;
+  porReq: Record<string, JevEvidenceReqResult>;
+  divergencias: JevEvidenceDivergence[];
+  avisoModoAtivo?: string;
+}
+
+const FILE_LINE_REF_RE = /^([^:\s]+):(\d+)(?:-(\d+))?/;
+
+export function extractNumberedCodeExcerpt(
+  arquivoLinhaRef: string | null | undefined,
+  codeContentMap: Record<string, string>,
+  maxLines = 60
+): string {
+  if (!arquivoLinhaRef || typeof arquivoLinhaRef !== "string") {
+    return "evidencia_inexistente";
+  }
+  const match = arquivoLinhaRef.trim().match(FILE_LINE_REF_RE);
+  if (!match) {
+    return "evidencia_inexistente";
+  }
+
+  const citedFile = match[1].replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+  const startLine = Number(match[2]);
+  const endLine = match[3] ? Number(match[3]) : startLine;
+
+  const normalizedMap = new Map<string, string>();
+  for (const [k, v] of Object.entries(codeContentMap)) {
+    normalizedMap.set(k.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim(), v);
+  }
+
+  const content = normalizedMap.get(citedFile);
+  if (content === undefined) {
+    return "evidencia_inexistente";
+  }
+
+  const lines = content.split(/\r?\n/);
+  const totalLines = lines.length;
+  if (
+    !Number.isInteger(startLine) ||
+    !Number.isInteger(endLine) ||
+    startLine < 1 ||
+    endLine < startLine ||
+    startLine > totalLines ||
+    endLine > totalLines
+  ) {
+    return "evidencia_inexistente";
+  }
+
+  const clampedEnd = Math.min(endLine, startLine + Math.max(1, maxLines) - 1);
+  return lines
+    .slice(startLine - 1, clampedEnd)
+    .map((line, idx) => `${startLine + idx}: ${line}`)
+    .join("\n");
+}
+
+export async function verifyStageEvidenceWithJev(params: {
+  sessionId?: string | null;
+  nodeId: string;
+  reqIds: string[];
+  criteriosPorReq: Record<string, string>;
+  codeContentMap: Record<string, string>;
+  executorRows?: Array<{
+    reqId: string;
+    statusDeclarado: string;
+    arquivoLinha: string;
+  }> | null;
+  avaliadorVerdicts?: Array<{
+    id: string;
+    status: string;
+    evidencia: string;
+  }> | null;
+  modo: JevExecutionMode;
+  limiarEvidenciaContradiz: number;
+}): Promise<JevEvidenceCheckResult | null> {
+  if (params.modo === "desligado" || params.reqIds.length === 0) {
+    return null;
+  }
+
+  // TODO: aguardando dados do modo sombra
+  const warningActiveMode =
+    params.modo === "ativo"
+      ? "TODO: aguardando dados do modo sombra — executando em modo sombra"
+      : undefined;
+
+  const execByReq = new Map(
+    (params.executorRows ?? []).map((r) => [r.reqId, r])
+  );
+  const evalByReq = new Map(
+    (params.avaliadorVerdicts ?? []).map((r) => [r.id, r])
+  );
+
+  const reqsState: Record<
+    string,
+    { criterio: string; trecho_executor: string; trecho_avaliador: string }
+  > = {};
+  const porReq: Record<string, JevEvidenceReqResult> = {};
+  const questions: Record<string, JevQuestionSpec> = {};
+
+  for (const reqId of params.reqIds) {
+    const criterio = (params.criteriosPorReq[reqId] || reqId).slice(0, 1500);
+    const execRow = execByReq.get(reqId);
+    const evalRow = evalByReq.get(reqId);
+
+    const trechoExecutor = extractNumberedCodeExcerpt(
+      execRow?.arquivoLinha,
+      params.codeContentMap,
+      60
+    );
+    const trechoAvaliador = extractNumberedCodeExcerpt(
+      evalRow?.evidencia,
+      params.codeContentMap,
+      60
+    );
+
+    reqsState[reqId] = {
+      criterio,
+      trecho_executor: trechoExecutor,
+      trecho_avaliador: trechoAvaliador,
+    };
+
+    porReq[reqId] = {
+      reqId,
+      criterio,
+      executorStatus: execRow?.statusDeclarado,
+      executorArquivoLinha: execRow?.arquivoLinha,
+      trechoExecutor:
+        trechoExecutor === "evidencia_inexistente" ? "evidencia_inexistente" : "presente",
+      executorJev: null,
+      avaliadorStatus: evalRow?.status,
+      avaliadorEvidencia: evalRow?.evidencia,
+      trechoAvaliador:
+        trechoAvaliador === "evidencia_inexistente" ? "evidencia_inexistente" : "presente",
+      avaliadorJev: null,
+    };
+
+    if (trechoExecutor !== "evidencia_inexistente") {
+      questions[`executor_${reqId}`] = {
+        type: "choice",
+        instructions: `Compare \`reqs.${reqId}.trecho_executor\` against the acceptance criterion in \`reqs.${reqId}.criterio\`. Does the code excerpt support, contradict, or is it unrelated to the criterion?`,
+        criteria: EVIDENCE_CHECK_CRITERIA,
+      };
+    }
+
+    if (trechoAvaliador !== "evidencia_inexistente") {
+      questions[`avaliador_${reqId}`] = {
+        type: "choice",
+        instructions: `Compare \`reqs.${reqId}.trecho_avaliador\` against the acceptance criterion in \`reqs.${reqId}.criterio\`. Does the code excerpt support, contradict, or is it unrelated to the criterion?`,
+        criteria: EVIDENCE_CHECK_CRITERIA,
+      };
+    }
+  }
+
+  let answers: Awaited<ReturnType<typeof askJevBatch>> = null;
+  if (Object.keys(questions).length > 0) {
+    const stateJson = JSON.stringify({ reqs: reqsState }).slice(0, 24000);
+    answers = await askJevBatch({
+      purpose: "evidence_check",
+      state: stateJson,
+      questions,
+      sessionId: params.sessionId,
+      maxStateChars: 24000,
+    });
+  }
+
+  const divergencias: JevEvidenceDivergence[] = [];
+  const probabilitiesByQuestion: Record<string, Record<string, number>> = {};
+
+  for (const reqId of params.reqIds) {
+    const reqEntry = porReq[reqId];
+    const execAns = answers?.[`executor_${reqId}`];
+    if (
+      execAns &&
+      execAns.type === "choice" &&
+      execAns.choice in EVIDENCE_CHECK_CRITERIA
+    ) {
+      const choice = execAns.choice as JevEvidenceRelation;
+      reqEntry.executorJev = {
+        choice,
+        confidence: execAns.confidence,
+        probabilities: execAns.probabilities,
+      };
+      probabilitiesByQuestion[`executor_${reqId}`] = execAns.probabilities;
+
+      const score = Math.max(
+        execAns.confidence ?? 0,
+        execAns.probabilities?.[choice] ?? 0
+      );
+      if (
+        reqEntry.executorStatus === "atendido" &&
+        (choice === "contradicts" || choice === "unrelated") &&
+        score >= params.limiarEvidenciaContradiz
+      ) {
+        divergencias.push({
+          reqId,
+          origem: "executor",
+          statusDeclarado: reqEntry.executorStatus,
+          vereditoJev: choice,
+          confianca: score,
+          probabilidades: execAns.probabilities,
+        });
+      }
+    }
+
+    const evalAns = answers?.[`avaliador_${reqId}`];
+    if (
+      evalAns &&
+      evalAns.type === "choice" &&
+      evalAns.choice in EVIDENCE_CHECK_CRITERIA
+    ) {
+      const choice = evalAns.choice as JevEvidenceRelation;
+      reqEntry.avaliadorJev = {
+        choice,
+        confidence: evalAns.confidence,
+        probabilities: evalAns.probabilities,
+      };
+      probabilitiesByQuestion[`avaliador_${reqId}`] = evalAns.probabilities;
+
+      const score = Math.max(
+        evalAns.confidence ?? 0,
+        evalAns.probabilities?.[choice] ?? 0
+      );
+      if (
+        reqEntry.avaliadorStatus === "implementado" &&
+        choice === "contradicts" &&
+        score >= params.limiarEvidenciaContradiz
+      ) {
+        divergencias.push({
+          reqId,
+          origem: "avaliador",
+          statusDeclarado: reqEntry.avaliadorStatus,
+          vereditoJev: choice,
+          confianca: score,
+          probabilidades: evalAns.probabilities,
+        });
+      }
+    }
+  }
+
+  const result: JevEvidenceCheckResult = {
+    modo: params.modo,
+    porReq,
+    divergencias,
+    ...(warningActiveMode ? { avisoModoAtivo: warningActiveMode } : {}),
+  };
+
+  TelemetryLogger.log({
+    sessionId: params.sessionId ?? undefined,
+    action: "JEV_EVIDENCE_CHECK",
+    details: {
+      nodeId: params.nodeId,
+      modo: params.modo,
+      ...(warningActiveMode ? { aviso: warningActiveMode } : {}),
+      divergencias,
+      probabilidades: probabilitiesByQuestion,
+    },
+  });
+
+  return result;
+}
+

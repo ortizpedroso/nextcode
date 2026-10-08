@@ -110,7 +110,7 @@ describe("Passo 10.2 — Diagnóstico da falha via Jev (antes da próxima tentat
       rawVerdict: "REPROVADO",
       method: "blind_llm",
       rejectionReason: "REQ-001 ausente: sum subtrai em vez de somar.",
-      reqVerdicts: [{ id: "REQ-001", status: "ausente", evidencia: "src/lib/calc.ts:1" }],
+      reqVerdicts: [{ id: "REQ-001", status: "ausente", evidencia: "-" }],
     } as any);
 
     return {

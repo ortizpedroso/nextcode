@@ -35,6 +35,7 @@ import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incide
 import {
   diagnoseStageFailureWithJev,
   formatFailureDiagnosisFeedbackLine,
+  verifyStageEvidenceWithJev,
   type JevFailureDiagnosis,
 } from "@/core/decision/jev-execution-checks";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
@@ -1280,6 +1281,36 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       evaluatorSkillUsed = type2Res.skillUsed;
     }
 
+    const stageReqIds = Array.from(
+      new Set([
+        ...(nodeMicrobrief?.reqsCobertos ?? []),
+        ...(nodePayload.reqsCobertos ?? []),
+        ...((type2Res.reqVerdicts ?? []).map((r) => r.id)),
+      ])
+    );
+    const criteriosPorReq: Record<string, string> = {};
+    const parsedSpecForCriteria = nodePayload.goal ? parseSpecDocument(nodePayload.goal) : null;
+    for (const reqId of stageReqIds) {
+      const fromMb = nodeMicrobrief?.criteriosAceitePorReq?.[reqId];
+      if (Array.isArray(fromMb) && fromMb.length > 0) {
+        criteriosPorReq[reqId] = fromMb.join("; ");
+      } else {
+        const fromSpec = parsedSpecForCriteria?.requisitos?.find((r) => r.id === reqId)?.descricao;
+        criteriosPorReq[reqId] = fromSpec || reqId;
+      }
+    }
+    const jevEvidencia = await verifyStageEvidenceWithJev({
+      sessionId: taskDb.sessionId,
+      nodeId: taskDb.id,
+      reqIds: stageReqIds,
+      criteriosPorReq,
+      codeContentMap,
+      executorRows: validatedExecutorReport?.registroCumprimento ?? null,
+      avaliadorVerdicts: type2Res.reqVerdicts ?? null,
+      modo: policy.jevExecucao.verificacaoEvidencia,
+      limiarEvidenciaContradiz: policy.jevExecucao.limiarEvidenciaContradiz,
+    });
+
     // Falha do AVALIADOR (nenhum modelo devolveu veredito válido) não é culpa do executor: não gasta
     // tentativa, até MAX_FREE_EVALUATOR_RETRIES vezes seguidas (depois conta, para não girar para sempre).
     const evaluatorOutage = type1Res.passed && type2Res.method === "heuristic_fallback";
@@ -1483,6 +1514,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
       rejectionReason,
       jevDiagnostico: jevDiagnostico ?? undefined,
+      jevEvidencia: jevEvidencia ?? undefined,
       incidentReport: incidentReportMarkdown,
     };
   } catch (err) {
