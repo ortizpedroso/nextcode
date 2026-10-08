@@ -5,6 +5,16 @@
 
 ---
 
+## 08/10/2026 (9) — R1 parou no R1.3 (18 testes antigos)
+
+- R1.1 (`69d8a94`) e R1.2 (`51e141e`) commitados pelo Antigravity. R1.3 implementado mas **não commitado**: 18 testes antigos (characterization, execution-trigger-routes, job-worker) quebram porque usam LLM falso pela rota antiga; R1.4 afetaria end-to-end-harness-plan e executor-tool-loop.
+- Decisão (referência §5.2): interruptor `setPaidOnlyRoutingForTests(false)` só nesses arquivos; nenhuma asserção muda; produção segue "somente pago". Dívida: migrar para gateway pago falso depois do bench.
+- Prompt de continuação: `docs/prompts/R1-continuacao-testes.md`.
+
+**Próximo passo:** Antigravity conclui R1.3–R1.6 → auditar relatório (conferir `git diff -U0` dos testes antigos).
+
+---
+
 ## 08/10/2026 (8) — R1 parou no R1.0 (parada correta)
 
 - Antigravity parou no R1.0, como o prompt mandava: a API do DeepSeek lista `deepseek-flash` e `deepseek-v4-pro` (não `deepseek-v4-flash`). Nenhum arquivo alterado.
