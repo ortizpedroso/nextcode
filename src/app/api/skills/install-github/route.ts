@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import { fetchSkillFromGithub } from "@/core/skills/skill-installer";
+import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { checkSkillInstallWithJev } from "@/core/decision/jev-execution-checks";
 
 /**
  * Quarantine gate: importar uma skill via URL do GitHub não a ativa mais na hora.
@@ -32,8 +34,18 @@ export async function POST(request: NextRequest) {
       projectPath = project?.path || null;
     }
 
-    const { responseText, successfulUrl, parsed, contentHash, commitSha, riskFlags } =
+    const { responseText, successfulUrl, parsed, contentHash, commitSha, riskFlags: heuristicRiskFlags } =
       await fetchSkillFromGithub(githubUrl.trim());
+
+    const policy = loadOrchestrationPolicy();
+    const jevSkillGuard = await checkSkillInstallWithJev({
+      responseText,
+      existingRiskFlags: heuristicRiskFlags,
+      modo: policy.jevExecucao.guardaInstalacaoSkill,
+      limiarRiscoSkillNoul: policy.jevExecucao.limiarRiscoSkillNoul,
+      githubUrl: githubUrl.trim(),
+    });
+    const riskFlags = jevSkillGuard.riskFlags;
 
     const proposal = await prisma.candidateSkillProposal.create({
       data: {

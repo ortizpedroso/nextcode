@@ -1304,7 +1304,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       if (Array.isArray(fromMb) && fromMb.length > 0) {
         criteriosPorReq[reqId] = fromMb.join("; ");
       } else {
-        const fromSpec = parsedSpecForCriteria?.requisitos?.find((r) => r.id === reqId)?.descricao;
+        const reqSpec = parsedSpecForCriteria?.requisitos?.find((r) => r.id === reqId);
+        const fromSpec = reqSpec?.criterio || reqSpec?.titulo;
         criteriosPorReq[reqId] = fromSpec || reqId;
       }
     }
