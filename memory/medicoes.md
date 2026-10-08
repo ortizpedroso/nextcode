@@ -55,3 +55,14 @@ Uma falha 400 deixa a chave ~13 s em espera (429 em seguida).
 | P1 | ENTREGUE, tsc 0, 2 etapas, **2/2 aprovadas na 1ª** | US$ 0,0478 (+21% vs 0,0394) | US$ 0,0003 | etapa simples: `custom/deepseek-flash` (antes grátis no groq) |
 | P2 | ENTREGUE, tsc 0, UI_CHECK ok, **3/3 aprovadas na 1ª** | US$ 0,1101 (−21% vs 0,1398) | US$ 0,0004 | 0 chamadas a gratuito/OmniRoute; avaliador = DeepSeek direto (BYOK) |
 Jev: P1 etapa 1 `rapido` conf 0,98 → Flash; P2 etapa 2 `medio` conf 0,46 → sobe a `pesado`.
+
+## Nemotron no FreeLLMAPI (08/10 noite, função TS trivial)
+| modelo | resultado |
+|---|---|
+| nemotron-3-ultra | 200 via `ollama/nemotron-3-ultra`, 3,5 s, correto |
+| nemotron-3-ultra-550b | 200 via `nvidia/nvidia/nemotron-3-ultra-550b-a55b`, 20,5 s, correto |
+Qualidade como avaliador: **não medida** (P3.3 faz divergência plantada).
+
+## P1 real — rodada do auditor (08/10 noite, após o pacote P1)
+ENTREGUE, 195 s, tsc 0, 2/2 etapas na 1ª. LLM_COST US$ 0,0499 = executor 0,0260 + avaliador 0,0237 + **jev 0,00026** (Jev agora entra na conta).
+**1ª divergência real do `JEV_EVIDENCE_CHECK` (sombra):** etapa `lib/tarefas.ts` (executor `deepseek-flash`): evidência citada pelo executor para REQ-001 → Jev `unrelated` 0,81; evidência do avaliador → `supports` 0,94. Leitura: código certo, citação do executor errada (relatório vago). Mantém o modo sombra; reforça o valor da checagem.

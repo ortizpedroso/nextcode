@@ -5,6 +5,35 @@
 
 ---
 
+## 08/10/2026 (17) — auditoria do P1 (aceito com ressalva) e prompt P3
+
+**P1 (Antigravity):** `4dd6733` `e1acc35` `6639232` `c8b63a6` + relatório `6925847`.
+**Auditoria:** escopo por commit ok; os 4 commits compilam isolados; código conferido (`postJev` com 3 tentativas e espera, 422 → `JEV_REQUEST_INVALID`, estado grande → `JEV_STATE_TOO_LARGE` sem chamada, custo do Jev em `LLM_COST`). **Ressalva:** relatório diz fase final `CONCLUIDO`, que não existe; refiz o P1 real: `ENTREGUE`, US$ 0,0499 (Jev 0,00026). Nova trava T-L: relatório só com saída bruta.
+**Dado novo:** 1ª divergência do `JEV_EVIDENCE_CHECK` em sombra (citação do executor Flash não sustenta REQ-001; avaliador sustenta) — ver `memory/medicoes.md`.
+**Decisão do fundador registrada:** avaliador Nemotron → DeepSeek → Claude (`memory/decisoes.md`, referência §5.2). Memória provisória `pending-evaluator-chain-decision` apagada.
+
+**Feito:** `docs/prompts/P3-avaliador-freellmapi.md` (P3.1 cadeia pelo FreeLLMAPI com prefixos por item; P3.2 ligar no executor; P3.3 divergência plantada + P1/P2 reais).
+**Próximo passo:** Antigravity executa P3 → auditar (conferir divergência plantada e `servedBy` do avaliador). Depois P2 (bench).
+**Pendências do fundador:** configurar Claude no FreeLLMAPI quando houver crédito; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
+## 08/10/2026 (16) — P1 em andamento; Nemotron aprovado como 1º avaliador
+
+**Antigravity (P1, em andamento):** `4dd6733` P1.1 (custo do Jev no LLM_COST) e `e1acc35` P1.2 (nova tentativa 429/529, alerta 422) commitados; P1.3 em edição (jev.ts, jev-execution-checks.ts, secret-guard.ts, tests/decision/jev-estado.test.ts). **Não auditado ainda.**
+
+**Decisão do fundador (08/10 noite):** avaliador pelo FreeLLMAPI na ordem **1º `nemotron-3-ultra` (NVIDIA, gratuito, outra família) → 2º DeepSeek pago → 3º Claude**. Vale só para o avaliador (executor segue só pago). Teste: `nemotron-3-ultra` 200 via `ollama/nemotron-3-ultra` 3,5 s; `nemotron-3-ultra-550b` 200 via `nvidia/...` 20,5 s (função simples correta). Qualidade como juiz não medida.
+Também: fundador perguntou se dá para testar tudo com DeepSeek → sim (R1 provou); único limite é a independência do avaliador, agora coberta pelo Nemotron.
+
+**Onde parou:** esperando o relatório do P1. Decisão do avaliador ainda NÃO copiada para `memory/decisoes.md` / referência (repo ocupado pelo Antigravity) — está em `~/.claude/projects/.../memory/pending-evaluator-chain-decision.md`.
+
+**Próximo passo:** auditar P1 → registrar a decisão do avaliador em decisões/medições/referência §5.2 → prompt P3 (avaliador pelo FreeLLMAPI: Nemotron → DeepSeek → Claude, trava `X-Routed-Via` por papel, teste com divergência plantada) → P2 (bench).
+**Pontos abertos para o P3:** Claude sem crédito; FreeLLMAPI lista `claude-sonnet-4-5` mas respondeu 404 ao chamar; sugerido Nemotron → Claude → DeepSeek quando houver crédito (DeepSeek perde a independência).
+
+**Pendências do fundador:** crédito Claude/Gemini; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 08/10/2026 (15) — auditoria do P0 (aceito) e prompt P1
 
 **P0 (Antigravity):** `77b3adb` (McpServer.env cifrado/mascarado) e `bc2095a` (causa do teste intermitente + relatório).
