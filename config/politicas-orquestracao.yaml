@@ -156,3 +156,15 @@ execucao_paralela:
 
 execucao:
   modo_executor: laco
+
+jev_execucao:
+  diagnostico_falha: ativo            # ativo | desligado
+  bloqueio_spec_ambigua: sombra       # ativo | sombra | desligado
+  verificacao_evidencia: sombra       # ativo | sombra | desligado
+  guarda_segredos_codigo: ativo       # ativo | desligado
+  guarda_segredos_chat: ativo         # ativo | desligado
+  guarda_instalacao_skill: ativo      # ativo | desligado
+  limiar_confianca_diagnostico: 0.80
+  limiar_evidencia_contradiz: 0.80
+  limiar_segredo_noul: 0.70
+  limiar_risco_skill_noul: 0.70

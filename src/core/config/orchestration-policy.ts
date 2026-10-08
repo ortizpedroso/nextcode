@@ -105,6 +105,18 @@ export interface OrchestrationPolicy {
   execucao: {
     modoExecutor: "laco" | "chamada_unica";
   };
+  jevExecucao: {
+    diagnosticoFalha: "ativo" | "desligado";
+    bloqueioSpecAmbigua: "ativo" | "sombra" | "desligado";
+    verificacaoEvidencia: "ativo" | "sombra" | "desligado";
+    guardaSegredosCodigo: "ativo" | "desligado";
+    guardaSegredosChat: "ativo" | "desligado";
+    guardaInstalacaoSkill: "ativo" | "desligado";
+    limiarConfiancaDiagnostico: number;
+    limiarEvidenciaContradiz: number;
+    limiarSegredoNoul: number;
+    limiarRiscoSkillNoul: number;
+  };
 }
 
 export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
@@ -268,6 +280,18 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
   execucao: {
     modoExecutor: "laco",
   },
+  jevExecucao: {
+    diagnosticoFalha: "ativo",
+    bloqueioSpecAmbigua: "sombra",
+    verificacaoEvidencia: "sombra",
+    guardaSegredosCodigo: "ativo",
+    guardaSegredosChat: "ativo",
+    guardaInstalacaoSkill: "ativo",
+    limiarConfiancaDiagnostico: 0.8,
+    limiarEvidenciaContradiz: 0.8,
+    limiarSegredoNoul: 0.7,
+    limiarRiscoSkillNoul: 0.7,
+  },
 };
 
 function extractScalarNumber(yamlText: string, key: string, fallback: number): number {
@@ -408,6 +432,81 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   if (modoExecutorRaw === "laco" || modoExecutorRaw === "chamada_unica") {
     policy.execucao.modoExecutor = modoExecutorRaw;
   }
+
+  const diagFalhaRaw = extractScalarString(
+    raw,
+    "diagnostico_falha",
+    policy.jevExecucao.diagnosticoFalha
+  );
+  if (diagFalhaRaw === "ativo" || diagFalhaRaw === "desligado") {
+    policy.jevExecucao.diagnosticoFalha = diagFalhaRaw;
+  }
+
+  const bloqSpecRaw = extractScalarString(
+    raw,
+    "bloqueio_spec_ambigua",
+    policy.jevExecucao.bloqueioSpecAmbigua
+  );
+  if (bloqSpecRaw === "ativo" || bloqSpecRaw === "sombra" || bloqSpecRaw === "desligado") {
+    policy.jevExecucao.bloqueioSpecAmbigua = bloqSpecRaw;
+  }
+
+  const verifEvidRaw = extractScalarString(
+    raw,
+    "verificacao_evidencia",
+    policy.jevExecucao.verificacaoEvidencia
+  );
+  if (verifEvidRaw === "ativo" || verifEvidRaw === "sombra" || verifEvidRaw === "desligado") {
+    policy.jevExecucao.verificacaoEvidencia = verifEvidRaw;
+  }
+
+  const guardaCodigoRaw = extractScalarString(
+    raw,
+    "guarda_segredos_codigo",
+    policy.jevExecucao.guardaSegredosCodigo
+  );
+  if (guardaCodigoRaw === "ativo" || guardaCodigoRaw === "desligado") {
+    policy.jevExecucao.guardaSegredosCodigo = guardaCodigoRaw;
+  }
+
+  const guardaChatRaw = extractScalarString(
+    raw,
+    "guarda_segredos_chat",
+    policy.jevExecucao.guardaSegredosChat
+  );
+  if (guardaChatRaw === "ativo" || guardaChatRaw === "desligado") {
+    policy.jevExecucao.guardaSegredosChat = guardaChatRaw;
+  }
+
+  const guardaSkillRaw = extractScalarString(
+    raw,
+    "guarda_instalacao_skill",
+    policy.jevExecucao.guardaInstalacaoSkill
+  );
+  if (guardaSkillRaw === "ativo" || guardaSkillRaw === "desligado") {
+    policy.jevExecucao.guardaInstalacaoSkill = guardaSkillRaw;
+  }
+
+  policy.jevExecucao.limiarConfiancaDiagnostico = extractScalarNumber(
+    raw,
+    "limiar_confianca_diagnostico",
+    policy.jevExecucao.limiarConfiancaDiagnostico
+  );
+  policy.jevExecucao.limiarEvidenciaContradiz = extractScalarNumber(
+    raw,
+    "limiar_evidencia_contradiz",
+    policy.jevExecucao.limiarEvidenciaContradiz
+  );
+  policy.jevExecucao.limiarSegredoNoul = extractScalarNumber(
+    raw,
+    "limiar_segredo_noul",
+    policy.jevExecucao.limiarSegredoNoul
+  );
+  policy.jevExecucao.limiarRiscoSkillNoul = extractScalarNumber(
+    raw,
+    "limiar_risco_skill_noul",
+    policy.jevExecucao.limiarRiscoSkillNoul
+  );
 
   return policy;
 }

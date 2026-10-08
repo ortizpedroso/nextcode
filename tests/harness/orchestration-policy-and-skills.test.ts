@@ -1,3 +1,6 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { describe, it, expect } from "vitest";
 import {
   loadOrchestrationPolicy,
@@ -37,6 +40,86 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     expect(policy.tentativas.reenvioRelatorioContaComoTentativa).toBe(false);
     expect(policy.tentativas.falhaProvedorContaComoTentativa).toBe(false);
     expect(policy.execucaoParalela.paralelismoMaximo).toBe(3);
+  });
+
+  it("10.1: lê o bloco jev_execucao do arquivo e aplica os padrões exatos quando chaves estão ausentes", () => {
+    const policy = loadOrchestrationPolicy();
+    expect(policy.jevExecucao).toEqual({
+      diagnosticoFalha: "ativo",
+      bloqueioSpecAmbigua: "sombra",
+      verificacaoEvidencia: "sombra",
+      guardaSegredosCodigo: "ativo",
+      guardaSegredosChat: "ativo",
+      guardaInstalacaoSkill: "ativo",
+      limiarConfiancaDiagnostico: 0.8,
+      limiarEvidenciaContradiz: 0.8,
+      limiarSegredoNoul: 0.7,
+      limiarRiscoSkillNoul: 0.7,
+    });
+
+    // Chave ausente em arquivo YAML parcial → devolve os padrões exatos acima
+    const tmpRootMissing = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-missing-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootMissing, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootMissing, "config", "politicas-orquestracao.yaml"),
+        'versao_politica: "1.0.0"\nexecucao:\n  modo_executor: laco\n',
+        "utf8"
+      );
+      const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
+      expect(fallbackPolicy.jevExecucao).toEqual({
+        diagnosticoFalha: "ativo",
+        bloqueioSpecAmbigua: "sombra",
+        verificacaoEvidencia: "sombra",
+        guardaSegredosCodigo: "ativo",
+        guardaSegredosChat: "ativo",
+        guardaInstalacaoSkill: "ativo",
+        limiarConfiancaDiagnostico: 0.8,
+        limiarEvidenciaContradiz: 0.8,
+        limiarSegredoNoul: 0.7,
+        limiarRiscoSkillNoul: 0.7,
+      });
+    } finally {
+      fs.rmSync(tmpRootMissing, { recursive: true, force: true });
+    }
+
+    // Valores explícitos no arquivo são lidos
+    const tmpRootCustom = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-custom-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootCustom, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootCustom, "config", "politicas-orquestracao.yaml"),
+        [
+          "jev_execucao:",
+          "  diagnostico_falha: desligado",
+          "  bloqueio_spec_ambigua: ativo",
+          "  verificacao_evidencia: desligado",
+          "  guarda_segredos_codigo: desligado",
+          "  guarda_segredos_chat: desligado",
+          "  guarda_instalacao_skill: desligado",
+          "  limiar_confianca_diagnostico: 0.85",
+          "  limiar_evidencia_contradiz: 0.90",
+          "  limiar_segredo_noul: 0.75",
+          "  limiar_risco_skill_noul: 0.65",
+        ].join("\n"),
+        "utf8"
+      );
+      const customPolicy = loadOrchestrationPolicy(tmpRootCustom);
+      expect(customPolicy.jevExecucao).toEqual({
+        diagnosticoFalha: "desligado",
+        bloqueioSpecAmbigua: "ativo",
+        verificacaoEvidencia: "desligado",
+        guardaSegredosCodigo: "desligado",
+        guardaSegredosChat: "desligado",
+        guardaInstalacaoSkill: "desligado",
+        limiarConfiancaDiagnostico: 0.85,
+        limiarEvidenciaContradiz: 0.9,
+        limiarSegredoNoul: 0.75,
+        limiarRiscoSkillNoul: 0.65,
+      });
+    } finally {
+      fs.rmSync(tmpRootCustom, { recursive: true, force: true });
+    }
   });
 
   it("aplica a regra de APROVADO_COM_RESSALVA (1 rodada de polimento se houver tentativa; senão promove)", () => {
