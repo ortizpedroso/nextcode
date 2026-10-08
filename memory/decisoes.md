@@ -1,0 +1,28 @@
+# Decisões do fundador (registro cronológico)
+
+> Extraídas das transcrições das sessões (`~/.claude/projects/C--projetos-nextcode/*.jsonl`) em 08/10/2026.
+> Nova decisão → acrescentar aqui **antes** de executar. Em conflito, vale a mais recente.
+
+| Data | Decisão | Origem |
+|---|---|---|
+| 03/10 | O NextCode orquestra a IA de qualquer provedor (OmniRoute, Gemini, Claude…), "como o harness faz, tudo é skill", com travas; não pode alucinar nem dar respostas evasivas | sessão b233d208 |
+| 03/10 | "Quero que o NextCode tenha a habilidade do Jev de fazer a seleção e mandar para o modelo mais caro ou mais barato de acordo com a complexidade" | b233d208 |
+| 03/10 | Tudo que entra no chat vira Markdown + YAML | b233d208 |
+| 04/10 | NextCode focado em desenvolvimento, para leigo e engenheiro; definir papéis, permissões, briefs, telemetria (o que vira skill × melhoria) | abe3a903 |
+| 04/10 | **Usar o Jev**: "o custo-benefício é enorme"; só há desenvolvimento com Spec **e** Macrobrief | abe3a903 |
+| 04/10 | Checklist por REQ ticado durante a execução; humano só nos critérios da lista fechada; automatizar o resto | abe3a903 |
+| 04/10 | Menor quantidade de tokens; OmniRoute ou skill fazendo o roteamento; usuário pode pôr suas chaves (BYOK) | abe3a903 |
+| 05/10 | Gateways: FreeLLMAPI e OmniRoute; "não reinventar a roda": consultar deepseek-harness, opencode, FreeLLMAPI | f9358986 |
+| 06/10 | Jev decide: tarefa simples → modelo simples; se não couber, divide em lotes; tarefa complexa → divide e manda para o modelo mais caro; **tudo orquestrado pelo NextCode** | f9358986 10:28 |
+| 06/10 | Executor faz autoteste + ciclo de 3 tentativas + relatório no template do analista; avaliador não muda | f9358986 10:37 |
+| 06/10 | Fluxo: elicitador faz triagem (3ª rodada pergunta), **pesquisa oficial**, Spec **sem economizar**; Macrobrief MD+YAML; analista confere (3 ciclos); Microbriefs por cluster | f9358986 11:45 |
+| 06/10 | **Executor: não se pode economizar. Avaliador: refinar ao máximo, não economizar tokens.** Cada cluster tem executor e avaliador; trabalho paralelo | f9358986 17:54 |
+| 06/10 | Harness: tudo é skill (elicitador, analista, executor, avaliador); **Jev escolhendo os melhores provedores**; travas podem ficar nas skills | f9358986 22:52 |
+| 06/10 | "O Jev escolhe o melhor provedor: tarefa simples → barato, complexa → caro"; estudar a documentação, sem achismo | f9358986 23:20 |
+| 07/10 | Avaliador pode ser o Gemini (crédito posto); se falhar, outro pago (DeepSeek ou Claude) | f9358986 10:08 |
+| 07/10 | Aplicar teto de custo e preparar Playwright | f9358986 16:39 |
+| 08/10 00:24 | Ideia: modelos **pagos** para eficiência; **gratuitos para outras atividades** | f9358986 |
+| 08/10 00:44 | Usar o Jev ao máximo (Claude listou 14 usos, grupos A–E); caveman, ScrapeGraphAI, agent-reach: **não** | f9358986 |
+| 08/10 01:04 | Ordem: fechar item 2 → item 10 (grupo A do Jev) → item 7 → item 1 → item 8 → item 9 | f9358986 |
+| 08/10 manhã | Crédito hoje só no **DeepSeek** (Claude e Gemini depois). **Elicitador fixo no modelo forte; executor não economiza; o restante o Jev gerencia (inclusive a escolha do provedor)**. Já houve testes de custo e de divisão da execução | esta sessão |
+| 08/10 manhã | Documentar tudo antes de executar; memória obrigatória; prompts ao Antigravity com travas e relatórios para auditoria | esta sessão |

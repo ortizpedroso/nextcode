@@ -5,6 +5,25 @@
 
 ---
 
+## 08/10/2026 (4) — correção: eu tinha ignorado o histórico
+
+**Erro desta sessão (para não repetir)**
+- Planejei sem ler `docs/rascunhos/JEV-DECISOES.md` nem as transcrições. Resultado: plano v2 contradizia decisões do fundador (dizia que o Jev não escolhe provedor), reinventava o catálogo de 14 usos do Jev já feito em 08/10 00:54 e ignorava custos já medidos.
+
+**Feito**
+- Extraídas das 6 transcrições as mensagens do fundador → `memory/decisoes.md` (cronológico) e `memory/medicoes.md` (números reais).
+- Referência §5.2 corrigida: elicitador fixo forte; executor nunca economiza; resto o Jev roteia (inclusive provedor); cascata só fora de Spec/executor. §5.2b: catálogo de 14 usos com estado real.
+- `CLAUDE.md`: ordem de leitura obrigatória (diário → decisões → medições → referência → JEV-DECISOES).
+
+**Pendente de esclarecer com o fundador**
+- Avaliador entra no roteamento do Jev ou continua fixo forte (06/10 disse "não economizar")?
+- "Skill de memória do Claude": instalado `CLAUDE.md` + `memory/` + ganchos; confirmar se ele quer outro (ex.: plugin específico).
+
+**Próximo passo**
+- Com as respostas: escrever prompts P0 e P1 (este inclui adotar `@typesafe-ai/sdk`).
+
+---
+
 ## 08/10/2026 (3) — plano v2 "Jev máximo" + protocolo do Antigravity
 
 **Diretrizes do fundador**

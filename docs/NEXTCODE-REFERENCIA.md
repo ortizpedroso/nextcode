@@ -234,13 +234,13 @@ calibrada, e **não gera texto** (não substitui o LLM do executor — página *
 | J13 | Pesquisa T7 | trechos relevantes da página (só eles vão ao elicitador) + injeção na página | R13, R17 | 📝 |
 | J14 | Conferência T8a | Macrobrief descreve fielmente cada REQ | R16 | 📝 |
 | J15 | Planejamento | cluster de cada arquivo (incerto → regra por caminho) | R2, R7 | 📝 |
-| J16 | Planejamento | complexidade em notas separadas (tamanho, regras, integrações, tela, risco) somadas em código → divisão da etapa, `passos_max`, contexto (M3) | R3, R9 | 📝 |
-| J17 | Planejamento | nível de modelo e dividir etapa — com M1 só divide; modelo fixo no mais forte | R2 | ✅ (muda no P3) |
+| J16 | Planejamento | complexidade em notas separadas (tamanho, regras, integrações, tela, risco) somadas em código → divisão da etapa e modelo (§5.2) | R3, R9 | 📝 |
+| J17 | Planejamento | nível de modelo e dividir etapa — executor só entre modelos fortes (§5.2) | R2 | ✅ (ajuste no P3) |
 | J18 | Execução | contexto relevante: quais arquivos/linhas o executor precisa | R12, R13 | 📝 |
 | J19 | Execução | qual skill/referência carregar para a etapa | R19 | 📝 |
 | J20 | Execução | injeção em arquivo lido pelo executor | R17 | 📝 |
 | J21 | Execução | segredo no código gerado (sem enviar o valor) | R11, R1 | ✅ |
-| J22 | Execução | cascata: modelo barato → Jev confere → escala | R18 | ❌ descartada (M2) |
+| J22 | Tarefas fora de Spec/executor | cascata: modelo barato → Jev confere → escala | R18 | ⚠️ (vale só para "todo o resto", §5.2) |
 | J23 | Avaliação | evidência por REQ (apoia/contradiz); **também compensa o avaliador sem independência (O5)** | R16, R7, ordem invertida | 🌓 |
 | J24 | Falha | diagnóstico da causa | R2 | ✅ |
 | J25 | Falha | bloquear por Spec ambígua | R2, R7, ordem invertida | 🌓 |
@@ -269,15 +269,41 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
    relatório no formato fixo (§8.4) para auditoria.
 4. Objetivo: uma **máquina de desenvolvimento otimizada e assertiva**.
 
-### 5.2 Mudanças de direção que decorrem das diretrizes
+### 5.2 Política de modelos (decisão do fundador — ver `memory/decisoes.md`)
 
-| # | Antes | Agora | Motivo |
+> ⚠️ Correção de 08/10: a versão anterior desta seção (M1–M5) **contradizia** as decisões do fundador
+> (dizia que o Jev não escolhe provedor). Substituída por esta.
+
+| Papel | Quem escolhe o modelo | Regra |
+|---|---|---|
+| **Elicitador** (Spec, Macrobrief) | **fixo** | sempre o mais forte disponível ("não pode economizar", 06/10) |
+| **Executor** | Jev decide **divisão** e **qual modelo forte**; nunca o gratuito | "não deve economizar" (06/10 e 08/10) |
+| **Avaliador** | cadeia `evaluator-models.ts` | forte e de outra família (Gemini → Claude → DeepSeek); "não economizar tokens" (06/10) — **confirmar se continua fora do roteamento do Jev** |
+| **Todo o resto** (conversa do chat, analista, reenvio de relatório, diagnósticos, sugestões, resumos) | **Jev escolhe o provedor** pela dificuldade (catálogo item 7) | gratuito para o simples, pago para o complexo; "o restante fica no gerenciamento dele" (08/10) |
+
+Crédito hoje: só **DeepSeek** (`deepseek-v4-pro`). Com Claude/Gemini, o Jev ganha opções e o avaliador muda de família.
+A **cascata** (barato → Jev confere → caro, `decideSdeCascadeEscalation`) vale para "todo o resto", **não** para Spec nem executor.
+
+### 5.2b Catálogo de 14 usos do Jev (Claude, 08/10 00:54) × estado
+
+| # | Uso | Grupo | Estado |
 |---|---|---|---|
-| M1 | Jev podia mandar o executor para o nível `rapido` (FreeLLMAPI gratuito) | executor e elicitador **sempre** no nível mais forte; o Jev **não rebaixa modelo** | diretriz 2 |
-| M2 | J22 cascata "barato → Jev confere → forte" | **descartada** para Spec e executor | contradiz a diretriz 2 |
-| M3 | J16 complexidade decidia o modelo | J16 decide **como dividir** a etapa, `passos_max` e quanto contexto dar | o modelo é fixo (M1) |
-| M4 | avaliador cai no mesmo modelo do executor sem aviso forte | enquanto só houver DeepSeek: **J23 evidência por REQ vira trava ativa** (ordem invertida, limiar alto) como 2ª opinião independente; quando houver Claude/Gemini, a cadeia `evaluator-models.ts` já troca de família | T5 sem saldo |
-| M5 | teto de custo US$ 0,50 por projeto | **precisa de novo valor** (§6): com o modelo forte em tudo, o Gateway passa disso | diretriz 2 |
+| 1 | Diagnóstico da falha antes da nova tentativa | A | ✅ `diagnoseStageFailureWithJev` (item 10) |
+| 2 | Checagem da evidência `arquivo:linha` (executor e avaliador) | A | 🌓 `verifyStageEvidenceWithJev` |
+| 3 | Lints semânticos antes do avaliador pago | B | ❌ |
+| 4 | Aprovação da Spec à prova de engano + nota de clareza | A | ⚠️ `decideSpecReviewMessageIntent`, `decideSpecClarity` existem, não chamados |
+| 5 | Segredos na saída (chat e código) | A | ✅ `secret-guard.ts` (sem enviar o valor desde `c7fb624`) |
+| 6 | Proteção na entrada (skill do GitHub, pesquisa) | A | ✅ skill / ⚠️ pesquisa (`decideExternalDocsSafetyT7` não chamado pelo chat) |
+| 7 | Roteador de modelo para tudo (exceto Spec/executor, §5.2) | B | ⚠️ só o nível do executor (`decideMicrobriefsPlanningBatch`) |
+| 8 | Comandos do chat viram ações | C | ❌ |
+| 9 | Seleção de contexto (re-ranking) | D | ❌ |
+| 10 | Mudança durante a execução (entity alignment) | C | ❌ |
+| 11 | Cluster duvidoso recua para categoria segura | C | ⚠️ cluster no lote M3, sem recuo |
+| 12 | Sugestão de skills (+ Graphify por sim/não) | C | ⚠️ M3 tem `skill_apoio_principal`; Graphify ainda por LLM |
+| 13 | Checar cada chamada de ferramenta no laço | D | ❌ |
+| 14 | Prever custo/falha da etapa com a telemetria | E | ❌ futuro |
+
+Recomendação já feita (08/10 00:34): **adotar o SDK oficial `@typesafe-ai/sdk`** (MIT; novas tentativas e limite de requisição prontos) no lugar do HTTP feito à mão.
 
 ### 5.3 Pacotes (ordem proposta; cada pacote = 1 prompt ao Antigravity = 1 relatório)
 
@@ -286,10 +312,10 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 | **P0 — Arrumação** | `McpServer.env` cifrado + migração; causa do teste intermitente; OmniRoute com versão fixa | — | valor em claro some do banco; 10 rodadas verdes |
 | **P1 — Núcleo do Jev** | cliente v2: nova tentativa com espera em 429/529, 422 para e alerta; **montador de estado por estrutura** (nunca corta JSON); catálogo versionado de perguntas em `config/jev-perguntas.yaml`; critérios estruturados (R5); **política de confiança por risco** (piso / ação comum / ação cara) e **faixa "incerto"** para noul; helper de **ordem invertida**; evento único `JEV_DECISION` com `usage`, probabilidades, modo e versão do catálogo | base de todos (R4–R8, R20–R22) | testes com servidor falso; nenhuma decisão existente muda de resultado |
 | **P2 — Medição** | P1–P4 com testes de aceite escritos à mão; `npm run bench` real (Docker sem rede); remove o benchmark simulado; relatório com custo, tempo, aprovação na 1ª, tokens do Jev | J7 medição | pontuação de partida registrada aqui |
-| **P3 — Modelos** | M1, M3, M4 na política e no código; teto de custo novo (M5) | J16 (novo papel), J17 | P1/P2 do bench com executor sempre forte |
+| **P3 — Modelos** | aplicar §5.2: executor sem nível gratuito; Jev roteando "todo o resto" (catálogo 7) com cascata; teto de custo novo | catálogo 3, 7 | P1/P2 do bench com executor sempre forte |
 | **P4 — Chat: 1 chamada Jev por mensagem (fan-out)** | junta numa só pergunta-lote: intenção (J1), revisão da Spec (J2), comando→ação (J3), mudança durante execução (J4), guardrail de entrada (J5), perfil (J7); o código escolhe o que usar | R6, R7, R8, R15, R17 | testes de cada rota + latência p95 ≤ 1 s |
 | **P5 — Entrada como pensada** | chat carrega a skill `elicitador` (O1); Jev na Spec em 1 lote: lacunas obrigatórias (J8), tipo/stack (J9), clareza por REQ (J10), rastreio de cada REQ ao pedido (J11); `etapa1Ativa: true` (O2); Macrobrief + CONFERENCIA com skill `analista` + J14; analista gera Microbriefs (O3) com J15 cluster e J16 divisão | R1, R3, R9, R14, R16 | P1–P4 pelo chat, fases MACROBRIEF/CONFERENCIA na trilha |
-| **P6 — Execução assertiva** | J18 contexto relevante (busca por linha + re-ranking sobre os arquivos do projeto); J19 skill/referência certa; J20 injeção em arquivo lido; J23 ativo com ordem invertida (M4); J25 com ordem invertida | R12, R13, R16, R17, R19 | bench: aprovação na 1ª sobe ou tokens por REQ caem, sem piorar o outro |
+| **P6 — Execução assertiva** | J18 contexto relevante (busca por linha + re-ranking sobre os arquivos do projeto); J19 skill/referência certa; J20 injeção em arquivo lido; J23 com ordem invertida; J25 com ordem invertida | R12, R13, R16, R17, R19 | bench: aprovação na 1ª sobe ou tokens por REQ caem, sem piorar o outro |
 | **P7 — Fila e interface** | supervisor periódico + `QUEUE_STALLED` + heartbeat (O6); interface só observa (O7) | — | teste com worker morto; aprovar → 1 DAG |
 | **P8 — Pesquisa oficial T7** | MCP de busca (Exa, D2) + J12 fonte oficial + J13 trechos relevantes e injeção | R1, R13, R17 | pergunta real com fonte oficial citada |
 | **P9 — Aprendizado** | J26 erro recorrente = regra de skill ou bug do harness; probabilidades do Jev guardadas para prever aprovação (R10) | R2, R10, R14 | propostas classificadas na trilha |
@@ -299,7 +325,7 @@ Quando o fundador colocar crédito em Claude/Gemini: a cadeia do avaliador muda 
 J23 volta a ser 2ª opinião (sombra ou limiar mais baixo) — decidir com os números do bench.
 
 ### 5.4 Contagem final de uso do Jev
-Ligados ao fim do plano: J1–J21, J23–J27 (26 usos) + medição. Descartado: J22 (M2). Recursos R1–R22 todos
+Ligados ao fim do plano: J1–J27 (J22 só fora de Spec/executor) + medição. Recursos R1–R22 todos
 usados, exceto R10 só a partir do P9.
 
 ---
@@ -307,7 +333,8 @@ usados, exceto R10 só a partir do P9.
 ## 6. Decisões pendentes do fundador
 
 1. **Aprovar o plano v2** (§5) e a ordem P0 → P10.
-2. **Teto de custo por projeto** (M5): hoje US$ 0,50. Proposta: US$ 3,00 para P1–P4 e decidir o do Gateway após o bench.
+1b. **Avaliador:** continua fixo em modelo forte de outra família (decisão de 06/10) ou entra no roteamento do Jev ("o restante", 08/10)?
+2. **Teto de custo por projeto:** hoje US$ 0,50. Proposta: US$ 3,00 para P1–P4 e decidir o do Gateway após o bench.
 3. **Privacidade do Jev:** J11, J18, J20, J23 enviam trechos de conversa/código do usuário à TypeSafe (nunca segredos;
    retenção zero só no plano enterprise). Proposta: aceitar agora para o NextCode do fundador; rever antes de outros usuários.
 4. **Gateway:** stack (Next.js já provado × React+Vite) e recorte do primeiro Gate (P10).

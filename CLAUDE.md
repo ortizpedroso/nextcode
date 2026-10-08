@@ -1,7 +1,11 @@
 # Memória de trabalho — NextCode
 
-> Lida em toda sessão. **Antes de qualquer tarefa:** leia `memory/diario.md` (onde paramos) e
-> `docs/NEXTCODE-REFERENCIA.md` (fonte única). **Ao terminar qualquer passo:** atualize o diário.
+> Lida em toda sessão. **Antes de qualquer tarefa, leia nesta ordem:**
+> 1. `memory/diario.md` — onde paramos;
+> 2. `memory/decisoes.md` — o que o fundador já decidiu (não contradizer; em dúvida, perguntar);
+> 3. `memory/medicoes.md` — números reais já medidos (não estimar de novo);
+> 4. `docs/NEXTCODE-REFERENCIA.md` — fonte única; `docs/rascunhos/JEV-DECISOES.md` — catálogo do Jev do projeto.
+> **Ao terminar qualquer passo:** atualize o diário. Histórico bruto: transcrições em `~/.claude/projects/C--projetos-nextcode/*.jsonl`.
 
 ## Regras do fundador (obrigatórias)
 1. **Fonte única:** `docs/NEXTCODE-REFERENCIA.md`. Melhoria aprovada entra nela **antes** de ser executada.
@@ -11,6 +15,7 @@
 5. Um passo por vez; commit por passo com `tsc` e `vitest` **daquele commit**.
 6. Discordar com veredito técnico quando a ideia estiver errada (ver memória `push-back-honestly`).
 7. Nenhum segredo em texto puro e nenhum segredo sai da máquina (nem para LLM, nem para o Jev).
+8. **Modelos:** elicitador fixo no mais forte; executor nunca economiza; o resto o Jev gerencia, inclusive o provedor (`memory/decisoes.md`).
 
 ## Projeto
 | Nome | O que é |
