@@ -31,6 +31,8 @@ import {
   buildSpecWriterSystemPrompt,
   buildCumulativeSpecSystemPrompt,
 } from "@/core/orchestrator/spec-draft";
+import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { redactSecretsInChatWithJev } from "@/core/governance/secret-guard";
 import type { Phase } from "@/core/orchestrator/phase-machine";
 
 /**
@@ -720,6 +722,15 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;
     }
+
+    const chatPolicy = loadOrchestrationPolicy();
+    const chatSecretGuard = await redactSecretsInChatWithJev({
+      sessionId: activeSessionId,
+      text: aiResponseContent,
+      modo: chatPolicy.jevExecucao.guardaSegredosChat,
+      limiarSegredoNoul: chatPolicy.jevExecucao.limiarSegredoNoul,
+    });
+    aiResponseContent = chatSecretGuard.redactedText;
 
     // 7. Persiste APENAS a mensagem do assistente
     const assistantMessage = await prisma.message.create({
