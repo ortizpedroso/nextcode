@@ -53,3 +53,25 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
        como: "uma frase"
    ```
    Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.
+
+## Protocolo de ferramentas
+
+Em CADA turno, responda com EXATAMENTE UM bloco:
+```json acao
+{"ferramenta": "<nome>", "args": { ... }}
+```
+Ferramentas e args (nomes EXATOS):
+- `read_file`  `{"caminho": "src/x.ts"}`
+  Lê da quarentena da etapa se existir lá; senão, do projeto. Devolve até 12000 caracteres, com números de linha.
+- `list_files` `{"pasta": "src"}`
+  Lista recursiva no projeto, até 300 entradas, ignorando `node_modules`, `.next`, `.git` e `.nextcode`.
+- `grep` `{"padrao": "texto", "pasta": "src"}`
+  Busca literal (não regex), até 100 linhas no formato `arquivo:linha: trecho`.
+- `write_file` `{"caminho": "...", "conteudo": "..."}`
+  Grava UM arquivo inteiro NA QUARENTENA (`qm.writeFile`). Nunca no projeto.
+- `edit_file`  `{"caminho": "...", "trecho_antigo": "...", "trecho_novo": "..."}`
+  Edita NA QUARENTENA. O `trecho_antigo` precisa aparecer EXATAMENTE 1 vez. 0 ou 2+ ocorrências devolvem erro e não mudam nada. Se o arquivo ainda não está na quarentena e existe no projeto, copie para a quarentena antes de editar.
+- `run_check`  `{"comando": "typecheck"}`
+  Só `"typecheck"` neste item; `"test"` devolve `"não disponível neste item"`.
+- `finish` `{"relatorio_executor": "<o MESMO YAML do bloco relatorio_executor atual>"}`
+  Encerra o laço.
