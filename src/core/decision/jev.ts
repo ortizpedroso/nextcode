@@ -9,6 +9,7 @@
  * Cada decisão vai para a trilha (JEV_DECISION) com as probabilidades completas.
  */
 import prisma from "@/lib/prisma";
+import { recordLlmCost } from "@/core/llm/cost";
 import { readSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
@@ -105,6 +106,8 @@ export async function askJevChoice<T extends string>(params: {
       signal: params.signal ? AbortSignal.any([params.signal, timeout]) : timeout,
     });
     const data = (await res.json().catch(() => ({}))) as {
+      model?: string;
+      usage?: { input_tokens?: number; output_tokens?: number };
       answers?: { q?: { choice?: string; confidence?: number; probabilities?: Record<string, number> } };
     };
     const answer = data.answers?.q;
@@ -130,9 +133,19 @@ export async function askJevChoice<T extends string>(params: {
         choice: result.choice,
         confidence: result.confidence,
         probabilities: result.probabilities,
+        usage: data.usage ?? null,
         latencyMs: Date.now() - started,
       },
     });
+    if (params.sessionId) {
+      await recordLlmCost({
+        sessionId: params.sessionId,
+        papel: "jev",
+        provider: "typesafe",
+        model: data.model || JEV_MODEL,
+        usage: data.usage ?? null,
+      });
+    }
     return result;
   } catch (err) {
     TelemetryLogger.log({
@@ -176,6 +189,8 @@ export async function askJevBatch(params: {
     });
 
     const data = (await res.json().catch(() => ({}))) as {
+      model?: string;
+      usage?: { input_tokens?: number; output_tokens?: number };
       answers?: Record<
         string,
         {
@@ -239,9 +254,20 @@ export async function askJevBatch(params: {
         model: JEV_MODEL,
         questionIds: Object.keys(params.questions),
         answers: parsedAnswers,
+        usage: data.usage ?? null,
         latencyMs: Date.now() - started,
       },
     });
+
+    if (params.sessionId) {
+      await recordLlmCost({
+        sessionId: params.sessionId,
+        papel: "jev",
+        provider: "typesafe",
+        model: data.model || JEV_MODEL,
+        usage: data.usage ?? null,
+      });
+    }
 
     return parsedAnswers;
   } catch (err) {

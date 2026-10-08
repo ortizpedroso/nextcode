@@ -25,6 +25,7 @@ const PRICES: { match: RegExp; price: ModelPrice }[] = [
   { match: /gemini-3\.1-pro/i, price: { input: 2, cachedInput: 0.2, output: 12 } },
   { match: /claude-sonnet-5/i, price: { input: 2, cachedInput: 0.2, output: 10 } },
   { match: /claude-opus-5-5/i, price: { input: 4, cachedInput: 0.2, output: 20 } },
+  { match: /^jev-/i, price: { input: 0.042, cachedInput: 0.042, output: 0 } },
 ];
 
 export function priceFor(model: string): ModelPrice | null {
@@ -55,7 +56,7 @@ export const LLM_COST_ACTION = "LLM_COST";
 /** Grava o custo de uma chamada na trilha da sessão (append-only). Aguarda a gravação: o teto lê em seguida. */
 export async function recordLlmCost(params: {
   sessionId?: string | null;
-  papel: "executor" | "avaliador" | "outro";
+  papel: "executor" | "avaliador" | "jev" | "outro";
   provider: string;
   model: string;
   usage: UsageLike | null | undefined;
