@@ -353,6 +353,7 @@ export async function decideMicrobriefsPlanningBatch(params: {
         if (compAns.confidence < limPlan.confiancaMinimaComplexidade) {
           tier = stepUpTier(tier);
         }
+        if (tier === "rapido" && compAns.confidence < policy.roteamentoPapeisCriticos.confiancaMinimaModeloBarato) tier = "medio";
 
         const cluster = (clusAns.choice as ClusterKind) || inferClusterFromFilePath(mb.arquivos[0] || "");
         const lowClusterConf = clusAns.confidence < limPlan.confiancaMinimaCluster;
@@ -377,7 +378,7 @@ export async function decideMicrobriefsPlanningBatch(params: {
     // Reserva determinística em código
     const fallbackCluster = inferClusterFromFilePath(mb.arquivos[0] || "");
     const fallbackTier: "rapido" | "medio" | "pesado" =
-      fileCount <= 1 ? "rapido" : fileCount <= 3 ? "medio" : "pesado";
+      fileCount <= 3 ? "medio" : "pesado";
     return {
       id: mb.id,
       nivelModelo: fallbackTier,
