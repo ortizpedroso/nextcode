@@ -41,3 +41,10 @@ US$ 0,042 por 1M tokens de entrada; saída grátis (docs oficiais e `jev.ts`).
 | deepseek-v4-flash | 200 via `electronhub` (gratuito), 11,8 s |
 | auto:smart | 200 via `openrouter/dots-3-note:free`, 10,3 s |
 Uma falha 400 deixa a chave ~13 s em espera (429 em seguida).
+
+## FreeLLMAPI — sonda 3 (08/10, após o fundador corrigir o ID)
+| modelo | resultado |
+|---|---|
+| deepseek-v4-pro | 200 `custom/deepseek-v4-pro`, 2,8 s, 29 tokens de raciocínio |
+| deepseek-flash | 200 `custom/deepseek-flash`, 1,6 s |
+| auto:nextcode-pago-forte / -barato | 400 perfil inexistente (perfis opcionais; padrão vazio no R1 v3) |

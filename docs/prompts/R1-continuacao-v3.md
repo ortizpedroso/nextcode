@@ -51,12 +51,12 @@ Commit: `feat(executor): R1.3 - executor somente em provedor pago`.
 1. **YAML**, bloco `roteamento_papeis_criticos` — acrescentar (sem remover as chaves existentes):
    ```yaml
      modelo_pago_forte: "deepseek-v4-pro"                 # modelo pago fixo no FreeLLMAPI (níveis medio/pesado)
-     perfil_freellmapi_forte: "nextcode-pago-forte"        # perfil do FreeLLMAPI só com modelos pagos (opcional; 400 se não existir)
-     perfil_freellmapi_barato: "nextcode-pago-barato"
+     perfil_freellmapi_forte: ""                           # perfil do FreeLLMAPI só com modelos pagos; vazio = não usar (hoje não existe)
+     perfil_freellmapi_barato: ""
      prefixos_rota_paga: "custom/"                         # X-Routed-Via aceito para papéis críticos (lista separada por vírgula)
    ```
    Atualize o comentário de `modelo_pago_barato` para `# modelo pago fixo no FreeLLMAPI (nível 'rapido')`.
-2. **orchestration-policy.ts**: em `roteamentoPapeisCriticos` acrescentar `modeloPagoForte: string; perfilFreellmapiForte: string; perfilFreellmapiBarato: string; prefixosRotaPaga: string[];` com padrões `"deepseek-v4-pro"`, `"nextcode-pago-forte"`, `"nextcode-pago-barato"`, `["custom/"]`. `prefixosRotaPaga` = `extractScalarString(...)` dividido por vírgula, sem espaços, sem vazios. Teste: `R1.3b: lê modelo forte, perfis e prefixos_rota_paga, com padrões`.
+2. **orchestration-policy.ts**: em `roteamentoPapeisCriticos` acrescentar `modeloPagoForte: string; perfilFreellmapiForte: string; perfilFreellmapiBarato: string; prefixosRotaPaga: string[];` com padrões `"deepseek-v4-pro"`, `""`, `""`, `["custom/"]` (`extractScalarString` deve aceitar o valor vazio `""` do YAML como string vazia; se o extrator atual não aceitar, PARE e relate). `prefixosRotaPaga` = `extractScalarString(...)` dividido por vírgula, sem espaços, sem vazios. Teste: `R1.3b: lê modelo forte, perfis e prefixos_rota_paga, com padrões`.
 3. **paid-routing.ts** — reescrever com exatamente:
    ```ts
    export interface PaidRoutingConfig {
@@ -78,14 +78,14 @@ Commit: `feat(executor): R1.3 - executor somente em provedor pago`.
    ): Promise<GatewayConfig[]>
    ```
    Regra: `free = (await loader()).find((g) => g.id === "freellmapi")`; sem `free` → `[]`. Com `free` (`barato = nivel === "rapido"`):
-   `[{ ...free, heavyFirst: true, modelFast: null, modelHeavy: \`auto:${barato ? cfg.perfilFreellmapiBarato : cfg.perfilFreellmapiForte}\` }, { ...free, heavyFirst: true, modelFast: null, modelHeavy: barato ? cfg.modeloPagoBarato : cfg.modeloPagoForte }]`. Erro do `loader` → `[]`. **Nenhum outro gateway entra.**
+   `perfil = barato ? cfg.perfilFreellmapiBarato : cfg.perfilFreellmapiForte` (sem espaços). Lista = **se `perfil` não for vazio** `{ ...free, heavyFirst: true, modelFast: null, modelHeavy: \`auto:${perfil}\` }`, **depois sempre** `{ ...free, heavyFirst: true, modelFast: null, modelHeavy: barato ? cfg.modeloPagoBarato : cfg.modeloPagoForte }`. Erro do `loader` → `[]`. **Nenhum outro gateway entra.**
 4. **smart-router.ts — trava de rota paga:**
    - Em `DispatchOptions` acrescentar `/** Papéis críticos: só aceita resposta cujo X-Routed-Via comece com um destes prefixos. */ allowedRoutedViaPrefixes?: string[];`.
    - `tryOpenAiGateway` recebe um 7º parâmetro opcional `allowedRoutedViaPrefixes?: string[]` e a chamada `this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens)` passa `options.allowedRoutedViaPrefixes`.
    - Em `tryOpenAiGateway`, quando `attempt.ok` **e** a lista existir e não estiver vazia **e** nenhum prefixo casar com `attempt.servedBy` (comparação sem diferenciar maiúsculas): `await attempt.response.body?.cancel().catch(() => {})`; registrar `TelemetryLogger.log({ action: "llm.gateway_failure", details: { gateway: gw.id, requestedModel: model, kind: "bad_request", status: null, detail: \`rota não paga recusada: ${attempt.servedBy}\` } })`; devolver `{ failedKind: "bad_request" }`. Sem a lista → comportamento atual idêntico.
    - Testes em `tests/router/rota-paga-routed-via.test.ts` (servidor HTTP falso local, como em `tests/llm/gateways.test.ts`): `X-Routed-Via custom/deepseek-v4-pro é aceito`; `X-Routed-Via electronhub/... é recusado e o próximo item da lista é tentado`; `sem allowedRoutedViaPrefixes nada muda`; `todos recusados → providerUsed none`.
 5. **node-executor.ts / executor-tool-loop.ts**: a chamada passa a ser `loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos)`; nas três chamadas do executor com `paidGateways` (laço, chamada única, reenvio do relatório) acrescentar `allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga` (no laço, via novo campo `allowedRoutedViaPrefixes?: string[]` em `ExecutorToolLoopParams`). E **retirar** `deepseekKey` dessas três chamadas pagas (DeepSeek direto está fora).
-6. **tests/llm/paid-routing.test.ts** — substituir os testes do R1.2 por: `medio/pesado: auto:nextcode-pago-forte e depois deepseek-v4-pro, só freellmapi`; `rapido: auto:nextcode-pago-barato e depois deepseek-flash`; `deepseek direto e omniroute nunca entram`; `sem freellmapi → lista vazia`; `nenhum item usa auto, auto:smart ou auto:fast`; `loader com erro → lista vazia`.
+6. **tests/llm/paid-routing.test.ts** — substituir os testes do R1.2 por: `perfis vazios (padrão): só deepseek-v4-pro no freellmapi (medio/pesado)`; `perfis vazios: rapido usa deepseek-flash`; `com perfil configurado: auto:<perfil> primeiro e depois o modelo fixo`; `deepseek direto e omniroute nunca entram`; `sem freellmapi → lista vazia`; `nenhum item usa auto, auto:smart ou auto:fast`; `loader com erro → lista vazia`.
 7. **executor-somente-pago.test.ts**: ajustar expectativas à nova lista; acrescentar `chamadas pagas levam allowedRoutedViaPrefixes ["custom/"] e não levam deepseekKey`.
 
 Commit: `feat(llm): R1.3b - papeis criticos so pelo FreeLLMAPI e trava de rota paga (X-Routed-Via)`.
@@ -98,7 +98,7 @@ Como no prompt original, com: condição `isPaidOnlyRouting(loadOrchestrationPol
 ## PASSO R1.5 — como no prompt original.
 
 ## PASSO R1.6 — prova real
-**Pré-condição do fundador:** no painel do FreeLLMAPI, o ID dos modelos do provedor DeepSeek deve estar **sem** o marcador `• ` (hoje está `• deepseek-v4-pro` e `• deepseek-flash`, e a DeepSeek recusa com 400). Antes de rodar, chame uma vez `POST /v1/chat/completions` no FreeLLMAPI com `model: "deepseek-v4-pro"`, `max_tokens: 512`, e cole status + `X-Routed-Via`. Se não for 200 com `custom/...` → **PARE** e relate (não rode P1/P2).
+**Pré-condição (conferida pelo auditor em 08/10 após a correção do fundador):** `deepseek-v4-pro` → 200 `X-Routed-Via: custom/deepseek-v4-pro`; `deepseek-flash` → 200 `custom/deepseek-flash`. Mesmo assim, antes de rodar, chame uma vez `POST /v1/chat/completions` no FreeLLMAPI com `model: "deepseek-v4-pro"`, `max_tokens: 512`, e cole status + `X-Routed-Via`. Se não for 200 com `custom/...` → **PARE** e relate (não rode P1/P2).
 Depois, P1 e P2 como no prompt original (sem interruptor). Se qualquer chamada de executor ou avaliador for atendida por rota fora de `prefixos_rota_paga` → PARE.
 
 ## RELATÓRIO

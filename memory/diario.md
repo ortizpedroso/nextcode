@@ -5,6 +5,16 @@
 
 ---
 
+## 08/10/2026 (12) — DeepSeek pago funcionando pelo FreeLLMAPI
+
+- Fundador corrigiu o ID no painel. Conferido: `deepseek-v4-pro` e `deepseek-flash` → 200, `X-Routed-Via: custom/...`.
+- Perfis `nextcode-pago-*` não existem → R1 v3 ajustado: perfis com padrão vazio (não usados); rota = modelo pago fixo no FreeLLMAPI com trava `custom/`.
+- Prompt atualizado: `docs/prompts/R1-continuacao-v3.md`.
+
+**Próximo passo:** Antigravity executa o v3 → auditar relatório.
+
+---
+
 ## 08/10/2026 (11) — Auditoria 2: DeepSeek pelo FreeLLMAPI; divisão por tamanho; prompt v3
 
 **Fundador:** DeepSeek direto fora; DeepSeek pago agora no FreeLLMAPI; gratuitos quebram em tarefas grandes (motivo da divisão).
