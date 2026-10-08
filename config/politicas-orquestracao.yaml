@@ -168,3 +168,8 @@ jev_execucao:
   limiar_evidencia_contradiz: 0.80
   limiar_segredo_noul: 0.70
   limiar_risco_skill_noul: 0.70
+
+roteamento_papeis_criticos:
+  somente_pago: true                       # executor e avaliador nunca caem no gratuito; sem pago → PAUSADA
+  modelo_pago_barato: "deepseek-flash"  # nível 'rapido' do executor
+  confianca_minima_modelo_barato: 0.85     # Jev precisa disso em 'rapido' para usar o modelo barato

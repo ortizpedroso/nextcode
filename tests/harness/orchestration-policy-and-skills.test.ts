@@ -122,6 +122,56 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     }
   });
 
+  it("R1.1: lê roteamento_papeis_criticos do YAML e usa os padrões quando as chaves faltam", () => {
+    const policy = loadOrchestrationPolicy();
+    expect(policy.roteamentoPapeisCriticos).toEqual({
+      somentePago: true,
+      modeloPagoBarato: "deepseek-flash",
+      confiancaMinimaModeloBarato: 0.85,
+    });
+
+    const tmpRootMissing = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-r1-missing-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootMissing, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootMissing, "config", "politicas-orquestracao.yaml"),
+        'versao_politica: "1.0.0"\n',
+        "utf8"
+      );
+      const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
+      expect(fallbackPolicy.roteamentoPapeisCriticos).toEqual({
+        somentePago: true,
+        modeloPagoBarato: "deepseek-flash",
+        confiancaMinimaModeloBarato: 0.85,
+      });
+    } finally {
+      fs.rmSync(tmpRootMissing, { recursive: true, force: true });
+    }
+
+    const tmpRootCustom = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-r1-custom-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootCustom, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootCustom, "config", "politicas-orquestracao.yaml"),
+        [
+          "roteamento_papeis_criticos:",
+          "  somente_pago: false",
+          '  modelo_pago_barato: "deepseek-chat-custom"',
+          "  confianca_minima_modelo_barato: 0.92",
+        ].join("\n"),
+        "utf8"
+      );
+      const customPolicy = loadOrchestrationPolicy(tmpRootCustom);
+      expect(customPolicy.roteamentoPapeisCriticos).toEqual({
+        somentePago: false,
+        modeloPagoBarato: "deepseek-chat-custom",
+        confiancaMinimaModeloBarato: 0.92,
+      });
+    } finally {
+      fs.rmSync(tmpRootCustom, { recursive: true, force: true });
+    }
+  });
+
   it("aplica a regra de APROVADO_COM_RESSALVA (1 rodada de polimento se houver tentativa; senão promove)", () => {
     // Tentativa 1 (< 3) e 0 rodadas de polimento usadas -> polir 1 rodada sem gastar tentativa de falha
     const r1 = resolveVerdictAction({

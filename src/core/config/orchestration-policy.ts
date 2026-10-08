@@ -117,6 +117,11 @@ export interface OrchestrationPolicy {
     limiarSegredoNoul: number;
     limiarRiscoSkillNoul: number;
   };
+  roteamentoPapeisCriticos: {
+    somentePago: boolean;
+    modeloPagoBarato: string;
+    confiancaMinimaModeloBarato: number;
+  };
 }
 
 export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
@@ -291,6 +296,11 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     limiarEvidenciaContradiz: 0.8,
     limiarSegredoNoul: 0.7,
     limiarRiscoSkillNoul: 0.7,
+  },
+  roteamentoPapeisCriticos: {
+    somentePago: true,
+    modeloPagoBarato: "deepseek-flash",
+    confiancaMinimaModeloBarato: 0.85,
   },
 };
 
@@ -506,6 +516,22 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
     raw,
     "limiar_risco_skill_noul",
     policy.jevExecucao.limiarRiscoSkillNoul
+  );
+
+  policy.roteamentoPapeisCriticos.somentePago = extractScalarBoolean(
+    raw,
+    "somente_pago",
+    policy.roteamentoPapeisCriticos.somentePago
+  );
+  policy.roteamentoPapeisCriticos.modeloPagoBarato = extractScalarString(
+    raw,
+    "modelo_pago_barato",
+    policy.roteamentoPapeisCriticos.modeloPagoBarato
+  );
+  policy.roteamentoPapeisCriticos.confiancaMinimaModeloBarato = extractScalarNumber(
+    raw,
+    "confianca_minima_modelo_barato",
+    policy.roteamentoPapeisCriticos.confiancaMinimaModeloBarato
   );
 
   return policy;
