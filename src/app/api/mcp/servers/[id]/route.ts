@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
+import { encryptMcpEnv, maskMcpEnv } from "@/core/security/mcp-env";
 import prisma from "@/lib/prisma";
 
 export async function PATCH(
@@ -19,7 +20,14 @@ export async function PATCH(
     if (command !== undefined) dataToUpdate.command = command ? String(command).trim() : null;
     if (args !== undefined) dataToUpdate.args = typeof args === "string" ? args : JSON.stringify(args);
     if (url !== undefined) dataToUpdate.url = url ? String(url).trim() : null;
-    if (env !== undefined) dataToUpdate.env = typeof env === "string" ? env : JSON.stringify(env);
+    if (env !== undefined) {
+      const atual = await prisma.mcpServer.findUnique({ where: { id } });
+      try {
+        dataToUpdate.env = encryptMcpEnv(env, atual?.env);
+      } catch {
+        return NextResponse.json({ error: "env deve ser um objeto JSON" }, { status: 400 });
+      }
+    }
     if (status !== undefined) dataToUpdate.status = String(status);
 
     const server = await prisma.mcpServer.update({
@@ -27,7 +35,10 @@ export async function PATCH(
       data: dataToUpdate,
     });
 
-    return NextResponse.json({ success: true, server });
+    return NextResponse.json({
+      success: true,
+      server: { ...server, env: maskMcpEnv(server.env) },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao atualizar servidor MCP", details: String(error) },

@@ -47,6 +47,33 @@ async function main() {
       count++;
     }
   }
+  for (const m of await prisma.mcpServer.findMany()) {
+    if (!m.env || !m.env.trim()) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(m.env);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+    const envObj = { ...(parsed as Record<string, unknown>) };
+    let changed = 0;
+    for (const [k, v] of Object.entries(envObj)) {
+      if (v === undefined || v === null) continue;
+      const enc = convert(String(v), `McpServer.${m.id}.${k}`);
+      if (enc) {
+        envObj[k] = enc;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      await prisma.mcpServer.update({
+        where: { id: m.id },
+        data: { env: JSON.stringify(envObj) },
+      });
+      count += changed;
+    }
+  }
   console.log(`Concluído: ${count} segredo(s) cifrado(s).`);
 }
 

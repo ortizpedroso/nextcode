@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
+import { encryptMcpEnv, maskMcpEnv } from "@/core/security/mcp-env";
 import { safeFetch } from "@/core/security/safe-fetch";
 import prisma from "@/lib/prisma";
 
@@ -12,7 +13,9 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ servers });
+    return NextResponse.json({
+      servers: servers.map((s) => ({ ...s, env: maskMcpEnv(s.env) })),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao listar servidores MCP", details: String(error) },
@@ -68,6 +71,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Nome do servidor MCP é obrigatório" }, { status: 400 });
     }
 
+    let encryptedEnv: string;
+    try {
+      encryptedEnv = encryptMcpEnv(env);
+    } catch {
+      return NextResponse.json({ error: "env deve ser um objeto JSON" }, { status: 400 });
+    }
+
     const newServer = await prisma.mcpServer.create({
       data: {
         name,
@@ -75,14 +85,14 @@ export async function POST(request: NextRequest) {
         command: command || null,
         args: Array.isArray(args) ? JSON.stringify(args) : args || "[]",
         url: url || null,
-        env: typeof env === "object" ? JSON.stringify(env) : env || "{}",
+        env: encryptedEnv,
         status: url || command ? "online" : "offline",
       },
     });
 
     return NextResponse.json({
       success: true,
-      server: newServer,
+      server: { ...newServer, env: maskMcpEnv(newServer.env) },
     });
   } catch (error) {
     return NextResponse.json(
