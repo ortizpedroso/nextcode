@@ -46,7 +46,7 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     vi.restoreAllMocks();
   });
 
-  function setupTask(tier: "rapido" | "medio" | "pesado", withDeepseekKey = true) {
+  function setupTask(tier: "rapido" | "medio" | "pesado", withFreellmapi = true) {
     const fileName = "src/lib/calc.ts";
     const task: any = {
       id: "node-r1-3",
@@ -84,13 +84,27 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     vi.spyOn(prisma.taskNode, "findMany").mockResolvedValue([] as any);
     vi.spyOn(prisma.message, "findFirst").mockResolvedValue(null as any);
     vi.spyOn(prisma.message, "create").mockResolvedValue({ id: "msg-1" } as any);
-    vi.spyOn(prisma.llmGateway, "findMany").mockResolvedValue([] as any);
+    vi.spyOn(prisma.llmGateway, "findMany").mockResolvedValue(
+      withFreellmapi
+        ? ([
+            {
+              id: "freellmapi",
+              enabled: true,
+              priority: 1,
+              baseUrl: "http://localhost:3100/v1",
+              apiKey: writeSecret("freellmapi-test-key"),
+              modelFast: "auto:fast",
+              modelHeavy: "auto:smart",
+            },
+          ] as any)
+        : ([] as any)
+    );
     vi.spyOn(prisma.setting, "findUnique").mockResolvedValue({
       id: "default",
       geminiKey: writeSecret("gemini-test-key"),
       groqKey: writeSecret("groq-test-key"),
       nvidiaKey: writeSecret("nvidia-test-key"),
-      deepseekKey: withDeepseekKey ? writeSecret("deepseek-test-key") : null,
+      deepseekKey: writeSecret("deepseek-test-key"),
       omniRouteUrl: "http://localhost:20128/v1",
       omniRouteKey: writeSecret("omni-test-key"),
     } as any);
@@ -121,10 +135,10 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
               choices: [{ message: { content: executorOutput } }],
             })
           ),
-          providerUsed: "deepseek",
+          providerUsed: "freellmapi",
           badge: "",
-          tierTag: "deepseek",
-          modelUsed: opts.gateways?.[0]?.modelHeavy || "deepseek-v4-pro",
+          tierTag: "freellmapi",
+          modelUsed: `custom/${opts.gateways?.[0]?.modelHeavy || "deepseek-v4-pro"}`,
         };
       });
 
@@ -149,7 +163,7 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls).toHaveLength(1);
     expect(capturedCalls[0].tier).toBe("heavy");
     expect(capturedCalls[0].gateways).toHaveLength(1);
-    expect(capturedCalls[0].gateways?.[0].id).toBe("deepseek");
+    expect(capturedCalls[0].gateways?.[0].id).toBe("freellmapi");
     expect(capturedCalls[0].gateways?.[0].modelHeavy).toBe("deepseek-flash");
 
     const rotaPagaLogs = telemetryCalls.filter((c) => c.action === "EXECUTOR_ROTA_PAGA");
@@ -158,7 +172,7 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
       nodeId: "node-r1-3",
       executorTier: "rapido",
       modelos: ["deepseek-flash"],
-      gateways: ["deepseek"],
+      gateways: ["freellmapi"],
     });
   });
 
@@ -170,7 +184,7 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls).toHaveLength(1);
     expect(capturedCalls[0].tier).toBe("heavy");
     expect(capturedCalls[0].gateways).toHaveLength(1);
-    expect(capturedCalls[0].gateways?.[0].id).toBe("deepseek");
+    expect(capturedCalls[0].gateways?.[0].id).toBe("freellmapi");
     expect(capturedCalls[0].gateways?.[0].modelHeavy).toBe("deepseek-v4-pro");
   });
 
@@ -185,8 +199,16 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
       expect(call.geminiKey).toBeUndefined();
       expect(call.omniRouteKey).toBeUndefined();
       expect(call.omniRouteUrl).toBeUndefined();
-      expect(call.deepseekKey).toBe("deepseek-test-key");
     }
+  });
+
+  it('chamadas pagas levam allowedRoutedViaPrefixes ["custom/"] e não levam deepseekKey', async () => {
+    vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    const { task, capturedCalls } = setupTask("pesado", true);
+    await executeTaskNode(task);
+    expect(capturedCalls).toHaveLength(1);
+    expect(capturedCalls[0].allowedRoutedViaPrefixes).toEqual(["custom/"]);
+    expect(capturedCalls[0].deepseekKey).toBeUndefined();
   });
 
   it("sem gateway pago → providerUsed none → etapa volta a pending sem gastar tentativa e sessão PAUSADA", async () => {

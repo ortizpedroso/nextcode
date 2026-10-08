@@ -385,6 +385,7 @@ export interface ExecutorToolLoopParams {
     omniRouteKey?: string | null;
   };
   paidGateways?: GatewayConfig[];
+  allowedRoutedViaPrefixes?: string[];
   runTypecheck?: RunTypecheckFn;
 }
 
@@ -469,8 +470,8 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
             messages,
             tier: "heavy",
             gateways: params.paidGateways,
+            allowedRoutedViaPrefixes: params.allowedRoutedViaPrefixes,
             maxTokens,
-            deepseekKey: routerKeys.deepseekKey ?? undefined,
             stream: false,
             signal: stepSignal,
           })

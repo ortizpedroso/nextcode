@@ -121,6 +121,10 @@ export interface OrchestrationPolicy {
     somentePago: boolean;
     modeloPagoBarato: string;
     confiancaMinimaModeloBarato: number;
+    modeloPagoForte: string;
+    perfilFreellmapiForte: string;
+    perfilFreellmapiBarato: string;
+    prefixosRotaPaga: string[];
   };
 }
 
@@ -301,6 +305,10 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     somentePago: true,
     modeloPagoBarato: "deepseek-flash",
     confiancaMinimaModeloBarato: 0.85,
+    modeloPagoForte: "deepseek-v4-pro",
+    perfilFreellmapiForte: "",
+    perfilFreellmapiBarato: "",
+    prefixosRotaPaga: ["custom/"],
   },
 };
 
@@ -533,6 +541,29 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
     "confianca_minima_modelo_barato",
     policy.roteamentoPapeisCriticos.confiancaMinimaModeloBarato
   );
+  policy.roteamentoPapeisCriticos.modeloPagoForte = extractScalarString(
+    raw,
+    "modelo_pago_forte",
+    policy.roteamentoPapeisCriticos.modeloPagoForte
+  );
+  policy.roteamentoPapeisCriticos.perfilFreellmapiForte = extractScalarString(
+    raw,
+    "perfil_freellmapi_forte",
+    policy.roteamentoPapeisCriticos.perfilFreellmapiForte
+  );
+  policy.roteamentoPapeisCriticos.perfilFreellmapiBarato = extractScalarString(
+    raw,
+    "perfil_freellmapi_barato",
+    policy.roteamentoPapeisCriticos.perfilFreellmapiBarato
+  );
+  policy.roteamentoPapeisCriticos.prefixosRotaPaga = extractScalarString(
+    raw,
+    "prefixos_rota_paga",
+    policy.roteamentoPapeisCriticos.prefixosRotaPaga.join(",")
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   return policy;
 }

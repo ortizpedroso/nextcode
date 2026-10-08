@@ -124,7 +124,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
 
   it("R1.1: lê roteamento_papeis_criticos do YAML e usa os padrões quando as chaves faltam", () => {
     const policy = loadOrchestrationPolicy();
-    expect(policy.roteamentoPapeisCriticos).toEqual({
+    expect(policy.roteamentoPapeisCriticos).toMatchObject({
       somentePago: true,
       modeloPagoBarato: "deepseek-flash",
       confiancaMinimaModeloBarato: 0.85,
@@ -139,7 +139,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
         "utf8"
       );
       const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
-      expect(fallbackPolicy.roteamentoPapeisCriticos).toEqual({
+      expect(fallbackPolicy.roteamentoPapeisCriticos).toMatchObject({
         somentePago: true,
         modeloPagoBarato: "deepseek-flash",
         confiancaMinimaModeloBarato: 0.85,
@@ -162,11 +162,69 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
         "utf8"
       );
       const customPolicy = loadOrchestrationPolicy(tmpRootCustom);
-      expect(customPolicy.roteamentoPapeisCriticos).toEqual({
+      expect(customPolicy.roteamentoPapeisCriticos).toMatchObject({
         somentePago: false,
         modeloPagoBarato: "deepseek-chat-custom",
         confiancaMinimaModeloBarato: 0.92,
       });
+    } finally {
+      fs.rmSync(tmpRootCustom, { recursive: true, force: true });
+    }
+  });
+
+  it("R1.3b: lê modelo forte, perfis e prefixos_rota_paga, com padrões", () => {
+    const policy = loadOrchestrationPolicy();
+    expect(policy.roteamentoPapeisCriticos).toEqual({
+      somentePago: true,
+      modeloPagoBarato: "deepseek-flash",
+      confiancaMinimaModeloBarato: 0.85,
+      modeloPagoForte: "deepseek-v4-pro",
+      perfilFreellmapiForte: "",
+      perfilFreellmapiBarato: "",
+      prefixosRotaPaga: ["custom/"],
+    });
+
+    const tmpRootMissing = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-r1-3b-missing-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootMissing, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootMissing, "config", "politicas-orquestracao.yaml"),
+        'versao_politica: "1.0.0"\n',
+        "utf8"
+      );
+      const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
+      expect(fallbackPolicy.roteamentoPapeisCriticos).toEqual({
+        somentePago: true,
+        modeloPagoBarato: "deepseek-flash",
+        confiancaMinimaModeloBarato: 0.85,
+        modeloPagoForte: "deepseek-v4-pro",
+        perfilFreellmapiForte: "",
+        perfilFreellmapiBarato: "",
+        prefixosRotaPaga: ["custom/"],
+      });
+    } finally {
+      fs.rmSync(tmpRootMissing, { recursive: true, force: true });
+    }
+
+    const tmpRootCustom = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-r1-3b-custom-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootCustom, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootCustom, "config", "politicas-orquestracao.yaml"),
+        [
+          "roteamento_papeis_criticos:",
+          '  modelo_pago_forte: "deepseek-r1"',
+          '  perfil_freellmapi_forte: "paid-strong"',
+          '  perfil_freellmapi_barato: "paid-fast"',
+          '  prefixos_rota_paga: "custom/ , paid/ , "',
+        ].join("\n"),
+        "utf8"
+      );
+      const customPolicy = loadOrchestrationPolicy(tmpRootCustom);
+      expect(customPolicy.roteamentoPapeisCriticos.modeloPagoForte).toBe("deepseek-r1");
+      expect(customPolicy.roteamentoPapeisCriticos.perfilFreellmapiForte).toBe("paid-strong");
+      expect(customPolicy.roteamentoPapeisCriticos.perfilFreellmapiBarato).toBe("paid-fast");
+      expect(customPolicy.roteamentoPapeisCriticos.prefixosRotaPaga).toEqual(["custom/", "paid/"]);
     } finally {
       fs.rmSync(tmpRootCustom, { recursive: true, force: true });
     }

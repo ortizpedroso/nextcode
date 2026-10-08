@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { loadPaidGatewaysForTier } from "@/core/llm/paid-routing";
+import { loadPaidGatewaysForTier, type PaidRoutingConfig } from "@/core/llm/paid-routing";
 import type { GatewayConfig } from "@/core/llm/gateways";
+
+const defaultCfg: PaidRoutingConfig = {
+  modeloPagoForte: "deepseek-v4-pro",
+  modeloPagoBarato: "deepseek-flash",
+  perfilFreellmapiForte: "",
+  perfilFreellmapiBarato: "",
+};
 
 const fakeGateways: GatewayConfig[] = [
   {
@@ -8,7 +15,7 @@ const fakeGateways: GatewayConfig[] = [
     enabled: true,
     priority: 1,
     baseUrl: "http://localhost:3100/v1",
-    apiKey: "",
+    apiKey: "free-test-key",
     modelFast: "auto:fast",
     modelHeavy: "auto:smart",
   },
@@ -33,31 +40,77 @@ const fakeGateways: GatewayConfig[] = [
   },
 ];
 
-describe("R1.2 — loadPaidGatewaysForTier", () => {
-  it("devolve só gateways heavyFirst (exclui freellmapi e omniroute)", async () => {
-    const res = await loadPaidGatewaysForTier("medio", "deepseek-flash", async () => fakeGateways);
-    expect(res.map((g) => g.id)).toEqual(["deepseek"]);
-    expect(res.every((g) => g.heavyFirst === true)).toBe(true);
+describe("R1.3b — loadPaidGatewaysForTier", () => {
+  it("perfis vazios (padrão): só deepseek-v4-pro no freellmapi (medio/pesado)", async () => {
+    const resMedio = await loadPaidGatewaysForTier("medio", defaultCfg, async () => fakeGateways);
+    const resPesado = await loadPaidGatewaysForTier("pesado", defaultCfg, async () => fakeGateways);
+    expect(resMedio).toEqual([
+      {
+        ...fakeGateways[0],
+        heavyFirst: true,
+        modelFast: null,
+        modelHeavy: "deepseek-v4-pro",
+      },
+    ]);
+    expect(resPesado).toEqual(resMedio);
   });
 
-  it("rapido troca o modelo para o pago barato", async () => {
-    const res = await loadPaidGatewaysForTier("rapido", "deepseek-flash", async () => fakeGateways);
-    expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("deepseek");
-    expect(res[0].modelHeavy).toBe("deepseek-flash");
+  it("perfis vazios: rapido usa deepseek-flash", async () => {
+    const res = await loadPaidGatewaysForTier("rapido", defaultCfg, async () => fakeGateways);
+    expect(res).toEqual([
+      {
+        ...fakeGateways[0],
+        heavyFirst: true,
+        modelFast: null,
+        modelHeavy: "deepseek-flash",
+      },
+    ]);
   });
 
-  it("medio e pesado mantêm deepseek-v4-pro", async () => {
-    const resMedio = await loadPaidGatewaysForTier("medio", "deepseek-flash", async () => fakeGateways);
-    const resPesado = await loadPaidGatewaysForTier("pesado", "deepseek-flash", async () => fakeGateways);
-    expect(resMedio).toHaveLength(1);
-    expect(resMedio[0].modelHeavy).toBe("deepseek-v4-pro");
-    expect(resPesado).toHaveLength(1);
-    expect(resPesado[0].modelHeavy).toBe("deepseek-v4-pro");
+  it("com perfil configurado: auto:<perfil> primeiro e depois o modelo fixo", async () => {
+    const cfgWithProfiles: PaidRoutingConfig = {
+      modeloPagoForte: "deepseek-v4-pro",
+      modeloPagoBarato: "deepseek-flash",
+      perfilFreellmapiForte: " paid-strong ",
+      perfilFreellmapiBarato: " paid-fast ",
+    };
+    const resPesado = await loadPaidGatewaysForTier("pesado", cfgWithProfiles, async () => fakeGateways);
+    expect(resPesado.map((g) => ({ id: g.id, modelHeavy: g.modelHeavy, modelFast: g.modelFast, heavyFirst: g.heavyFirst }))).toEqual([
+      { id: "freellmapi", modelHeavy: "auto:paid-strong", modelFast: null, heavyFirst: true },
+      { id: "freellmapi", modelHeavy: "deepseek-v4-pro", modelFast: null, heavyFirst: true },
+    ]);
+
+    const resRapido = await loadPaidGatewaysForTier("rapido", cfgWithProfiles, async () => fakeGateways);
+    expect(resRapido.map((g) => ({ id: g.id, modelHeavy: g.modelHeavy, modelFast: g.modelFast, heavyFirst: g.heavyFirst }))).toEqual([
+      { id: "freellmapi", modelHeavy: "auto:paid-fast", modelFast: null, heavyFirst: true },
+      { id: "freellmapi", modelHeavy: "deepseek-flash", modelFast: null, heavyFirst: true },
+    ]);
+  });
+
+  it("deepseek direto e omniroute nunca entram", async () => {
+    const res = await loadPaidGatewaysForTier("pesado", defaultCfg, async () => fakeGateways);
+    expect(res.every((g) => g.id === "freellmapi")).toBe(true);
+    expect(res.some((g) => g.id === "deepseek" || g.id === "omniroute")).toBe(false);
+  });
+
+  it("sem freellmapi → lista vazia", async () => {
+    const withoutFree = fakeGateways.filter((g) => g.id !== "freellmapi");
+    const res = await loadPaidGatewaysForTier("pesado", defaultCfg, async () => withoutFree);
+    expect(res).toEqual([]);
+  });
+
+  it("nenhum item usa auto, auto:smart ou auto:fast", async () => {
+    for (const nivel of ["rapido", "medio", "pesado"] as const) {
+      const res = await loadPaidGatewaysForTier(nivel, defaultCfg, async () => fakeGateways);
+      for (const g of res) {
+        expect(g.modelFast).toBeNull();
+        expect(["auto", "auto:smart", "auto:fast"]).not.toContain(g.modelHeavy);
+      }
+    }
   });
 
   it("loader com erro → lista vazia", async () => {
-    const res = await loadPaidGatewaysForTier("pesado", "deepseek-flash", async () => {
+    const res = await loadPaidGatewaysForTier("pesado", defaultCfg, async () => {
       throw new Error("falha simulada no loader");
     });
     expect(res).toEqual([]);

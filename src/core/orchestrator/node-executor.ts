@@ -942,7 +942,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   });
 
   const paidGateways = isPaidOnlyRouting(policy)
-    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos.modeloPagoBarato)
+    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos)
     : undefined;
   if (paidGateways) {
     TelemetryLogger.log({
@@ -981,6 +981,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       maxTokens: executorMaxTokens,
       stepTimeoutMs,
       paidGateways,
+      allowedRoutedViaPrefixes: paidGateways ? policy.roteamentoPapeisCriticos.prefixosRotaPaga : undefined,
       routerKeys: {
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -1023,8 +1024,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             messages: dispatchMessages,
             tier: "heavy",
             gateways: paidGateways,
+            allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga,
             maxTokens: executorMaxTokens,
-            deepseekKey: readSecret((setting as any)?.deepseekKey),
             stream: false,
             signal: stepSignal,
           })
@@ -1255,8 +1256,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
                 messages: retryMessages,
                 tier: "heavy",
                 gateways: paidGateways,
+                allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga,
                 maxTokens: 2048,
-                deepseekKey: readSecret((setting as any)?.deepseekKey),
                 stream: false,
                 signal: retrySignal,
               })

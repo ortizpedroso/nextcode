@@ -240,6 +240,8 @@ export interface DispatchOptions {
   gateways?: GatewayConfig[];
   /** Teto de tokens da resposta nos gateways (padrão LLM_GATEWAY_MAX_TOKENS ou 8192). */
   maxTokens?: number;
+  /** Papéis críticos: só aceita resposta cujo X-Routed-Via comece com um destes prefixos. */
+  allowedRoutedViaPrefixes?: string[];
 }
 
 export interface DispatchResult {
@@ -791,7 +793,8 @@ export class SmartRouter {
     tier: ModelTier,
     stream: boolean,
     signal?: AbortSignal,
-    maxTokens?: number
+    maxTokens?: number,
+    allowedRoutedViaPrefixes?: string[]
   ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
@@ -803,6 +806,24 @@ export class SmartRouter {
       maxTokens: maxTokens || Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
     });
     if (attempt.ok) {
+      if (
+        allowedRoutedViaPrefixes &&
+        allowedRoutedViaPrefixes.length > 0 &&
+        !allowedRoutedViaPrefixes.some((p) => attempt.servedBy.toLowerCase().startsWith(p.toLowerCase()))
+      ) {
+        await attempt.response.body?.cancel().catch(() => {});
+        TelemetryLogger.log({
+          action: "llm.gateway_failure",
+          details: {
+            gateway: gw.id,
+            requestedModel: model,
+            kind: "bad_request",
+            status: null,
+            detail: `rota não paga recusada: ${attempt.servedBy}`,
+          },
+        });
+        return { failedKind: "bad_request" };
+      }
       lastGatewayFailure = "";
       console.log(`[ROUTER] Chamada processada via ${label} (${attempt.servedBy}, ${attempt.latencyMs}ms).`);
       TelemetryLogger.log({
@@ -1122,7 +1143,7 @@ export class SmartRouter {
         if (omniResult) return omniResult;
         continue;
       }
-      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens);
+      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes);
       if ("response" in gatewayResult) return gatewayResult;
       // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
       // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.

@@ -171,5 +171,9 @@ jev_execucao:
 
 roteamento_papeis_criticos:
   somente_pago: true                       # executor e avaliador nunca caem no gratuito; sem pago → PAUSADA
-  modelo_pago_barato: "deepseek-flash"  # nível 'rapido' do executor
+  modelo_pago_barato: "deepseek-flash"  # modelo pago fixo no FreeLLMAPI (nível 'rapido')
   confianca_minima_modelo_barato: 0.85     # Jev precisa disso em 'rapido' para usar o modelo barato
+  modelo_pago_forte: "deepseek-v4-pro"                 # modelo pago fixo no FreeLLMAPI (níveis medio/pesado)
+  perfil_freellmapi_forte: ""                           # perfil do FreeLLMAPI só com modelos pagos; vazio = não usar (hoje não existe)
+  perfil_freellmapi_barato: ""
+  prefixos_rota_paga: "custom/"                         # X-Routed-Via aceito para papéis críticos (lista separada por vírgula)
