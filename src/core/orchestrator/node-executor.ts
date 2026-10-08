@@ -7,7 +7,7 @@ import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
-import { runExecutorToolLoop } from "@/core/skills/executor-tool-loop";
+import { runExecutorToolLoop, buildExecutorToolProtocolPrompt } from "@/core/skills/executor-tool-loop";
 import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
 import { recordLlmCost } from "@/core/llm/cost";
 import {
@@ -826,7 +826,14 @@ export async function executeTaskNode(
   const effectiveExecutorMode: ExecutorMode = executorModeOverrideForTests ?? policyExecutorMode;
   const useToolLoop = Boolean(effectiveExecutorMode === "laco" && nodeMicrobrief && loadedExecutorSkill);
 
-  const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
+  const autonomousWorkerPrompt = useToolLoop
+    ? `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
+DIRETRIZES DE EXECUÇÃO:
+1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
+2. Escopo de arquivos desta etapa: ${taskDb.filesScope || "[]"}. Grave cada arquivo na quarentena usando a ferramenta \`write_file\` (ou \`edit_file\`), confira a compilação com \`run_check\` (\`{"comando": "typecheck"}\`) e encerre com \`finish\` passando o YAML de \`relatorio_executor\` listando cada requisito (REQ) desta etapa com o arquivo do escopo e as linhas reais (1-indexadas).
+Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou\`, \`testes\`, \`arquivos_alterados\`) NÃO vêm do modelo: o harness carimba com \`stampHarnessMeasuredFields\`.
+3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Em cada turno, responda com EXATAMENTE UM bloco \`\`\`json acao.${executorSkillInstructions}\n\n${buildExecutorToolProtocolPrompt()}`
+    : `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Para cada arquivo no escopo (${taskDb.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
@@ -895,7 +902,9 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
 
   dispatchMessages.push({
     role: "user",
-    content: `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
+    content: useToolLoop
+      ? `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma usando o protocolo de ferramentas (EXATAMENTE UM bloco \`\`\`json acao por turno) até chamar finish.`
+      : `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
   });
 
   const plannedTier = readPlannedTier(taskDb.payload);
