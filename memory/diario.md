@@ -5,6 +5,29 @@
 
 ---
 
+## 08/10/2026 (3) — plano v2 "Jev máximo" + protocolo do Antigravity
+
+**Diretrizes do fundador**
+- Implementar tudo o que serve do Jev (orquestração/decisão).
+- Crédito hoje só no DeepSeek; Claude e Gemini depois. **Não economizar na Spec nem no executor.**
+- Documentar antes de executar; prompts ao Antigravity com travas; relatórios para auditoria.
+
+**Feito (só documentação, nada de código)**
+- Referência §5 trocada pelo plano v2: pacotes P0–P10; mudanças M1–M5 (executor/elicitador sempre no modelo forte; cascata J22 descartada; J16 passa a decidir divisão; J23 vira trava ativa enquanto só houver DeepSeek; teto de custo precisa de valor novo).
+- Referência §8: travas T-A…T-K, estrutura do prompt, formato do relatório, auditoria.
+- Pastas `docs/prompts/` e `docs/relatorios/`.
+
+**Onde parou**
+- Plano apresentado; aguardando aprovação (§6 da referência).
+
+**Próximo passo**
+- Aprovado → escrever `docs/prompts/P0-arrumacao.md` e `docs/prompts/P1-nucleo-jev.md`.
+
+**Pendências do fundador**
+- Aprovar plano v2 e ordem · teto de custo (proposta US$ 3,00 em P1–P4) · privacidade do Jev (proposta: aceitar) · stack/recorte do Gateway · Exa como busca.
+
+---
+
 ## 08/10/2026 (2) — memória, ganchos, Jev a fundo, fluxo real × pensado
 
 **Feito**
