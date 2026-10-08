@@ -6,7 +6,8 @@ import { SmartRouter, DispatchMessage } from "@/core/router/smart-router";
 import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
-import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
+import { loadRoleSkill, buildSkillSystemPrompt, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
+import { runExecutorToolLoop } from "@/core/skills/executor-tool-loop";
 import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
 import { recordLlmCost } from "@/core/llm/cost";
 import {
@@ -650,6 +651,12 @@ export function setScaffoldInstallerForTests(installer: Installer | null): void 
   scaffoldInstaller = installer ?? npmInstaller;
 }
 
+export type ExecutorMode = "laco" | "chamada_unica";
+let executorModeOverrideForTests: ExecutorMode | null = null;
+export function setExecutorModeForTests(mode: ExecutorMode | null): void {
+  executorModeOverrideForTests = mode;
+}
+
 /**
  * Etapa de base (M1): package.json com as dependências da stack, tsconfig e npm install no
  * projeto-alvo. Falha (ex.: npm sem rede) segue a política normal de tentativas (T6).
@@ -794,9 +801,10 @@ export async function executeTaskNode(
 
   const resolvedCluster = resolveNodeCluster(taskDb);
   const executorSkillName = `executor-${resolvedCluster}`;
+  let loadedExecutorSkill: LoadedRoleSkill | null = null;
   let executorSkillInstructions = "";
   try {
-    const loadedExecutorSkill = loadRoleSkill(executorSkillName);
+    loadedExecutorSkill = loadRoleSkill(executorSkillName);
     // Sanitiza palavras-chave reservadas dos servidores falsos de teste ("Brief", "Auditor Cego", "implemented")
     executorSkillInstructions =
       "\n\n[SKILL DECLARATIVA DO PAPEL: " +
@@ -809,6 +817,14 @@ export async function executeTaskNode(
   } catch {
     /* fallback silencioso caso skills/ não esteja acessível */
   }
+
+  const policy = loadOrchestrationPolicy();
+  const nodePayload = readNodePayload(taskDb.payload);
+  const nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
+  const policyExecutorMode: ExecutorMode =
+    (policy as { execucao?: { modoExecutor?: ExecutorMode } }).execucao?.modoExecutor ?? "chamada_unica";
+  const effectiveExecutorMode: ExecutorMode = executorModeOverrideForTests ?? policyExecutorMode;
+  const useToolLoop = Boolean(effectiveExecutorMode === "laco" && nodeMicrobrief && loadedExecutorSkill);
 
   const autonomousWorkerPrompt = `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
@@ -849,8 +865,6 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
 
   // O worker precisa da Spec aprovada: antes recebia só título, papel e lista de arquivos, e
   // inventava o conteúdo (rotas com Math.random, dados fixos, testes expect(true)).
-  const nodePayload = readNodePayload(taskDb.payload);
-  const nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
   if (nodeMicrobrief) {
     dispatchMessages.push({
       role: "system",
@@ -892,79 +906,134 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     details: { nodeId: taskDb.id, plannedTier, attempt: (taskDb.attempts || 0) + 1, executorTier },
   });
 
+  const qm = new QuarantineManager();
+  const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
+  const targetProjectRoot = taskDb.session.project?.path || process.cwd();
+  const executorMaxTokens = Number(process.env.EXECUTOR_MAX_TOKENS) || 32000;
+
   let stepResultText = "";
   let noLlmAvailable = false;
-  try {
-    const stepSignal = AbortSignal.timeout(stepTimeoutMs);
-    const dispatchPromise = smartRouter.dispatchWithFallback({
-      messages: dispatchMessages,
-      // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
-      // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
-      tier: executorTier === "rapido" ? "fast" : "heavy",
-      // Modelos de raciocínio (DeepSeek v4) gastam parte do limite pensando: com 8192 a resposta de
-      // uma etapa com tela era cortada no meio do 2º arquivo (teste real P2 de 07/10).
-      maxTokens: Number(process.env.EXECUTOR_MAX_TOKENS) || 32000,
-      geminiKey: readSecret(setting?.geminiKey),
-      groqKey: readSecret((setting as any)?.groqKey),
-      nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-      deepseekKey: readSecret((setting as any)?.deepseekKey),
-      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-      omniRouteKey: readSecret(setting?.omniRouteKey),
-      stream: false,
-      signal: stepSignal,
+  let loopCodeContentMap: Record<string, string> | null = null;
+
+  if (useToolLoop && nodeMicrobrief && loadedExecutorSkill) {
+    const loopRes = await runExecutorToolLoop({
+      sessionId: taskDb.sessionId,
+      nodeId: taskDb.id,
+      taskTitle: taskDb.title,
+      skill: loadedExecutorSkill,
+      microbrief: nodeMicrobrief,
+      initialMessages: dispatchMessages,
+      smartRouter,
+      qm,
+      projectRoot: targetProjectRoot,
+      executorTier,
+      maxTokens: executorMaxTokens,
+      stepTimeoutMs,
+      routerKeys: {
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+      },
     });
 
-    const timeoutPromise = new Promise<null>((resolve) => {
-      if (stepSignal.aborted) return resolve(null);
-      stepSignal.addEventListener("abort", () => resolve(null), { once: true });
-    });
-
-    const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
-    if (!dispatchRes) {
-      throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
-    }
-
-    if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
-      noLlmAvailable = true;
-    } else if (dispatchRes) {
-      const resJson = await dispatchRes.response.json().catch((err: unknown) => {
-        // Leitura da resposta abortada (limite da etapa) ou corpo inválido: registra e segue vazio —
-        // o Validador Tipo 1 reprova "sem arquivos" sem gastar o avaliador.
-        TelemetryLogger.log({
-          sessionId: taskDb.sessionId,
-          action: "EXECUTOR_RESPONSE_UNREADABLE",
-          details: { nodeId: taskDb.id, aborted: stepSignal.aborted, error: String(err).slice(0, 200) },
-        });
-        return {};
-      });
-      await recordLlmCost({
-        sessionId: taskDb.sessionId,
-        papel: "executor",
-        provider: String(dispatchRes.providerUsed),
-        model: String(dispatchRes.modelUsed || ""),
-        usage: resJson.usage,
-      });
-      if (resJson.choices?.[0]?.finish_reason === "length") {
-        TelemetryLogger.log({
-          sessionId: taskDb.sessionId,
-          action: "EXECUTOR_OUTPUT_TRUNCATED",
-          details: { nodeId: taskDb.id, modelUsed: dispatchRes.modelUsed, providerUsed: dispatchRes.providerUsed },
-        });
-      }
-      if (resJson.choices?.[0]?.message?.content) {
-        stepResultText = resJson.choices[0].message.content;
-      } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-        stepResultText = resJson.candidates[0].content.parts[0].text;
-      } else {
-        stepResultText = `Etapa "${taskDb.title}" executada pelo motor autônomo.`;
+    noLlmAvailable = loopRes.noLlmAvailable;
+    loopCodeContentMap = loopRes.codeContentMap;
+    stepResultText = loopRes.finishReportText || loopRes.failureReason || "";
+    qm.extractionIssues = [];
+    if (!loopRes.noLlmAvailable) {
+      if (!loopRes.finished && loopRes.failureReason) {
+        qm.extractionIssues.push(loopRes.failureReason);
+      } else if (loopRes.finished) {
+        if (filesScopeArr.length > 0 && Object.keys(loopCodeContentMap).length === 0) {
+          qm.extractionIssues.push(
+            "[NO FILES] O laço do executor terminou sem gravar nenhum arquivo do escopo na quarentena."
+          );
+        } else {
+          const missing = filesScopeArr.filter(
+            (f) => !Object.prototype.hasOwnProperty.call(loopCodeContentMap!, f.trim().replace(/^\\|^\//, ""))
+          );
+          if (missing.length > 0) {
+            qm.extractionIssues.push(
+              `[MISSING FILE] O laço do executor não gravou ${missing.join(", ")} na quarentena.`
+            );
+          }
+        }
       }
     }
-  } catch (err) {
-    stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
-    console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
+  } else {
+    try {
+      const stepSignal = AbortSignal.timeout(stepTimeoutMs);
+      const dispatchPromise = smartRouter.dispatchWithFallback({
+        messages: dispatchMessages,
+        // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
+        // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
+        tier: executorTier === "rapido" ? "fast" : "heavy",
+        // Modelos de raciocínio (DeepSeek v4) gastam parte do limite pensando: com 8192 a resposta de
+        // uma etapa com tela era cortada no meio do 2º arquivo (teste real P2 de 07/10).
+        maxTokens: executorMaxTokens,
+        geminiKey: readSecret(setting?.geminiKey),
+        groqKey: readSecret((setting as any)?.groqKey),
+        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+        deepseekKey: readSecret((setting as any)?.deepseekKey),
+        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+        omniRouteKey: readSecret(setting?.omniRouteKey),
+        stream: false,
+        signal: stepSignal,
+      });
+
+      const timeoutPromise = new Promise<null>((resolve) => {
+        if (stepSignal.aborted) return resolve(null);
+        stepSignal.addEventListener("abort", () => resolve(null), { once: true });
+      });
+
+      const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as any;
+      if (!dispatchRes) {
+        throw new Error(`Timeout de resposta excedido na etapa da DAG (limite ${Math.round(stepTimeoutMs / 1000)}s) — requisição abortada.`);
+      }
+
+      if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
+        noLlmAvailable = true;
+      } else if (dispatchRes) {
+        const resJson = await dispatchRes.response.json().catch((err: unknown) => {
+          // Leitura da resposta abortada (limite da etapa) ou corpo inválido: registra e segue vazio —
+          // o Validador Tipo 1 reprova "sem arquivos" sem gastar o avaliador.
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "EXECUTOR_RESPONSE_UNREADABLE",
+            details: { nodeId: taskDb.id, aborted: stepSignal.aborted, error: String(err).slice(0, 200) },
+          });
+          return {};
+        });
+        await recordLlmCost({
+          sessionId: taskDb.sessionId,
+          papel: "executor",
+          provider: String(dispatchRes.providerUsed),
+          model: String(dispatchRes.modelUsed || ""),
+          usage: resJson.usage,
+        });
+        if (resJson.choices?.[0]?.finish_reason === "length") {
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "EXECUTOR_OUTPUT_TRUNCATED",
+            details: { nodeId: taskDb.id, modelUsed: dispatchRes.modelUsed, providerUsed: dispatchRes.providerUsed },
+          });
+        }
+        if (resJson.choices?.[0]?.message?.content) {
+          stepResultText = resJson.choices[0].message.content;
+        } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+          stepResultText = resJson.candidates[0].content.parts[0].text;
+        } else {
+          stepResultText = `Etapa "${taskDb.title}" executada pelo motor autônomo.`;
+        }
+      }
+    } catch (err) {
+      stepResultText = `[AVISO] Notificação da etapa: ${String(err)}`;
+      console.warn(`[DAG_TIMEOUT_GUARD] Exceção/Timeout na etapa "${taskDb.title}":`, String(err));
+    }
   }
-
-  const policy = loadOrchestrationPolicy();
 
   // Item 1 (Fila nunca para): se todos os provedores de LLM estiverem fora do ar (providerUsed === "none"),
   // falha de provedor NÃO conta como tentativa da etapa (policy.tentativas.falhaProvedorContaComoTentativa === false).
@@ -1036,16 +1105,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   const wouldReachBlockThreshold = newAttempts >= maxAttempts;
 
   try {
-    const qm = new QuarantineManager();
-    const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
-    const targetProjectRoot = taskDb.session.project?.path || process.cwd();
-
-    const codeContentMap = qm.extractAndWriteCodeBlocks(
-      taskDb.id,
-      stripExecutorReportBlocks(stepResultText),
-      filesScopeArr,
-      { strictPaths: true }
-    );
+    const codeContentMap =
+      loopCodeContentMap ??
+      qm.extractAndWriteCodeBlocks(
+        taskDb.id,
+        stripExecutorReportBlocks(stepResultText),
+        filesScopeArr,
+        { strictPaths: true }
+      );
 
     const type1Res = DualLensAuditor.validateType1(
       codeContentMap,
