@@ -77,6 +77,65 @@ export function estimateJevCostUsd(inputTokens: number): number {
   return Number(((inputTokens / 1_000_000) * JEV_INPUT_PRICE_PER_MILLION_USD).toFixed(8));
 }
 
+async function postJev(
+  body: unknown,
+  key: string,
+  signal?: AbortSignal,
+  purpose?: string,
+  sessionId?: string | null
+): Promise<Response> {
+  let lastRes!: Response;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const timeout = AbortSignal.timeout(jevTimeoutMs());
+    const res = await safeFetch(jevUrl(), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    lastRes = res;
+
+    if ((res.status === 429 || res.status === 529) && attempt < 3) {
+      const retryAfterHeader = res.headers.get("retry-after");
+      const retryAfterSec = retryAfterHeader !== null && retryAfterHeader.trim() !== "" ? Number(retryAfterHeader) : NaN;
+      const waitMs =
+        Number.isFinite(retryAfterSec) && retryAfterSec >= 0
+          ? Math.min(retryAfterSec * 1000, 2000)
+          : 300 * 2 ** (attempt - 1);
+
+      const aborted = await new Promise<boolean>((resolve) => {
+        if (signal?.aborted) {
+          resolve(true);
+          return;
+        }
+        const onAbort = () => {
+          clearTimeout(timer);
+          resolve(true);
+        };
+        const timer = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(false);
+        }, waitMs);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+
+      if (aborted) {
+        return lastRes;
+      }
+
+      TelemetryLogger.log({
+        sessionId: sessionId ?? undefined,
+        action: "JEV_RETRY",
+        details: { purpose, status: res.status, attempt },
+      });
+      continue;
+    }
+
+    return res;
+  }
+  return lastRes;
+}
+
 /**
  * Uma pergunta de escolha ao Jev. `criteria` mapeia cada opção para a descrição do que ela
  * significa. Retorna null quando o Jev não está configurado ou não respondeu a tempo.
@@ -93,18 +152,27 @@ export async function askJevChoice<T extends string>(params: {
   if (!key) return null;
 
   const started = Date.now();
-  const timeout = AbortSignal.timeout(jevTimeoutMs());
   try {
-    const res = await safeFetch(jevUrl(), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await postJev(
+      {
         model: JEV_MODEL,
         state: params.state.slice(0, 8000),
         questions: { q: { type: "choice", instructions: params.instructions, criteria: params.criteria } },
-      }),
-      signal: params.signal ? AbortSignal.any([params.signal, timeout]) : timeout,
-    });
+      },
+      key,
+      params.signal,
+      params.purpose,
+      params.sessionId
+    );
+    if (res.status === 422) {
+      const bodyText = await res.text().catch(() => "");
+      TelemetryLogger.log({
+        sessionId: params.sessionId ?? undefined,
+        action: "JEV_REQUEST_INVALID",
+        details: { purpose: params.purpose, detail: bodyText.slice(0, 300) },
+      });
+      return null;
+    }
     const data = (await res.json().catch(() => ({}))) as {
       model?: string;
       usage?: { input_tokens?: number; output_tokens?: number };
@@ -173,20 +241,30 @@ export async function askJevBatch(params: {
   if (!key) return null;
 
   const started = Date.now();
-  const timeout = AbortSignal.timeout(jevTimeoutMs());
   const maxChars = params.maxStateChars ?? 24000;
 
   try {
-    const res = await safeFetch(jevUrl(), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const res = await postJev(
+      {
         model: JEV_MODEL,
         state: params.state.slice(0, maxChars),
         questions: params.questions,
-      }),
-      signal: params.signal ? AbortSignal.any([params.signal, timeout]) : timeout,
-    });
+      },
+      key,
+      params.signal,
+      params.purpose,
+      params.sessionId
+    );
+
+    if (res.status === 422) {
+      const bodyText = await res.text().catch(() => "");
+      TelemetryLogger.log({
+        sessionId: params.sessionId ?? undefined,
+        action: "JEV_REQUEST_INVALID",
+        details: { purpose: params.purpose, detail: bodyText.slice(0, 300) },
+      });
+      return null;
+    }
 
     const data = (await res.json().catch(() => ({}))) as {
       model?: string;
