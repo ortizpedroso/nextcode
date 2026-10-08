@@ -1,3 +1,5 @@
+> ⛔ **SUBSTITUÍDO** por `docs/prompts/R1-continuacao-freellmapi.md` (auditoria de gateways, 08/10). Não enviar.
+
 # Prompt R1 (continuação) — testes antigos com o roteamento "somente pago"
 
 > Resposta à parada do Antigravity no R1.3 (08/10). Análise em `docs/NEXTCODE-REFERENCIA.md` §5.2 ("Testes antigos e o somente pago").

@@ -22,3 +22,13 @@ US$ 0,042 por 1M tokens de entrada; saída grátis (docs oficiais e `jev.ts`).
 
 ## Modelos disponíveis na chave DeepSeek (08/10)
 `GET /v1/models` → `["deepseek-flash", "deepseek-v4-pro"]` (conferido pelo Antigravity no R1.0 e pelo Claude). Não existe `deepseek-v4-flash`.
+
+## FreeLLMAPI — sonda de 08/10 (max_tokens 8)
+| modelo pedido | resultado |
+|---|---|
+| deepseek-v4-pro | 503 sem chave de provedor utilizável |
+| deepseek-v4-flash | 200 via `electronhub` (gratuito), 49,9 s |
+| claude-sonnet-4-5 | 404 fora do catálogo |
+| gemini-3.8-flash | 429 cota esgotada (~24 h) |
+| auto:smart | 200 via `openrouter/dots-3-note:free`, 7,0 s |
+| auto:perfil-inexistente | 400 Profile not found |

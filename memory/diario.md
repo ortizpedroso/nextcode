@@ -5,6 +5,25 @@
 
 ---
 
+## 08/10/2026 (10) — auditoria de gateways (OmniRoute pausado, FreeLLMAPI é o caminho)
+
+**Fundador:** OmniRoute pausado; só o FreeLLMAPI é o direcionamento, com o Jev; auditar a fundo, estamos repetindo decisões.
+
+**Achados (com evidência na referência §5.2 e `memory/medicoes.md`)**
+- Banco: `omniroute.enabled=false`; `freellmapi` prioridade 0. Contêiner do OmniRoute segue de pé (não usado).
+- **Eu repeti/contrariei decisão:** D3 (05/10) = FreeLLMAPI primeiro, BYOK direto por último. O R1.2 tirou o FreeLLMAPI dos papéis críticos.
+- FreeLLMAPI hoje: sem chave DeepSeek (v4-pro 503), Claude fora do catálogo, Gemini sem cota; `deepseek-v4-flash` fixo cai num revendedor gratuito (electronhub). Perfis `auto:<nome>` existem; inexistente → 400.
+
+**Decisão:** papéis críticos → FreeLLMAPI por perfis pagos (`auto:nextcode-pago-forte|barato`) → DeepSeek direto como último recurso. P0.3 descartado.
+
+**Feito:** referência §5.2, decisões, medições; prompt `docs/prompts/R1-continuacao-freellmapi.md` (substitui `R1-continuacao-testes.md`).
+
+**Ação do fundador (fora do código):** no painel do FreeLLMAPI, cadastrar a chave DeepSeek e criar os perfis `nextcode-pago-forte` (deepseek-v4-pro) e `nextcode-pago-barato` (deepseek flash) **só com modelos pagos**; depois incluir Claude/Gemini quando houver crédito.
+
+**Próximo passo:** auditar o relatório do R1; depois P3 leva avaliador e elicitador para o FreeLLMAPI.
+
+---
+
 ## 08/10/2026 (9) — R1 parou no R1.3 (18 testes antigos)
 
 - R1.1 (`69d8a94`) e R1.2 (`51e141e`) commitados pelo Antigravity. R1.3 implementado mas **não commitado**: 18 testes antigos (characterization, execution-trigger-routes, job-worker) quebram porque usam LLM falso pela rota antiga; R1.4 afetaria end-to-end-harness-plan e executor-tool-loop.
