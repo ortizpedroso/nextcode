@@ -37,7 +37,7 @@ Hoje: (a) o executor de nível `rapido` vai para o FreeLLMAPI gratuito; (b) nos 
 
 ## PASSO R1.0 — Conferir que o modelo Flash existe (sem commit)
 Com uma **cópia** de `prisma/dev.db`, ler a chave DeepSeek (`readSecret(setting.deepseekKey)`) num script temporário fora do repositório e fazer `GET https://api.deepseek.com/v1/models`. Colar no relatório **só a lista de `id`** (nunca a chave).
-- Se `deepseek-v4-flash` estiver na lista → seguir.
+- Se `deepseek-flash` estiver na lista → seguir. (Conferido pelo Claude em 08/10: a API devolve `["deepseek-flash","deepseek-v4-pro"]`.)
 - Se não estiver → **PARE** e relate a lista (o fundador escolhe o modelo barato).
 
 ---
@@ -50,10 +50,10 @@ Com uma **cópia** de `prisma/dev.db`, ler a chave DeepSeek (`readSecret(setting
    ```yaml
    roteamento_papeis_criticos:
      somente_pago: true                       # executor e avaliador nunca caem no gratuito; sem pago → PAUSADA
-     modelo_pago_barato: "deepseek-v4-flash"  # nível 'rapido' do executor
+     modelo_pago_barato: "deepseek-flash"  # nível 'rapido' do executor
      confianca_minima_modelo_barato: 0.85     # Jev precisa disso em 'rapido' para usar o modelo barato
    ```
-2. `orchestration-policy.ts`: campo `roteamentoPapeisCriticos: { somentePago: boolean; modeloPagoBarato: string; confiancaMinimaModeloBarato: number }` na política; padrões `true`, `"deepseek-v4-flash"`, `0.85`; leitura em `loadOrchestrationPolicy` com `extractScalarBoolean`, `extractScalarString`, `extractScalarNumber`.
+2. `orchestration-policy.ts`: campo `roteamentoPapeisCriticos: { somentePago: boolean; modeloPagoBarato: string; confiancaMinimaModeloBarato: number }` na política; padrões `true`, `"deepseek-flash"`, `0.85`; leitura em `loadOrchestrationPolicy` com `extractScalarBoolean`, `extractScalarString`, `extractScalarNumber`.
 3. Teste: `R1.1: lê roteamento_papeis_criticos do YAML e usa os padrões quando as chaves faltam`.
 
 Commit: `feat(policy): R1.1 - roteamento dos papeis criticos (somente pago, modelo barato)`.
@@ -102,7 +102,7 @@ Commit: `feat(llm): R1.2 - gateways somente pagos para papeis criticos`.
 3. Registrar `TelemetryLogger.log({ sessionId, action: "EXECUTOR_ROTA_PAGA", details: { nodeId, executorTier, modelos: paidGateways.map((g) => g.modelHeavy), gateways: paidGateways.map((g) => g.id) } })` uma vez por execução de etapa.
 4. Sem gateway pago (lista vazia ou todos falham) o roteador devolve `providerUsed: "none"` → o caminho `noLlmAvailable` / `SEM_LLM` existente pausa a sessão sem gastar tentativa. **Não** criar outro caminho de pausa.
 5. Testes (`tests/orchestrator/executor-somente-pago.test.ts`, `smartRouter.dispatchWithFallback` simulado por `vi.spyOn`, mesmo estilo de `tests/governance/secret-guard.test.ts`):
-   - `rapido chama o roteador com tier heavy e só o gateway pago com deepseek-v4-flash`
+   - `rapido chama o roteador com tier heavy e só o gateway pago com deepseek-flash`
    - `pesado chama com deepseek-v4-pro`
    - `nenhuma chamada do executor recebe groqKey, nvidiaKey, geminiKey ou omniRouteKey`
    - `sem gateway pago → providerUsed none → etapa volta a pending sem gastar tentativa e sessão PAUSADA`

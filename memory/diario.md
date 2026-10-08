@@ -5,6 +5,17 @@
 
 ---
 
+## 08/10/2026 (8) — R1 parou no R1.0 (parada correta)
+
+- Antigravity parou no R1.0, como o prompt mandava: a API do DeepSeek lista `deepseek-flash` e `deepseek-v4-pro` (não `deepseek-v4-flash`). Nenhum arquivo alterado.
+- Claude conferiu de forma independente (mesma lista) e que `cost.ts` já reconhece `deepseek-flash`.
+- Prompt R1, referência e `memory/medicoes.md` corrigidos para `deepseek-flash`; novo commit vira a partida do R1.
+- O relatório do Item 10 colado junto é o mesmo já auditado (vazamento corrigido em `c7fb624`).
+
+**Próximo passo:** Antigravity retoma o R1 do início (T-A) no commit novo → auditar o relatório.
+
+---
+
 ## 08/10/2026 (7) — reanálise crítica do "pago primeiro" e R1 reescrito
 
 **Pedido do fundador:** não concordar por concordar; prós e contras com dados; escolher a melhor direção.

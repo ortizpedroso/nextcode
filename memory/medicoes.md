@@ -19,3 +19,6 @@
 
 ## Preço do Jev
 US$ 0,042 por 1M tokens de entrada; saída grátis (docs oficiais e `jev.ts`).
+
+## Modelos disponíveis na chave DeepSeek (08/10)
+`GET /v1/models` → `["deepseek-flash", "deepseek-v4-pro"]` (conferido pelo Antigravity no R1.0 e pelo Claude). Não existe `deepseek-v4-flash`.
