@@ -10,6 +10,11 @@ import { SkillMiner } from "@/core/telemetry/skill-miner";
 import * as empiricalGateMod from "@/core/governance/empirical-gate";
 import { executeTaskNode, setExecutorModeForTests } from "@/core/orchestrator/node-executor";
 import { POST as postChat } from "@/app/api/chat/route";
+import {
+  checkSecretsInCodeWithJev,
+  redactSecretsInChatWithJev,
+  maskSecretInExcerpt,
+} from "@/core/governance/secret-guard";
 
 describe("Passo 10.4 — Guarda de segredos no código gerado (ativo, fail-closed)", () => {
   const prevJevUrl = process.env.JEV_API_URL;
@@ -360,3 +365,94 @@ describe("Passo 10.5 — Guarda de segredos na resposta do chat (ativo)", () => 
   });
 });
 
+
+describe("Guarda de segredos — o valor nunca sai da máquina (Jev é serviço externo)", () => {
+  const prevJevUrl = process.env.JEV_API_URL;
+
+  beforeEach(() => {
+    process.env.JEV_API_URL = "http://localhost:9999/v1/systemone";
+    process.env.NEXTCODE_MASTER_KEY =
+      process.env.NEXTCODE_MASTER_KEY || Buffer.alloc(32, 21).toString("base64");
+    vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    vi.spyOn(prisma.setting, "findUnique").mockResolvedValue({
+      id: "default",
+      typesafeKey: writeSecret("ts-test-key"),
+    } as any);
+  });
+
+  afterEach(() => {
+    if (prevJevUrl === undefined) delete process.env.JEV_API_URL;
+    else process.env.JEV_API_URL = prevJevUrl;
+    vi.restoreAllMocks();
+  });
+
+  function jevNoul(noul: number) {
+    return new Response(JSON.stringify({ model: "jev-1.13.0", answers: { q_0: { type: "noul", noul } } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function sentBodies(fetchSpy: ReturnType<typeof vi.spyOn>): string {
+    return fetchSpy.mock.calls.map((c: any[]) => String(c[1]?.body ?? "")).join("\n");
+  }
+
+  it("código gerado: o Jev recebe só nome, prefixo, tamanho e entropia — nunca o valor", async () => {
+    const realKey = "sk_"+"live_51N9qR8wK2mP7vX4nL9jH3fG6dS1aZ0yB5cV8";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jevNoul(0.9));
+
+    const res = await checkSecretsInCodeWithJev({
+      sessionId: "sess-mask",
+      nodeId: "node-mask",
+      codeContentMap: { "src/lib/stripe.ts": `export const STRIPE_KEY = "${realKey}";\n` },
+      modo: "ativo",
+      limiarSegredoNoul: 0.7,
+    });
+
+    expect(res.blocked).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = sentBodies(fetchSpy);
+    expect(body).not.toContain(realKey);
+    expect(body).not.toContain(realKey.slice(8, 24));
+    expect(body).toContain("STRIPE_KEY");
+    expect(body).toContain(`sk_live_«valor oculto: ${realKey.length} caracteres`);
+  });
+
+  it("chat: a chave é ocultada na mensagem e também no que vai ao Jev", async () => {
+    const leakedKey = "sk-"+"proj1234567890abcdefSECRETKEY";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jevNoul(0.95));
+
+    const res = await redactSecretsInChatWithJev({
+      sessionId: "sess-mask-chat",
+      text: `Use a chave ${leakedKey} no cabeçalho.`,
+      modo: "ativo",
+      limiarSegredoNoul: 0.7,
+    });
+
+    expect(res.redactedText).toBe("Use a chave [SEGREDO OCULTADO] no cabeçalho.");
+    expect(sentBodies(fetchSpy)).not.toContain(leakedKey);
+  });
+
+  it("chave privada PEM: nenhuma linha do corpo da chave vai ao Jev", async () => {
+    const body64 = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7";
+    const pem = `-----BEGIN PRIVATE KEY-----\n${body64}\n-----END PRIVATE KEY-----`;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(jevNoul(0.99));
+
+    await checkSecretsInCodeWithJev({
+      nodeId: "node-pem",
+      codeContentMap: { "src/lib/cert.ts": `export const KEY = \`${pem}\`;\n` },
+      modo: "ativo",
+      limiarSegredoNoul: 0.7,
+    });
+
+    expect(sentBodies(fetchSpy)).not.toContain(body64);
+  });
+
+  it("maskSecretInExcerpt: trecho cortado no meio do valor não deixa sobrar pedaço", () => {
+    const valor = "AKIAABCDEFGHIJKLMNOPQRSTUV0123456789";
+    const trechoCortado = `const awsKey = "${valor.slice(0, 20)}`;
+    const masked = maskSecretInExcerpt(trechoCortado, valor);
+    expect(masked).not.toContain(valor.slice(4, 20));
+    expect(masked).toContain("AKIA«valor oculto:");
+  });
+});

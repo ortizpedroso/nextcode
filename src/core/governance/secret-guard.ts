@@ -87,6 +87,28 @@ export function isHighEntropySecretLiteral(value: string): boolean {
   return shannonEntropy(value) >= 3.2;
 }
 
+const KNOWN_SECRET_PREFIX_RE = /^(?:sk_live_|pk_live_|sk-|ghp_|gho_|AKIA|AIza|xox[bpa]-|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)/;
+
+/**
+ * Descreve o valor sem revelá-lo: o Jev é um serviço externo e nenhum segredo pode sair da máquina
+ * (ARQUITETURA §14.4). Mantém só o prefixo público do formato (ex.: `sk_live_`), o tamanho e a entropia.
+ */
+export function describeSecretShape(valor: string): string {
+  const prefix = valor.match(KNOWN_SECRET_PREFIX_RE)?.[0] ?? "";
+  return `${prefix}«valor oculto: ${valor.length} caracteres, entropia ${shannonEntropy(valor).toFixed(1)}»`;
+}
+
+/** Trecho da linha com o valor trocado pela descrição do formato — é o único texto que vai ao Jev. */
+export function maskSecretInExcerpt(trecho: string, valor: string): string {
+  const shape = describeSecretShape(valor);
+  let masked = trecho.split(valor).join(shape);
+  // O trecho pode ter sido cortado no meio do valor; nesse caso, nada depois do início do valor sai.
+  const head = valor.slice(0, 8);
+  const cut = head ? masked.indexOf(head) : -1;
+  if (cut >= 0 && !masked.includes(shape)) masked = masked.slice(0, cut) + shape;
+  return masked;
+}
+
 export function findSecretCandidatesInText(
   arquivo: string,
   content: string
@@ -171,14 +193,14 @@ async function evaluateCandidatesWithJev(params: {
     candidatos: params.candidatos.map((c) => ({
       arquivo: c.arquivo,
       linha: c.linha,
-      trecho: c.trecho,
+      trecho: maskSecretInExcerpt(c.trecho, c.valorSegredo),
     })),
   };
   const questions: Record<string, JevQuestionSpec> = {};
   params.candidatos.forEach((_, i) => {
     questions[`q_${i}`] = {
       type: "noul",
-      instructions: `Is \`candidatos[${i}].trecho\` a real credential or secret value hardcoded in source code (not a placeholder, example or environment variable reference)?`,
+      instructions: `In \`candidatos[${i}].trecho\` the literal value was replaced by «valor oculto: N caracteres, entropia E», keeping only its public format prefix. Judging from the variable name, the prefix, the length and the entropy, is this a real credential or secret value hardcoded in source code (not a placeholder, example or environment variable reference)?`,
     };
   });
 
