@@ -402,6 +402,55 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
       "probabilidade_minima_aprovacao_incondicional_noul",
       policy.jevLimiares.intencaoMensagem.probabilidadeMinimaAprovacaoIncondicionalNoul
     );
+
+  policy.jevLimiares.clarezaSpec.scoreMinimoClareza = extractScalarNumber(
+    raw,
+    "score_minimo_clareza",
+    policy.jevLimiares.clarezaSpec.scoreMinimoClareza
+  );
+  policy.jevLimiares.clarezaSpec.confiancaMinimaScore = extractScalarNumber(
+    raw,
+    "confianca_minima_score",
+    policy.jevLimiares.clarezaSpec.confiancaMinimaScore
+  );
+  policy.jevLimiares.clarezaSpec.probabilidadeMinimaEscopoFechadoNoul = extractScalarNumber(
+    raw,
+    "probabilidade_minima_escopo_fechado_noul",
+    policy.jevLimiares.clarezaSpec.probabilidadeMinimaEscopoFechadoNoul
+  );
+  policy.jevLimiares.clarezaSpec.probabilidadeMinimaSemContradicoesNoul = extractScalarNumber(
+    raw,
+    "probabilidade_minima_sem_contradicoes_noul",
+    policy.jevLimiares.clarezaSpec.probabilidadeMinimaSemContradicoesNoul
+  );
+
+  policy.jevLimiares.planejamentoMicrobrief.confiancaMinimaComplexidade = extractScalarNumber(
+    raw,
+    "confianca_minima_complexidade",
+    policy.jevLimiares.planejamentoMicrobrief.confiancaMinimaComplexidade
+  );
+  policy.jevLimiares.planejamentoMicrobrief.probabilidadeDividirMicrobriefNoul = extractScalarNumber(
+    raw,
+    "probabilidade_dividir_microbrief_noul",
+    policy.jevLimiares.planejamentoMicrobrief.probabilidadeDividirMicrobriefNoul
+  );
+  policy.jevLimiares.planejamentoMicrobrief.confiancaMinimaCluster = extractScalarNumber(
+    raw,
+    "confianca_minima_cluster",
+    policy.jevLimiares.planejamentoMicrobrief.confiancaMinimaCluster
+  );
+
+  policy.jevLimiares.sugestaoSkills.probabilidadeMinimaTasteSkillPublicoNoul = extractScalarNumber(
+    raw,
+    "probabilidade_minima_taste_skill_publico_noul",
+    policy.jevLimiares.sugestaoSkills.probabilidadeMinimaTasteSkillPublicoNoul
+  );
+  policy.jevLimiares.sugestaoSkills.probabilidadeMinimaReactPerfNoul = extractScalarNumber(
+    raw,
+    "probabilidade_minima_react_perf_noul",
+    policy.jevLimiares.sugestaoSkills.probabilidadeMinimaReactPerfNoul
+  );
+
   policy.jevLimiares.cascataSde.limiarDisparoFireT = extractScalarNumber(
     raw,
     "limiar_disparo_fire_t",

@@ -230,6 +230,123 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     }
   });
 
+  it("P1.4: lê os 14 limiares de jev_limiares do YAML e usa os padrões quando faltam", () => {
+    const policy = loadOrchestrationPolicy();
+    expect(policy.jevLimiares).toEqual({
+      intencaoMensagem: {
+        confiancaMinimaChoice: 0.75,
+        probabilidadeMinimaAprovacaoIncondicionalNoul: 0.8,
+        acaoAbaixoDoLimiar: "pedir_confirmacao_explicita_ao_usuario",
+      },
+      clarezaSpec: {
+        scoreMinimoClareza: 2.0,
+        confiancaMinimaScore: 0.65,
+        probabilidadeMinimaEscopoFechadoNoul: 0.75,
+        probabilidadeMinimaSemContradicoesNoul: 0.8,
+        acaoAbaixoDoLimiar: "elicitador_refina_ou_pergunta_ao_usuario",
+      },
+      planejamentoMicrobrief: {
+        confiancaMinimaComplexidade: 0.65,
+        acaoBaixaConfiancaComplexidade: "subir_um_nivel_de_modelo",
+        probabilidadeDividirMicrobriefNoul: 0.7,
+        confiancaMinimaCluster: 0.7,
+      },
+      sugestaoSkills: {
+        probabilidadeMinimaTasteSkillPublicoNoul: 0.75,
+        probabilidadeMinimaReactPerfNoul: 0.3,
+      },
+      cascataSde: {
+        limiarDisparoFireT: 0.7,
+      },
+      segurancaPesquisaT7: {
+        probabilidadeMinimaFonteOficialNoul: 0.8,
+        probabilidadeMaximaPromptInjectionNoul: 0.15,
+        acaoViolacaoOuErroJev: "bloquear_trecho_fail_closed",
+      },
+    });
+
+    const tmpRootMissing = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-p1-4-missing-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootMissing, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootMissing, "config", "politicas-orquestracao.yaml"),
+        'versao_politica: "1.0.0"\n',
+        "utf8"
+      );
+      const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
+      expect(fallbackPolicy.jevLimiares).toEqual(policy.jevLimiares);
+    } finally {
+      fs.rmSync(tmpRootMissing, { recursive: true, force: true });
+    }
+
+    const tmpRootCustom = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-p1-4-custom-"));
+    try {
+      fs.mkdirSync(path.join(tmpRootCustom, "config"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpRootCustom, "config", "politicas-orquestracao.yaml"),
+        [
+          "jev_limiares:",
+          "  intencao_mensagem:",
+          "    confianca_minima_choice: 0.81",
+          "    probabilidade_minima_aprovacao_incondicional_noul: 0.82",
+          "  clareza_spec:",
+          "    score_minimo_clareza: 2.5",
+          "    confianca_minima_score: 0.71",
+          "    probabilidade_minima_escopo_fechado_noul: 0.78",
+          "    probabilidade_minima_sem_contradicoes_noul: 0.84",
+          "  planejamento_microbrief:",
+          "    confianca_minima_complexidade: 0.69",
+          "    probabilidade_dividir_microbrief_noul: 0.73",
+          "    confianca_minima_cluster: 0.76",
+          "  sugestao_skills:",
+          "    probabilidade_minima_taste_skill_publico_noul: 0.79",
+          "    probabilidade_minima_react_perf_noul: 0.35",
+          "  cascata_sde:",
+          "    limiar_disparo_fire_t: 0.74",
+          "  seguranca_pesquisa_t7:",
+          "    probabilidade_minima_fonte_oficial_noul: 0.88",
+          "    probabilidade_maxima_prompt_injection_noul: 0.11",
+        ].join("\n"),
+        "utf8"
+      );
+      const customPolicy = loadOrchestrationPolicy(tmpRootCustom);
+      expect(customPolicy.jevLimiares).toEqual({
+        intencaoMensagem: {
+          confiancaMinimaChoice: 0.81,
+          probabilidadeMinimaAprovacaoIncondicionalNoul: 0.82,
+          acaoAbaixoDoLimiar: "pedir_confirmacao_explicita_ao_usuario",
+        },
+        clarezaSpec: {
+          scoreMinimoClareza: 2.5,
+          confiancaMinimaScore: 0.71,
+          probabilidadeMinimaEscopoFechadoNoul: 0.78,
+          probabilidadeMinimaSemContradicoesNoul: 0.84,
+          acaoAbaixoDoLimiar: "elicitador_refina_ou_pergunta_ao_usuario",
+        },
+        planejamentoMicrobrief: {
+          confiancaMinimaComplexidade: 0.69,
+          acaoBaixaConfiancaComplexidade: "subir_um_nivel_de_modelo",
+          probabilidadeDividirMicrobriefNoul: 0.73,
+          confiancaMinimaCluster: 0.76,
+        },
+        sugestaoSkills: {
+          probabilidadeMinimaTasteSkillPublicoNoul: 0.79,
+          probabilidadeMinimaReactPerfNoul: 0.35,
+        },
+        cascataSde: {
+          limiarDisparoFireT: 0.74,
+        },
+        segurancaPesquisaT7: {
+          probabilidadeMinimaFonteOficialNoul: 0.88,
+          probabilidadeMaximaPromptInjectionNoul: 0.11,
+          acaoViolacaoOuErroJev: "bloquear_trecho_fail_closed",
+        },
+      });
+    } finally {
+      fs.rmSync(tmpRootCustom, { recursive: true, force: true });
+    }
+  });
+
   it("aplica a regra de APROVADO_COM_RESSALVA (1 rodada de polimento se houver tentativa; senão promove)", () => {
     // Tentativa 1 (< 3) e 0 rodadas de polimento usadas -> polir 1 rodada sem gastar tentativa de falha
     const r1 = resolveVerdictAction({
