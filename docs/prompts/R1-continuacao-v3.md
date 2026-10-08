@@ -56,7 +56,7 @@ Commit: `feat(executor): R1.3 - executor somente em provedor pago`.
      prefixos_rota_paga: "custom/"                         # X-Routed-Via aceito para papéis críticos (lista separada por vírgula)
    ```
    Atualize o comentário de `modelo_pago_barato` para `# modelo pago fixo no FreeLLMAPI (nível 'rapido')`.
-2. **orchestration-policy.ts**: em `roteamentoPapeisCriticos` acrescentar `modeloPagoForte: string; perfilFreellmapiForte: string; perfilFreellmapiBarato: string; prefixosRotaPaga: string[];` com padrões `"deepseek-v4-pro"`, `""`, `""`, `["custom/"]` (`extractScalarString` deve aceitar o valor vazio `""` do YAML como string vazia; se o extrator atual não aceitar, PARE e relate). `prefixosRotaPaga` = `extractScalarString(...)` dividido por vírgula, sem espaços, sem vazios. Teste: `R1.3b: lê modelo forte, perfis e prefixos_rota_paga, com padrões`.
+2. **orchestration-policy.ts**: em `roteamentoPapeisCriticos` acrescentar `modeloPagoForte: string; perfilFreellmapiForte: string; perfilFreellmapiBarato: string; prefixosRotaPaga: string[];` com padrões `"deepseek-v4-pro"`, `""`, `""`, `["custom/"]` (com `""` no YAML, o `extractScalarString` atual não casa e devolve o padrão, que também é `""` — comportamento esperado; não altere `extractScalarString`). `prefixosRotaPaga` = `extractScalarString(...)` dividido por vírgula, sem espaços, sem vazios. Teste: `R1.3b: lê modelo forte, perfis e prefixos_rota_paga, com padrões`.
 3. **paid-routing.ts** — reescrever com exatamente:
    ```ts
    export interface PaidRoutingConfig {
