@@ -566,6 +566,8 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           permitido: false,
           caminho: null,
           duracaoMs: Date.now() - toolStartMs,
+          amostra: turnText.slice(0, 300),
+          tamanho: turnText.length,
         },
       });
       if (consecutiveInvalidTurns >= MAX_CONSECUTIVE_INVALID_TURNS) {

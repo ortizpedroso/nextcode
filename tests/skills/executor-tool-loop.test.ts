@@ -903,4 +903,31 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
       expect(res.error).toContain("```json acao");
     }
   });
+
+  it("turno inválido registra a amostra com no máximo 300 caracteres e o tamanho total em EXECUTOR_TOOL_CALL", async () => {
+    const projectDir = makeTempProjectDir();
+    const { session, task } = await setupSingleTaskSession(projectDir);
+
+    const longInvalidResponse = "PROSA_SEM_JSON_".repeat(30); // 450 caracteres
+    expect(longInvalidResponse.length).toBe(450);
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(
+      async () => {
+        return makeOkDispatch(longInvalidResponse, "freellmapi", "dots-3-note-preview:free");
+      }
+    );
+
+    const res = await executeTaskNode(task);
+    expect(res.success).toBe(false);
+
+    const toolLogs = await waitForTelemetryLogs(session.id, "EXECUTOR_TOOL_CALL");
+    const invalidLogs = toolLogs
+      .map((l) => JSON.parse(l.details!))
+      .filter((d) => d.ferramenta === "invalido");
+
+    expect(invalidLogs.length).toBe(3);
+    expect(invalidLogs[0].amostra).toHaveLength(300);
+    expect(invalidLogs[0].amostra).toBe(longInvalidResponse.slice(0, 300));
+    expect(invalidLogs[0].tamanho).toBe(450);
+  });
 });
