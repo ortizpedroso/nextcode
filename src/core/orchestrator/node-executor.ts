@@ -32,6 +32,11 @@ import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-eng
 import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
+import {
+  diagnoseStageFailureWithJev,
+  formatFailureDiagnosisFeedbackLine,
+  type JevFailureDiagnosis,
+} from "@/core/decision/jev-execution-checks";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
@@ -863,7 +868,16 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     try {
       const prevRes = JSON.parse(taskDb.result);
       if (prevRes.auditVerdict !== "APPROVED" || prevRes.rejectionReason) {
-        const feedbackText = `\n\n⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${(taskDb.attempts || 0) + 1}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevRes.rejectionReason || "Erros de compilação/sintaxe"}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!`;
+        const diagLine =
+          policy.jevExecucao.diagnosticoFalha === "ativo"
+            ? formatFailureDiagnosisFeedbackLine(
+                prevRes.jevDiagnostico,
+                policy.jevExecucao.limiarConfiancaDiagnostico
+              )
+            : null;
+        const feedbackText =
+          `\n\n⚠️ [AUTO-HEALING FEEDBACK - RE-TENTATIVA #${(taskDb.attempts || 0) + 1}]\nA tentativa anterior foi REJEITADA pela auditoria com os seguintes erros:\n${prevRes.rejectionReason || "Erros de compilação/sintaxe"}\nVocê DEVE obrigatoriamente corrigir esses erros e garantir que todos os imports e módulos existam!` +
+          (diagLine ? `\n${diagLine}` : "");
         dispatchMessages.push({ role: "system", content: feedbackText });
       }
     } catch {}
@@ -1105,6 +1119,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let mcpRes: Record<string, unknown>;
   let evaluatorOutageStreak = 0;
   let evaluatorOutageFreeRetry = false;
+  let blockedByAmbiguousSpec = false;
   let newFailureHistory: string | undefined;
   let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
@@ -1355,6 +1370,65 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         ? type2Res.rejectionReason || "Divergência semântica."
         : undefined);
 
+    let jevDiagnostico: JevFailureDiagnosis | null = null;
+    if (finalStatus === "failed" && !evaluatorOutageFreeRetry) {
+      let prevHistory: FailureAttemptRecord[] = [];
+      try {
+        prevHistory = taskDb.failureHistory ? JSON.parse(taskDb.failureHistory) : [];
+      } catch {
+        prevHistory = [];
+      }
+      jevDiagnostico = await diagnoseStageFailureWithJev({
+        sessionId: taskDb.sessionId,
+        nodeId: taskDb.id,
+        etapa: {
+          titulo: taskDb.title,
+          cluster: resolvedCluster,
+          reqs_cobertos: nodePayload.reqsCobertos ?? nodeMicrobrief?.reqsCobertos ?? [],
+        },
+        motivoRejeicao: rejectionReason || "Falha não especificada.",
+        tentativa: newAttempts,
+        historicoMotivos: prevHistory.slice(-3).map((h) => h.rejectionReason),
+        modo: policy.jevExecucao.diagnosticoFalha,
+      });
+
+      if (
+        newAttempts >= 2 &&
+        jevDiagnostico?.causa === "ambiguous_spec" &&
+        jevDiagnostico.confianca >= policy.jevExecucao.limiarConfiancaDiagnostico
+      ) {
+        if (policy.jevExecucao.bloqueioSpecAmbigua === "sombra") {
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "JEV_WOULD_BLOCK_AMBIGUOUS_SPEC",
+            details: {
+              nodeId: taskDb.id,
+              tentativa: newAttempts,
+              causa: jevDiagnostico.causa,
+              confianca: jevDiagnostico.confianca,
+              probabilidades: jevDiagnostico.probabilidades,
+              modo: "sombra",
+            },
+          });
+        } else if (policy.jevExecucao.bloqueioSpecAmbigua === "ativo") {
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "JEV_WOULD_BLOCK_AMBIGUOUS_SPEC",
+            details: {
+              nodeId: taskDb.id,
+              tentativa: newAttempts,
+              causa: jevDiagnostico.causa,
+              confianca: jevDiagnostico.confianca,
+              probabilidades: jevDiagnostico.probabilidades,
+              modo: "ativo",
+            },
+          });
+          finalStatus = "blocked";
+          blockedByAmbiguousSpec = true;
+        }
+      }
+    }
+
     let incidentReportMarkdown: string | undefined;
     if (finalStatus === "failed" || finalStatus === "blocked") {
       newFailureHistory = appendFailureAttempt(taskDb.failureHistory, {
@@ -1362,10 +1436,28 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         rejectionReason: rejectionReason || "Falha não especificada.",
         filesScope: filesScopeArr,
         timestamp: new Date().toISOString(),
+        ...(jevDiagnostico ? { diagnostico: jevDiagnostico } : {}),
       });
       if (finalStatus === "blocked") {
         const history: FailureAttemptRecord[] = JSON.parse(newFailureHistory);
-        incidentReportMarkdown = IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, history, { maxAttempts });
+        incidentReportMarkdown = IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, history, {
+          maxAttempts,
+          ...(blockedByAmbiguousSpec
+            ? {
+                unblockHint:
+                  'Ajuste a Spec Canônica para eliminar a ambiguidade apontada no diagnóstico Jev e depois clique em "Desbloquear / Re-tentar Etapa" no painel da DAG.',
+              }
+            : {}),
+        });
+        if (blockedByAmbiguousSpec) {
+          await prisma.message.create({
+            data: {
+              sessionId: taskDb.sessionId,
+              role: "assistant",
+              content: `🛑 **Etapa "${taskDb.title}" bloqueada por especificação ambígua (Jev) — ajuste a Spec Canônica antes de re-tentar.**\n\n${incidentReportMarkdown}`,
+            },
+          });
+        }
       }
     }
 
@@ -1390,6 +1482,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       promotedPath: promotionTarget,
       empiricalBuildPassed: empiricalBuildResult ? empiricalBuildResult.success : null,
       rejectionReason,
+      jevDiagnostico: jevDiagnostico ?? undefined,
       incidentReport: incidentReportMarkdown,
     };
   } catch (err) {
@@ -1422,7 +1515,9 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   }
 
   const updatedAttempts =
-    (finalStatus === "failed" || finalStatus === "blocked") && !evaluatorOutageFreeRetry
+    (finalStatus === "failed" || finalStatus === "blocked") &&
+    !evaluatorOutageFreeRetry &&
+    !blockedByAmbiguousSpec
       ? newAttempts
       : taskDb.attempts;
 

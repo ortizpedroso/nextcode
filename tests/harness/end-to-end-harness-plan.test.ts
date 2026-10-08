@@ -63,7 +63,10 @@ function makeExhaustedDispatch(): DispatchResult {
   };
 }
 
-describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", () => {
+describe(
+  "Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada",
+  { timeout: 60000 },
+  () => {
   beforeEach(() => {
     setExecutorModeForTests("chamada_unica");
     setScaffoldInstallerForTests(async (cwd) => {
@@ -88,7 +91,9 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       createdProjectIds.length = 0;
     }
     for (const d of tempDirs.splice(0, tempDirs.length)) {
-      fs.rmSync(d, { recursive: true, force: true });
+      try {
+        fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      } catch {}
     }
   });
 

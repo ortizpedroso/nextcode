@@ -9,11 +9,18 @@
  * e recomenda a ação humana específica para essa causa — não um texto genérico.
  */
 
+export interface FailureAttemptDiagnosis {
+  causa: string;
+  confianca: number;
+  probabilidades: Record<string, number>;
+}
+
 export interface FailureAttemptRecord {
   attemptNumber: number;
   rejectionReason: string;
   filesScope: string[];
   timestamp: string;
+  diagnostico?: FailureAttemptDiagnosis | null;
 }
 
 export interface IncidentReportOptions {
@@ -203,7 +210,11 @@ ${attemptsHistory
     (att) => `### Tentativa ${att.attemptNumber} — ${classifyFailure(att.rejectionReason).label}
 - **Data/Hora:** ${att.timestamp}
 - **Escopo:** \`${att.filesScope.join(", ") || "-"}\`
-- **Motivo:** ${att.rejectionReason}
+- **Motivo:** ${att.rejectionReason}${
+      att.diagnostico
+        ? `\n- **Diagnóstico Jev:** \`${att.diagnostico.causa}\` (confiança: ${(att.diagnostico.confianca * 100).toFixed(0)}%)`
+        : ""
+    }
 `
   )
   .join("\n")}
