@@ -63,10 +63,7 @@ function makeExhaustedDispatch(): DispatchResult {
   };
 }
 
-describe(
-  "Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada",
-  { timeout: 60000 },
-  () => {
+describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", () => {
   beforeEach(() => {
     setExecutorModeForTests("chamada_unica");
     setPaidOnlyRoutingForTests(false);
@@ -93,9 +90,7 @@ describe(
       createdProjectIds.length = 0;
     }
     for (const d of tempDirs.splice(0, tempDirs.length)) {
-      try {
-        fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-      } catch {}
+      fs.rmSync(d, { recursive: true, force: true });
     }
   });
 
@@ -1095,9 +1090,15 @@ describe(
       },
     ]);
 
-    const invalidLogs = await prisma.telemetryLog.findMany({
-      where: { sessionId: session.id, action: "EXECUTOR_REPORT_INVALID" },
-    });
+    const invalidLogs = (
+      await prisma.telemetryLog.findMany({
+        where: { sessionId: session.id, action: "EXECUTOR_REPORT_INVALID" },
+      })
+    ).sort(
+      (a, b) =>
+        (JSON.parse(a.details || "{}").retryIndex ?? 0) -
+        (JSON.parse(b.details || "{}").retryIndex ?? 0)
+    );
     expect(invalidLogs.length).toBe(2);
     expect(invalidLogs[0].details).toContain("possui 4 linha(s)");
     expect(invalidLogs[1].details).toContain("REQ-999");
