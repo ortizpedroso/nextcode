@@ -1,7 +1,7 @@
 # Prompt R1 (continuação v3) — só FreeLLMAPI nos papéis críticos + trava de rota paga
 
 > **Substitui** `R1-continuacao-testes.md` e `R1-continuacao-freellmapi.md` (não enviar esses).
-> Base: `docs/NEXTCODE-REFERENCIA.md` §5.2 "Auditoria 2 (08/10)". Copie de **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
+> Base: `docs/NEXTCODE-REFERENCIA.md` §5.2 "Auditoria 2 (08/10)". Ponto de partida: o último commit que altera este arquivo (T-A). Copie de **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
 
 ===== INÍCIO DO PROMPT =====
 

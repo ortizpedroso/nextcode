@@ -7,7 +7,7 @@
 
 ## 08/10/2026 (13) — prompt R1 v3 final entregue
 
-**Feito:** `5e3cbaa` esclarece no prompt v3 que perfil vazio no YAML cai no padrão vazio (sem mexer em `extractScalarString`). Prompt final entregue ao fundador (`docs/prompts/R1-continuacao-v3.md`, partida = commit que contém este diário).
+**Feito:** `5e3cbaa` esclarece no prompt v3 que perfil vazio no YAML cai no padrão vazio (sem mexer em `extractScalarString`). Prompt final entregue ao fundador (`docs/prompts/R1-continuacao-v3.md`). **Regra aprendida:** todo commit depois de entregar um prompt deve tocar o próprio prompt, senão a T-A do Antigravity falha.
 
 **Onde parou:** aguardando o Antigravity executar R1.3 (conclusão) → R1.3b → R1.4 → R1.5 → R1.6.
 
