@@ -48,3 +48,10 @@ Uma falha 400 deixa a chave ~13 s em espera (429 em seguida).
 | deepseek-v4-pro | 200 `custom/deepseek-v4-pro`, 2,8 s, 29 tokens de raciocínio |
 | deepseek-flash | 200 `custom/deepseek-flash`, 1,6 s |
 | auto:nextcode-pago-forte / -barato | 400 perfil inexistente (perfis opcionais; padrão vazio no R1 v3) |
+
+## R1 (08/10) — papéis críticos só pago, pelo FreeLLMAPI (relatório `docs/relatorios/R1-roteamento-pago-primeiro.md`)
+| Rodada | Resultado | Custo LLM | Jev | Observação |
+|---|---|---|---|---|
+| P1 | ENTREGUE, tsc 0, 2 etapas, **2/2 aprovadas na 1ª** | US$ 0,0478 (+21% vs 0,0394) | US$ 0,0003 | etapa simples: `custom/deepseek-flash` (antes grátis no groq) |
+| P2 | ENTREGUE, tsc 0, UI_CHECK ok, **3/3 aprovadas na 1ª** | US$ 0,1101 (−21% vs 0,1398) | US$ 0,0004 | 0 chamadas a gratuito/OmniRoute; avaliador = DeepSeek direto (BYOK) |
+Jev: P1 etapa 1 `rapido` conf 0,98 → Flash; P2 etapa 2 `medio` conf 0,46 → sobe a `pesado`.

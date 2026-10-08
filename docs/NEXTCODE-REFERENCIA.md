@@ -153,6 +153,11 @@ para uma divisão feita por código. É a maior distância entre o pensado e o r
 | Guardas do Jev (código, chat, skill) — sem enviar o valor | ✅ (`c7fb624`) |
 | HTTPS local, `npm audit`/Trivy no CI, OmniRoute com versão fixa | ❌ |
 
+### 3.2b Pacotes entregues
+| Pacote | Commits | Auditoria (08/10) | Pendências que gerou |
+|---|---|---|---|
+| **R1** — papéis críticos só pago, pelo FreeLLMAPI; trava `X-Routed-Via`; Jev escolhe Flash/Pro | `69d8a94` `51e141e` `a2c9b2c` `9a9d539` `6ab284e` `88ab558` `143b975` | **aceito com ressalvas**: escopo ok, cada commit compila isolado, sem amend, sem segredo no diff; P1/P2 entregues com 5/5 etapas aprovadas na 1ª e 0 chamadas a gratuito | (1) avaliador ainda usa **DeepSeek direto (BYOK)** e a mesma família do executor → P3; (2) testes antigos com interruptor (dívida: gateway pago falso); (3) P1 +21% de custo, P2 −21% |
+
 ### 3.3 Adiados pela arquitetura
 Laya (D6) · Exa/SearXNG (D2) · cliente MCP e ponte única (D7, D10) · catálogo (D8) · BYOK no OmniRoute ·
 checklist por `REQ` na tela · entrega por Git · custo antes de aprovar · proveniência · PostgreSQL.

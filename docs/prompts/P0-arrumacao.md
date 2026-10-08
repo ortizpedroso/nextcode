@@ -1,16 +1,15 @@
 # Prompt P0 — Arrumação (para o Antigravity)
 
 > Pacote P0 de `docs/NEXTCODE-REFERENCIA.md` §5.3. Escrito pelo Claude em 08/10/2026.
-> ⚠️ **Passo 0.3 descartado** (OmniRoute pausado no projeto, auditoria de 08/10) — remover antes de enviar.
-> ⚠️ **Não enviar ainda:** o R1 vai antes (decisão de 08/10 tarde). Depois da auditoria do R1, o Claude regrava este arquivo (novo commit) e a trava T-A passa a valer contra esse commit.
-> Copie TUDO abaixo da linha e cole no Antigravity.
+> Atualizado em 08/10 após a auditoria do R1: passo 0.3 (OmniRoute) removido — OmniRoute está pausado.
+> Copie do marcador **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
 
----
+===== INÍCIO DO PROMPT =====
 
-# Tarefa P0 — Arrumação: segredo do MCP cifrado, teste intermitente, OmniRoute com versão fixa
+# Tarefa P0 — Arrumação: segredo do MCP cifrado e teste intermitente
 
 ## OBJETIVO
-Três correções pequenas e independentes, uma por commit. Nada além disto.
+Duas correções pequenas e independentes, uma por commit. Nada além disto.
 
 ## TRAVAS (obrigatórias; violar qualquer uma = PARAR e relatar)
 - **T-A Pré-condição.** Rode `git status --short` (só pode aparecer `.claude/`) e `git log -1 --format=%H -- docs/prompts/P0-arrumacao.md`. O `HEAD` (`git rev-parse HEAD`) deve ser igual a esse hash. Diferente → PARE.
@@ -32,7 +31,6 @@ Três correções pequenas e independentes, uma por commit. Nada além disto.
 - `prisma/schema.prisma` (`model McpServer`, campo `env String?  // JSON object string`)
 - `scripts/encrypt-stored-secrets.ts`
 - `tests/harness/end-to-end-harness-plan.test.ts`
-- `docker-compose.yml` (serviço `omniroute`, `image: diegosouzapw/omniroute:latest`)
 
 ---
 
@@ -80,31 +78,18 @@ Três correções pequenas e independentes, uma por commit. Nada além disto.
 
 **Problema:** a suíte completa falhou 1 vez em 4 execuções no commit `c7fb624` e passou nas outras 3. Antes disso, o commit `9e88b59` alterou `tests/harness/end-to-end-harness-plan.test.ts` para **aumentar o timeout para 60000** e **silenciar o erro** de `fs.rmSync` com `try {} catch {}` — isso esconde o sintoma.
 
+**Pista registrada (R1, 08/10):** durante o R1 a suíte falhou e foi reexecutada nos passos R1.1 e R1.2 por *"empate de milissegundo no `createdAt` do SQLite sob paralelismo"*. Comece por aí: procure testes que ordenam ou buscam o "último" registro por `createdAt` e cole a falha observada.
+
 **PODE ALTERAR:** somente o arquivo de teste onde a causa for encontrada **e** `tests/harness/end-to-end-harness-plan.test.ts`. Se a causa estiver em código de produção (`src/`), **PARE** e relate o arquivo, a linha e a causa (não corrija).
 
 **O que fazer:**
 1. Rodar `npx vitest run` completo **10 vezes seguidas** (com o banco em cópia temporária), guardando a saída de cada uma. Para cada falha anotar: arquivo do teste, nome do teste, mensagem de erro.
-2. Se nenhuma falha em 10: relatar "não reproduzido em 10 execuções", **não alterar nada** e seguir para o passo 0.3 (sem commit neste passo).
+2. Se nenhuma falha em 10: relatar "não reproduzido em 10 execuções", **não alterar nada** e seguir para o relatório (sem commit neste passo).
 3. Se houver falha: achar a **causa** (ex.: estado compartilhado entre testes, porta fixa, arquivo temporário com o mesmo nome, `vi.spyOn` sem restauração, ordem de execução). Corrigir a causa no arquivo de teste.
-4. Em `tests/harness/end-to-end-harness-plan.test.ts`: **desfazer** o `{ timeout: 60000 }` e o `try {} catch {}` em volta de `fs.rmSync`, voltando ao que era antes de `9e88b59` (`git show 9e88b59 -- tests/harness/end-to-end-harness-plan.test.ts`), **somente se** a suíte passar 10 vezes seguidas depois disso. Se não passar, manter como está e relatar.
+4. Em `tests/harness/end-to-end-harness-plan.test.ts`: **desfazer** o `{ timeout: 60000 }` e o `try {} catch {}` em volta de `fs.rmSync`, removendo **somente** essas duas mudanças de `9e88b59` (mantenha as linhas `setPaidOnlyRoutingForTests(...)` acrescentadas no R1.4) (`git show 9e88b59 -- tests/harness/end-to-end-harness-plan.test.ts`), **somente se** a suíte passar 10 vezes seguidas depois disso. Se não passar, manter como está e relatar.
 5. Rodar a suíte completa 10 vezes seguidas de novo: todas verdes.
 
 **Pronto quando:** causa identificada com evidência (saída da falha) e corrigida, 10 execuções verdes coladas em resumo (`Test Files … | Tests …` de cada uma); 1 commit `test: P0.2 - causa do teste intermitente`. Se não reproduzido: sem commit, só o relatório.
-
----
-
-## PASSO 0.3 — OmniRoute com versão fixa
-
-**Problema:** `docker-compose.yml` usa `diegosouzapw/omniroute:latest`; a arquitetura (§12) exige versão fixa e testada.
-
-**PODE ALTERAR:** `docker-compose.yml` (somente a linha `image:` do serviço `omniroute` e um comentário acima dela).
-
-**O que fazer:**
-1. Rodar `docker image inspect diegosouzapw/omniroute:latest --format "{{index .RepoDigests 0}}"`. Se o Docker não estiver disponível ou a imagem não existir localmente → **PARE este passo** (sem commit) e relate a saída do comando. **Não** faça `docker pull` (isso trocaria a versão em uso).
-2. Trocar `image: diegosouzapw/omniroute:latest` pelo valor devolvido (formato `diegosouzapw/omniroute@sha256:...`). Comentário acima: `# Versão fixa (digest da imagem em uso em <data de hoje>). Atualizar só após rodar o bench (NEXTCODE-REFERENCIA §8).`
-3. Rodar `docker compose config --quiet` (valida o arquivo). Não suba nem derrube containers.
-
-**Pronto quando:** `docker compose config --quiet` sem erro; `tsc` e suíte verdes; 1 commit `chore(docker): P0.3 - OmniRoute fixado por digest`.
 
 ---
 
@@ -116,7 +101,8 @@ Três correções pequenas e independentes, uma por commit. Nada além disto.
 3. **Testes novos:** tabela `arquivo › nome do teste › o que prova`.
 4. **Evidência de nomes:** tabela `nome › saída de git grep -n` para todo nome citado no relatório.
 5. **Passo 0.2:** resultado das 10 + 10 execuções; falha encontrada (arquivo, teste, mensagem); causa; correção.
-6. **Passo 0.3:** saída do `docker image inspect` (só o digest) e do `docker compose config --quiet`.
-7. **Desvios do prompt:** obrigatório. Escreva "nenhum" se nenhum. Inclua qualquer coisa feita a mais ou a menos.
-8. **Checklist das travas T-A…T-K:** cumprida sim/não, com a evidência.
-9. **Dúvidas abertas** para o fundador.
+6. **Desvios do prompt:** obrigatório. Escreva "nenhum" se nenhum. Inclua qualquer coisa feita a mais ou a menos.
+7. **Checklist das travas T-A…T-K:** cumprida sim/não, com a evidência.
+8. **Dúvidas abertas** para o fundador.
+
+===== FIM DO PROMPT =====

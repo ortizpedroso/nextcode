@@ -5,6 +5,21 @@
 
 ---
 
+## 08/10/2026 (14) — auditoria do R1: aceito com ressalvas; P0 pronto
+
+**Feito (Antigravity):** R1 completo — `69d8a94` `51e141e` `a2c9b2c` `9a9d539` `6ab284e` `88ab558` + relatório `143b975`.
+**Auditoria (Claude):** escopo por commit ok; os 6 commits compilam isolados (0 erros, sem amend); sem segredo no diff; suíte no HEAD 85/613 verde (2 execuções); diff conferido (trava `X-Routed-Via`, rota só FreeLLMAPI, `deepseekKey` fora do executor, avaliador sem queda ao gratuito, reserva do Jev no Pro). P1/P2 entregues, 5/5 etapas aprovadas na 1ª, 0 chamadas a gratuito. Custo: P1 +21%, P2 −21% (`memory/medicoes.md`).
+**Veredito:** aceito com ressalvas (referência §3.2b).
+**Ressalvas / pendências:** avaliador ainda vai ao DeepSeek **direto** (BYOK) e é da mesma família do executor → P3; testes antigos com interruptor (dívida); suíte instável por empate de `createdAt` (vai no P0.2).
+
+**Onde parou:** P0 regravado (sem 0.3; pista do `createdAt` no 0.2) em `docs/prompts/P0-arrumacao.md`, pronto para enviar.
+
+**Próximo passo:** P0 → P1 (núcleo do Jev) → P3 (avaliador e elicitador pelo FreeLLMAPI, com família diferente quando houver crédito).
+
+**Pendências do fundador:** crédito Claude/Gemini no FreeLLMAPI (avaliador independente); perfis pagos (opcional); stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 08/10/2026 (13) — prompt R1 v3 final entregue
 
 **Feito:** `5e3cbaa` esclarece no prompt v3 que perfil vazio no YAML cai no padrão vazio (sem mexer em `extractScalarString`). Prompt final entregue ao fundador (`docs/prompts/R1-continuacao-v3.md`). **Regra aprendida:** todo commit depois de entregar um prompt deve tocar o próprio prompt, senão a T-A do Antigravity falha.
