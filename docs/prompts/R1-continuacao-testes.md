@@ -1,4 +1,4 @@
-> ⛔ **SUBSTITUÍDO** por `docs/prompts/R1-continuacao-freellmapi.md` (auditoria de gateways, 08/10). Não enviar.
+> ⛔ **SUBSTITUÍDO** por `docs/prompts/R1-continuacao-v3.md` (auditoria de gateways, 08/10). Não enviar.
 
 # Prompt R1 (continuação) — testes antigos com o roteamento "somente pago"
 

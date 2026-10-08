@@ -32,3 +32,12 @@ US$ 0,042 por 1M tokens de entrada; saída grátis (docs oficiais e `jev.ts`).
 | gemini-3.8-flash | 429 cota esgotada (~24 h) |
 | auto:smart | 200 via `openrouter/dots-3-note:free`, 7,0 s |
 | auto:perfil-inexistente | 400 Profile not found |
+
+## FreeLLMAPI — sonda 2 (08/10, após cadastrar DeepSeek)
+| modelo | resultado |
+|---|---|
+| deepseek-v4-pro | 400 — ID salvo como `• deepseek-v4-pro` (marcador no nome) |
+| deepseek-flash | 400 — mesmo defeito (`• deepseek-flash`) |
+| deepseek-v4-flash | 200 via `electronhub` (gratuito), 11,8 s |
+| auto:smart | 200 via `openrouter/dots-3-note:free`, 10,3 s |
+Uma falha 400 deixa a chave ~13 s em espera (429 em seguida).

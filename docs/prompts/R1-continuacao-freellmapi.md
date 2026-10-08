@@ -1,3 +1,5 @@
+> ⛔ **SUBSTITUÍDO** por `docs/prompts/R1-continuacao-v3.md` (DeepSeek direto fora; 08/10). Não enviar.
+
 # Prompt R1 (continuação v2) — interruptor de teste + rota paga pelo FreeLLMAPI
 
 > **Substitui** `docs/prompts/R1-continuacao-testes.md` (não enviar aquele).

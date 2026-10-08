@@ -5,6 +5,23 @@
 
 ---
 
+## 08/10/2026 (11) — Auditoria 2: DeepSeek pelo FreeLLMAPI; divisão por tamanho; prompt v3
+
+**Fundador:** DeepSeek direto fora; DeepSeek pago agora no FreeLLMAPI; gratuitos quebram em tarefas grandes (motivo da divisão).
+
+**Achados**
+- FreeLLMAPI: provedor DeepSeek cadastrado com o ID `• deepseek-v4-pro` / `• deepseek-flash` → a DeepSeek responde 400. **Ação do fundador:** tirar o `• ` no painel.
+- `deepseek-v4-flash` sem o provedor custom cai em gratuito (`electronhub`).
+- Divisão já existe (grupos ≤ 4 arquivos, > 3 arquivos, Jev "mistura responsabilidades"). Histórico: o primeiro "corte" era do nosso auditor; o corte real foi do DeepSeek pago (max_tokens); o gratuito cortou o laço 1×. No laço cada chamada já é 1 arquivo → dividir etapa não reduz o tamanho por chamada.
+
+**Decisão (referência §5.2 "Auditoria 2"):** papéis críticos só FreeLLMAPI (perfil pago → modelo pago fixo), trava `X-Routed-Via` com prefixo pago (`custom/`), sem DeepSeek direto; gratuito no executor só com dados do bench.
+
+**Feito:** referência, decisões, medições; `docs/prompts/R1-continuacao-v3.md` (substitui v1/v2).
+
+**Próximo passo:** fundador corrige o ID no FreeLLMAPI → Antigravity executa v3 → auditar relatório.
+
+---
+
 ## 08/10/2026 (10) — auditoria de gateways (OmniRoute pausado, FreeLLMAPI é o caminho)
 
 **Fundador:** OmniRoute pausado; só o FreeLLMAPI é o direcionamento, com o Jev; auditar a fundo, estamos repetindo decisões.
