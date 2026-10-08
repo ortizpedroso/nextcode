@@ -10,6 +10,7 @@ import {
   executeTaskNode,
   readNodeMicrobrief,
   setExecutorModeForTests,
+  setPaidOnlyRoutingForTests,
   setScaffoldInstallerForTests,
 } from "@/core/orchestrator/node-executor";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
@@ -180,6 +181,7 @@ async function waitForTelemetryLogs(sessionId: string, action: string) {
 describe("Laço de ferramentas do executor (Item 2)", () => {
   beforeEach(() => {
     setExecutorModeForTests("laco");
+    setPaidOnlyRoutingForTests(false);
     setScaffoldInstallerForTests(async (cwd) => {
       fs.mkdirSync(path.join(cwd, "node_modules"), { recursive: true });
       return {
@@ -195,6 +197,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
 
   afterEach(async () => {
     setExecutorModeForTests(null);
+    setPaidOnlyRoutingForTests(null);
     setScaffoldInstallerForTests(null);
     vi.restoreAllMocks();
     if (createdSessionIds.length > 0) {

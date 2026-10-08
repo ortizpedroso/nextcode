@@ -464,11 +464,12 @@ export function makeBlindAuditDispatchFn(
       claudeKey: (setting as { claudeKey?: string | null } | null)?.claudeKey,
       deepseekKey: (setting as { deepseekKey?: string | null } | null)?.deepseekKey,
     }).catch(() => null);
+    const paidOnly = isPaidOnlyRouting(loadOrchestrationPolicy());
     TelemetryLogger.log({
       sessionId,
       action: "EVALUATOR_MODEL",
       details: {
-        provider: strong?.provider ?? "freellmapi-fallback",
+        provider: strong?.provider ?? (paidOnly ? "nenhum-pago" : "freellmapi-fallback"),
         model: strong?.model ?? null,
         independentFromExecutor: strong?.independent ?? false,
         failures: strong?.failures ?? [],
@@ -477,6 +478,9 @@ export function makeBlindAuditDispatchFn(
     if (strong?.content && strong.provider && strong.model) {
       await recordLlmCost({ sessionId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
       return strong.content;
+    }
+    if (paidOnly) {
+      return null;
     }
     try {
       const res = await smartRouter.dispatchWithFallback({
