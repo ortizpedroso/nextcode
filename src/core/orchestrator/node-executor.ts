@@ -9,12 +9,14 @@ import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
 import { runExecutorToolLoop, buildExecutorToolProtocolPrompt } from "@/core/skills/executor-tool-loop";
 import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
+import { loadPaidGatewaysForTier } from "@/core/llm/paid-routing";
 import { recordLlmCost } from "@/core/llm/cost";
 import {
   resolveVerdictAction,
   resolveExecutorTierForAttempt,
   loadOrchestrationPolicy,
   type ClusterKind,
+  type OrchestrationPolicy,
 } from "@/core/config/orchestration-policy";
 import {
   inferClusterFromFilePath,
@@ -664,6 +666,15 @@ export function setExecutorModeForTests(mode: ExecutorMode | null): void {
   executorModeOverrideForTests = mode;
 }
 
+let paidOnlyOverrideForTests: boolean | null = null;
+/** Testes de fila/worker/rotas usam o LLM falso pela rota antiga; desligam o "somente pago" só para eles. */
+export function setPaidOnlyRoutingForTests(value: boolean | null): void {
+  paidOnlyOverrideForTests = value;
+}
+export function isPaidOnlyRouting(policy: OrchestrationPolicy): boolean {
+  return paidOnlyOverrideForTests ?? policy.roteamentoPapeisCriticos.somentePago;
+}
+
 /**
  * Etapa de base (M1): package.json com as dependências da stack, tsconfig e npm install no
  * projeto-alvo. Falha (ex.: npm sem rede) segue a política normal de tentativas (T6).
@@ -930,6 +941,22 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     details: { nodeId: taskDb.id, plannedTier, attempt: (taskDb.attempts || 0) + 1, executorTier },
   });
 
+  const paidGateways = isPaidOnlyRouting(policy)
+    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos.modeloPagoBarato)
+    : undefined;
+  if (paidGateways) {
+    TelemetryLogger.log({
+      sessionId: taskDb.sessionId,
+      action: "EXECUTOR_ROTA_PAGA",
+      details: {
+        nodeId: taskDb.id,
+        executorTier,
+        modelos: paidGateways.map((g) => g.modelHeavy),
+        gateways: paidGateways.map((g) => g.id),
+      },
+    });
+  }
+
   const qm = new QuarantineManager();
   const filesScopeArr: string[] = taskDb.filesScope ? JSON.parse(taskDb.filesScope) : [];
   const targetProjectRoot = taskDb.session.project?.path || process.cwd();
@@ -953,6 +980,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       executorTier,
       maxTokens: executorMaxTokens,
       stepTimeoutMs,
+      paidGateways,
       routerKeys: {
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -990,23 +1018,33 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   } else {
     try {
       const stepSignal = AbortSignal.timeout(stepTimeoutMs);
-      const dispatchPromise = smartRouter.dispatchWithFallback({
-        messages: dispatchMessages,
-        // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
-        // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
-        tier: executorTier === "rapido" ? "fast" : "heavy",
-        // Modelos de raciocínio (DeepSeek v4) gastam parte do limite pensando: com 8192 a resposta de
-        // uma etapa com tela era cortada no meio do 2º arquivo (teste real P2 de 07/10).
-        maxTokens: executorMaxTokens,
-        geminiKey: readSecret(setting?.geminiKey),
-        groqKey: readSecret((setting as any)?.groqKey),
-        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-        deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
-        stream: false,
-        signal: stepSignal,
-      });
+      const dispatchPromise = paidGateways
+        ? smartRouter.dispatchWithFallback({
+            messages: dispatchMessages,
+            tier: "heavy",
+            gateways: paidGateways,
+            maxTokens: executorMaxTokens,
+            deepseekKey: readSecret((setting as any)?.deepseekKey),
+            stream: false,
+            signal: stepSignal,
+          })
+        : smartRouter.dispatchWithFallback({
+            messages: dispatchMessages,
+            // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
+            // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
+            tier: executorTier === "rapido" ? "fast" : "heavy",
+            // Modelos de raciocínio (DeepSeek v4) gastam parte do limite pensando: com 8192 a resposta de
+            // uma etapa com tela era cortada no meio do 2º arquivo (teste real P2 de 07/10).
+            maxTokens: executorMaxTokens,
+            geminiKey: readSecret(setting?.geminiKey),
+            groqKey: readSecret((setting as any)?.groqKey),
+            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+            deepseekKey: readSecret((setting as any)?.deepseekKey),
+            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+            omniRouteKey: readSecret(setting?.omniRouteKey),
+            stream: false,
+            signal: stepSignal,
+          });
 
       const timeoutPromise = new Promise<null>((resolve) => {
         if (stepSignal.aborted) return resolve(null);
@@ -1212,19 +1250,29 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
 
         try {
           const retrySignal = AbortSignal.timeout(stepTimeoutMs);
-          const retryRes = await smartRouter.dispatchWithFallback({
-            messages: retryMessages,
-            tier: executorTier === "rapido" ? "fast" : "heavy",
-            maxTokens: 2048,
-            geminiKey: readSecret(setting?.geminiKey),
-            groqKey: readSecret((setting as any)?.groqKey),
-            nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-            deepseekKey: readSecret((setting as any)?.deepseekKey),
-            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-            omniRouteKey: readSecret(setting?.omniRouteKey),
-            stream: false,
-            signal: retrySignal,
-          });
+          const retryRes = await (paidGateways
+            ? smartRouter.dispatchWithFallback({
+                messages: retryMessages,
+                tier: "heavy",
+                gateways: paidGateways,
+                maxTokens: 2048,
+                deepseekKey: readSecret((setting as any)?.deepseekKey),
+                stream: false,
+                signal: retrySignal,
+              })
+            : smartRouter.dispatchWithFallback({
+                messages: retryMessages,
+                tier: executorTier === "rapido" ? "fast" : "heavy",
+                maxTokens: 2048,
+                geminiKey: readSecret(setting?.geminiKey),
+                groqKey: readSecret((setting as any)?.groqKey),
+                nvidiaKey: readSecret((setting as any)?.nvidiaKey),
+                deepseekKey: readSecret((setting as any)?.deepseekKey),
+                omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+                omniRouteKey: readSecret(setting?.omniRouteKey),
+                stream: false,
+                signal: retrySignal,
+              }));
           if (retryRes && retryRes.providerUsed !== "none" && retryRes.tierTag !== "exhausted") {
             const retryJson = await retryRes.response.json().catch(() => ({}));
             await recordLlmCost({

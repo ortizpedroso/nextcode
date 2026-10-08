@@ -8,6 +8,7 @@ import { withProjectBuildLock } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
 import { recordLlmCost } from "@/core/llm/cost";
+import type { GatewayConfig } from "@/core/llm/gateways";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 
@@ -383,6 +384,7 @@ export interface ExecutorToolLoopParams {
     omniRouteUrl?: string | null;
     omniRouteKey?: string | null;
   };
+  paidGateways?: GatewayConfig[];
   runTypecheck?: RunTypecheckFn;
 }
 
@@ -462,19 +464,29 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     let turnText = "";
     try {
       const stepSignal = AbortSignal.timeout(stepTimeoutMs);
-      const dispatchPromise = smartRouter.dispatchWithFallback({
-        messages,
-        tier: executorTier === "rapido" ? "fast" : "heavy",
-        maxTokens,
-        geminiKey: routerKeys.geminiKey ?? undefined,
-        groqKey: routerKeys.groqKey ?? undefined,
-        nvidiaKey: routerKeys.nvidiaKey ?? undefined,
-        deepseekKey: routerKeys.deepseekKey ?? undefined,
-        omniRouteUrl: routerKeys.omniRouteUrl ?? undefined,
-        omniRouteKey: routerKeys.omniRouteKey ?? undefined,
-        stream: false,
-        signal: stepSignal,
-      });
+      const dispatchPromise = params.paidGateways
+        ? smartRouter.dispatchWithFallback({
+            messages,
+            tier: "heavy",
+            gateways: params.paidGateways,
+            maxTokens,
+            deepseekKey: routerKeys.deepseekKey ?? undefined,
+            stream: false,
+            signal: stepSignal,
+          })
+        : smartRouter.dispatchWithFallback({
+            messages,
+            tier: executorTier === "rapido" ? "fast" : "heavy",
+            maxTokens,
+            geminiKey: routerKeys.geminiKey ?? undefined,
+            groqKey: routerKeys.groqKey ?? undefined,
+            nvidiaKey: routerKeys.nvidiaKey ?? undefined,
+            deepseekKey: routerKeys.deepseekKey ?? undefined,
+            omniRouteUrl: routerKeys.omniRouteUrl ?? undefined,
+            omniRouteKey: routerKeys.omniRouteKey ?? undefined,
+            stream: false,
+            signal: stepSignal,
+          });
 
       const timeoutPromise = new Promise<null>((resolve) => {
         if (stepSignal.aborted) return resolve(null);

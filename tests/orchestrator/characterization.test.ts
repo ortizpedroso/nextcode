@@ -16,7 +16,7 @@ import { POST } from "@/app/api/dag/route";
 import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { DualLensAuditor, type ValidationType2Result } from "@/core/governance/dual-lens-auditor";
-import { executeTaskNode } from "@/core/orchestrator/node-executor";
+import { executeTaskNode, setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
@@ -216,6 +216,7 @@ async function cleanupCharTestRecords() {
 }
 
 afterAll(async () => {
+  setPaidOnlyRoutingForTests(null);
   await cleanupCharTestRecords();
   routerSpy?.mockRestore();
   skillMinerAnalyzeSpy?.mockRestore();
@@ -237,6 +238,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  setPaidOnlyRoutingForTests(false);
   fakeLlmMode = "success";
   routerSpy?.mockClear();
   await new Promise((resolve) => setTimeout(resolve, 2));

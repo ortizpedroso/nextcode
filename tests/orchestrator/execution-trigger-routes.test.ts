@@ -13,6 +13,7 @@ import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { startJobWorker, stopJobWorker } from "@/core/orchestrator/job-worker";
+import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 
 vi.mock("@/core/security/local-auth", () => ({
   requireAuth: vi.fn().mockReturnValue({ response: null }),
@@ -232,6 +233,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  setPaidOnlyRoutingForTests(false);
   fakeResponseMode = "dag_code";
   workerDelayMs = 0;
   routerSpy.mockClear();
@@ -242,6 +244,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  setPaidOnlyRoutingForTests(null);
   await cleanupTestData();
   routerSpy?.mockRestore();
   skillMinerAnalyzeSpy?.mockRestore();

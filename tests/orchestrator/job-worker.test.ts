@@ -14,6 +14,7 @@ import {
   startJobWorker,
   stopJobWorker,
 } from "@/core/orchestrator/job-worker";
+import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 
 let server: http.Server;
 let baseUrl: string;
@@ -192,6 +193,7 @@ beforeAll(async () => {
 }, 30000);
 
 beforeEach(async () => {
+  setPaidOnlyRoutingForTests(false);
   fakeLlmDelayMs = 0;
   process.env.OMNIROUTE_URL = baseUrl;
   process.env.NEXTCODE_JOB_LEASE_MS = "30000";
@@ -223,6 +225,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  setPaidOnlyRoutingForTests(null);
   await cleanupWorkerTestRecords();
   skillMinerAnalyzeSpy?.mockRestore();
   skillMinerDetectSpy?.mockRestore();
@@ -489,10 +492,13 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     const jobWorkerModulePath = path
       .resolve(process.cwd(), "src", "core", "orchestrator", "job-worker.ts")
       .replace(/\\/g, "/");
+    const nodeExecutorModulePath = path
+      .resolve(process.cwd(), "src", "core", "orchestrator", "node-executor.ts")
+      .replace(/\\/g, "/");
     const workerScriptFile = path.join(tempDir, "child-worker.ts");
     fs.writeFileSync(
       workerScriptFile,
-      `import { startJobWorker } from "${jobWorkerModulePath}";\nstartJobWorker();\nsetInterval(() => {}, 1000);\n`,
+      `import { startJobWorker } from "${jobWorkerModulePath}";\nimport { setPaidOnlyRoutingForTests } from "${nodeExecutorModulePath}";\nsetPaidOnlyRoutingForTests(false);\nstartJobWorker();\nsetInterval(() => {}, 1000);\n`,
       "utf-8"
     );
 
