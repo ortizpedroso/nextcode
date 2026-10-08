@@ -5,6 +5,23 @@
 
 ---
 
+## 08/10/2026 (7) — reanálise crítica do "pago primeiro" e R1 reescrito
+
+**Pedido do fundador:** não concordar por concordar; prós e contras com dados; escolher a melhor direção.
+
+**Análise (detalhe na referência §5.2)**
+- Gratuito no executor: ~50% de acerto observado (amostra pequena); economia máx. ~US$ 0,003/etapa sobre o Flash; falha custa avaliação paga (~US$ 0,01) + 1 das 3 tentativas → só compensaria com ≥ ~77% de acerto.
+- "Dividir para caber no gratuito": cada parte = mais uma avaliação paga; já quebrou contrato entre arquivos no P2; falhas do gratuito não eram de tamanho → **rejeitado**.
+- **Achado:** tier pesado cai sozinho para FreeLLMAPI/OmniRoute se o DeepSeek falhar; avaliador cai para o gratuito (`freellmapi-fallback`).
+
+**Direção adotada (R1):** executor e avaliador só pago (sem pago → PAUSADA via `SEM_LLM`); Jev escolhe `deepseek-v4-flash` (confiança ≥ 0,85 em `rapido`) ou `deepseek-v4-pro`; sem Jev → Pro; divisão só por qualidade; gratuito só no resto.
+
+**Feito:** referência §5.2, `memory/decisoes.md`, `docs/prompts/R1-roteamento-pago-primeiro.md` reescrito (R1.0 conferir Flash na API … R1.6 prova real), com marcadores INÍCIO/FIM.
+
+**Próximo passo:** auditar o relatório do R1 → regravar P0 com novo hash → P1 (núcleo do Jev; inclui ler `jev_limiares` do YAML de verdade) → elicitador no mesmo roteamento (P3).
+
+---
+
 ## 08/10/2026 (6) — "pago primeiro" e prompt R1
 
 **Decisão do fundador:** o Jev analisa o que precisa de pago e manda para o pago; o resto ele decide se divide para caber no gratuito. Revisar código antes de decidir.

@@ -1,166 +1,164 @@
-# Prompt R1 — Roteamento "pago primeiro" com divisão para o gratuito (para o Antigravity)
+# Prompt R1 — Papéis críticos só no pago; Jev escolhe Flash ou Pro (para o Antigravity)
 
-> Decisão do fundador (08/10 tarde, `memory/decisoes.md`) e regra em `docs/NEXTCODE-REFERENCIA.md` §5.2.
-> Copie TUDO abaixo da linha e cole no Antigravity.
+> Regra e análise em `docs/NEXTCODE-REFERENCIA.md` §5.2 ("Análise de 08/10"). Decisão em `memory/decisoes.md`.
+> Copie do marcador **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
 
----
+===== INÍCIO DO PROMPT =====
 
-# Tarefa R1 — Jev decide "pago primeiro" e divide a etapa para caber no modelo gratuito
+# Tarefa R1 — Executor e avaliador nunca caem no modelo gratuito; o Jev escolhe entre DeepSeek Flash (barato) e Pro
 
 ## OBJETIVO
-Hoje o Jev escolhe o nível do executor só pela complexidade (`rapido` → gratuito FreeLLMAPI; `medio`/`pesado` → DeepSeek pago) e, sem resposta do Jev, uma etapa de 1 arquivo vai para o **gratuito**. Passa a valer: **o Jev primeiro decide se a etapa precisa de modelo pago**; se não precisar, decide se ela cabe inteira no gratuito ou se deve ser **dividida (uma parte por arquivo)** para caber no gratuito; na dúvida, **pago**.
+Hoje: (a) o executor de nível `rapido` vai para o FreeLLMAPI gratuito; (b) nos níveis `medio`/`pesado`, se o DeepSeek falhar, o roteador **cai sozinho** para os gateways gratuitos; (c) o avaliador, se Gemini/Claude/DeepSeek falharem, cai para o gratuito. Passa a valer: **executor e avaliador só usam provedor pago**; sem pago disponível a sessão **pausa** (mecanismo `SEM_LLM` que já existe); e o nível `rapido` passa a significar **DeepSeek Flash (pago barato)**, escolhido pelo Jev só com confiança alta.
 
 ## TRAVAS (obrigatórias; violar qualquer uma = PARAR e relatar)
 - **T-A Pré-condição.** `git status --short` só pode mostrar arquivos dentro de `.claude/`. `git rev-parse HEAD` deve ser igual a `git log -1 --format=%H -- docs/prompts/R1-roteamento-pago-primeiro.md`. Diferente → PARE.
-- **T-B Escopo fechado.** Só altere os arquivos de PODE ALTERAR. Precisou de outro → PARE e relate. Nunca aumente timeout, nunca use `try {} catch {}` vazio, `.skip` ou `.only`, e nunca altere teste existente além do que está escrito aqui.
-- **T-C Literalidade.** Faça exatamente o que está escrito: nomes, textos das perguntas, limiares e ordem das regras. Nada de refatoração ou "melhoria" extra. Ambiguidade → PARE e pergunte.
-- **T-D Nomes reais.** Todo nome citado deve existir (`git grep -n`). Nomes novos: só os escritos neste prompt.
+- **T-B Escopo fechado.** Só altere os arquivos de PODE ALTERAR do passo em curso. Precisou de outro → PARE e relate. Nunca aumente timeout, nunca use `try {} catch {}` vazio, `.skip` ou `.only`, e nunca altere teste existente além do que está escrito aqui.
+- **T-C Literalidade.** Faça exatamente o que está escrito (nomes, chaves, limiares, ordem). Nada de refatoração ou melhoria extra. Ambiguidade → PARE e pergunte.
+- **T-D Nomes reais.** Todo nome citado deve existir (`git grep -n`). Nomes novos: só os escritos aqui.
 - **T-E Um passo = um commit.** Antes de CADA commit: `npx tsc --noEmit` (0 erros) e `npx vitest run` completo (tudo verde) **nesse estado**. Cole as saídas. **Proibido**: `--amend`, `rebase`, `reset`, `push --force`, `--no-verify`.
-- **T-F Banco.** Nunca escreva em `prisma/dev.db`. Testes e execução real em cópia temporária (`DATABASE_URL`).
+- **T-F Banco.** Nunca escreva em `prisma/dev.db`. Use cópia em pasta temporária (`DATABASE_URL`).
 - **T-G Segredos.** Nenhuma chave em código, log, trilha, relatório ou saída colada.
 - **T-H Dependências.** Nenhum pacote novo.
-- **T-I Fim de linha.** Todos os arquivos deste prompt são LF; mantenha LF (`git ls-files --eol`).
-- **T-J Paradas obrigatórias.** Teste antigo quebrando por motivo não previsto aqui; arquivo fora do escopo; contradição prompt × código; resposta 422 do Jev; custo real de um projeto > US$ 0,50.
+- **T-I Fim de linha.** Os arquivos deste prompt são LF; mantenha LF (`git ls-files --eol`).
+- **T-J Paradas obrigatórias.** Teste antigo quebrando por motivo não previsto aqui (cole a lista e PARE — não edite o teste); arquivo fora do escopo; contradição prompt × código; modelo Flash inexistente na API (passo R1.0); custo real de um projeto > US$ 0,50.
 - **T-K Commits** terminam com: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
 
 ## LEITURA OBRIGATÓRIA
-- `src/core/decision/jev-decisions.ts`: `MicrobriefPlanningDecision`, `decideMicrobriefsPlanningBatch` (perguntas `::complexidade_microbrief`, `::precisa_dividir_microbrief`, cálculo do `tier`, `stepUpTier`, bloco "Reserva determinística em código").
-- `src/core/orchestrator/execution-trigger.ts`: `planNodeTiers`, `withJevPlan`, a chamada `splitNodesByJev(rawNodes, (id) => jevPlan.get(id)?.divisaoPorJev === true)`, `planFor`.
-- `src/core/orchestrator/node-split.ts`: `splitNodesByJev` (divide uma parte por arquivo; `skipped` quando um REQ cita dois arquivos).
-- `src/core/orchestrator/node-executor.ts`: `readPlannedTier`, uso de `resolveExecutorTierForAttempt` e `executorTier === "rapido" ? "fast" : "heavy"` (só leitura; NÃO alterar).
-- `src/core/config/orchestration-policy.ts`: `jevLimiares.planejamentoMicrobrief`, `DEFAULT_ORCHESTRATION_POLICY`, `extractScalarNumber`, e como o bloco `jevExecucao` é lido em `loadOrchestrationPolicy` (modelo a seguir).
-- `config/politicas-orquestracao.yaml`: blocos `jev_limiares` e `jev_execucao`.
-- `tests/harness/jev-decisions-catalog.test.ts` (teste "M3") e `tests/orchestrator/node-split.test.ts`.
+- `src/core/router/smart-router.ts`: opção `gateways?: GatewayConfig[]` de `dispatchWithFallback`; bloco "TENTATIVA 1" (ordem `heavyFirst`, `modelForTier`, `omniDisabled`, `aggregatorAlreadyTried`) e as rotas diretas depois dele (Groq, NVIDIA, Gemini, DeepSeek).
+- `src/core/llm/gateways.ts`: `GatewayConfig`, `GATEWAY_DEFAULTS` (deepseek: `modelHeavy: "deepseek-v4-pro"`, `heavyFirst: true`), `loadGatewayConfigs`, `modelForTier`.
+- `src/core/llm/cost.ts`: tabela `PRICES` (já tem `deepseek-(v4-)?flash`).
+- `src/core/orchestrator/node-executor.ts`: as três chamadas `smartRouter.dispatchWithFallback` do executor (chamada única, reenvio do relatório) e `runExecutorToolLoop(...)` com `routerKeys`; `makeBlindAuditDispatchFn` (avaliador: `dispatchStrongEvaluator` e, se falhar, rota `tier: "fast"`); `noLlmAvailable` e o bloco `SEM_LLM`.
+- `src/core/skills/executor-tool-loop.ts`: `ExecutorToolLoopParams` (`routerKeys`, `executorTier`) e a chamada `dispatchWithFallback` com `tier: executorTier === "rapido" ? "fast" : "heavy"`; o teste de `providerUsed === "none"`.
+- `src/core/decision/jev-decisions.ts`: `decideMicrobriefsPlanningBatch` (cálculo do `tier`, `stepUpTier`, reserva `fileCount <= 1 ? "rapido" : ...`).
+- `src/core/config/orchestration-policy.ts`: `extractScalarNumber`, `extractScalarString`, leitura de `jevExecucao` em `loadOrchestrationPolicy` (modelo a seguir).
+- `config/politicas-orquestracao.yaml`.
 
 ---
 
-## PASSO R1.1 — Política: limiares do "pago primeiro"
+## PASSO R1.0 — Conferir que o modelo Flash existe (sem commit)
+Com uma **cópia** de `prisma/dev.db`, ler a chave DeepSeek (`readSecret(setting.deepseekKey)`) num script temporário fora do repositório e fazer `GET https://api.deepseek.com/v1/models`. Colar no relatório **só a lista de `id`** (nunca a chave).
+- Se `deepseek-v4-flash` estiver na lista → seguir.
+- Se não estiver → **PARE** e relate a lista (o fundador escolhe o modelo barato).
+
+---
+
+## PASSO R1.1 — Política
 
 **PODE ALTERAR:** `config/politicas-orquestracao.yaml`, `src/core/config/orchestration-policy.ts`, `tests/harness/orchestration-policy-and-skills.test.ts`.
 
-**O que fazer:**
-1. No YAML, dentro de `jev_limiares:`, logo após o bloco `planejamento_microbrief:`, acrescentar:
+1. YAML, no fim do arquivo, bloco novo:
    ```yaml
-     roteamento_pago_primeiro:
-       probabilidade_minima_pago_noul: 0.35            # >= isso → modelo pago
-       confianca_minima_gratuito_inteiro: 0.85         # complexidade 'rapido' com essa confiança → gratuito
-       probabilidade_minima_partes_gratuito_noul: 0.80 # >= isso (e 2+ arquivos) → divide para o gratuito
+   roteamento_papeis_criticos:
+     somente_pago: true                       # executor e avaliador nunca caem no gratuito; sem pago → PAUSADA
+     modelo_pago_barato: "deepseek-v4-flash"  # nível 'rapido' do executor
+     confianca_minima_modelo_barato: 0.85     # Jev precisa disso em 'rapido' para usar o modelo barato
    ```
-2. Em `orchestration-policy.ts`: no tipo de `jevLimiares` acrescentar `roteamentoPagoPrimeiro: { probabilidadeMinimaPagoNoul: number; confiancaMinimaGratuitoInteiro: number; probabilidadeMinimaPartesGratuitoNoul: number; }`; no `DEFAULT_ORCHESTRATION_POLICY` os valores 0.35, 0.85, 0.8; em `loadOrchestrationPolicy` ler as três chaves com `extractScalarNumber` (mesmo padrão usado para `jevExecucao`).
-3. Teste novo em `tests/harness/orchestration-policy-and-skills.test.ts`: `R1.1: lê roteamento_pago_primeiro do YAML e usa os padrões quando as chaves faltam`.
+2. `orchestration-policy.ts`: campo `roteamentoPapeisCriticos: { somentePago: boolean; modeloPagoBarato: string; confiancaMinimaModeloBarato: number }` na política; padrões `true`, `"deepseek-v4-flash"`, `0.85`; leitura em `loadOrchestrationPolicy` com `extractScalarBoolean`, `extractScalarString`, `extractScalarNumber`.
+3. Teste: `R1.1: lê roteamento_papeis_criticos do YAML e usa os padrões quando as chaves faltam`.
 
-**Pronto quando:** teste verde, `tsc` 0, suíte verde; commit `feat(policy): R1.1 - limiares do roteamento pago primeiro`.
+Commit: `feat(policy): R1.1 - roteamento dos papeis criticos (somente pago, modelo barato)`.
 
 ---
 
-## PASSO R1.2 — Decisão do Jev "pago primeiro"
+## PASSO R1.2 — Gateways só pagos para os papéis críticos
 
-**PODE ALTERAR:** `src/core/decision/jev-decisions.ts` (somente `MicrobriefPlanningDecision` e `decideMicrobriefsPlanningBatch`), `tests/harness/jev-decisions-catalog.test.ts` (somente o que está no item 5), `tests/decision/jev-rota-pago-primeiro.test.ts` (NOVO).
+**PODE ALTERAR:** `src/core/llm/paid-routing.ts` (NOVO), `tests/llm/paid-routing.test.ts` (NOVO).
 
-**O que fazer:**
-1. Em `MicrobriefPlanningDecision` acrescentar:
-   ```ts
-   /** Jev decidiu dividir a etapa (uma parte por arquivo) para que cada parte rode no modelo gratuito. */
-   divisaoParaGratuito: boolean;
-   rotaModelo: "pago_necessario" | "gratuito_inteiro" | "gratuito_dividido" | "pago_por_seguranca" | "reserva";
-   /** noul de `precisa_modelo_pago`; null sem Jev. */
-   probabilidadePago: number | null;
-   ```
-2. Em `decideMicrobriefsPlanningBatch`, para cada Microbrief, acrescentar ao mesmo lote (mesma chamada `askJevBatch`) **exatamente** estas duas perguntas:
-   ```ts
-   questions[`${mb.id}::precisa_modelo_pago`] = {
-     type: "noul",
-     instructions: `Would a free, lower-capability model likely produce incomplete or wrong code for microbrief \`${mb.id}\`, so that a strong paid model is required to implement it correctly on the first attempt?`,
-     criteria: {
-       true: "A strong paid model is required: business rules spread across several requirements, security or authentication, data consistency, contracts between files, or acceptance criteria that need interpretation.",
-       false: "Every function, type, rule and response format is explicitly written in the microbrief; a model only needs to transcribe it into code.",
-     },
-   };
-   questions[`${mb.id}::partes_cabem_no_gratuito`] = {
-     type: "noul",
-     instructions: `If microbrief \`${mb.id}\` were split into one part per target file in \`arquivos\`, would each part be a small, mechanical task whose acceptance criteria name only that file and fully specify it?`,
-     criteria: {
-       true: "Each file has its own explicit criteria and can be written on its own from the microbrief.",
-       false: "Parts depend on shared logic or decisions that are not written in the microbrief, or one requirement spans several files.",
-     },
-   };
-   ```
-3. No ramo em que o Jev respondeu (o `if (batch)` existente), **depois** de calcular `tier` (com o `stepUpTier` existente) e **sem mudar** cluster, skills e `divisaoPorJev`, decidir o nível nesta ordem (lim = `policy.jevLimiares.roteamentoPagoPrimeiro`):
-   ```text
-   pPago   = resposta noul de ::precisa_modelo_pago            (ausente/inválida → 1)
-   pPartes = resposta noul de ::partes_cabem_no_gratuito       (ausente/inválida → 0)
-   pago(t) = t === "rapido" ? "medio" : t
+Criar `src/core/llm/paid-routing.ts` com exatamente:
+```ts
+import { loadGatewayConfigs, type GatewayConfig } from "@/core/llm/gateways";
 
-   se pPago >= lim.probabilidadeMinimaPagoNoul            → nivel = pago(tier),  rota = "pago_necessario"
-   senão se tier === "rapido" e compAns.confidence >= lim.confiancaMinimaGratuitoInteiro
-                                                          → nivel = "rapido",    rota = "gratuito_inteiro"
-   senão se mb.arquivos.length >= 2 e pPartes >= lim.probabilidadeMinimaPartesGratuitoNoul
-                                                          → nivel = "rapido",    rota = "gratuito_dividido", divisaoParaGratuito = true
-   senão                                                  → nivel = pago(tier),  rota = "pago_por_seguranca"
-   ```
-   `nivelModelo` passa a ser `nivel`; `probabilidadePago` = `pPago` quando a resposta existe, senão `null`; `divisaoParaGratuito` = false fora do 3º caso.
-   **Importante:** se as duas perguntas novas vierem ausentes mas as 6 antigas vierem válidas, o ramo do Jev continua valendo (com pPago = 1 → pago). Não exija as perguntas novas na condição `if (compAns?.type === "choice" && ...)` existente.
-4. Na reserva (sem Jev): trocar `fileCount <= 1 ? "rapido" : fileCount <= 3 ? "medio" : "pesado"` por `fileCount <= 3 ? "medio" : "pesado"`; `divisaoParaGratuito: false`, `rotaModelo: "reserva"`, `probabilidadePago: null`. Nada mais muda na reserva.
-5. Em `tests/harness/jev-decisions-catalog.test.ts`, no teste "M3": trocar **apenas** `toHaveLength(18)` por `toHaveLength(24)` e `18 perguntas` por `24 perguntas` no título. Nenhuma outra alteração nesse arquivo.
-6. Testes novos em `tests/decision/jev-rota-pago-primeiro.test.ts` (Jev simulado por `vi.spyOn(globalThis, "fetch")`, chave como em `tests/governance/secret-guard.test.ts`), um Microbrief de 2 arquivos por caso:
-   - `pago_necessario: precisa_modelo_pago 0.60 → nunca rapido, rota pago_necessario`
-   - `gratuito_inteiro: pago 0.10 + complexidade rapido confiança 0.90 → rapido`
-   - `gratuito_dividido: pago 0.10 + complexidade medio + partes 0.90 → rapido e divisaoParaGratuito`
-   - `pago_por_seguranca: pago 0.10 + complexidade medio + partes 0.40 → medio`
-   - `1 arquivo não divide: pago 0.10 + complexidade medio + partes 0.95 → pago_por_seguranca`
-   - `perguntas novas ausentes → pago (pPago = 1)`
-   - `sem Jev (fetch rejeita) → reserva paga: 1 arquivo = medio, rotaModelo reserva`
-   - `limiares vêm da política` (passar `policy` com `probabilidadeMinimaPagoNoul: 0.70` e pago 0.60 → não é pago_necessario)
-   - `uma única chamada HTTP com 8 perguntas por Microbrief`
+/**
+ * Gateways pagos (heavyFirst) para executor/avaliador. Nunca inclui FreeLLMAPI nem OmniRoute.
+ * nivel 'rapido' troca o modelo pesado pelo modelo pago barato; os demais mantêm o modelo pesado.
+ */
+export async function loadPaidGatewaysForTier(
+  nivel: "rapido" | "medio" | "pesado",
+  modeloPagoBarato: string,
+  loader: () => Promise<GatewayConfig[]> = loadGatewayConfigs
+): Promise<GatewayConfig[]>
+```
+Regra: `(await loader()).filter((g) => g.heavyFirst === true)`; se `nivel === "rapido"`, cada item vira `{ ...g, modelHeavy: modeloPagoBarato }`. Erro do `loader` → `[]`.
 
-**Pronto quando:** testes verdes, `tsc` 0, suíte verde; commit `feat(jev): R1.2 - decisao pago primeiro e divisao para o gratuito`.
+Testes (`tests/llm/paid-routing.test.ts`, com `loader` falso):
+- `devolve só gateways heavyFirst (exclui freellmapi e omniroute)`
+- `rapido troca o modelo para o pago barato`
+- `medio e pesado mantêm deepseek-v4-pro`
+- `loader com erro → lista vazia`
+
+Commit: `feat(llm): R1.2 - gateways somente pagos para papeis criticos`.
 
 ---
 
-## PASSO R1.3 — Ligar no planejamento: dividir para o gratuito e registrar a rota
+## PASSO R1.3 — Executor só no pago
 
-**PODE ALTERAR:** `src/core/orchestrator/execution-trigger.ts`, `tests/orchestrator/rota-modelo-plano.test.ts` (NOVO).
+**PODE ALTERAR:** `src/core/orchestrator/node-executor.ts`, `src/core/skills/executor-tool-loop.ts`, `tests/orchestrator/executor-somente-pago.test.ts` (NOVO).
 
-**O que fazer:**
-1. Trocar o critério de `splitNodesByJev` para: `(id) => jevPlan.get(id)?.divisaoPorJev === true || jevPlan.get(id)?.divisaoParaGratuito === true`.
-2. Criar e exportar em `execution-trigger.ts` a função pura:
-   ```ts
-   export function resolvePlanForNode(
-     nodeId: string,
-     jevPlan: Map<string, MicrobriefPlanningDecision>,
-     skippedIds: Set<string>
-   ): MicrobriefPlanningDecision | undefined
-   ```
-   - `plan = jevPlan.get(nodeId) ?? jevPlan.get(nodeId.replace(/-p\d+$/, ""))` (mesma regra do `planFor` atual);
-   - se `plan?.divisaoParaGratuito === true` **e** `skippedIds.has(nodeId)` (a divisão não foi possível) → devolver `{ ...plan, nivelModelo: "medio", divisaoParaGratuito: false, rotaModelo: "pago_por_seguranca" }`;
-   - senão devolver `plan`.
-   Substituir o uso de `planFor(node.id)` por `resolvePlanForNode(node.id, jevPlan, new Set(splitRes.skipped.map((s) => s.nodeId)))` (crie o `Set` uma vez, antes do laço). Remover `planFor` se ficar sem uso.
-3. Em `withJevPlan`, acrescentar ao objeto `jevPlan` gravado: `rotaModelo: decision.rotaModelo` e `probabilidadePago: decision.probabilidadePago`.
-4. Logo após criar as tarefas (depois do laço `for (const node of decomposedNodes)`), registrar **um** evento por tarefa:
-   `TelemetryLogger.log({ sessionId, action: "JEV_ROTA_MODELO", details: { nodeId, rotaModelo, nivelModelo, probabilidadePago, source } })` — usando o plano resolvido do passo 2; tarefa sem plano (base sem IA) não registra.
-5. Testes novos em `tests/orchestrator/rota-modelo-plano.test.ts` (só `resolvePlanForNode` e `splitNodesByJev`, sem banco):
-   - `parte de etapa dividida herda rapido do plano pai (id -p1, -p2)`
-   - `divisão para o gratuito impossível (REQ cita dois arquivos) → etapa inteira volta para medio e pago_por_seguranca` (use o mesmo caso de `tests/orchestrator/node-split.test.ts` "REQ que cita dois arquivos")
-   - `plano sem divisão para o gratuito é devolvido igual`
+1. `executor-tool-loop.ts`: em `ExecutorToolLoopParams` acrescentar `paidGateways?: GatewayConfig[]`. Na chamada `dispatchWithFallback` do laço: **se `params.paidGateways` existir** → `tier: "heavy"`, `gateways: params.paidGateways`, e **não** passar `geminiKey`, `groqKey`, `nvidiaKey`, `omniRouteUrl`, `omniRouteKey` (só `deepseekKey`); senão, comportamento atual inalterado.
+2. `node-executor.ts`, em `executeTaskNode`, depois de calcular `executorTier`: se `policy.roteamentoPapeisCriticos.somentePago` → `const paidGateways = await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos.modeloPagoBarato)`. Usar `paidGateways` nas **três** rotas do executor:
+   - laço: passar `paidGateways` para `runExecutorToolLoop`;
+   - chamada única e reenvio do relatório: `tier: "heavy"`, `gateways: paidGateways`, sem `geminiKey`/`groqKey`/`nvidiaKey`/`omniRouteUrl`/`omniRouteKey`.
+   Com `somentePago: false` → tudo exatamente como hoje.
+3. Registrar `TelemetryLogger.log({ sessionId, action: "EXECUTOR_ROTA_PAGA", details: { nodeId, executorTier, modelos: paidGateways.map((g) => g.modelHeavy), gateways: paidGateways.map((g) => g.id) } })` uma vez por execução de etapa.
+4. Sem gateway pago (lista vazia ou todos falham) o roteador devolve `providerUsed: "none"` → o caminho `noLlmAvailable` / `SEM_LLM` existente pausa a sessão sem gastar tentativa. **Não** criar outro caminho de pausa.
+5. Testes (`tests/orchestrator/executor-somente-pago.test.ts`, `smartRouter.dispatchWithFallback` simulado por `vi.spyOn`, mesmo estilo de `tests/governance/secret-guard.test.ts`):
+   - `rapido chama o roteador com tier heavy e só o gateway pago com deepseek-v4-flash`
+   - `pesado chama com deepseek-v4-pro`
+   - `nenhuma chamada do executor recebe groqKey, nvidiaKey, geminiKey ou omniRouteKey`
+   - `sem gateway pago → providerUsed none → etapa volta a pending sem gastar tentativa e sessão PAUSADA`
+   - `somentePago false → chamada idêntica à de hoje (tier fast no rapido)`
 
-**Pronto quando:** testes verdes, `tsc` 0, suíte verde; commit `feat(orchestrator): R1.3 - divisao para o gratuito no planejamento e trilha JEV_ROTA_MODELO`.
+Commit: `feat(executor): R1.3 - executor somente em provedor pago (Flash/Pro)`.
 
 ---
 
-## PASSO R1.4 — Prova real (P1 e P2) e relatório
+## PASSO R1.4 — Avaliador sem queda para o gratuito
 
-1. Rodar o P1 e o P2 reais com o script já usado no Item 10 (`C:\Users\ortiz\.gemini\antigravity\brain\dfb3a9c9-3acb-4a2d-bfa4-9c9e9e1a29a6\scratch\smoke-p1-p2-10-7-2.ts`, argumentos `p1` e `p2`), **cada um com cópia nova** de `prisma/dev.db` em pasta temporária. Teto: US$ 0,50 por projeto (passou → PARE).
-2. Não alterar o script além de acrescentar a contagem/listagem de `JEV_ROTA_MODELO` e `JEV_NODE_SPLIT`.
-3. Apagar as pastas temporárias ao final.
-4. Gravar o relatório em `docs/relatorios/R1-roteamento-pago-primeiro.md` e commitar: `docs(relatorio): R1`.
+**PODE ALTERAR:** `src/core/orchestrator/node-executor.ts` (somente `makeBlindAuditDispatchFn`), `tests/orchestrator/avaliador-somente-pago.test.ts` (NOVO).
 
-## RELATÓRIO (formato obrigatório, `docs/relatorios/R1-roteamento-pago-primeiro.md`)
+1. Em `makeBlindAuditDispatchFn`: quando `dispatchStrongEvaluator` não devolver conteúdo **e** `loadOrchestrationPolicy().roteamentoPapeisCriticos.somentePago === true` → devolver `null` (sem chamar a rota `tier: "fast"`). O evento `EVALUATOR_MODEL` continua sendo registrado, com `provider: "nenhum-pago"` nesse caso (no lugar de `"freellmapi-fallback"`). Com `somentePago: false` → igual a hoje.
+2. `null` já leva ao caminho existente de "falha do avaliador" (`heuristic_fallback` → `evaluatorOutageFreeRetry`, que não gasta tentativa até `MAX_FREE_EVALUATOR_RETRIES`). **Não** alterar esse caminho.
+3. **Se testes existentes quebrarem** porque dependiam da queda para o gratuito: **PARE**, cole a lista de testes e mensagens, e não edite.
+4. Testes novos:
+   - `avaliador pago falha → não chama a rota gratuita e devolve null`
+   - `EVALUATOR_MODEL registra provider nenhum-pago`
+   - `somentePago false → mantém a rota gratuita (comportamento antigo)`
+
+Commit: `feat(avaliador): R1.4 - avaliador sem queda para o gratuito`.
+
+---
+
+## PASSO R1.5 — Jev: modelo barato só com confiança alta; sem Jev, Pro
+
+**PODE ALTERAR:** `src/core/decision/jev-decisions.ts` (somente `decideMicrobriefsPlanningBatch`), `tests/decision/jev-modelo-barato.test.ts` (NOVO).
+
+1. No ramo do Jev, **depois** do `stepUpTier` existente: `if (tier === "rapido" && compAns.confidence < policy.roteamentoPapeisCriticos.confiancaMinimaModeloBarato) tier = "medio";`
+2. Na reserva (sem Jev): trocar `fileCount <= 1 ? "rapido" : fileCount <= 3 ? "medio" : "pesado"` por `fileCount <= 3 ? "medio" : "pesado"`. Nada mais muda.
+3. Nenhuma pergunta nova ao Jev; divisão (`precisaDividir`, `divisaoPorJev`) **inalterada**.
+4. Testes:
+   - `rapido com confiança 0.90 → rapido`
+   - `rapido com confiança 0.80 → medio`
+   - `sem Jev, 1 arquivo → medio`
+   - `limiar vem da política (0.95 → confiança 0.90 vira medio)`
+
+Commit: `feat(jev): R1.5 - modelo barato so com confianca alta; reserva no Pro`.
+
+---
+
+## PASSO R1.6 — Prova real e relatório
+1. P1 e P2 reais com `C:\Users\ortiz\.gemini\antigravity\brain\dfb3a9c9-3acb-4a2d-bfa4-9c9e9e1a29a6\scratch\smoke-p1-p2-10-7-2.ts` (`p1`, `p2`), **cada um com cópia nova** de `prisma/dev.db`. Teto US$ 0,50 por projeto.
+2. Só acrescentar ao script a listagem de `EXECUTOR_ROTA_PAGA`, `EVALUATOR_MODEL`, `EXECUTOR_TIER`, `JEV_DECISION` e `llm.gateway_call` (modelo que respondeu).
+3. Apagar as pastas temporárias. Gravar `docs/relatorios/R1-roteamento-pago-primeiro.md` e commitar `docs(relatorio): R1`.
+
+## RELATÓRIO (formato obrigatório)
 1. **Identificação:** hash de partida; `git log --oneline <partida>..HEAD`.
-2. **Por commit:** `git show --stat <hash>`; saída do `npx tsc --noEmit`; linha final do `npx vitest run` **daquele commit**.
-3. **Testes novos:** tabela `arquivo › nome › o que prova`.
-4. **Evidência de nomes:** tabela `nome › saída de git grep -n` para todo nome citado.
-5. **Execução real (P1 e P2):** fase final; `tsc` do projeto gerado; tabela **por etapa**: `nodeId › rotaModelo › nivelModelo › probabilidadePago › tentativas › modelo que respondeu (llm.gateway_call / EXECUTOR_TIER) › aprovada na 1ª?`; eventos `JEV_ROTA_MODELO` e `JEV_NODE_SPLIT` crus; custo total (`LLM_COST`) e custo do Jev; comparação com a última medição (`memory/medicoes.md`: P1 US$ 0,0394, P2 US$ 0,1398).
-6. **Decisões do Jev observadas:** para `precisa_modelo_pago` e `partes_cabem_no_gratuito`: valor de cada Microbrief.
+2. **Por commit:** `git show --stat`; saída do `npx tsc --noEmit`; linha final do `npx vitest run` **daquele commit**.
+3. **R1.0:** lista de `id` de `/v1/models` (sem chave).
+4. **Testes novos:** tabela `arquivo › nome › o que prova`.
+5. **Evidência de nomes:** tabela `nome › git grep -n`.
+6. **Execução real (P1, P2):** fase final; `tsc` do projeto gerado; tabela **por etapa** `nodeId › nível planejado (Jev) › confiança › modelo que respondeu › tentativas › aprovada na 1ª?`; prova de que **nenhuma** chamada de executor ou avaliador foi para FreeLLMAPI/OmniRoute; custo total (`LLM_COST`) e do Jev; comparação com `memory/medicoes.md` (P1 US$ 0,0394; P2 US$ 0,1398).
 7. **Desvios do prompt:** obrigatório ("nenhum" se nenhum).
 8. **Checklist T-A…T-K:** sim/não com evidência.
 9. **Dúvidas abertas** para o fundador.
+
+===== FIM DO PROMPT =====
