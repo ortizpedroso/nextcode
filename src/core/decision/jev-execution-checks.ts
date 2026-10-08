@@ -90,7 +90,7 @@ export async function diagnoseStageFailureWithJev(params: {
     historico_motivos: params.historicoMotivos.slice(-3).map((m) => m.slice(0, 2000)),
   };
 
-  const stateJson = JSON.stringify(stateObj).slice(0, 24000);
+  const stateJson = JSON.stringify(stateObj);
   const questions: Record<string, JevQuestionSpec> = {
     failure_cause: {
       type: "choice",
@@ -336,7 +336,7 @@ export async function verifyStageEvidenceWithJev(params: {
 
   let answers: Awaited<ReturnType<typeof askJevBatch>> = null;
   if (Object.keys(questions).length > 0) {
-    const stateJson = JSON.stringify({ reqs: reqsState }).slice(0, 24000);
+    const stateJson = JSON.stringify({ reqs: reqsState });
     answers = await askJevBatch({
       purpose: "evidence_check",
       state: stateJson,
@@ -550,7 +550,7 @@ export async function checkSkillInstallWithJev(
       skill_chunk: chunks[i],
       chunk_index: i + 1,
       total_chunks: chunks.length,
-    }).slice(0, 24000);
+    });
 
     const answers = await askJevBatch({
       purpose: "skill_install_guard",

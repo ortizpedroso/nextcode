@@ -206,7 +206,7 @@ async function evaluateCandidatesWithJev(params: {
 
   const answers = await askJevBatch({
     purpose: params.purpose,
-    state: JSON.stringify(stateObj).slice(0, 24000),
+    state: JSON.stringify(stateObj),
     questions,
     sessionId: params.sessionId,
     maxStateChars: 24000,

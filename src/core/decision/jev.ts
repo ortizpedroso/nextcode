@@ -243,11 +243,20 @@ export async function askJevBatch(params: {
   const started = Date.now();
   const maxChars = params.maxStateChars ?? 24000;
 
+  if (params.state.length > maxChars) {
+    TelemetryLogger.log({
+      sessionId: params.sessionId ?? undefined,
+      action: "JEV_STATE_TOO_LARGE",
+      details: { purpose: params.purpose, length: params.state.length, max: maxChars },
+    });
+    return null;
+  }
+
   try {
     const res = await postJev(
       {
         model: JEV_MODEL,
-        state: params.state.slice(0, maxChars),
+        state: params.state,
         questions: params.questions,
       },
       key,
@@ -307,11 +316,18 @@ export async function askJevBatch(params: {
         };
       } else if (qSpec.type === "score") {
         if (typeof rawAns.score !== "number") return null;
+        const probs = Array.isArray(rawAns.probabilities)
+          ? rawAns.probabilities
+          : rawAns.probabilities && typeof rawAns.probabilities === "object"
+            ? Object.entries(rawAns.probabilities)
+                .sort(([a], [b]) => Number(a) - Number(b))
+                .map(([, v]) => Number(v))
+            : [];
         parsedAnswers[qId] = {
           type: "score",
           score: rawAns.score,
           confidence: typeof rawAns.confidence === "number" ? rawAns.confidence : 0,
-          probabilities: Array.isArray(rawAns.probabilities) ? rawAns.probabilities : [],
+          probabilities: probs,
         };
       } else if (qSpec.type === "noul") {
         if (typeof rawAns.noul !== "number") return null;
