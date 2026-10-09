@@ -5,6 +5,44 @@
 
 ---
 
+## 09/10/2026 (20) — régua do bench pronta e provada; prompt P2
+
+**Feito:** `bench/aceite/` (régua: `rodar.mjs`, `api-tarefas.mjs` A1–A10, `tela-tarefas.mjs` T1–T3, `stub-next/`), escrita pelo auditor. Provada contra implementação de referência e 5 erros plantados; corrigida a cascata (ver `memory/medicoes.md`). Suíte do P3: 90/646 verde 2×.
+**Prompt:** `docs/prompts/P2-bench-real.md` (P2.1 contêiner `docker/aceite` sem rede; P2.2 `npm run bench` com variantes padrão/sem-jev/avaliador-deepseek, processo filho por execução; P2.3 1ª rodada; teto US$ 1,50).
+**Próximo passo:** Antigravity executa P2 → auditar (rodar 1 execução eu mesmo e comparar) → decidir com números: Jev vale? Nemotron × DeepSeek? → auditoria das skills.
+**Pendências do fundador:** OK para ligar a referência de página pública; Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
+## 09/10/2026 (19) — auditoria do P3 (aceito com ressalvas); controle do Nemotron
+
+**P3 (Antigravity):** `cbdb0a0` `3e93e8b` + relatório `848a615`.
+**Auditoria:** escopo — P3.2 mexeu em `evaluator-models.ts` fora da lista (desvio não declarado, mas necessário para compilar); 2 commits compilam isolados; suíte 2× no HEAD (ver abaixo). Prova plantada do Antigravity era fraca (código também sem REQ-002; sem controle). **Controle do auditor:** Nemotron aprova código correto 2/2 e reprova erro único 2/2, mesmo com relatório mentiroso (`memory/medicoes.md`). Etapa de tela do P2: Nemotron > 120 s → DeepSeek (prompt ~47k).
+**Veredito:** aceito com ressalvas (referência §3.2b).
+**Fundador (09/10):** passo a passo e testando; auditoria das skills ao fim das rodadas. Plano da auditoria na referência §5.2.
+
+**Próximo passo:** prompt P2 (bench real com testes de aceite escritos à mão; com × sem Jev; Nemotron × DeepSeek avaliando). Depois: auditoria das skills (inclui ligar a referência de página pública e enxugar o avaliador de tela).
+**Pendências do fundador:** OK para "ligar" a referência de página pública; ordem P2 → auditoria das skills; Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
+## 08/10/2026 (18) — P3 em andamento; auditoria das skills (referências)
+
+**Antigravity (P3, em andamento):** `cbdb0a0` P3.1 (cadeia do avaliador pelo FreeLLMAPI) e `3e93e8b` P3.2 (ligado no executor) commitados; falta P3.3 (divergência plantada + P1/P2 reais) e relatório. **Não auditado.**
+
+**Pergunta do fundador:** links de repositório e "harness" nas skills — quando/como são acionados?
+**Resposta (conferida no código, `skill-runtime.ts`):** nada é baixado em tempo de execução. `<!-- Origem: ... -->` = comentário de procedência/licença; `referencias_locais_fixas` = cópias locais em `skills/avaliador-frontend/references/` lidas do disco e coladas no prompt só na avaliação de etapas de tela; `herda_de` cola o avaliador geral; "harness" é só palavra; `C:\projetos\_ext_sources_nextcode` (clones originais) nunca é lido pelo NextCode.
+**Achados (propostos como pacote S1, aguardando OK do fundador):**
+1. `avaliador-frontend` declara ferramenta `playwright_cli_readonly` que **não existe** no código → risco de o modelo afirmar inspeção de tela que não fez.
+2. Referência `taste-skill` nunca entra (ninguém passa `isPublicPage`).
+3. Prompt do avaliador de tela ~47 mil caracteres (skill geral 21k + tela 33k + refs 14k) — medir impacto no Nemotron no P3.
+
+**Onde parou:** esperando o relatório do P3.
+**Próximo passo:** auditar P3 (refazer divergência plantada; conferir `servedBy` do avaliador) → registrar achados das skills na referência → S1 (se aprovado) → P2 (bench).
+**Pendências do fundador:** aprovar S1; Claude no FreeLLMAPI quando houver crédito; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 08/10/2026 (17) — auditoria do P1 (aceito com ressalva) e prompt P3
 
 **P1 (Antigravity):** `4dd6733` `e1acc35` `6639232` `c8b63a6` + relatório `6925847`.

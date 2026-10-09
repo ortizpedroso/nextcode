@@ -66,3 +66,27 @@ Qualidade como avaliador: **não medida** (P3.3 faz divergência plantada).
 ## P1 real — rodada do auditor (08/10 noite, após o pacote P1)
 ENTREGUE, 195 s, tsc 0, 2/2 etapas na 1ª. LLM_COST US$ 0,0499 = executor 0,0260 + avaliador 0,0237 + **jev 0,00026** (Jev agora entra na conta).
 **1ª divergência real do `JEV_EVIDENCE_CHECK` (sombra):** etapa `lib/tarefas.ts` (executor `deepseek-flash`): evidência citada pelo executor para REQ-001 → Jev `unrelated` 0,81; evidência do avaliador → `supports` 0,94. Leitura: código certo, citação do executor errada (relatório vago). Mantém o modo sombra; reforça o valor da checagem.
+
+## P3 — avaliador Nemotron pelo FreeLLMAPI (09/10)
+**Controle do auditor (mesmo brief, REQ-001 = 201, REQ-002 = salvar em memória):**
+| caso | rodada | servedBy | veredito | REQs |
+|---|---|---|---|---|
+| código correto | 1 | ollama/nemotron-3-ultra | APPROVED | 001 implementado, 002 implementado |
+| código correto | 2 | ollama/nemotron-3-ultra | APPROVED | 001 implementado, 002 implementado |
+| só REQ-001 errado (200), relatório mentindo "201" | 1 | ollama/nemotron-3-ultra | REJECTED | 001 ausente, 002 implementado |
+| só REQ-001 errado | 2 | ollama/nemotron-3-ultra | REJECTED | 001 parcial, 002 implementado |
+Leitura: discrimina certo × errado e não se deixa levar pelo relatório. Amostra pequena (4).
+**P1/P2 reais (Antigravity):** ambos ENTREGUE, tsc 0; P1 US$ 0,0349; P2 US$ 0,0624. Avaliador: Nemotron em 4 de 5 etapas; **etapa de tela do P2 → timeout do Nemotron (>120 s) → DeepSeek**. Prompt do avaliador de tela ~47 mil caracteres (skill + referências) — provável causa.
+Custo do avaliador caiu (P2: US$ 0,0121 vs 0,0237 no P1 do P1 com DeepSeek).
+
+## Prova da régua do bench (`bench/aceite/`, 09/10, auditor)
+Implementação de referência (escrita pelo auditor) e variantes com 1 erro cada, rodadas no host (código do auditor, não gerado por IA):
+| variante | P1 | P2 | testes que caíram |
+|---|---|---|---|
+| referência correta | 10/10 | 13/13 | — |
+| POST devolve 200 em vez de 201 | 9/10 | 12/13 | A3 |
+| 404 trocado por 200 (PATCH e DELETE) | 8/10 | 11/13 | A8, A10 |
+| aceita título vazio | 8/10 | 11/13 | A4, A5 |
+| tela sem `use client` | 10/10 | 12/13 | T1 |
+| `concluida` não inicia false | 9/10 | 12/13 | A3 |
+1ª versão tinha cascata (erro no A3 derrubava A6/A7/A9); corrigido — cada teste cria sua própria tarefa.
