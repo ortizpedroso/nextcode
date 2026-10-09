@@ -25,7 +25,7 @@ describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
       provider: null,
       model: null,
       independent: false,
-      failures: ["gemini: sem chave", "claude: sem chave", "deepseek: sem chave"],
+      failures: ["nvidia: sem rota", "deepseek: sem rota", "claude: sem rota"],
     });
 
     const router = new SmartRouter();

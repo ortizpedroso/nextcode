@@ -458,12 +458,8 @@ export function makeBlindAuditDispatchFn(
   sessionId?: string
 ): LLMDispatchFn {
   return async (messages) => {
-    // Avaliador forte e pago (Gemini → Claude → DeepSeek). Só cai na rota gratuita se nenhum responder.
-    const strong = await dispatchStrongEvaluator(messages, {
-      geminiKey: setting?.geminiKey,
-      claudeKey: (setting as { claudeKey?: string | null } | null)?.claudeKey,
-      deepseekKey: (setting as { deepseekKey?: string | null } | null)?.deepseekKey,
-    }).catch(() => null);
+    // Avaliador forte e pago (Nemotron → DeepSeek → Claude). Só cai na rota gratuita se nenhum responder.
+    const strong = await dispatchStrongEvaluator(messages).catch(() => null);
     const paidOnly = isPaidOnlyRouting(loadOrchestrationPolicy());
     TelemetryLogger.log({
       sessionId,

@@ -42,15 +42,9 @@ export function resetEvaluatorState(): void {
   skippedUntil.clear();
 }
 
-export interface EvaluatorKeys {
-  geminiKey?: string | null;
-  claudeKey?: string | null;
-  deepseekKey?: string | null;
-}
-
 export async function dispatchStrongEvaluator(
   messages: ChatMessage[],
-  opts: { timeoutMs?: number; executorFamily?: EvaluatorProvider; loader?: () => Promise<GatewayConfig[]> } & EvaluatorKeys = {}
+  opts: { timeoutMs?: number; executorFamily?: EvaluatorProvider; loader?: () => Promise<GatewayConfig[]> } = {}
 ): Promise<EvaluatorCallResult> {
   const executorFamily = opts.executorFamily ?? "deepseek";
   const failures: string[] = [];
