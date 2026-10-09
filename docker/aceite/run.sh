@@ -2,11 +2,18 @@
 set -eu
 
 if [ $# -lt 1 ]; then
-  echo "Uso: run.sh <p1|p2>" >&2
+  echo "Uso: run.sh <p1|p2|p3|p4>" >&2
   exit 2
 fi
 
 PROJETO="$1"
+case "$PROJETO" in
+  p1|p2|p3|p4) ;;
+  *)
+    echo "Uso: run.sh <p1|p2|p3|p4>" >&2
+    exit 2
+    ;;
+esac
 
 # Copiar /project para /tmp/w com tar excluindo node_modules, .next, .git
 mkdir -p /tmp/w

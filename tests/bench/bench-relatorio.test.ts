@@ -128,4 +128,179 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
     expect(md).toContain("⚠️ BLOQUEADO");
     expect(md).toContain("ENTREGUE");
   });
+
+  it("coluna Reprovados lista os ids", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p3",
+        variante: "padrao",
+        repeticao: 1,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 100.0,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: {
+          aprovados: 10,
+          total: 12,
+          reprovadosIds: ["L8", "L12"],
+          resumoRaw: 'RESUMO {"projeto":"p3","total":12,"aprovados":10,"reprovados":2}',
+        },
+        custo: {
+          executor: 0.01,
+          avaliador: 0.01,
+          jev: 0,
+          total: 0.02,
+        },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 0,
+      },
+      {
+        projeto: "p3",
+        variante: "padrao",
+        repeticao: 2,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 100.0,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: {
+          aprovados: 12,
+          total: 12,
+          reprovadosIds: [],
+          resumoRaw: 'RESUMO {"projeto":"p3","total":12,"aprovados":12,"reprovados":0}',
+        },
+        custo: {
+          executor: 0.01,
+          avaliador: 0.01,
+          jev: 0,
+          total: 0.02,
+        },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 0,
+      },
+    ];
+
+    const medias = calcularMedias(mock);
+    const md = formatarRelatorioMarkdown(mock, medias, "2026-10-09-0700");
+    expect(md).toContain("| Reprovados |");
+    expect(md).toContain("L8, L12");
+    expect(md).toContain("—");
+  });
+
+  it("execução ERRO_BENCH aparece marcada e conta 0 no aceite", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p4",
+        variante: "padrao",
+        repeticao: 1,
+        faseFinal: "ERRO_BENCH",
+        tempoSeg: 0,
+        etapas: 0,
+        aprovadasNa1a: 0,
+        tentativasTotais: 0,
+        tscProjeto: 1,
+        uiCheck: "ausente",
+        aceite: {
+          aprovados: 0,
+          total: 12,
+          reprovadosIds: [],
+          resumoRaw: "ERRO_BENCH: subprocess crash",
+        },
+        custo: {
+          executor: 0,
+          avaliador: 0,
+          jev: 0,
+          total: 0.015,
+        },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 0,
+        erroBench: "subprocess crash",
+      },
+    ];
+
+    const medias = calcularMedias(mock);
+    const md = formatarRelatorioMarkdown(mock, medias, "2026-10-09-0700");
+    expect(md).toContain("⚠️ ERRO_BENCH");
+    expect(md).toContain("0/12");
+    expect(medias[0].aceiteMediaPct).toBe(0);
+    expect(medias[0].faseFinalEntreguePct).toBe(0);
+  });
+
+  it("médias separam p3 e p4", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p3",
+        variante: "padrao",
+        repeticao: 1,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 100.0,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: {
+          aprovados: 12,
+          total: 12,
+          reprovadosIds: [],
+        },
+        custo: {
+          executor: 0.01,
+          avaliador: 0.01,
+          jev: 0,
+          total: 0.02,
+        },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 0,
+      },
+      {
+        projeto: "p4",
+        variante: "padrao",
+        repeticao: 1,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 120.0,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: {
+          aprovados: 10,
+          total: 12,
+          reprovadosIds: ["C1", "C2"],
+        },
+        custo: {
+          executor: 0.01,
+          avaliador: 0.01,
+          jev: 0,
+          total: 0.02,
+        },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 0,
+      },
+    ];
+
+    const medias = calcularMedias(mock);
+    const mP3 = medias.find((m) => m.projeto === "p3");
+    const mP4 = medias.find((m) => m.projeto === "p4");
+    expect(mP3).toBeDefined();
+    expect(mP4).toBeDefined();
+    expect(mP3?.aceiteMediaPct).toBe(100);
+    expect(mP4?.aceiteMediaPct).toBeCloseTo((10 / 12) * 100, 1);
+  });
 });

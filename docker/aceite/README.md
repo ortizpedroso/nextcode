@@ -19,4 +19,4 @@ docker run --rm --network none --memory=1g --cpus=1 --pids-limit=256 --cap-drop=
 Onde:
 - `<projeto>`: caminho absoluto para a pasta do projeto gerado (montado em `/project:ro`).
 - `<repo>/bench/aceite`: caminho absoluto para o diretório dos testes de aceite (montado em `/aceite:ro`).
-- `p1` ou `p2`: identificador do projeto/cenário a testar.
+- `p1`, `p2`, `p3` ou `p4`: identificador do projeto/cenário a testar.

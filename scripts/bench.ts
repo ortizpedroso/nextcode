@@ -3,8 +3,26 @@ import * as os from "os";
 import * as path from "path";
 import { execSync, spawnSync } from "child_process";
 
-export type ProjetoBench = "p1" | "p2";
+import { P3_SPEC, P4_SPEC } from "../bench/specs/p3-p4";
+
+export type ProjetoBench = "p1" | "p2" | "p3" | "p4";
 export type VarianteBench = "padrao" | "sem-jev" | "avaliador-deepseek";
+
+export const PROJETOS_VALIDOS: ProjetoBench[] = ["p1", "p2", "p3", "p4"];
+export const TOTAL_TESTES_POR_PROJETO: Record<ProjetoBench, number> = {
+  p1: 10,
+  p2: 13,
+  p3: 12,
+  p4: 12,
+};
+
+export function sanitizarSegredos(texto: string): string {
+  return texto
+    .replace(/typesafe-[a-zA-Z0-9_-]+/g, "typesafe-***")
+    .replace(/sk-[a-zA-Z0-9_-]+/g, "sk-***")
+    .replace(/AIza[a-zA-Z0-9_-]+/g, "AIza***")
+    .replace(/(?:key|token|secret|password|authorization)=([^\s&]+)/gi, "$1=***");
+}
 
 export interface MetricasExecucao {
   projeto: ProjetoBench;
@@ -33,6 +51,7 @@ export interface MetricasExecucao {
   timeoutsAvaliador: number;
   divergenciasEvidencia: number;
   jevChamadas: number;
+  erroBench?: string;
 }
 
 export interface MediasVariante {
@@ -119,25 +138,24 @@ export function formatarRelatorioMarkdown(
   linhas.push("## Tabela de Execuções");
   linhas.push("");
   linhas.push(
-    "| Projeto | Variante | Rep | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
+    "| Projeto | Variante | Rep | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
   );
   linhas.push(
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   );
 
   for (const m of metricas) {
     const faseDisplay = m.faseFinal === "ENTREGUE" ? "ENTREGUE" : `⚠️ ${m.faseFinal}`;
     const tscDisplay = m.tscProjeto === 0 ? "0 (ok)" : `erro (${m.tscProjeto})`;
-    const aceiteDisplay = `${m.aceite.aprovados}/${m.aceite.total}${
-      m.aceite.reprovadosIds.length > 0 ? ` [falhas: ${m.aceite.reprovadosIds.join(",")}]` : ""
-    }`;
+    const aceiteDisplay = `${m.aceite.aprovados}/${m.aceite.total}`;
+    const reprovadosDisplay = m.aceite.reprovadosIds.length > 0 ? m.aceite.reprovadosIds.join(", ") : "—";
     const custosDet = `${m.custo.executor.toFixed(4)} / ${m.custo.avaliador.toFixed(4)} / ${m.custo.jev.toFixed(4)}`;
     const modelsStr = Array.from(new Set(m.avaliadorServedBy)).join(", ") || "-";
 
     linhas.push(
       `| ${m.projeto.toUpperCase()} | ${m.variante} | ${m.repeticao} | ${faseDisplay} | ${m.tempoSeg.toFixed(
         1
-      )} | ${m.etapas} | ${m.aprovadasNa1a} | ${m.tentativasTotais} | ${tscDisplay} | ${m.uiCheck} | ${aceiteDisplay} | ${m.custo.total.toFixed(
+      )} | ${m.etapas} | ${m.aprovadasNa1a} | ${m.tentativasTotais} | ${tscDisplay} | ${m.uiCheck} | ${aceiteDisplay} | ${reprovadosDisplay} | ${m.custo.total.toFixed(
         4
       )} | ${custosDet} | ${m.jevChamadas} | ${modelsStr} |`
     );
@@ -171,9 +189,13 @@ export function formatarRelatorioMarkdown(
   linhas.push("## Detalhe Bruto dos Aceites");
   linhas.push("");
   for (const m of metricas) {
-    linhas.push(`### ${m.projeto.toUpperCase()} - ${m.variante} (Rep ${m.repeticao})`);
+    linhas.push(`### ${m.projeto.toUpperCase()} - ${m.variante} (Rep ${m.repeticao})${m.erroBench ? " [ERRO_BENCH]" : ""}`);
     linhas.push("```text");
-    linhas.push(m.aceite.resumoRaw || `RESUMO {"projeto":"${m.projeto}","aprovados":${m.aceite.aprovados},"total":${m.aceite.total}}`);
+    if (m.erroBench) {
+      linhas.push(`ERRO_BENCH:\n${m.erroBench}`);
+    } else {
+      linhas.push(m.aceite.resumoRaw || `RESUMO {"projeto":"${m.projeto}","aprovados":${m.aceite.aprovados},"total":${m.aceite.total}}`);
+    }
     linhas.push("```");
     linhas.push("");
   }
@@ -204,7 +226,13 @@ async function rodarUmaExecucao(
 ): Promise<MetricasExecucao> {
   const repoRoot = path.resolve(process.cwd());
   const srcDb = path.join(repoRoot, "prisma", "dev.db");
-  const runRoot = fs.mkdtempSync(path.join(os.tmpdir(), `nc-bench-${projeto}-${variante}-${repeticao}-`));
+  const runRoot = path.join(os.tmpdir(), `nc-bench-${projeto}-${variante}-${repeticao}`);
+  if (fs.existsSync(runRoot)) {
+    try {
+      fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {}
+  }
+  fs.mkdirSync(runRoot, { recursive: true });
   const copyDb = path.join(runRoot, "dev-copy.db");
   const projectDir = path.join(runRoot, `project-${projeto}`);
   fs.mkdirSync(projectDir, { recursive: true });
@@ -384,7 +412,21 @@ async function rodarUmaExecucao(
     ],
   });
 
-  const targetSpec = projeto === "p2" ? p2Spec : p1Spec;
+  let targetSpec = "";
+  if (projeto === "p1") {
+    targetSpec = p1Spec;
+  } else if (projeto === "p2") {
+    targetSpec = p2Spec;
+  } else if (projeto === "p3") {
+    targetSpec = renderCanonicalSpecDocument(P3_SPEC);
+  } else if (projeto === "p4") {
+    targetSpec = renderCanonicalSpecDocument(P4_SPEC);
+  }
+
+  if (projeto === "p4") {
+    const p4Base = path.join(repoRoot, "bench", "projetos", "p4-base");
+    fs.cpSync(p4Base, projectDir, { recursive: true });
+  }
 
   const project = await prisma.project.create({
     data: {
@@ -494,7 +536,8 @@ async function rodarUmaExecucao(
 
   // Rodar contêiner Docker de aceite
   const aceiteDir = path.join(repoRoot, "bench", "aceite");
-  const dockerCmd = `docker run --rm --network none --memory=1g --cpus=1 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges -v "${projectDir.replace(/\\/g, "/")}:/project:ro" -v "${aceiteDir.replace(/\\/g, "/")}:/aceite:ro" nextcode-aceite:1 ${projeto}`;
+  const runShPath = path.join(repoRoot, "docker", "aceite", "run.sh");
+  const dockerCmd = `docker run --rm --network none --memory=1g --cpus=1 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges -v "${projectDir.replace(/\\/g, "/")}:/project:ro" -v "${aceiteDir.replace(/\\/g, "/")}:/aceite:ro" -v "${runShPath.replace(/\\/g, "/")}:/opt/aceite/run.sh:ro" nextcode-aceite:1 ${projeto}`;
 
   let dockerOut = "";
   try {
@@ -563,6 +606,28 @@ async function rodarUmaExecucao(
 }
 
 // ---------------------------------------------------------------------------
+async function lerCustoDbTemporario(dbPath: string): Promise<number> {
+  let custo = 0;
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const tempPrisma = new PrismaClient({
+      datasources: { db: { url: `file:${dbPath.replace(/\\/g, "/")}` } },
+    });
+    const logs = await tempPrisma.telemetryLog.findMany({
+      where: { action: "LLM_COST" },
+    });
+    for (const row of logs) {
+      try {
+        const parsed = JSON.parse(row.details || "{}");
+        custo += Number(parsed.usd) || 0;
+      } catch {}
+    }
+    await tempPrisma.$disconnect().catch(() => {});
+  } catch {}
+  return custo;
+}
+
+// ---------------------------------------------------------------------------
 // Main CLI
 // ---------------------------------------------------------------------------
 async function main() {
@@ -572,6 +637,10 @@ async function main() {
   const umaIdx = args.indexOf("--uma");
   if (umaIdx !== -1) {
     const proj = args[umaIdx + 1] as ProjetoBench;
+    if (!PROJETOS_VALIDOS.includes(proj)) {
+      console.error(`Projeto inválido: "${proj}". Valores permitidos: ${PROJETOS_VALIDOS.join(", ")}`);
+      process.exit(2);
+    }
     const vari = args[umaIdx + 2] as VarianteBench;
     const rep = Number(args[umaIdx + 3] || 1);
     const metrica = await rodarUmaExecucao(proj, vari, rep);
@@ -588,7 +657,14 @@ async function main() {
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--projetos" && args[i + 1]) {
-      projetos = args[i + 1].split(",").map((s) => s.trim().toLowerCase()) as ProjetoBench[];
+      const rawProjetos = args[i + 1].split(",").map((s) => s.trim().toLowerCase());
+      for (const p of rawProjetos) {
+        if (!PROJETOS_VALIDOS.includes(p as ProjetoBench)) {
+          console.error(`Projeto inválido: "${p}". Valores permitidos: ${PROJETOS_VALIDOS.join(", ")}`);
+          process.exit(2);
+        }
+      }
+      projetos = rawProjetos as ProjetoBench[];
       i++;
     } else if (args[i] === "--variantes" && args[i + 1]) {
       variantes = args[i + 1].split(",").map((s) => s.trim().toLowerCase()) as VarianteBench[];
@@ -610,26 +686,73 @@ async function main() {
         console.log(`\n>>> Executando: Projeto=${proj.toUpperCase()}, Variante=${vari}, Rep=${rep} <<<`);
 
         const spawnRes = spawnSync(
-          "npx",
-          ["tsx", "scripts/bench.ts", "--uma", proj, vari, String(rep)],
+          process.execPath,
+          [path.resolve("node_modules/tsx/dist/cli.mjs"), "scripts/bench.ts", "--uma", proj, vari, String(rep)],
           {
             cwd: process.cwd(),
             encoding: "utf8",
             env: { ...process.env },
             maxBuffer: 50 * 1024 * 1024,
-            shell: true,
           }
         );
 
-        if (spawnRes.status !== 0) {
-          console.error(`Falha no subprocesso: ${spawnRes.stderr || spawnRes.stdout}`);
-          throw new Error(`Subprocesso falhou para ${proj} ${vari} ${rep}`);
-        }
-
         const out = spawnRes.stdout || "";
         const m = out.match(/===RESULTADO_JSON_START===([\s\S]*?)===RESULTADO_JSON_END===/);
-        if (!m) {
-          throw new Error(`Não encontrou JSON no subprocesso: ${out.slice(-500)}`);
+
+        if (spawnRes.status !== 0 || !m) {
+          console.error(`Falha no subprocesso para ${proj} ${vari} ${rep} (status=${spawnRes.status})`);
+          const stderrCombined = `${spawnRes.stderr || ""}\n${spawnRes.stdout || ""}`.trim();
+          const ultimas20Stderr = sanitizarSegredos(
+            stderrCombined.split(/\r?\n/).filter(Boolean).slice(-20).join("\n")
+          );
+
+          const runRoot = path.join(os.tmpdir(), `nc-bench-${proj}-${vari}-${rep}`);
+          const copyDb = path.join(runRoot, "dev-copy.db");
+          let custoDb = 0;
+          if (fs.existsSync(copyDb)) {
+            custoDb = await lerCustoDbTemporario(copyDb);
+            try {
+              fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+            } catch {}
+          }
+
+          const totalEsperado = TOTAL_TESTES_POR_PROJETO[proj];
+          const metricaErro: MetricasExecucao = {
+            projeto: proj,
+            variante: vari,
+            repeticao: rep,
+            faseFinal: "ERRO_BENCH",
+            tempoSeg: 0,
+            etapas: 0,
+            aprovadasNa1a: 0,
+            tentativasTotais: 0,
+            tscProjeto: 1,
+            uiCheck: "ausente",
+            aceite: {
+              aprovados: 0,
+              total: totalEsperado,
+              reprovadosIds: [],
+              resumoRaw: ultimas20Stderr ? `ERRO_BENCH:\n${ultimas20Stderr}` : "ERRO_BENCH",
+            },
+            custo: {
+              executor: 0,
+              avaliador: 0,
+              jev: 0,
+              total: custoDb,
+            },
+            avaliadorServedBy: [],
+            timeoutsAvaliador: 0,
+            divergenciasEvidencia: 0,
+            jevChamadas: 0,
+            erroBench: ultimas20Stderr,
+          };
+
+          metricas.push(metricaErro);
+          custoAcumulado += custoDb;
+
+          console.log(`Fim da iteração (ERRO_BENCH): Fase=ERRO_BENCH, Custo=US$ ${custoDb.toFixed(4)}, Aceite=0/${totalEsperado}`);
+          console.log(`Custo Acumulado Bench: US$ ${custoAcumulado.toFixed(4)}`);
+          continue;
         }
 
         const metrica: MetricasExecucao = JSON.parse(m[1].trim());
@@ -644,14 +767,14 @@ async function main() {
           console.error(`[TRAVA T-J] Custo de uma execução excedeu US$ 0,50: US$ ${metrica.custo.total.toFixed(4)}`);
           break;
         }
-        if (custoAcumulado > 1.50) {
-          console.error(`[TRAVA T-J] Custo acumulado do benchmark excedeu US$ 1,50: US$ ${custoAcumulado.toFixed(4)}`);
+        if (custoAcumulado > 2.00) {
+          console.error(`[TRAVA T-J] Custo acumulado do benchmark excedeu US$ 2,00: US$ ${custoAcumulado.toFixed(4)}`);
           break;
         }
       }
-      if (custoAcumulado > 1.50) break;
+      if (custoAcumulado > 2.00) break;
     }
-    if (custoAcumulado > 1.50) break;
+    if (custoAcumulado > 2.00) break;
   }
 
   const medias = calcularMedias(metricas);
