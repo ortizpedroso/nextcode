@@ -1,0 +1,670 @@
+{
+  "benchmark_timestamp": "2026-10-09-1358",
+  "medias": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 376.43333333333334,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.09039432399999998,
+      "custoExecutorMedio": 0.08105058133333333,
+      "custoAvaliadorMedio": 0.009005978666666668,
+      "custoJevMedio": 0.000337764,
+      "jevChamadasMedia": 3
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 330.2,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.07021971733333333,
+      "custoExecutorMedio": 0.07021971733333333,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    },
+    {
+      "projeto": "p3",
+      "variante": "avaliador-deepseek",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 279.3,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.10398128666666666,
+      "custoExecutorMedio": 0.07472871999999998,
+      "custoAvaliadorMedio": 0.02891967466666667,
+      "custoJevMedio": 0.000332892,
+      "jevChamadasMedia": 3
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 18.833333333333332,
+      "aprovadasNa1aMedia": 0,
+      "tentativasTotaisMedia": 3,
+      "tscZeroErrosPct": 0,
+      "aceiteMediaPct": 75,
+      "custoTotalMedio": 0.000062538,
+      "custoExecutorMedio": 0,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.000062538,
+      "jevChamadasMedia": 1
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 17.166666666666668,
+      "aprovadasNa1aMedia": 0,
+      "tentativasTotaisMedia": 3,
+      "tscZeroErrosPct": 0,
+      "aceiteMediaPct": 75,
+      "custoTotalMedio": 0,
+      "custoExecutorMedio": 0,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    },
+    {
+      "projeto": "p4",
+      "variante": "avaliador-deepseek",
+      "execucoes": 3,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 16.599999999999998,
+      "aprovadasNa1aMedia": 0,
+      "tentativasTotaisMedia": 3,
+      "tscZeroErrosPct": 0,
+      "aceiteMediaPct": 75,
+      "custoTotalMedio": 0.000062538,
+      "custoExecutorMedio": 0,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.000062538,
+      "jevChamadasMedia": 1
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 300.2,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.06809043999999999,
+        "avaliador": 0,
+        "jev": 0.000342174,
+        "total": 0.06843261399999999
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 264.4,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.05392860000000001,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.05392860000000001
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p3",
+      "variante": "avaliador-deepseek",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 305.6,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.067614888,
+        "avaliador": 0.030424856,
+        "jev": 0.00035557200000000007,
+        "total": 0.098395316
+      },
+      "avaliadorServedBy": [
+        "custom/deepseek-v4-pro",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 29.5,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 24.5,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p4",
+      "variante": "avaliador-deepseek",
+      "repeticao": 1,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 25.8,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 398.2,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.081254976,
+        "avaliador": 0,
+        "jev": 0.00035267400000000003,
+        "total": 0.08160765
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 468.8,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.07166077600000001,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.07166077600000001
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p3",
+      "variante": "avaliador-deepseek",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 299.3,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.08235251199999997,
+        "avaliador": 0.034268696,
+        "jev": 0.00028866600000000003,
+        "total": 0.11690987399999998
+      },
+      "avaliadorServedBy": [
+        "custom/deepseek-v4-pro",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 12.9,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 10.3,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p4",
+      "variante": "avaliador-deepseek",
+      "repeticao": 2,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 11.7,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 3,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 430.9,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.093806328,
+        "avaliador": 0.027017936000000003,
+        "jev": 0.00031844400000000003,
+        "total": 0.12114270799999999
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 1,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "repeticao": 3,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 257.4,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.08506977599999999,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.08506977599999999
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p3",
+      "variante": "avaliador-deepseek",
+      "repeticao": 3,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 233,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.07421876,
+        "avaliador": 0.022065472000000003,
+        "jev": 0.000354438,
+        "total": 0.09663867
+      },
+      "avaliadorServedBy": [
+        "custom/deepseek-v4-pro",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 3,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 14.1,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "repeticao": 3,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 16.7,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0
+    },
+    {
+      "projeto": "p4",
+      "variante": "avaliador-deepseek",
+      "repeticao": 3,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 12.3,
+      "etapas": 2,
+      "aprovadasNa1a": 0,
+      "tentativasTotais": 3,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 9,
+        "total": 12,
+        "reprovadosIds": [
+          "A4",
+          "A5",
+          "A8"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":9,\"reprovados\":3}"
+      },
+      "custo": {
+        "executor": 0,
+        "avaliador": 0,
+        "jev": 0.000062538,
+        "total": 0.000062538
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1
+    }
+  ]
+}
