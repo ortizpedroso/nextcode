@@ -161,6 +161,7 @@ para uma divisão feita por código. É a maior distância entre o pensado e o r
 | **P1** — núcleo do Jev: custo no `LLM_COST`, nova tentativa 429/529, alerta 422, estado nunca cortado, score em objeto, `jev_limiares` lido do YAML | `4dd6733` `e1acc35` `6639232` `c8b63a6` `6925847` | **aceito com ressalva**: escopo ok, 4 commits compilam isolados, suíte 89/638 verde 2× (auditor), P1 real refeito pelo auditor = ENTREGUE com custo do Jev na conta | **relatório trouxe fase `CONCLUIDO` (inexistente)** — número escrito de memória; criada a trava T-L (relatório só com saída bruta) |
 | **P3** — avaliador pelo FreeLLMAPI: Nemotron → DeepSeek pago → Claude, prefixos por item | `cbdb0a0` `3e93e8b` `848a615` | **aceito com ressalvas**: compila isolado, suíte verde 2× (auditor); controle do auditor: Nemotron aprova correto 2/2 e reprova erro único 2/2; P1/P2 ENTREGUE | (1) prova plantada do Antigravity era fraca (REQ-002 também ausente; sem controle) — refeita pelo auditor; (2) desvio não declarado: `evaluator-models.ts` mexido no P3.2 (fora da lista) — `EvaluatorKeys` mantido no P3.1 e removido no P3.2 para compilar; tecnicamente correto; (3) etapa de tela: Nemotron passou de 120 s → DeepSeek (prompt ~47k) |
 | **P2** — bench real: contêiner `docker/aceite` sem rede, `npm run bench` com variantes, 1ª rodada | `a559364` `53b62ae` `925ba54` `74d1e9a` | **aceito com ressalva grave de conduta**: código ok (compila isolado, suíte 91/649 verde 2×, `--network none`, régua intocada); execução do auditor reproduziu ENTREGUE 10/10 | **`git reset HEAD~1` usado (proibido, T-E) e relatório declarou "Desvios: Nenhum" / "T-E cumprida"** — 2º relatório infiel; `spawn` com `shell: true` (aviso do Node; argumentos fixos, risco baixo) |
+| **P2b** — bench P3 (login) e P4 (correção), `ERRO_BENCH`, coluna de reprovados, 3 repetições | `efd8c1c` `1337edc` `acb00d6` | **aceito com ressalva**: reflog limpo, escopo ok, tsc 0, suíte 91/652 verde 2× | **não parou nem investigou o P4 bloqueado** (T-J; já aparecia na prova do P2b.1) e o descreveu vagamente; causa real: erro do auditor na base do P4 (versões) — corrigido, P4 refeito → ENTREGUE 12/12 |
 
 ### 3.3 Adiados pela arquitetura
 Laya (D6) · Exa/SearXNG (D2) · cliente MCP e ponte única (D7, D10) · catálogo (D8) · BYOK no OmniRoute ·
@@ -368,6 +369,10 @@ bug plantado), e rodada com 3 repetições. Depois, auditoria das skills medida 
 `bench/specs/p3-p4.ts`, base com 3 bugs em `bench/projetos/p4-base/`; provas em `memory/medicoes.md`. Prompt
 `docs/prompts/P2b-bench-dificil.md`: bench aceita p3/p4, falha de execução vira `ERRO_BENCH` sem parar a rodada, coluna de
 reprovados, sem `shell: true`; rodada P3/P4 × 3 variantes × 3 repetições (teto US$ 2,00). Nova trava T-N (reflog conferido).
+
+**Resultado P2b (09/10):** P3 100% em todas as variantes (3 repetições); P4 inválido na rodada (erro do auditor na base, corrigido;
+execução refeita: 12/12). Teto persiste — o bench mede **custo e tempo**, ainda não separa **qualidade**. Indício: executor mais caro com
+Jev (3/3 pares), sem ganho de aceite. Próximo: rodar o P4 corrigido nas 3 variantes × 3 junto com a auditoria das skills.
 
 **Auditoria das skills (pedido do fundador, 09/10) — planejada para depois do P2 (bench):** para cada skill, verificar
 (1) promessa × código (ferramenta/permissão/checagem declarada existe e é aplicada); (2) entrada × o que chega (campos realmente preenchidos);

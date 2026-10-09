@@ -23,3 +23,7 @@ Prova da régua (09/10, auditor): implementação de referência correta → 10/
 Prova do P3/P4 (09/10, auditor): referência do P3 → 12/12; senha em texto → só L2; mensagens diferentes no login → só L8;
 logout que não invalida → só L12; token fixo → só L9; registro devolvendo o hash → só L3. Base do P4 com bugs → 9/12 (caem A4,
 A5, A8); correção certa → 12/12; correção que apaga o GET por id → 10/12 (caem X1, X2). P1/P2 sem mudança (ref 10/10, 13/13).
+Correção da base do P4 (09/10, auditor): o `package.json` fixava `@types/react@19.1.0`, em conflito com `@types/react-dom@^19`
+que a etapa de base acrescenta → `npm install` falhava e o P4 bloqueava antes do executor (rodada `2026-10-09-1358`, inválida para
+o P4). Agora a base usa as mesmas faixas e o mesmo `tsconfig` de `src/core/execution/project-base.ts`. Prova refeita: base 9/12,
+correção 12/12, correção que apaga o GET 10/12; execução real do P4 → ENTREGUE 12/12 (`2026-10-09-1827-auditor-p4.md`).

@@ -116,3 +116,16 @@ Implementação de referência (escrita pelo auditor) e variantes com 1 erro cad
 | P4 correção certa | 12/12 | — |
 | P4 correção que apaga o GET por id | 10/12 | X1, X2 |
 Lição: rodar a régua **de dentro da pasta do projeto** (fora dela o `@/` não resolve e tudo cai — inclusive a referência).
+
+## Bench P3/P4 — rodada `2026-10-09-1358` (Antigravity) + execução do auditor (09/10)
+**P4 da rodada é inválido:** as 9 execuções bloquearam na etapa de base (`npm install` ERESOLVE, `@types/react@19.1.0` × `@types/react-dom@^19`)
+por erro **do auditor** na base. Corrigido; execução do auditor: P4 padrão → ENTREGUE 12/12, US$ 0,0483.
+**P3 (login), 3 repetições, todas ENTREGUE 12/12:**
+| variante | custo por repetição (US$) | média | executor médio | avaliador médio | tempo médio |
+|---|---|---|---|---|---|
+| padrão | 0,0684 · 0,0816 · 0,1211 | 0,0904 | 0,0811 | 0,0090 (rep 3: Nemotron falhou → DeepSeek 0,027) | 376 s |
+| sem Jev | 0,0539 · 0,0717 · 0,0851 | 0,0702 | 0,0702 | 0 | 330 s |
+| avaliador DeepSeek | 0,0984 · 0,1169 · 0,0966 | 0,1040 | 0,0747 | 0,0289 | 279 s |
+**Leitura:** (1) teto de novo: 100% de aceite em tudo — o NextCode acerta login com segurança (hash, token, 401 igual, logout). (2) Executor
+**mais caro com Jev** nas 3 repetições pareadas (+0,014 · +0,010 · +0,009), mas as faixas se sobrepõem (n=3) → indício, não prova, de que a
+escolha de modelo do Jev não economiza. (3) Nemotron poupa ~US$ 0,03 de avaliador por execução; custa ~100 s a mais.

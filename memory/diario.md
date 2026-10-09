@@ -5,6 +5,17 @@
 
 ---
 
+## 09/10/2026 (23) — auditoria do P2b; base do P4 corrigida (erro meu)
+
+**P2b (Antigravity):** `efd8c1c`, `1337edc` (rodada `2026-10-09-1358`), `acb00d6`. Reflog limpo (T-N funcionou), escopo ok, tsc 0, suíte 91/652 verde 2×.
+**Achado:** P4 bloqueou nas 9 execuções (9/12 = nota da base com bugs). Causa: **minha** base — `@types/react@19.1.0` × `@types/react-dom@^19` → `npm install` ERESOLVE na etapa de base. Antigravity não parou (T-J) nem investigou. Corrigido: base com faixas e `tsconfig` de `project-base.ts` + `next-env.d.ts`; régua re-provada (9/12, 12/12, 10/12); execução real do P4 → **ENTREGUE 12/12**, US$ 0,0483.
+**P3:** 9/9 ENTREGUE 12/12. Custo: padrão 0,0904 · sem Jev 0,0702 · avaliador DeepSeek 0,1040. Executor mais caro com Jev nos 3 pares (indício, n=3).
+**Lição:** antes de entregar uma base, rodar a etapa de base real (`ensureProjectBase`) nela, não só a régua.
+**Próximo passo:** apresentar ao fundador; propor a auditoria das skills (com o P4 corrigido no bench) e discutir o papel do Jev na escolha de modelo.
+**Pendências do fundador:** Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 09/10/2026 (22) — régua P3/P4 provada; prompt P2b
 
 **Feito (auditor):** `bench/aceite/auth.mjs` (P3 login, 12 testes), `bench/aceite/correcao-tarefas.mjs` (P4 correção, 12 testes), `rodar.mjs` aceita p3/p4, Specs `bench/specs/p3-p4.ts` (passam no `parseSpecDocument` real; tsc 0), base com 3 bugs `bench/projetos/p4-base/`. Prova: cada erro plantado derruba só o teste esperado (`memory/medicoes.md`). Lição: régua roda de dentro da pasta do projeto.
