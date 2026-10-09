@@ -1,0 +1,687 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { execSync, spawnSync } from "child_process";
+
+export type ProjetoBench = "p1" | "p2";
+export type VarianteBench = "padrao" | "sem-jev" | "avaliador-deepseek";
+
+export interface MetricasExecucao {
+  projeto: ProjetoBench;
+  variante: VarianteBench;
+  repeticao: number;
+  faseFinal: string;
+  tempoSeg: number;
+  etapas: number;
+  aprovadasNa1a: number;
+  tentativasTotais: number;
+  tscProjeto: number;
+  uiCheck: "UI_CHECK_PASSED" | "UI_CHECK_FAILED" | "ausente";
+  aceite: {
+    aprovados: number;
+    total: number;
+    reprovadosIds: string[];
+    resumoRaw?: string;
+  };
+  custo: {
+    executor: number;
+    avaliador: number;
+    jev: number;
+    total: number;
+  };
+  avaliadorServedBy: string[];
+  timeoutsAvaliador: number;
+  divergenciasEvidencia: number;
+  jevChamadas: number;
+}
+
+export interface MediasVariante {
+  projeto: ProjetoBench;
+  variante: VarianteBench;
+  execucoes: number;
+  faseFinalEntreguePct: number;
+  tempoMedioSeg: number;
+  aprovadasNa1aMedia: number;
+  tentativasTotaisMedia: number;
+  tscZeroErrosPct: number;
+  aceiteMediaPct: number;
+  custoTotalMedio: number;
+  custoExecutorMedio: number;
+  custoAvaliadorMedio: number;
+  custoJevMedio: number;
+  jevChamadasMedia: number;
+}
+
+export function calcularMedias(metricas: MetricasExecucao[]): MediasVariante[] {
+  const grupos = new Map<string, MetricasExecucao[]>();
+  for (const m of metricas) {
+    const key = `${m.projeto}::${m.variante}`;
+    const list = grupos.get(key) || [];
+    list.push(m);
+    grupos.set(key, list);
+  }
+
+  const res: MediasVariante[] = [];
+  for (const [key, lista] of grupos.entries()) {
+    const [projeto, variante] = key.split("::") as [ProjetoBench, VarianteBench];
+    const n = lista.length;
+    if (n === 0) continue;
+
+    const entregues = lista.filter((x) => x.faseFinal === "ENTREGUE").length;
+    const tscOk = lista.filter((x) => x.tscProjeto === 0).length;
+    const tempoTotal = lista.reduce((acc, x) => acc + x.tempoSeg, 0);
+    const aprov1aTotal = lista.reduce((acc, x) => acc + x.aprovadasNa1a, 0);
+    const tentTotal = lista.reduce((acc, x) => acc + x.tentativasTotais, 0);
+    const custoTot = lista.reduce((acc, x) => acc + x.custo.total, 0);
+    const custoExec = lista.reduce((acc, x) => acc + x.custo.executor, 0);
+    const custoEval = lista.reduce((acc, x) => acc + x.custo.avaliador, 0);
+    const custoJev = lista.reduce((acc, x) => acc + x.custo.jev, 0);
+    const jevChamadas = lista.reduce((acc, x) => acc + x.jevChamadas, 0);
+
+    const aceitePctSoma = lista.reduce((acc, x) => {
+      const p = x.aceite.total > 0 ? (x.aceite.aprovados / x.aceite.total) * 100 : 0;
+      return acc + p;
+    }, 0);
+
+    res.push({
+      projeto,
+      variante,
+      execucoes: n,
+      faseFinalEntreguePct: (entregues / n) * 100,
+      tempoMedioSeg: tempoTotal / n,
+      aprovadasNa1aMedia: aprov1aTotal / n,
+      tentativasTotaisMedia: tentTotal / n,
+      tscZeroErrosPct: (tscOk / n) * 100,
+      aceiteMediaPct: aceitePctSoma / n,
+      custoTotalMedio: custoTot / n,
+      custoExecutorMedio: custoExec / n,
+      custoAvaliadorMedio: custoEval / n,
+      custoJevMedio: custoJev / n,
+      jevChamadasMedia: jevChamadas / n,
+    });
+  }
+
+  return res;
+}
+
+export function formatarRelatorioMarkdown(
+  metricas: MetricasExecucao[],
+  medias: MediasVariante[],
+  timestampStr: string
+): string {
+  const linhas: string[] = [];
+
+  linhas.push(`# Relatório de Benchmark NextCode — ${timestampStr}`);
+  linhas.push("");
+  linhas.push("Medições da orquestração real executada contra testes de aceite herméticos em contêiner Docker sem rede.");
+  linhas.push("");
+
+  linhas.push("## Tabela de Execuções");
+  linhas.push("");
+  linhas.push(
+    "| Projeto | Variante | Rep | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
+  );
+  linhas.push(
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+  );
+
+  for (const m of metricas) {
+    const faseDisplay = m.faseFinal === "ENTREGUE" ? "ENTREGUE" : `⚠️ ${m.faseFinal}`;
+    const tscDisplay = m.tscProjeto === 0 ? "0 (ok)" : `erro (${m.tscProjeto})`;
+    const aceiteDisplay = `${m.aceite.aprovados}/${m.aceite.total}${
+      m.aceite.reprovadosIds.length > 0 ? ` [falhas: ${m.aceite.reprovadosIds.join(",")}]` : ""
+    }`;
+    const custosDet = `${m.custo.executor.toFixed(4)} / ${m.custo.avaliador.toFixed(4)} / ${m.custo.jev.toFixed(4)}`;
+    const modelsStr = Array.from(new Set(m.avaliadorServedBy)).join(", ") || "-";
+
+    linhas.push(
+      `| ${m.projeto.toUpperCase()} | ${m.variante} | ${m.repeticao} | ${faseDisplay} | ${m.tempoSeg.toFixed(
+        1
+      )} | ${m.etapas} | ${m.aprovadasNa1a} | ${m.tentativasTotais} | ${tscDisplay} | ${m.uiCheck} | ${aceiteDisplay} | ${m.custo.total.toFixed(
+        4
+      )} | ${custosDet} | ${m.jevChamadas} | ${modelsStr} |`
+    );
+  }
+
+  linhas.push("");
+  linhas.push("## Médias por Projeto × Variante");
+  linhas.push("");
+  linhas.push(
+    "| Projeto | Variante | Execs | % ENTREGUE | Tempo Médio (s) | 1ª Tent. Média | Tent. Médias | % tsc OK | Aceite Médio (%) | Custo Médio (US$) | Jev Chamadas Médias |"
+  );
+  linhas.push(
+    "|---|---|---|---|---|---|---|---|---|---|---|"
+  );
+
+  for (const med of medias) {
+    linhas.push(
+      `| ${med.projeto.toUpperCase()} | ${med.variante} | ${med.execucoes} | ${med.faseFinalEntreguePct.toFixed(
+        1
+      )}% | ${med.tempoMedioSeg.toFixed(1)} | ${med.aprovadasNa1aMedia.toFixed(
+        2
+      )} | ${med.tentativasTotaisMedia.toFixed(2)} | ${med.tscZeroErrosPct.toFixed(
+        1
+      )}% | ${med.aceiteMediaPct.toFixed(1)}% | ${med.custoTotalMedio.toFixed(
+        4
+      )} | ${med.jevChamadasMedia.toFixed(1)} |`
+    );
+  }
+
+  linhas.push("");
+  linhas.push("## Detalhe Bruto dos Aceites");
+  linhas.push("");
+  for (const m of metricas) {
+    linhas.push(`### ${m.projeto.toUpperCase()} - ${m.variante} (Rep ${m.repeticao})`);
+    linhas.push("```text");
+    linhas.push(m.aceite.resumoRaw || `RESUMO {"projeto":"${m.projeto}","aprovados":${m.aceite.aprovados},"total":${m.aceite.total}}`);
+    linhas.push("```");
+    linhas.push("");
+  }
+
+  return linhas.join("\n");
+}
+
+export function formatarRelatorioYaml(
+  metricas: MetricasExecucao[],
+  medias: MediasVariante[],
+  timestampStr: string
+): string {
+  const obj = {
+    benchmark_timestamp: timestampStr,
+    medias,
+    execucoes: metricas,
+  };
+  return JSON.stringify(obj, null, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Execução isolada de UMA iteração
+// ---------------------------------------------------------------------------
+async function rodarUmaExecucao(
+  projeto: ProjetoBench,
+  variante: VarianteBench,
+  repeticao: number
+): Promise<MetricasExecucao> {
+  const repoRoot = path.resolve(process.cwd());
+  const srcDb = path.join(repoRoot, "prisma", "dev.db");
+  const runRoot = fs.mkdtempSync(path.join(os.tmpdir(), `nc-bench-${projeto}-${variante}-${repeticao}-`));
+  const copyDb = path.join(runRoot, "dev-copy.db");
+  const projectDir = path.join(runRoot, `project-${projeto}`);
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.copyFileSync(srcDb, copyDb);
+
+  process.env.DATABASE_URL = `file:${copyDb.replace(/\\/g, "/")}`;
+
+  if (variante === "avaliador-deepseek") {
+    process.env.EVALUATOR_NEMOTRON_MODEL = "bench-desligado";
+  }
+
+  // Carregar .env do projeto se existir
+  const envPath = path.join(repoRoot, ".env");
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, "utf8");
+    for (const line of envContent.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/);
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+      }
+    }
+  }
+
+  const prismaMod = await import("@/lib/prisma");
+  const prisma = prismaMod.default;
+
+  if (variante === "sem-jev") {
+    await prisma.setting.updateMany({
+      data: { typesafeKey: null },
+    });
+  }
+
+  const { renderCanonicalSpecDocument } = await import("@/core/intake/spec-format");
+  const { approveSpecAndStart } = await import("@/core/orchestrator/execution-trigger");
+  const { claimJob, executeClaimedJob } = await import("@/core/orchestrator/job-queue");
+  const { sessionCostUsd } = await import("@/core/llm/cost");
+
+  const p1Spec = renderCanonicalSpecDocument({
+    titulo: "API de Tarefas em Memória (P1)",
+    status: "aguardando_aprovacao",
+    data: "2026-10-08",
+    stack: ["Next.js", "TypeScript"],
+    modulos: [
+      {
+        id: "mod-store",
+        nome: "Repositório de Tarefas em Memória",
+        resumo: "Funções puras e tipadas para listar, criar, atualizar e remover tarefas em memória.",
+        arquivos: ["src/lib/tarefas.ts"],
+      },
+      {
+        id: "mod-api",
+        nome: "Rotas REST de Tarefas",
+        resumo: "Endpoints GET/POST em /api/tarefas e PATCH/DELETE em /api/tarefas/[id].",
+        arquivos: ["src/app/api/tarefas/route.ts", "src/app/api/tarefas/[id]/route.ts"],
+      },
+    ],
+    entidades: [
+      {
+        nome: "Tarefa",
+        campos: [
+          { nome: "id", tipo: "string" },
+          { nome: "titulo", tipo: "string" },
+          { nome: "concluida", tipo: "boolean" },
+          { nome: "criadaEm", tipo: "string" },
+        ],
+      },
+    ],
+    rotas: [
+      { caminho: "/api/tarefas", descricao: "GET lista tarefas; POST cria tarefa validando titulo." },
+      { caminho: "/api/tarefas/[id]", descricao: "PATCH atualiza titulo/concluida; DELETE remove tarefa por id." },
+    ],
+    arquivosAfetados: [
+      "src/lib/tarefas.ts",
+      "src/app/api/tarefas/route.ts",
+      "src/app/api/tarefas/[id]/route.ts",
+    ],
+    objetivo:
+      "Implementar API de tarefas em memória em Next.js App Router com store tipado e duas rotas REST.",
+    requisitosIds: ["REQ-001", "REQ-002", "REQ-003"],
+    requisitos: [
+      {
+        id: "REQ-001",
+        titulo: "Store em memória em src/lib/tarefas.ts",
+        criterio:
+          "Definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
+      },
+      {
+        id: "REQ-002",
+        titulo: "Listagem e criação em src/app/api/tarefas/route.ts",
+        criterio:
+          "Exportar GET retornando 200 com array de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
+      },
+      {
+        id: "REQ-003",
+        titulo: "Atualização e remoção em src/app/api/tarefas/[id]/route.ts",
+        criterio:
+          "Exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
+      },
+    ],
+  });
+
+  const p2Spec = renderCanonicalSpecDocument({
+    titulo: "CRUD de Tarefas com Tela (P2)",
+    status: "aguardando_aprovacao",
+    data: "2026-10-08",
+    stack: ["Next.js", "TypeScript", "Tailwind CSS"],
+    modulos: [
+      {
+        id: "mod-store",
+        nome: "Repositório de Tarefas em Memória",
+        resumo: "Store em memória tipado para operações CRUD de tarefas.",
+        arquivos: ["src/lib/tarefas.ts"],
+      },
+      {
+        id: "mod-api",
+        nome: "Rotas REST de Tarefas",
+        resumo: "Endpoints GET/POST em /api/tarefas e PATCH/DELETE em /api/tarefas/[id].",
+        arquivos: ["src/app/api/tarefas/route.ts", "src/app/api/tarefas/[id]/route.ts"],
+      },
+      {
+        id: "mod-ui",
+        nome: "Tela de Gestão de Tarefas",
+        resumo: "Página cliente em /tarefas para listar, adicionar, alternar concluída e excluir tarefas.",
+        arquivos: ["src/app/tarefas/page.tsx"],
+      },
+    ],
+    entidades: [
+      {
+        nome: "Tarefa",
+        campos: [
+          { nome: "id", tipo: "string" },
+          { nome: "titulo", tipo: "string" },
+          { nome: "concluida", tipo: "boolean" },
+          { nome: "criadaEm", tipo: "string" },
+        ],
+      },
+    ],
+    rotas: [
+      { caminho: "/api/tarefas", descricao: "GET lista tarefas; POST cria nova tarefa." },
+      { caminho: "/api/tarefas/[id]", descricao: "PATCH atualiza tarefa; DELETE remove tarefa." },
+      { caminho: "/tarefas", descricao: "Interface web CRUD consumindo /api/tarefas." },
+    ],
+    arquivosAfetados: [
+      "src/lib/tarefas.ts",
+      "src/app/api/tarefas/route.ts",
+      "src/app/api/tarefas/[id]/route.ts",
+      "src/app/tarefas/page.tsx",
+    ],
+    objetivo:
+      "Implementar CRUD completo de tarefas em memória com backend REST e tela interativa em /tarefas.",
+    requisitosIds: ["REQ-001", "REQ-002", "REQ-003", "REQ-004"],
+    requisitos: [
+      {
+        id: "REQ-001",
+        titulo: "Store em memória em src/lib/tarefas.ts",
+        criterio:
+          "Definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
+      },
+      {
+        id: "REQ-002",
+        titulo: "Listagem e criação em src/app/api/tarefas/route.ts",
+        criterio:
+          "Exportar GET retornando 200 com a lista de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
+      },
+      {
+        id: "REQ-003",
+        titulo: "Atualização e remoção em src/app/api/tarefas/[id]/route.ts",
+        criterio:
+          "Exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
+      },
+      {
+        id: "REQ-004",
+        titulo: "Tela CRUD em src/app/tarefas/page.tsx",
+        criterio:
+          "Componente Client ('use client') com export default que consome /api/tarefas para listar, criar nova tarefa via formulário, marcar como concluída e remover.",
+      },
+    ],
+  });
+
+  const targetSpec = projeto === "p2" ? p2Spec : p1Spec;
+
+  const project = await prisma.project.create({
+    data: {
+      name: `Bench ${projeto.toUpperCase()} ${variante} ${repeticao}`,
+      path: projectDir,
+    },
+  });
+
+  const session = await prisma.session.create({
+    data: {
+      title: `Bench ${projeto.toUpperCase()} ${variante} ${repeticao}`,
+      projectId: project.id,
+      canonicalSpec: targetSpec,
+    },
+  });
+
+  const startedAt = Date.now();
+  const startRes = await approveSpecAndStart(session.id, targetSpec);
+  if (!startRes.ok || !startRes.jobId) {
+    throw new Error(`approveSpecAndStart falhou: ${JSON.stringify(startRes)}`);
+  }
+
+  const workerId = `worker-bench-${projeto}-${variante}-${repeticao}`;
+  const claimed = await claimJob(startRes.jobId, workerId);
+  if (!claimed) {
+    throw new Error(`claimJob falhou para ${startRes.jobId}`);
+  }
+
+  await executeClaimedJob(startRes.jobId, workerId);
+  // Esperar TelemetryLogger assíncrono
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const tempoSeg = Number(((Date.now() - startedAt) / 1000).toFixed(1));
+
+  const finalSession = await prisma.session.findUniqueOrThrow({
+    where: { id: session.id },
+    include: { tasks: { orderBy: { createdAt: "asc" } } },
+  });
+
+  let tscProjeto = 0;
+  try {
+    execSync("npx tsc --noEmit", {
+      cwd: projectDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err: any) {
+    tscProjeto = err.status ?? 1;
+  }
+
+  const logs = await prisma.telemetryLog.findMany({
+    where: { sessionId: session.id },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const totalCustoUsd = await sessionCostUsd(session.id);
+  const costRows = logs.filter((l) => l.action === "LLM_COST");
+  const costByPapel: Record<string, number> = { executor: 0, avaliador: 0, jev: 0, outro: 0 };
+  for (const row of costRows) {
+    try {
+      const parsed = JSON.parse(row.details || "{}");
+      const papel = parsed.papel || "outro";
+      const usd = Number(parsed.usd) || 0;
+      costByPapel[papel] = (costByPapel[papel] ?? 0) + usd;
+    } catch {}
+  }
+
+  // Avaliador models e timeouts
+  const evalLogs = logs.filter((l) => l.action === "EVALUATOR_MODEL");
+  const avaliadorServedBy: string[] = [];
+  let timeoutsAvaliador = 0;
+  for (const el of evalLogs) {
+    try {
+      const parsed = JSON.parse(el.details || "{}");
+      if (parsed.model) avaliadorServedBy.push(parsed.model);
+      const fails: string[] = parsed.failures || [];
+      for (const f of fails) {
+        if (/timeout/i.test(f)) timeoutsAvaliador++;
+      }
+    } catch {}
+  }
+
+  // Jev Evidence e Decision
+  let divergenciasEvidencia = 0;
+  for (const el of logs.filter((l) => l.action === "JEV_EVIDENCE_CHECK")) {
+    try {
+      const parsed = JSON.parse(el.details || "{}");
+      const divs = parsed.divergencias || [];
+      divergenciasEvidencia += divs.length;
+    } catch {}
+  }
+  const jevChamadas = logs.filter((l) => l.action === "JEV_DECISION").length;
+
+  // UI Check
+  let uiCheck: "UI_CHECK_PASSED" | "UI_CHECK_FAILED" | "ausente" = "ausente";
+  if (logs.some((l) => l.action === "UI_CHECK_PASSED")) {
+    uiCheck = "UI_CHECK_PASSED";
+  } else if (logs.some((l) => l.action === "UI_CHECK_FAILED")) {
+    uiCheck = "UI_CHECK_FAILED";
+  }
+
+  // Etapas e tentativas
+  const tasks = finalSession.tasks;
+  const etapas = tasks.length;
+  const aprovadasNa1a = tasks.filter((t) => t.status === "completed" && t.attempts === 0).length;
+  const tentativasTotais = tasks.reduce((acc, t) => acc + (t.attempts || 0), 0);
+
+  // Rodar contêiner Docker de aceite
+  const aceiteDir = path.join(repoRoot, "bench", "aceite");
+  const dockerCmd = `docker run --rm --network none --memory=1g --cpus=1 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges -v "${projectDir.replace(/\\/g, "/")}:/project:ro" -v "${aceiteDir.replace(/\\/g, "/")}:/aceite:ro" nextcode-aceite:1 ${projeto}`;
+
+  let dockerOut = "";
+  try {
+    dockerOut = execSync(dockerCmd, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  } catch (err: any) {
+    dockerOut = `${err.stdout || ""}\n${err.stderr || ""}`.trim();
+  }
+
+  let aprovadosAceite = 0;
+  let totalAceite = 0;
+  const reprovadosIds: string[] = [];
+  let resumoRaw = "";
+
+  for (const line of dockerOut.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("RESUMO ")) {
+      resumoRaw = trimmed;
+      try {
+        const json = JSON.parse(trimmed.replace("RESUMO ", ""));
+        aprovadosAceite = json.aprovados ?? 0;
+        totalAceite = json.total ?? 0;
+      } catch {}
+    } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        const row = JSON.parse(trimmed);
+        if (row.id && row.ok === false) {
+          reprovadosIds.push(row.id);
+        }
+      } catch {}
+    }
+  }
+
+  await prisma.$disconnect().catch(() => {});
+  try {
+    fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {}
+
+  return {
+    projeto,
+    variante,
+    repeticao,
+    faseFinal: finalSession.phase,
+    tempoSeg,
+    etapas,
+    aprovadasNa1a,
+    tentativasTotais,
+    tscProjeto,
+    uiCheck,
+    aceite: {
+      aprovados: aprovadosAceite,
+      total: totalAceite,
+      reprovadosIds,
+      resumoRaw,
+    },
+    custo: {
+      executor: costByPapel.executor || 0,
+      avaliador: costByPapel.avaliador || 0,
+      jev: costByPapel.jev || 0,
+      total: totalCustoUsd,
+    },
+    avaliadorServedBy,
+    timeoutsAvaliador,
+    divergenciasEvidencia,
+    jevChamadas,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Main CLI
+// ---------------------------------------------------------------------------
+async function main() {
+  const args = process.argv.slice(2);
+
+  // Subprocesso isolado para uma única iteração
+  const umaIdx = args.indexOf("--uma");
+  if (umaIdx !== -1) {
+    const proj = args[umaIdx + 1] as ProjetoBench;
+    const vari = args[umaIdx + 2] as VarianteBench;
+    const rep = Number(args[umaIdx + 3] || 1);
+    const metrica = await rodarUmaExecucao(proj, vari, rep);
+    console.log("===RESULTADO_JSON_START===");
+    console.log(JSON.stringify(metrica));
+    console.log("===RESULTADO_JSON_END===");
+    return;
+  }
+
+  // Leitura de parâmetros gerais
+  let projetos: ProjetoBench[] = ["p1", "p2"];
+  let variantes: VarianteBench[] = ["padrao", "sem-jev", "avaliador-deepseek"];
+  let repeticoes = 1;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--projetos" && args[i + 1]) {
+      projetos = args[i + 1].split(",").map((s) => s.trim().toLowerCase()) as ProjetoBench[];
+      i++;
+    } else if (args[i] === "--variantes" && args[i + 1]) {
+      variantes = args[i + 1].split(",").map((s) => s.trim().toLowerCase()) as VarianteBench[];
+      i++;
+    } else if (args[i] === "--repeticoes" && args[i + 1]) {
+      repeticoes = Number(args[i + 1]) || 1;
+      i++;
+    }
+  }
+
+  console.log(`\nIniciando Benchmark: Projetos=[${projetos.join(",")}], Variantes=[${variantes.join(",")}], Repetições=${repeticoes}`);
+
+  let custoAcumulado = 0;
+  const metricas: MetricasExecucao[] = [];
+
+  for (let rep = 1; rep <= repeticoes; rep++) {
+    for (const proj of projetos) {
+      for (const vari of variantes) {
+        console.log(`\n>>> Executando: Projeto=${proj.toUpperCase()}, Variante=${vari}, Rep=${rep} <<<`);
+
+        const spawnRes = spawnSync(
+          "npx",
+          ["tsx", "scripts/bench.ts", "--uma", proj, vari, String(rep)],
+          {
+            cwd: process.cwd(),
+            encoding: "utf8",
+            env: { ...process.env },
+            maxBuffer: 50 * 1024 * 1024,
+            shell: true,
+          }
+        );
+
+        if (spawnRes.status !== 0) {
+          console.error(`Falha no subprocesso: ${spawnRes.stderr || spawnRes.stdout}`);
+          throw new Error(`Subprocesso falhou para ${proj} ${vari} ${rep}`);
+        }
+
+        const out = spawnRes.stdout || "";
+        const m = out.match(/===RESULTADO_JSON_START===([\s\S]*?)===RESULTADO_JSON_END===/);
+        if (!m) {
+          throw new Error(`Não encontrou JSON no subprocesso: ${out.slice(-500)}`);
+        }
+
+        const metrica: MetricasExecucao = JSON.parse(m[1].trim());
+        metricas.push(metrica);
+        custoAcumulado += metrica.custo.total;
+
+        console.log(`Fim da iteração: Fase=${metrica.faseFinal}, Custo=US$ ${metrica.custo.total.toFixed(4)}, Aceite=${metrica.aceite.aprovados}/${metrica.aceite.total}`);
+        console.log(`Custo Acumulado Bench: US$ ${custoAcumulado.toFixed(4)}`);
+
+        // Travas T-J
+        if (metrica.custo.total > 0.50) {
+          console.error(`[TRAVA T-J] Custo de uma execução excedeu US$ 0,50: US$ ${metrica.custo.total.toFixed(4)}`);
+          break;
+        }
+        if (custoAcumulado > 1.50) {
+          console.error(`[TRAVA T-J] Custo acumulado do benchmark excedeu US$ 1,50: US$ ${custoAcumulado.toFixed(4)}`);
+          break;
+        }
+      }
+      if (custoAcumulado > 1.50) break;
+    }
+    if (custoAcumulado > 1.50) break;
+  }
+
+  const medias = calcularMedias(metricas);
+
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const timestampStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+  const relatoriosDir = path.join(process.cwd(), "docs", "relatorios", "bench");
+  fs.mkdirSync(relatoriosDir, { recursive: true });
+
+  const mdPath = path.join(relatoriosDir, `${timestampStr}.md`);
+  const yamlPath = path.join(relatoriosDir, `${timestampStr}.yaml`);
+
+  const mdContent = formatarRelatorioMarkdown(metricas, medias, timestampStr);
+  const yamlContent = formatarRelatorioYaml(metricas, medias, timestampStr);
+
+  fs.writeFileSync(mdPath, mdContent, "utf8");
+  fs.writeFileSync(yamlPath, yamlContent, "utf8");
+
+  console.log(`\nBenchmark concluído com sucesso!`);
+  console.log(`Relatório Markdown: ${mdPath}`);
+  console.log(`Relatório YAML: ${yamlPath}`);
+}
+
+import { fileURLToPath } from "url";
+const __curFile = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__curFile)) {
+  main().catch((err) => {
+    console.error("Erro fatal no benchmark:", err);
+    process.exit(1);
+  });
+}
