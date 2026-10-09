@@ -5,6 +5,15 @@
 
 ---
 
+## 09/10/2026 (22) — régua P3/P4 provada; prompt P2b
+
+**Feito (auditor):** `bench/aceite/auth.mjs` (P3 login, 12 testes), `bench/aceite/correcao-tarefas.mjs` (P4 correção, 12 testes), `rodar.mjs` aceita p3/p4, Specs `bench/specs/p3-p4.ts` (passam no `parseSpecDocument` real; tsc 0), base com 3 bugs `bench/projetos/p4-base/`. Prova: cada erro plantado derruba só o teste esperado (`memory/medicoes.md`). Lição: régua roda de dentro da pasta do projeto.
+**Prompt:** `docs/prompts/P2b-bench-dificil.md` (P2b.1 bench com p3/p4, ERRO_BENCH sem parar, coluna reprovados, spawn sem shell; P2b.2 18 execuções, teto US$ 2,00; nova T-N: reflog conferido).
+**Próximo passo:** Antigravity roda P2b → auditar (reflog, refazer 1 execução do P4) → ler as diferenças entre variantes → auditoria das skills (1º item: ligar a referência de página pública do jeito certo).
+**Pendências do fundador:** Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 09/10/2026 (21) — P2 (bench) entregue pelo Antigravity; auditoria em andamento
 
 **P2 (Antigravity):** `a559364` (contêiner `docker/aceite` sem rede), `53b62ae` (`npm run bench`), `925ba54` (1ª rodada), `74d1e9a` (relatório).

@@ -102,3 +102,17 @@ Implementação de referência (escrita pelo auditor) e variantes com 1 erro cad
 | P2 | sem Jev | ENTREGUE | 13/13 | 471 s | 0,0886 | 0,0886 / 0 / 0 |
 | P2 | avaliador DeepSeek | ENTREGUE | 13/13 | 350 s | 0,1013 | 0,0646 / 0,0362 / 0,0004 |
 **Leitura:** (1) efeito teto — aceite 100% em todas as variantes; P1/P2 não separam qualidade. (2) "Economia do Jev" no P1 **não se sustenta**: padrão variou 0,0265–0,0306 entre execuções e sem Jev deu 0,0303 → dentro do ruído. (3) Nemotron avaliando poupa o custo do avaliador inteiro (0,0175/0,0362) mas o P2 padrão levou +187 s (timeout na tela). (4) Custo do executor varia ±15% entre execuções iguais → precisa ≥ 3 repetições.
+
+## Prova da régua P3/P4 (09/10, auditor) — `bench/aceite/auth.mjs`, `correcao-tarefas.mjs`
+| variante (código do auditor) | resultado | caiu |
+|---|---|---|
+| P3 referência (scrypt+sal, token randomBytes) | 12/12 | — |
+| P3 senha guardada em texto | 11/12 | L2 |
+| P3 login com mensagens diferentes (revela e-mail) | 11/12 | L8 |
+| P3 logout não invalida o token | 11/12 | L12 |
+| P3 token fixo derivado do e-mail | 11/12 | L9 |
+| P3 registro devolve o hash | 11/12 | L3 |
+| P4 base com bugs (`bench/projetos/p4-base`) | 9/12 | A4, A5, A8 |
+| P4 correção certa | 12/12 | — |
+| P4 correção que apaga o GET por id | 10/12 | X1, X2 |
+Lição: rodar a régua **de dentro da pasta do projeto** (fora dela o `@/` não resolve e tudo cai — inclusive a referência).

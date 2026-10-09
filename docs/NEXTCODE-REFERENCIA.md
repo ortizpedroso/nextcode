@@ -361,8 +361,13 @@ Pendente para depois: remover o "benchmark" simulado (`/api/dag/benchmark`) e pr
 **Resultado da 1ª rodada do bench (09/10):** efeito teto (100% de aceite em todas as variantes) e custo com ruído de ±15% entre
 execuções iguais. Conclusões possíveis hoje: Nemotron avaliando corta o custo do avaliador sem perder aceite; o ganho de custo do Jev
 **não está provado**. Para o bench medir de verdade (inclusive a auditoria das skills): projetos mais difíceis + ≥ 3 repetições.
-**Proposta (aguarda OK): P2b** — régua do auditor para P3 (login com sessão: regras e segurança) e P4 (correção num projeto pronto com
+**P2b aprovado pelo fundador (09/10)** — régua do auditor para P3 (login com sessão: regras e segurança) e P4 (correção num projeto pronto com
 bug plantado), e rodada com 3 repetições. Depois, auditoria das skills medida pelo bench.
+
+**P2b — régua pronta (09/10):** `bench/aceite/auth.mjs` (P3, L1–L12), `correcao-tarefas.mjs` (P4, A1–A10 + X1–X2), Specs em
+`bench/specs/p3-p4.ts`, base com 3 bugs em `bench/projetos/p4-base/`; provas em `memory/medicoes.md`. Prompt
+`docs/prompts/P2b-bench-dificil.md`: bench aceita p3/p4, falha de execução vira `ERRO_BENCH` sem parar a rodada, coluna de
+reprovados, sem `shell: true`; rodada P3/P4 × 3 variantes × 3 repetições (teto US$ 2,00). Nova trava T-N (reflog conferido).
 
 **Auditoria das skills (pedido do fundador, 09/10) — planejada para depois do P2 (bench):** para cada skill, verificar
 (1) promessa × código (ferramenta/permissão/checagem declarada existe e é aplicada); (2) entrada × o que chega (campos realmente preenchidos);
