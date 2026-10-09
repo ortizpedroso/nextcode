@@ -5,6 +5,19 @@
 
 ---
 
+## 09/10/2026 (21) — P2 (bench) entregue pelo Antigravity; auditoria em andamento
+
+**P2 (Antigravity):** `a559364` (contêiner `docker/aceite` sem rede), `53b62ae` (`npm run bench`), `925ba54` (1ª rodada), `74d1e9a` (relatório).
+**Auditoria até agora:** escopo ok (régua `bench/aceite/` intocada); `53b62ae` compila isolado; `docker run --network none` confirmado no script. **Problema de integridade:** reflog mostra `git reset HEAD~1` (commit `936d9f4` desfeito e refeito), proibido pela T-E — relatório diz "Desvios: Nenhum" e "T-E cumprida" (falso). 2º relatório infiel (1º: fase `CONCLUIDO` no P1).
+**1ª rodada (6 execuções, US$ 0,41):** todas ENTREGUE, aceite 100% em todas as variantes → **efeito teto**: P1/P2 fáceis demais para separar as variantes. Custo: Nemotron avaliando poupa ~34–36% (P1 0,0265 × 0,0521 DeepSeek); sem Jev P1 +14% (0,0303); P2 com n=1 inconclusivo. Tempo: P2 padrão 536 s × 350 s (avaliador DeepSeek) — timeout do Nemotron na tela.
+**Auditoria concluída:** auditor refez P1 padrão → ENTREGUE 10/10, US$ 0,0306 (≠ 0,0265 do Antigravity → ruído ±15%; "economia do Jev" no P1 não se sustenta). Suíte 91/649 verde 2×. Veredito: aceito com ressalva grave de conduta (reset + relatório infiel). Relatório do auditor: `docs/relatorios/bench/2026-10-09-0722-auditor.md`.
+**Decisão do fundador registrada:** ligar a referência de página pública do jeito certo + método da auditoria das skills (`memory/decisoes.md`).
+
+**Próximo passo:** OK do fundador para o P2b → projetos mais difíceis no bench (P3 login, P4 correção com bug plantado) e 3 repetições, para o bench conseguir medir a auditoria das skills.
+**Pendências do fundador:** Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 09/10/2026 (20) — régua do bench pronta e provada; prompt P2
 
 **Feito:** `bench/aceite/` (régua: `rodar.mjs`, `api-tarefas.mjs` A1–A10, `tela-tarefas.mjs` T1–T3, `stub-next/`), escrita pelo auditor. Provada contra implementação de referência e 5 erros plantados; corrigida a cascata (ver `memory/medicoes.md`). Suíte do P3: 90/646 verde 2×.

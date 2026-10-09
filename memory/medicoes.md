@@ -90,3 +90,15 @@ Implementação de referência (escrita pelo auditor) e variantes com 1 erro cad
 | tela sem `use client` | 10/10 | 12/13 | T1 |
 | `concluida` não inicia false | 9/10 | 12/13 | A3 |
 1ª versão tinha cascata (erro no A3 derrubava A6/A7/A9); corrigido — cada teste cria sua própria tarefa.
+
+## Bench — 1ª rodada (09/10, `docs/relatorios/bench/2026-10-09-0713.md`) + execução do auditor (`...0722-auditor.md`)
+| projeto | variante | fase | aceite | tempo | custo total | executor / avaliador / jev |
+|---|---|---|---|---|---|---|
+| P1 | padrão | ENTREGUE | 10/10 | 162 s | 0,0265 | 0,0262 / 0 / 0,0003 |
+| P1 | padrão (auditor) | ENTREGUE | 10/10 | 229 s | 0,0306 | 0,0304 / 0 / 0,0003 |
+| P1 | sem Jev | ENTREGUE | 10/10 | 176 s | 0,0303 | 0,0303 / 0 / 0 |
+| P1 | avaliador DeepSeek | ENTREGUE | 10/10 | 168 s | 0,0521 | 0,0344 / 0,0175 / 0,0003 |
+| P2 | padrão | ENTREGUE | 13/13 | 537 s | 0,1078 | 0,0994 / 0,0080 / 0,0004 |
+| P2 | sem Jev | ENTREGUE | 13/13 | 471 s | 0,0886 | 0,0886 / 0 / 0 |
+| P2 | avaliador DeepSeek | ENTREGUE | 13/13 | 350 s | 0,1013 | 0,0646 / 0,0362 / 0,0004 |
+**Leitura:** (1) efeito teto — aceite 100% em todas as variantes; P1/P2 não separam qualidade. (2) "Economia do Jev" no P1 **não se sustenta**: padrão variou 0,0265–0,0306 entre execuções e sem Jev deu 0,0303 → dentro do ruído. (3) Nemotron avaliando poupa o custo do avaliador inteiro (0,0175/0,0362) mas o P2 padrão levou +187 s (timeout na tela). (4) Custo do executor varia ±15% entre execuções iguais → precisa ≥ 3 repetições.
