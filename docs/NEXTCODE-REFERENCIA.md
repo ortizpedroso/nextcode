@@ -374,6 +374,17 @@ reprovados, sem `shell: true`; rodada P3/P4 × 3 variantes × 3 repetições (te
 execução refeita: 12/12). Teto persiste — o bench mede **custo e tempo**, ainda não separa **qualidade**. Indício: executor mais caro com
 Jev (3/3 pares), sem ganho de aceite. Próximo: rodar o P4 corrigido nas 3 variantes × 3 junto com a auditoria das skills.
 
+**Auditoria das skills — S0 feita pelo auditor (09/10):** `docs/relatorios/auditoria-skills-S0.md`. Principais: checklist de página
+pública aplicado em **toda** tela (copiado no corpo; arquivo de referência nem declarado) — o contrário do prometido; avaliador de tela
+com 60.576 caracteres de skill, com regras duplicadas (corpo + referência); avaliadores prometem ferramentas e `playwright` que não têm;
+Jev decide página pública / React e a resposta é descartada; `skill_apoio_principal` escolhe pacotes que não existem; elicitador e
+analista só têm o nome carregado (execução real é pacote P4+). Teste antigo dava falsa segurança (conferia o título da referência, não o
+conteúdo copiado). Custo Jev × executor: `medio` e `pesado` usam o mesmo modelo; a diferença no P3 não vem da escolha de modelo.
+**S1 (prompt `docs/prompts/S1-skills-ligar-e-enxugar.md`):** custo por etapa (`nodeId`); Jev liga taste/React no avaliador de tela
+via `jevPlan`; avaliadores sem ferramentas falsas; avaliador de tela sem duplicação (≤ 40.000 no painel); teste automático de promessa ×
+código; bench P1–P4 × padrão/sem Jev × 2. Fora do S1 (aguarda fundador): remover a pergunta `skill_apoio_principal`. Depois do S1:
+controle do avaliador de tela enxuto (erro plantado + código certo), feito pelo auditor; caso no bench em que a decisão do Jev importa.
+
 **Auditoria das skills (pedido do fundador, 09/10) — planejada para depois do P2 (bench):** para cada skill, verificar
 (1) promessa × código (ferramenta/permissão/checagem declarada existe e é aplicada); (2) entrada × o que chega (campos realmente preenchidos);
 (3) saída × validador; (4) contradições e duplicações entre skill geral, de cluster e referências; (5) tamanho × efeito (medido no bench);

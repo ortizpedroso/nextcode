@@ -5,6 +5,16 @@
 
 ---
 
+## 09/10/2026 (24) — auditoria das skills S0 (auditor) e prompt S1
+
+**Feito:** `docs/relatorios/auditoria-skills-S0.md` (achados A1–A10 com tamanhos medidos por `loadRoleSkill`/`buildSkillSystemPrompt`). Pior achado: checklist de página pública aplicado em toda tela (o contrário do prometido). Também: avaliador de tela 60.576 caracteres; ferramentas/playwright falsos; respostas do Jev descartadas; `skill_apoio_principal` sem pacotes; elicitador/analista não executados.
+**Jev:** resposta ao fundador — custo do Jev ~0,3%; manter; `medio`=`pesado`=`deepseek-v4-pro`, então a diferença de custo no P3 não é escolha de modelo → S1.1 instrumenta custo por etapa.
+**Prompt:** `docs/prompts/S1-skills-ligar-e-enxugar.md` (S1.1 custo por etapa; S1.2 Jev liga taste/React; S1.3 promessas verdadeiras + sem duplicação + teste promessa×código; S1.4 bench 16 execuções, teto US$ 1,50).
+**Próximo passo:** Antigravity roda S1 → auditar (reflog, tamanhos, refs na trilha do P2, refazer 1 execução) → controle do avaliador de tela com erro plantado.
+**Pendências do fundador:** remover `skill_apoio_principal`?; Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 09/10/2026 (23) — auditoria do P2b; base do P4 corrigida (erro meu)
 
 **P2b (Antigravity):** `efd8c1c`, `1337edc` (rodada `2026-10-09-1358`), `acb00d6`. Reflog limpo (T-N funcionou), escopo ok, tsc 0, suíte 91/652 verde 2×.
