@@ -3,6 +3,7 @@ import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { readPlannedTier } from "@/core/orchestrator/node-executor";
 import { resolveExecutorTierForAttempt } from "@/core/config/orchestration-policy";
 import { dispatchStrongEvaluator, resetEvaluatorState } from "@/core/llm/evaluator-models";
+import type { GatewayConfig } from "@/core/llm/gateways";
 
 const type1Ok = { passed: true, compilationErrors: [], lintWarnings: [], securityViolations: [] } as never;
 const code = { "src/lib/x.ts": "export const x = 1;\n" };
@@ -46,33 +47,56 @@ describe("Nível de modelo do executor (Jev + escalada)", () => {
   });
 });
 
-describe("Cadeia do avaliador pago (Gemini → Claude → DeepSeek)", () => {
-  it("Gemini sem crédito (402) e Claude sem crédito → usa DeepSeek e marca que não é independente", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-      const u = String(url);
-      if (u.includes("googleapis")) return new Response('{"error":{"message":"prepayment credits are depleted"}}', { status: 402 });
-      if (u.includes("anthropic")) return new Response('{"error":{"message":"credit balance is too low"}}', { status: 400 });
-      return new Response(JSON.stringify({ choices: [{ message: { content: "{\"implemented\":true}" } }] }), { status: 200 });
+describe("Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek → Claude)", () => {
+  const fakeGateway: GatewayConfig = {
+    id: "freellmapi",
+    enabled: true,
+    priority: 0,
+    baseUrl: "http://localhost:3100/v1",
+    apiKey: "free-key",
+    modelFast: "auto:fast",
+    modelHeavy: "auto:smart",
+  };
+  const loader = async () => [fakeGateway];
+
+  it("Nemotron 429 e DeepSeek responde via custom/deepseek → usa DeepSeek e marca que não é independente", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      if (body.model.includes("nemotron")) {
+        return new Response('{"error":{"message":"rate limit exceeded"}}', { status: 429 });
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"implemented":true}' } }] }),
+        { status: 200, headers: { "x-routed-via": "custom/deepseek-v4-pro" } }
+      );
     });
-    const keys = { geminiKey: "g", claudeKey: "c", deepseekKey: "d" };
-    const r1 = await dispatchStrongEvaluator([{ role: "user", content: "x" }], keys);
+
+    const r1 = await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
     expect(r1.provider).toBe("deepseek");
     expect(r1.independent).toBe(false);
-    expect(r1.failures.length).toBe(2);
+    expect(r1.model).toBe("custom/deepseek-v4-pro");
+    expect(r1.failures.length).toBe(1);
 
-    // Sem crédito = fora por 10 min: na 2ª chamada nem tenta Gemini/Claude.
-    fetchMock.mockClear();
-    await dispatchStrongEvaluator([{ role: "user", content: "x" }], keys);
-    expect(fetchMock.mock.calls.map((c) => String(c[0]))).toEqual(["https://api.deepseek.com/chat/completions"]);
+    // 429 = fora por 10 min: na 2ª chamada nem tenta Nemotron.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy.mockClear();
+    await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const sentBody = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body || "{}"));
+    expect(sentBody.model).toBe("deepseek-v4-pro");
   });
 
-  it("Gemini respondendo → usa Gemini, independente do executor", async () => {
+  it("Nemotron respondendo via ollama/nemotron → usa Nemotron, independente do executor", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
+      new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+        status: 200,
+        headers: { "x-routed-via": "ollama/nemotron-3-ultra" },
+      })
     );
-    const r = await dispatchStrongEvaluator([{ role: "user", content: "x" }], { geminiKey: "g" });
-    expect(r.provider).toBe("gemini");
+    const r = await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
+    expect(r.provider).toBe("nvidia");
     expect(r.independent).toBe(true);
+    expect(r.model).toBe("ollama/nemotron-3-ultra");
   });
 });
 

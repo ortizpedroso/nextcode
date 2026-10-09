@@ -653,6 +653,7 @@ export function isEvaluatorModelIndependent(
     if (val.includes("gemini") || val.includes("google")) return "google";
     if (val.includes("gpt") || val.includes("openai") || val.includes("o1") || val.includes("o3")) return "openai";
     if (val.includes("freellmapi") || val.includes("auto:")) return "freellmapi_pool";
+    if (val.includes("nemotron") || val.includes("nvidia")) return "nvidia";
     return val.split("/")[0] || val;
   };
 

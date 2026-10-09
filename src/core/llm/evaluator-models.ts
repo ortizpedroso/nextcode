@@ -5,27 +5,22 @@
  * "sem crédito" ou "chave inválida" fica de fora por 10 min, para não pagar latência a cada etapa.
  * Se nenhum pago responder, quem chama decide o que fazer (hoje: rota gratuita, marcada na trilha).
  */
-import { readSecret } from "@/core/security/crypto";
 import type { UsageLike } from "@/core/llm/cost";
+import { loadGatewayConfigs, callGateway, type GatewayConfig } from "@/core/llm/gateways";
 
-export type EvaluatorProvider = "gemini" | "claude" | "deepseek";
+export type EvaluatorProvider = "nvidia" | "deepseek" | "claude";
 
 export interface EvaluatorCandidate {
   provider: EvaluatorProvider;
   model: string;
+  routedPrefixes: string[];
 }
 
 export const EVALUATOR_CHAIN: EvaluatorCandidate[] = [
-  { provider: "gemini", model: process.env.EVALUATOR_GEMINI_MODEL || "gemini-3.1-pro-preview" },
-  { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-5-5" },
-  { provider: "deepseek", model: process.env.EVALUATOR_DEEPSEEK_MODEL || "deepseek-v4-pro" },
+  { provider: "nvidia", model: process.env.EVALUATOR_NEMOTRON_MODEL || "nemotron-3-ultra", routedPrefixes: ["ollama/nemotron", "nvidia/"] },
+  { provider: "deepseek", model: process.env.EVALUATOR_DEEPSEEK_MODEL || "deepseek-v4-pro", routedPrefixes: ["custom/deepseek"] },
+  { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5", routedPrefixes: ["anthropic/", "custom/claude"] },
 ];
-
-export interface EvaluatorKeys {
-  geminiKey?: string | null;
-  claudeKey?: string | null;
-  deepseekKey?: string | null;
-}
 
 export interface EvaluatorCallResult {
   content: string | null;
@@ -47,96 +42,82 @@ export function resetEvaluatorState(): void {
   skippedUntil.clear();
 }
 
-function keyFor(provider: EvaluatorProvider, keys: EvaluatorKeys): string {
-  const raw = provider === "gemini" ? keys.geminiKey : provider === "claude" ? keys.claudeKey : keys.deepseekKey;
-  return readSecret(raw).trim();
-}
-
-/** 401/402/403 e "credit" no corpo = problema de conta: não adianta tentar de novo agora. */
-function isAccountProblem(status: number, body: string): boolean {
-  return status === 401 || status === 402 || status === 403 || /credit|billing|prepayment/i.test(body);
-}
-
-async function callOne(
-  c: EvaluatorCandidate,
-  apiKey: string,
-  messages: ChatMessage[],
-  signal: AbortSignal
-): Promise<{ ok: true; content: string; usage: UsageLike | null } | { ok: false; status: number; body: string }> {
-  if (c.provider === "claude") {
-    const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model: c.model,
-        max_tokens: 4000,
-        system,
-        messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content })),
-      }),
-      signal,
-    });
-    const body = await res.text();
-    if (!res.ok) return { ok: false, status: res.status, body };
-    const json = JSON.parse(body);
-    const text = (json.content ?? []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
-    return { ok: true, content: text, usage: json.usage ?? null };
-  }
-
-  const url =
-    c.provider === "gemini"
-      ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-      : "https://api.deepseek.com/chat/completions";
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: c.model, messages, max_tokens: 8000 }),
-    signal,
-  });
-  const body = await res.text();
-  if (!res.ok) return { ok: false, status: res.status, body };
-  const json = JSON.parse(body);
-  return { ok: true, content: json?.choices?.[0]?.message?.content ?? "", usage: json?.usage ?? null };
+export interface EvaluatorKeys {
+  geminiKey?: string | null;
+  claudeKey?: string | null;
+  deepseekKey?: string | null;
 }
 
 export async function dispatchStrongEvaluator(
   messages: ChatMessage[],
-  keys: EvaluatorKeys,
-  opts: { timeoutMs?: number; executorFamily?: EvaluatorProvider } = {}
+  opts: { timeoutMs?: number; executorFamily?: EvaluatorProvider; loader?: () => Promise<GatewayConfig[]> } & EvaluatorKeys = {}
 ): Promise<EvaluatorCallResult> {
   const executorFamily = opts.executorFamily ?? "deepseek";
   const failures: string[] = [];
+
+  const gateways = await (opts.loader ?? loadGatewayConfigs)();
+  const free = gateways.find((g) => g.id === "freellmapi");
+  if (!free) {
+    return { content: null, provider: null, model: null, independent: false, failures: ["freellmapi: não configurado"] };
+  }
+
   for (const c of EVALUATOR_CHAIN) {
-    const apiKey = keyFor(c.provider, keys);
-    if (!apiKey) {
-      failures.push(`${c.provider}: sem chave`);
-      continue;
-    }
     if ((skippedUntil.get(c.provider) ?? 0) > Date.now()) {
       failures.push(`${c.provider}: fora por falta de crédito/chave (pausa de 10 min)`);
       continue;
     }
+
     try {
-      const r = await callOne(c, apiKey, messages, AbortSignal.timeout(opts.timeoutMs ?? 120_000));
-      if (r.ok && r.content.trim()) {
-        return {
-          content: r.content,
-          provider: c.provider,
-          model: c.model,
-          independent: c.provider !== executorFamily,
-          failures,
-          usage: r.usage,
-        };
-      }
-      if (!r.ok) {
-        if (isAccountProblem(r.status, r.body)) skippedUntil.set(c.provider, Date.now() + SKIP_MS);
-        failures.push(`${c.provider}/${c.model}: HTTP ${r.status} ${r.body.replace(/\s+/g, " ").slice(0, 140)}`);
+      const attempt = await callGateway(free, {
+        messages,
+        model: c.model,
+        stream: false,
+        signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+        maxTokens: 8000,
+      });
+
+      if (attempt.ok) {
+        const servedBy = attempt.servedBy || "";
+        const servedByLower = servedBy.toLowerCase();
+        const matchesPrefix = c.routedPrefixes.some((p) => servedByLower.startsWith(p.toLowerCase()));
+
+        if (matchesPrefix) {
+          const json = (await attempt.response.json().catch(() => ({}))) as {
+            choices?: { message?: { content?: string } }[];
+            usage?: UsageLike;
+          };
+          const text = json?.choices?.[0]?.message?.content ?? "";
+          if (text.trim()) {
+            return {
+              content: text,
+              provider: c.provider,
+              model: attempt.servedBy,
+              independent: c.provider !== executorFamily,
+              failures,
+              usage: json?.usage ?? null,
+            };
+          }
+          failures.push(`${c.provider}/${c.model}: resposta vazia`);
+        } else {
+          await attempt.response.body?.cancel().catch(() => {});
+          failures.push(`${c.provider}/${c.model}: rota recusada ${servedBy}`);
+        }
       } else {
-        failures.push(`${c.provider}/${c.model}: resposta vazia`);
+        if (
+          attempt.status === 401 ||
+          attempt.status === 402 ||
+          attempt.status === 403 ||
+          attempt.status === 429 ||
+          /credit|billing|prepayment|quota|rate.?limit/i.test(attempt.detail)
+        ) {
+          skippedUntil.set(c.provider, Date.now() + SKIP_MS);
+        }
+        failures.push(`${c.provider}/${c.model}: ${attempt.kind} ${attempt.status ?? ""} ${attempt.detail.replace(/\s+/g, " ").slice(0, 140)}`.trim());
       }
     } catch (err) {
       failures.push(`${c.provider}/${c.model}: ${String(err).slice(0, 140)}`);
     }
   }
+
   return { content: null, provider: null, model: null, independent: false, failures };
 }

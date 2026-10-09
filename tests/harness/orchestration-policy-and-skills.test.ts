@@ -347,6 +347,12 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     }
   });
 
+  it("P3: ollama/nemotron e nvidia/nemotron são família nvidia, independente de deepseek", () => {
+    expect(isEvaluatorModelIndependent("custom/deepseek-v4-pro", "ollama/nemotron-3-ultra")).toBe(true);
+    expect(isEvaluatorModelIndependent("custom/deepseek-v4-pro", "nvidia/nvidia/nemotron-3-ultra-550b-a55b")).toBe(true);
+    expect(isEvaluatorModelIndependent("nvidia/nemotron", "ollama/nemotron")).toBe(false);
+  });
+
   it("aplica a regra de APROVADO_COM_RESSALVA (1 rodada de polimento se houver tentativa; senão promove)", () => {
     // Tentativa 1 (< 3) e 0 rodadas de polimento usadas -> polir 1 rodada sem gastar tentativa de falha
     const r1 = resolveVerdictAction({
