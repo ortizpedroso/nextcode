@@ -1,0 +1,1369 @@
+{
+  "benchmark_timestamp": "2026-10-10-1020",
+  "medias": [
+    {
+      "projeto": "p1",
+      "variante": "padrao",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 198.60000000000002,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.035156906,
+      "custoExecutorMedio": 0.034900454,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.000256452,
+      "jevChamadasMedia": 3
+    },
+    {
+      "projeto": "p1",
+      "variante": "sem-jev",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 222.65,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.048830364,
+      "custoExecutorMedio": 0.048830364,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    },
+    {
+      "projeto": "p2",
+      "variante": "padrao",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 494.45000000000005,
+      "aprovadasNa1aMedia": 4,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.08617677800000001,
+      "custoExecutorMedio": 0.06620954,
+      "custoAvaliadorMedio": 0.01963632,
+      "custoJevMedio": 0.00033091800000000003,
+      "jevChamadasMedia": 4
+    },
+    {
+      "projeto": "p2",
+      "variante": "sem-jev",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 473,
+      "aprovadasNa1aMedia": 4,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.09498918,
+      "custoExecutorMedio": 0.084215208,
+      "custoAvaliadorMedio": 0.010773972,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 280.70000000000005,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.059507913,
+      "custoExecutorMedio": 0.05916517200000001,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.00034274100000000003,
+      "jevChamadasMedia": 3.5
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 299.25,
+      "aprovadasNa1aMedia": 3,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 95.83333333333333,
+      "custoTotalMedio": 0.063431588,
+      "custoExecutorMedio": 0.063431588,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 234.85,
+      "aprovadasNa1aMedia": 2,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.046125548999999995,
+      "custoExecutorMedio": 0.045978108000000004,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.00014744100000000003,
+      "jevChamadasMedia": 2
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "execucoes": 2,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 227.7,
+      "aprovadasNa1aMedia": 2,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.048158044,
+      "custoExecutorMedio": 0.048158044,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0,
+      "jevChamadasMedia": 0
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p1",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 219.4,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 10,
+        "total": 10,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p1\",\"total\":10,\"aprovados\":10,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.040938435999999995,
+        "avaliador": 0,
+        "jev": 0.00025683,
+        "total": 0.041195266
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791636913907",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791636913907-1",
+          "titulo": "Etapa 1/2: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "rapido",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-flash"
+          ],
+          "executorTokensEntrada": 358,
+          "executorTokensSaida": 244,
+          "executorUsd": 0.00040019999999999997,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791636913907-2",
+          "titulo": "Etapa 2/2: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 872,
+          "executorTokensSaida": 4096,
+          "executorUsd": 0.0173712,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p1",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 228.4,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 10,
+        "total": 10,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p1\",\"total\":10,\"aprovados\":10,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.05147630400000001,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.05147630400000001
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791637147614",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791637147614-1",
+          "titulo": "Etapa 1/2: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791637147614-2",
+          "titulo": "Etapa 2/2: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p2",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 452.2,
+      "etapas": 4,
+      "aprovadasNa1a": 4,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "UI_CHECK_PASSED",
+      "aceite": {
+        "aprovados": 13,
+        "total": 13,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p2\",\"total\":13,\"aprovados\":13,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.0524593,
+        "avaliador": 0,
+        "jev": 0.000298578,
+        "total": 0.05275787800000001
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 4,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791637388729",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791637388729-1",
+          "titulo": "Etapa 1/3: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "rapido",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-flash"
+          ],
+          "executorTokensEntrada": 282,
+          "executorTokensSaida": 149,
+          "executorUsd": 0.00026339999999999995,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791637388729-2",
+          "titulo": "Etapa 2/3: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791637388729-3",
+          "titulo": "Etapa 3/3: tarefas/page.tsx",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p2",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 400.1,
+      "etapas": 4,
+      "aprovadasNa1a": 4,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "UI_CHECK_PASSED",
+      "aceite": {
+        "aprovados": 13,
+        "total": 13,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p2\",\"total\":13,\"aprovados\":13,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.086337416,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.086337416
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791637865415",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791637865415-1",
+          "titulo": "Etapa 1/3: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791637865415-2",
+          "titulo": "Etapa 2/3: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791637865415-3",
+          "titulo": "Etapa 3/3: tarefas/page.tsx",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 237.3,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.050621384000000005,
+        "avaliador": 0,
+        "jev": 0.000324534,
+        "total": 0.05094591800000001
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791638287822",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791638287822-1",
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791638287822-2",
+          "titulo": "Etapa 2/2: login/route.ts, logout/route.ts, registrar/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 288.6,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 11,
+        "total": 12,
+        "reprovadosIds": [
+          "L12"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":11,\"reprovados\":1}"
+      },
+      "custo": {
+        "executor": 0.079978184,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.079978184
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791638539979",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791638539979-1",
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791638539979-2",
+          "titulo": "Etapa 2/2: login/route.ts, logout/route.ts, registrar/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 259.2,
+      "etapas": 2,
+      "aprovadasNa1a": 2,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.04991025599999999,
+        "avaliador": 0,
+        "jev": 0.00011436600000000001,
+        "total": 0.05002462199999999
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 2,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791638842493",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791638842493-1",
+          "titulo": "Etapa 1/1: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 993,
+          "executorTokensSaida": 4096,
+          "executorUsd": 0.01753092,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 226,
+      "etapas": 2,
+      "aprovadasNa1a": 2,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.045433608,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.045433608
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791639113493",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791639113493-1",
+          "titulo": "Etapa 1/1: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 1005,
+          "executorTokensSaida": 4096,
+          "executorUsd": 0.01754676,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p1",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 177.8,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 10,
+        "total": 10,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p1\",\"total\":10,\"aprovados\":10,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.028862472,
+        "avaliador": 0,
+        "jev": 0.000256074,
+        "total": 0.029118546000000002
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 3,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791639352275",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791639352275-1",
+          "titulo": "Etapa 1/2: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "rapido",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791639352275-2",
+          "titulo": "Etapa 2/2: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p1",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 216.9,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 10,
+        "total": 10,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p1\",\"total\":10,\"aprovados\":10,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.046184423999999995,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.046184423999999995
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791639548316",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791639548316-1",
+          "titulo": "Etapa 1/2: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791639548316-2",
+          "titulo": "Etapa 2/2: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p2",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 536.7,
+      "etapas": 4,
+      "aprovadasNa1a": 4,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "UI_CHECK_PASSED",
+      "aceite": {
+        "aprovados": 13,
+        "total": 13,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p2\",\"total\":13,\"aprovados\":13,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.07995978,
+        "avaliador": 0.03927264,
+        "jev": 0.00036325800000000004,
+        "total": 0.119595678
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 1,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 4,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791639779192",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791639779192-1",
+          "titulo": "Etapa 1/3: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "rapido",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-flash"
+          ],
+          "executorTokensEntrada": 282,
+          "executorTokensSaida": 271,
+          "executorUsd": 0.00040979999999999993,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791639779192-2",
+          "titulo": "Etapa 2/3: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791639779192-3",
+          "titulo": "Etapa 3/3: tarefas/page.tsx",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "avaliadorUsd": 0.03927264
+        }
+      ]
+    },
+    {
+      "projeto": "p2",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 545.9,
+      "etapas": 4,
+      "aprovadasNa1a": 4,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "UI_CHECK_PASSED",
+      "aceite": {
+        "aprovados": 13,
+        "total": 13,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p2\",\"total\":13,\"aprovados\":13,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.082093,
+        "avaliador": 0.021547944,
+        "jev": 0,
+        "total": 0.103640944
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "custom/deepseek-v4-pro"
+      ],
+      "timeoutsAvaliador": 1,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791640339951",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791640339951-1",
+          "titulo": "Etapa 1/3: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791640339951-2",
+          "titulo": "Etapa 2/3: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791640339951-3",
+          "titulo": "Etapa 3/3: tarefas/page.tsx",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "avaliadorUsd": 0.021547944
+        }
+      ]
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 324.1,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.06770896000000001,
+        "avaliador": 0,
+        "jev": 0.00036094800000000004,
+        "total": 0.068069908
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 4,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791640907419",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791640907419-1",
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791640907419-2",
+          "titulo": "Etapa 2/2: login/route.ts, logout/route.ts, registrar/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p3",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 309.9,
+      "etapas": 3,
+      "aprovadasNa1a": 3,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.046884992,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.046884992
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791641254051",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791641254051-1",
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791641254051-2",
+          "titulo": "Etapa 2/2: login/route.ts, logout/route.ts, registrar/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "fallback",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 210.5,
+      "etapas": 2,
+      "aprovadasNa1a": 2,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.04204596000000001,
+        "avaliador": 0,
+        "jev": 0.00018051600000000003,
+        "total": 0.042226476
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 1,
+      "jevChamadas": 2,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791641579857",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791641579857-1",
+          "titulo": "Etapa 1/1: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 523,
+          "executorTokensSaida": 2048,
+          "executorUsd": 0.00880044,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    },
+    {
+      "projeto": "p4",
+      "variante": "sem-jev",
+      "repeticao": 2,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 229.4,
+      "etapas": 2,
+      "aprovadasNa1a": 2,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.05088248,
+        "avaliador": 0,
+        "jev": 0,
+        "total": 0.05088248
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 0,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791641806158",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791641806158-1",
+          "titulo": "Etapa 1/1: [id]/route.ts, tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "fallback",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 993,
+          "executorTokensSaida": 4096,
+          "executorUsd": 0.01753092,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    }
+  ]
+}
