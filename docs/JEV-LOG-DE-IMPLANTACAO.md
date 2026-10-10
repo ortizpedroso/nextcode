@@ -53,3 +53,24 @@ Documento físico oficial de registro de todas as alterações, implementações
 ### 3.2 Guarda de Verificação de Evidência (`verificacao_evidencia`)
 - **Status Atual:** Em modo `sombra`.
 - **Objetivo Próximo:** Avaliar amostras em modo sombra da verificação de evidência pelo JEV antes de promover para `ativo`.
+
+---
+
+## 4. Governança da DAG: Isolamento Estrito do Executor e Macrobrief
+
+### 4.1 Trava Mecânica T-SPEC-SHIELD (Executor NUNCA Recebe Spec)
+- **Princípio:** O executor implementa etapas atômicas e não deve carregar a Spec inteira em sua janela de contexto.
+- **Implementação em `src/core/orchestrator/node-executor.ts`:**
+  - Suprimida a injeção do bloco bruto `SPEC CANÔNICA APROVADA` quando o nó possuir `nodeMicrobrief`.
+  - O executor recebe exclusivamente o Microbrief renderizado em Markdown + YAML com seus `REQ`s atômicos e o código compilado das dependências.
+  - Criada a função guardiã `enforceExecutorSpecIsolation()`: se qualquer vazamento tentar reinserir a Spec completa para papéis executores, o bloco é cortado fail-closed e dispara telemetria `EXECUTOR_SPEC_LEAK_BLOCKED`.
+- **Validação Automatizada:**
+  - `tests/orchestrator/executor-spec-shield.test.ts`: 3/3 testes verdes comprovando bloqueio de vazamento, integridade para papéis limpos e preservação para papéis de auditoria.
+
+### 4.2 Padronização do Macrobrief em Markdown + YAML
+- **Implementação em `src/core/templates/artifact-templates.ts`:**
+  - Criada a função `renderMacrobriefMarkdown(macrobrief: MacrobriefDocument): string`.
+  - Gera frontmatter YAML formal com metadados do projeto, clusters, requisitos totais e partições dos Microbriefs, seguido de corpo Markdown com arquitetura e contratos TypeScript.
+- **Validação Automatizada:**
+  - `tests/templates/macrobrief-markdown.test.ts`: 1/1 teste verde validando estrutura e renderização.
+

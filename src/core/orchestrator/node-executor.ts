@@ -755,6 +755,41 @@ async function runScaffoldNode(
 }
 
 /**
+ * Trava Mecânica T-SPEC-SHIELD:
+ * Garante que papéis executores NUNCA recebam a Spec Canônica completa quando um Microbrief existir.
+ * Se algum vazamento tentar injetar "SPEC CANÔNICA APROVADA", suprime o bloco e emite telemetria.
+ */
+export function enforceExecutorSpecIsolation(
+  messages: DispatchMessage[],
+  role: string,
+  sessionId?: string | null,
+  nodeId?: string
+): DispatchMessage[] {
+  const isExecutorRole = role.startsWith("executor-") || role === "worker";
+  if (!isExecutorRole) return messages;
+
+  const hasMicrobrief = messages.some((m) =>
+    typeof m.content === "string" && m.content.includes("MICROBRIEF DESTA ETAPA")
+  );
+
+  if (!hasMicrobrief) return messages;
+
+  return messages.filter((m) => {
+    const content = typeof m.content === "string" ? m.content : "";
+    const isFullSpecLeak = content.includes("SPEC CANÔNICA APROVADA");
+    if (isFullSpecLeak) {
+      TelemetryLogger.log({
+        sessionId: sessionId ?? undefined,
+        action: "EXECUTOR_SPEC_LEAK_BLOCKED",
+        details: { nodeId, role },
+      });
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
  * Serviço único de orquestração de execução de um nó da DAG (Etapa 0 - Passo 2).
  * Encapsula a montagem do prompt, despacho LLM, quarentena, auditoria em duas lentes,
  * portão empírico, persistência no SQLite e telemetria.
@@ -906,8 +941,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     } catch {}
   }
 
-  // O worker precisa da Spec aprovada: antes recebia só título, papel e lista de arquivos, e
-  // inventava o conteúdo (rotas com Math.random, dados fixos, testes expect(true)).
+  // Governança: O Executor NUNCA recebe a Spec Canônica completa quando o Microbrief existir.
+  // Ele recebe exclusivamente o Microbrief da etapa (Markdown + YAML) e os contratos das dependências.
   if (nodeMicrobrief) {
     dispatchMessages.push({
       role: "system",
@@ -915,15 +950,12 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         "MICROBRIEF DESTA ETAPA (contrato: o Avaliador julga cada REQ abaixo contra estes critérios):\n\n" +
         renderMicrobriefMarkdown(nodeMicrobrief, { titulo: taskDb.title, spec: nodePayload.goal }),
     });
-  }
-  if (nodePayload.goal) {
+  } else if (nodePayload.goal) {
+    // Fallback restrito apenas para nós legados que não possuem Microbrief gerado
     dispatchMessages.push({
       role: "system",
       content:
-        "SPEC CANÔNICA APROVADA (fonte da verdade — implemente exatamente o que ela define para os arquivos desta etapa; " +
-        "os demais arquivos são feitos por outras etapas). O código é COMPILADO com tsc strict depois da entrega: importe " +
-        "apenas arquivos que já existem no projeto ou estão no seu escopo; pacotes npm que você importar são instalados " +
-        "automaticamente; não use o tipo `any`.\n\n" +
+        "OBJETIVO DA ETAPA (fallback sem Microbrief):\n\n" +
         nodePayload.goal,
     });
   }
@@ -942,6 +974,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       ? `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma usando o protocolo de ferramentas (EXATAMENTE UM bloco \`\`\`json acao por turno) até chamar finish.`
       : `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
   });
+
+  // Trava Mecânica T-SPEC-SHIELD: Garante que papéis executores NUNCA recebam a Spec Canônica completa
+  const finalDispatchMessages = enforceExecutorSpecIsolation(
+    dispatchMessages,
+    taskDb.role,
+    taskDb.sessionId,
+    taskDb.id
+  );
 
   const plannedTier = readPlannedTier(taskDb.payload);
   const executorTier = resolveExecutorTierForAttempt(plannedTier, (taskDb.attempts || 0) + 1);
@@ -983,7 +1023,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       taskTitle: taskDb.title,
       skill: loadedExecutorSkill,
       microbrief: nodeMicrobrief,
-      initialMessages: dispatchMessages,
+      initialMessages: finalDispatchMessages,
       smartRouter,
       qm,
       projectRoot: targetProjectRoot,
@@ -1031,7 +1071,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       const stepSignal = AbortSignal.timeout(stepTimeoutMs);
       const dispatchPromise = paidGateways
         ? smartRouter.dispatchWithFallback({
-            messages: dispatchMessages,
+            messages: finalDispatchMessages,
             tier: "heavy",
             gateways: paidGateways,
             allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga,
@@ -1040,7 +1080,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             signal: stepSignal,
           })
         : smartRouter.dispatchWithFallback({
-            messages: dispatchMessages,
+            messages: finalDispatchMessages,
             // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
             // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
             tier: executorTier === "rapido" ? "fast" : "heavy",

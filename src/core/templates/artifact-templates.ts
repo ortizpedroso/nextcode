@@ -1162,3 +1162,56 @@ export function renderMicrobriefMarkdown(
   return room > 200 ? out.slice(0, contract.length + room) + "\n\n[recorte da Spec encurtado]" : contract;
 }
 
+/**
+ * Renderiza o Macrobrief em YAML (frontmatter) + Markdown estruturado.
+ * Representa a visão condensada da arquitetura do projeto e partição dos Microbriefs.
+ */
+export function renderMacrobriefMarkdown(macrobrief: MacrobriefDocument): string {
+  const lines: string[] = [
+    "---",
+    "documento: macrobrief",
+    `id: ${yamlQuoted(macrobrief.idMacrobrief)}`,
+    `projeto: ${yamlQuoted(macrobrief.idProjeto)}`,
+    `spec_versao: ${macrobrief.specVersao}`,
+    "requisitos_totais:",
+    ...macrobrief.requisitosTotais.map((r) => `  - ${r}`),
+    "clusters_ativos:",
+    ...macrobrief.clustersAtivos.map((c) => `  - ${c}`),
+    "microbriefs:",
+  ];
+
+  for (const mb of macrobrief.microbriefs) {
+    lines.push(`  - id: ${yamlQuoted(mb.id)}`);
+    lines.push(`    cluster: ${mb.cluster}`);
+    lines.push(`    depende_de: [${mb.dependeDe.map((d) => yamlQuoted(d)).join(", ")}]`);
+    lines.push(`    arquivos: [${mb.arquivos.map((f) => yamlQuoted(f)).join(", ")}]`);
+    lines.push(`    reqs: [${mb.reqs.join(", ")}]`);
+  }
+
+  lines.push(
+    "---",
+    "",
+    `# Macrobrief: ${macrobrief.idProjeto} (${macrobrief.idMacrobrief})`,
+    "",
+    `Versão da Spec: ${macrobrief.specVersao} | Clusters: ${macrobrief.clustersAtivos.join(", ")}`,
+    "",
+    "## Partição das Etapas (Microbriefs)",
+    ""
+  );
+
+  for (const mb of macrobrief.microbriefs) {
+    const depStr = mb.dependeDe.length > 0 ? ` (depende de: ${mb.dependeDe.join(", ")})` : "";
+    lines.push(`### Etapa \`${mb.id}\` [${mb.cluster}]${depStr}`);
+    lines.push(`- **Requisitos Cobertos:** ${mb.reqs.join(", ")}`);
+    lines.push(`- **Arquivos Atribuídos:** ${mb.arquivos.join(", ")}`);
+    lines.push("");
+  }
+
+  if (macrobrief.contratosTypescript) {
+    lines.push("## Contratos TypeScript e Interfaces", "", "```typescript", macrobrief.contratosTypescript, "```");
+  }
+
+  return lines.join("\n");
+}
+
+
