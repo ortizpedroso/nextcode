@@ -17,6 +17,7 @@ import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
+import { decideSpecReviewMessageIntent } from "@/core/decision/jev-decisions";
 import {
   checkSpecCompletenessOnDisk,
   describeUnverifiedBuild,
@@ -224,8 +225,36 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 3. Aprovação explícita continua com isExplicitSpecApproval e NÃO é intenção de mensagem (4b.1 / 4b.3)
-    const isExplicitApproval = isExplicitSpecApproval(targetPrompt);
+    // 3. Lê a sessão atual para contextualizar a intenção do usuário
+    const sessionBefore = await prisma.session.findUnique({
+      where: { id: activeSessionId },
+      include: { project: true },
+    });
+    const phaseBefore = ((sessionBefore?.phase as Phase) || "ENTRADA");
+
+    // 4. Avalia intenção de aprovação explícita da Spec (M1 — Jev com Fallback Seguro)
+    let isExplicitApproval = isExplicitSpecApproval(targetPrompt);
+    const isPreExecutionPhase =
+      phaseBefore === "SPEC_REVISAO" ||
+      phaseBefore === "ELICITACAO" ||
+      phaseBefore === "CONVERSA" ||
+      phaseBefore === "ENTRADA";
+
+    if (sessionBefore?.canonicalSpec?.trim() && isPreExecutionPhase) {
+      try {
+        const jevIntent = await decideSpecReviewMessageIntent({
+          resumoSpec: sessionBefore.canonicalSpec,
+          ultimaMensagem: targetPrompt,
+          sessionId: activeSessionId,
+        });
+        if (jevIntent && jevIntent.source === "jev") {
+          isExplicitApproval = jevIntent.aprovadoParaFase2;
+        }
+      } catch {
+        // Fallback seguro mantém isExplicitApproval determinístico
+      }
+    }
+
     if (isExplicitApproval) {
       const approvalTriggerResult: ApproveSpecResult = await approveSpecAndStart(activeSessionId);
       if (!approvalTriggerResult.ok) {
@@ -308,14 +337,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Lê a sessão atual e classifica / aplica o evento na máquina de fases (4b.2)
-    const sessionBefore = await prisma.session.findUnique({
-      where: { id: activeSessionId },
-      include: { project: true },
-    });
-    const phaseBefore = ((sessionBefore?.phase as Phase) || "ENTRADA");
-
-    // Na fase INTERVENCAO, verifica primeiro se a resposta do usuário escolhe um dos 3 caminhos por regex
+    // 5. Na fase INTERVENCAO, verifica primeiro se a resposta do usuário escolhe um dos 3 caminhos por regex
     // TODO(passo-6): adicionar botões para ESCOLHA_INTERVENCAO (criar / corrigir / conversar) na interface
     const interventionChoice =
       phaseBefore === "INTERVENCAO" ? parseInterventionChoice(targetPrompt) : null;
