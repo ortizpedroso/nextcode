@@ -22,6 +22,7 @@ import {
   type PhaseContext,
   type ConferenceCulprit,
 } from "@/core/orchestrator/phase-machine";
+import { verifyMacrobriefCoverageWithJev } from "@/core/decision/jev-execution-checks";
 
 export type IntakeScenario = "SCENARIO_A" | "SCENARIO_B" | "SCENARIO_C" | "SCENARIO_D";
 
@@ -34,6 +35,7 @@ export interface IntakeAnalysisResult {
 }
 
 export interface ElicitadorAnalistaCycleOptions {
+  sessionId?: string;
   initialSpec: string;
   onRepairCycle?: (
     cycleNumber: number,
@@ -303,26 +305,64 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
           : { valid: false, errors: ["Macrobrief não gerado."] };
 
         if (macroCheck.valid && decomp.macrobrief && decomp.microbriefs) {
-          const okStep = transition(ctx, { type: "CONFERENCIA_OK" }, { etapa1Ativa: true });
-          if (okStep.ok) ctx = okStep.ctx;
-          return {
-            ok: true,
-            cyclesUsed,
-            elicitadorSkillLoaded: elicitadorSkill.name,
-            analistaSkillLoaded: analistaSkill.name,
-            finalPhaseContext: ctx,
-            finalSpec: currentSpec,
-            macrobrief: decomp.macrobrief,
-            microbriefs: decomp.microbriefs,
-            decomposition: decomp,
-            problems: [],
-          };
+          const jevConference = await verifyMacrobriefCoverageWithJev({
+            sessionId: options.sessionId,
+            spec: {
+              titulo: parsed.titulo,
+              stack: parsed.stack,
+              requisitos: (parsed.requisitos ?? []).map((r) => ({
+                id: r.id,
+                titulo: r.titulo,
+                criterio: r.criterio,
+              })),
+              regras: parsed.notasImplementacao ?? [],
+            },
+            macrobrief: {
+              idMacrobrief: decomp.macrobrief.idMacrobrief,
+              etapas: decomp.macrobrief.microbriefs.map((mb) => ({
+                id: mb.id,
+                cluster: mb.cluster,
+                arquivos: mb.arquivos,
+                reqs: mb.reqs,
+                dependeDe: mb.dependeDe,
+              })),
+              contratosTypescript: decomp.macrobrief.contratosTypescript,
+            },
+          });
+
+          if (!jevConference.aprovado) {
+            macroCheck.valid = false;
+            specProblems.push(...jevConference.apontamentos);
+          } else {
+            const okStep = transition(ctx, { type: "CONFERENCIA_OK" }, { etapa1Ativa: true });
+            if (okStep.ok) ctx = okStep.ctx;
+            return {
+              ok: true,
+              cyclesUsed,
+              elicitadorSkillLoaded: elicitadorSkill.name,
+              analistaSkillLoaded: analistaSkill.name,
+              finalPhaseContext: ctx,
+              finalSpec: currentSpec,
+              macrobrief: decomp.macrobrief,
+              microbriefs: decomp.microbriefs,
+              decomposition: decomp,
+              problems: [],
+            };
+          }
         }
 
         specProblems.push(...macroCheck.errors);
       }
 
-      const culprit: ConferenceCulprit = specProblems.some((p) => p.includes("Macrobrief") || p.includes("Microbrief"))
+      const culprit: ConferenceCulprit = specProblems.some(
+        (p) =>
+          p.includes("Macrobrief") ||
+          p.includes("Microbrief") ||
+          p.includes("Omissão de requisitos") ||
+          p.includes("Invenção de escopo") ||
+          p.includes("Insuficiência de arquivos") ||
+          p.includes("Ordem de dependências invertida")
+      )
         ? "macrobrief"
         : "spec";
 

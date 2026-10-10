@@ -84,4 +84,25 @@ Documento físico oficial de registro de todas as alterações, implementações
   - `tests/llm/evaluator-freellmapi.test.ts`: 8/8 testes verdes, incluindo novo teste comprovando que com `preferIndependentFirst: true`, Claude é consultado antes de DeepSeek quando Nemotron estiver indisponível.
   - `tests/harness/evaluator-and-tier.test.ts`: 7/7 testes verdes.
 
+### 4.4 Conferência Macrobrief × Spec com Bateria Fan-Out do JEV (Travas T8a / T8b)
+- **Princípio:** O Macrobrief precisa espelhar com precisão cirúrgica a Spec canônica aprovada. Para garantir isso com tolerância zero a falhas, o oráculo avaliador não é um analista LLM em prosa genérica, mas o JEV executando uma bateria Fan-Out de 6 perguntas estratégicas.
+- **Bateria Fan-Out de 6 Perguntas (`src/core/decision/jev-execution-checks.ts`):**
+  1. `cobertura_requisitos` (Noul, limiar $\ge 0.85$): valida que cada `REQ` funcional e critério de aceite da Spec foi mapeado em pelo menos uma etapa do Macrobrief.
+  2. `fidelidade_sem_contradicao` (Noul, limiar $\ge 0.85$): valida que a stack, contratos e regras de negócio da Spec não foram alterados ou contraditos.
+  3. `sem_escopo_inventado` (Noul, limiar $\ge 0.80$): valida que o Macrobrief não introduziu módulos, integrações ou complexidades inexistentes na Spec.
+  4. `suficiencia_arquivos` (Noul, limiar $\ge 0.80$): valida se os caminhos de arquivos declarados são suficientes para compilar e implementar os contratos.
+  5. `ordem_dependencias_valida` (Noul, limiar $\ge 0.80$): valida se as dependências DAG estão ordenadas topologicamente (base/modelos antes de consumidores).
+  6. `isolamento_seguranca` (Noul, limiar $\ge 0.80$): valida que segredos, regras de backend e lógica privada não foram expostos em arquivos de cliente/frontend.
+- **Integração na Máquina de Fases (`src/core/intake/intake-engine.ts`):**
+  - Executada no método `runElicitadorAndAnalistaCycle` antes de conceder `CONFERENCIA_OK`.
+  - Se aprovado, transiciona para `PLANEJAMENTO` com `voltasConferencia = 0`.
+  - Se reprovado, gera apontamentos cirúrgicos com os scores correspondentes, emite `CONFERENCIA_FALHOU` com culpa `"macrobrief"` e repassa ao Elicitador via `onRepairCycle`.
+  - Tolerância máxima de 3 ciclos de reparo. Na 4ª falha (`novasVoltas > 3`), transiciona a sessão para `BLOQUEADA` e emite o efeito `{ type: "AVISAR_HUMANO" }`.
+  - Se a infraestrutura do JEV estiver temporariamente indisponível, aciona fallback gracioso emitindo telemetria `JEV_MACROBRIEF_CONFERENCE` com `jevDisponivel: false`.
+- **Validação Automatizada:**
+  - `tests/decision/jev-macrobrief-conference.test.ts`: 5/5 testes verdes cobrindo aprovação plena, reprovação por omissão/escopo, inversão de dependência/segurança e fallback sem JEV.
+  - `tests/intake/jev-intake-conference.test.ts`: 2/2 testes verdes comprovando transição para `PLANEJAMENTO` quando aprovado e ciclo de 3 reparos com bloqueio e notificação humana na 4ª volta.
+  - Suíte completa de governança e intake (192 testes) passando com 100% de sucesso.
+
+
 

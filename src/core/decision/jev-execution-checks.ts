@@ -613,3 +613,229 @@ export async function checkSkillInstallWithJev(
   };
 }
 
+// ============================================================================
+// CONFERÊNCIA ESTRATÉGICA MACROBRIEF × SPEC COM JEV (Trava T8a)
+// ============================================================================
+
+export interface JevMacrobriefCheckParams {
+  sessionId?: string | null;
+  spec: {
+    titulo?: string | null;
+    requisitos: Array<{ id: string; titulo: string; criterio: string }>;
+    stack?: string[];
+    regras?: string[];
+  };
+  macrobrief: {
+    idMacrobrief: string;
+    etapas: Array<{
+      id: string;
+      cluster: string;
+      arquivos: string[];
+      reqs: string[];
+      dependeDe: string[];
+    }>;
+    contratosTypescript?: string;
+  };
+}
+
+export interface JevMacrobriefCheckResult {
+  aprovado: boolean;
+  confiancaMedia: number;
+  scores: {
+    coberturaRequisitos: number;
+    fidelidadeSemContradicao: number;
+    semEscopoInventado: number;
+    suficienciaArquivos: number;
+    ordemDependenciasValida: number;
+    isolamentoSeguranca: number;
+  };
+  apontamentos: string[];
+  jevDisponivel: boolean;
+}
+
+export const MACROBRIEF_CONFERENCE_QUESTIONS: Record<string, JevQuestionSpec> = {
+  cobertura_requisitos: {
+    type: "noul",
+    instructions:
+      "Examine `spec.requisitos` and `macrobrief.etapas`. Does `macrobrief.etapas` assign and cover every functional requirement defined in `spec.requisitos` without leaving any requirement orphaned or unaddressed?",
+    criteria: {
+      true: "every requirement from spec.requisitos has at least one stage assigned with matching acceptance criteria",
+      false: "one or more requirements from spec.requisitos are missing or unassigned in macrobrief.etapas",
+    },
+  },
+  fidelidade_sem_contradicao: {
+    type: "noul",
+    instructions:
+      "Examine `spec.stack`, `spec.regras` and `macrobrief.etapas`. Does `macrobrief.etapas` strictly preserve all architectural constraints, stack choices, and database models without introducing contradictions?",
+    criteria: {
+      true: "preserves all stack, database, and business constraints defined in the spec",
+      false: "contradicts or alters stack, database, or business rules stated in the spec",
+    },
+  },
+  sem_escopo_inventado: {
+    type: "noul",
+    instructions:
+      "Examine `macrobrief.etapas` against `spec.requisitos`. Is `macrobrief.etapas` strictly confined to what was requested, with zero unrequested features, unnecessary external services, or scope inflation?",
+    criteria: {
+      true: "strictly confined to what was specified, with no unauthorized feature additions",
+      false: "introduces extra features, unrequested external services, or unneeded scope inflation",
+    },
+  },
+  suficiencia_arquivos: {
+    type: "noul",
+    instructions:
+      "Examine the file paths declared in `macrobrief.etapas` against the functional criteria in `spec.requisitos`. Are the declared file paths technically sufficient to implement the required routes, models, and types?",
+    criteria: {
+      true: "declared file scopes cover the routes, types, and persistence necessary to fulfill the spec",
+      false: "critical files are missing, leaving gaps that will break imports or routes",
+    },
+  },
+  ordem_dependencias_valida: {
+    type: "noul",
+    instructions:
+      "Examine the `dependeDe` declarations in `macrobrief.etapas`. Is the architectural progression logically sound (foundation/core models and types implemented before consumer routes and screens)?",
+    criteria: {
+      true: "dependencies follow sound layered architecture where foundational modules precede consumer modules",
+      false: "dependency order is flawed or inverted, causing consumers to be built before their dependencies",
+    },
+  },
+  isolamento_seguranca: {
+    type: "noul",
+    instructions:
+      "Examine the architecture in `macrobrief.etapas`. Does the planned structure adequately isolate sensitive logic and environment variables (backend vs public frontend) without exposing protected resources?",
+    criteria: {
+      true: "appropriately partitions backend/server logic from client-side screens without security exposure",
+      false: "improperly exposes backend-only logic, secrets, or internal handlers to public client code",
+    },
+  },
+};
+
+export async function verifyMacrobriefCoverageWithJev(
+  params: JevMacrobriefCheckParams
+): Promise<JevMacrobriefCheckResult> {
+  const stateJson = JSON.stringify({
+    spec: {
+      titulo: params.spec.titulo || null,
+      requisitos: params.spec.requisitos,
+      stack: params.spec.stack || [],
+      regras: params.spec.regras || [],
+    },
+    macrobrief: {
+      idMacrobrief: params.macrobrief.idMacrobrief,
+      etapas: params.macrobrief.etapas,
+      contratosTypescript: (params.macrobrief.contratosTypescript || "").slice(0, 4000),
+    },
+  });
+
+  const answers = await askJevBatch({
+    purpose: "macrobrief_coverage_conference",
+    state: stateJson,
+    questions: MACROBRIEF_CONFERENCE_QUESTIONS,
+    sessionId: params.sessionId,
+    maxStateChars: 24000,
+  });
+
+  if (!answers) {
+    TelemetryLogger.log({
+      sessionId: params.sessionId ?? undefined,
+      action: "JEV_MACROBRIEF_CONFERENCE",
+      details: {
+        macrobriefId: params.macrobrief.idMacrobrief,
+        jevDisponivel: false,
+        aprovado: true,
+        motivo: "fallback_sem_jev",
+      },
+    });
+    return {
+      aprovado: true,
+      confiancaMedia: 0,
+      scores: {
+        coberturaRequisitos: 1,
+        fidelidadeSemContradicao: 1,
+        semEscopoInventado: 1,
+        suficienciaArquivos: 1,
+        ordemDependenciasValida: 1,
+        isolamentoSeguranca: 1,
+      },
+      apontamentos: [],
+      jevDisponivel: false,
+    };
+  }
+
+  const readScore = (key: string): number => {
+    const ans = answers[key];
+    if (ans && ans.type === "noul" && Number.isFinite(ans.noul)) {
+      return ans.noul;
+    }
+    return 0.5;
+  };
+
+  const scores = {
+    coberturaRequisitos: readScore("cobertura_requisitos"),
+    fidelidadeSemContradicao: readScore("fidelidade_sem_contradicao"),
+    semEscopoInventado: readScore("sem_escopo_inventado"),
+    suficienciaArquivos: readScore("suficiencia_arquivos"),
+    ordemDependenciasValida: readScore("ordem_dependencias_valida"),
+    isolamentoSeguranca: readScore("isolamento_seguranca"),
+  };
+
+  const apontamentos: string[] = [];
+
+  if (scores.coberturaRequisitos < 0.85) {
+    apontamentos.push(
+      `Omissão de requisitos: o Macrobrief não atribui todas as funcionalidades exigidas na Spec (score: ${scores.coberturaRequisitos.toFixed(2)}).`
+    );
+  }
+  if (scores.fidelidadeSemContradicao < 0.85) {
+    apontamentos.push(
+      `Contradição de regras ou stack: o Macrobrief altera ou contradiz restrições definidas na Spec (score: ${scores.fidelidadeSemContradicao.toFixed(2)}).`
+    );
+  }
+  if (scores.semEscopoInventado < 0.80) {
+    apontamentos.push(
+      `Invenção de escopo: o Macrobrief introduziu módulos, integrações ou complexidades não solicitadas (score: ${scores.semEscopoInventado.toFixed(2)}).`
+    );
+  }
+  if (scores.suficienciaArquivos < 0.80) {
+    apontamentos.push(
+      `Insuficiência de arquivos: os caminhos declarados não cobrem todos os contratos necessários para compilar (score: ${scores.suficienciaArquivos.toFixed(2)}).`
+    );
+  }
+  if (scores.ordemDependenciasValida < 0.80) {
+    apontamentos.push(
+      `Ordem de dependências invertida: módulos de consumo foram agendados antes de suas dependências base (score: ${scores.ordemDependenciasValida.toFixed(2)}).`
+    );
+  }
+  if (scores.isolamentoSeguranca < 0.80) {
+    apontamentos.push(
+      `Risco de segurança/isolamento: há exposição de lógica ou segredos entre cliente e servidor (score: ${scores.isolamentoSeguranca.toFixed(2)}).`
+    );
+  }
+
+  const aprovado = apontamentos.length === 0;
+  const values = Object.values(scores);
+  const confiancaMedia = values.reduce((sum, v) => sum + v, 0) / values.length;
+
+  TelemetryLogger.log({
+    sessionId: params.sessionId ?? undefined,
+    action: "JEV_MACROBRIEF_CONFERENCE",
+    details: {
+      macrobriefId: params.macrobrief.idMacrobrief,
+      aprovado,
+      confiancaMedia,
+      scores,
+      apontamentos,
+      jevDisponivel: true,
+    },
+  });
+
+  return {
+    aprovado,
+    confiancaMedia,
+    scores,
+    apontamentos,
+    jevDisponivel: true,
+  };
+}
+
+
