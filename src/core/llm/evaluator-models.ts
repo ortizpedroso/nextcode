@@ -19,7 +19,7 @@ export interface EvaluatorCandidate {
 export const EVALUATOR_CHAIN: EvaluatorCandidate[] = [
   { provider: "nvidia", model: process.env.EVALUATOR_NEMOTRON_MODEL || "nemotron-3-ultra", routedPrefixes: ["ollama/nemotron", "nvidia/"] },
   { provider: "deepseek", model: process.env.EVALUATOR_DEEPSEEK_MODEL || "deepseek-v4-pro", routedPrefixes: ["custom/deepseek"] },
-  { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5", routedPrefixes: ["anthropic/", "custom/claude"] },
+  { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929", routedPrefixes: ["anthropic/", "custom/claude"] },
 ];
 
 export interface EvaluatorCallResult {
