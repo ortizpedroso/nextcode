@@ -159,7 +159,7 @@ execucao:
 
 jev_execucao:
   diagnostico_falha: ativo            # ativo | desligado
-  bloqueio_spec_ambigua: sombra       # ativo | sombra | desligado
+  bloqueio_spec_ambigua: ativo        # ativo | sombra | desligado
   verificacao_evidencia: sombra       # ativo | sombra | desligado
   guarda_segredos_codigo: ativo       # ativo | desligado
   guarda_segredos_chat: ativo         # ativo | desligado

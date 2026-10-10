@@ -291,7 +291,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
   },
   jevExecucao: {
     diagnosticoFalha: "ativo",
-    bloqueioSpecAmbigua: "sombra",
+    bloqueioSpecAmbigua: "ativo",
     verificacaoEvidencia: "sombra",
     guardaSegredosCodigo: "ativo",
     guardaSegredosChat: "ativo",

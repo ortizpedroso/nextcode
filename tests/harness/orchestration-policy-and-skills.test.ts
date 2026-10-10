@@ -46,7 +46,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     const policy = loadOrchestrationPolicy();
     expect(policy.jevExecucao).toEqual({
       diagnosticoFalha: "ativo",
-      bloqueioSpecAmbigua: "sombra",
+      bloqueioSpecAmbigua: "ativo",
       verificacaoEvidencia: "sombra",
       guardaSegredosCodigo: "ativo",
       guardaSegredosChat: "ativo",
@@ -69,7 +69,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       const fallbackPolicy = loadOrchestrationPolicy(tmpRootMissing);
       expect(fallbackPolicy.jevExecucao).toEqual({
         diagnosticoFalha: "ativo",
-        bloqueioSpecAmbigua: "sombra",
+        bloqueioSpecAmbigua: "ativo",
         verificacaoEvidencia: "sombra",
         guardaSegredosCodigo: "ativo",
         guardaSegredosChat: "ativo",

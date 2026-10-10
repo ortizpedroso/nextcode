@@ -261,6 +261,15 @@ describe("Passo 10.2 — Diagnóstico da falha via Jev (antes da próxima tentat
 
   it('bloqueio_spec_ambigua em "sombra" não bloqueia (apenas registra JEV_WOULD_BLOCK_AMBIGUOUS_SPEC)', async () => {
     const telemetrySpy = vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    const defaultPolicy = policyMod.loadOrchestrationPolicy();
+    vi.spyOn(policyMod, "loadOrchestrationPolicy").mockReturnValue({
+      ...defaultPolicy,
+      jevExecucao: {
+        ...defaultPolicy.jevExecucao,
+        bloqueioSpecAmbigua: "sombra",
+      },
+    });
+
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -309,14 +318,9 @@ describe("Passo 10.2 — Diagnóstico da falha via Jev (antes da próxima tentat
 
   it('bloqueio_spec_ambigua em "ativo" bloqueia sem incrementar attempts e posta relatório no chat', async () => {
     vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    // A política padrão agora já possui bloqueioSpecAmbigua: "ativo" nativamente
     const defaultPolicy = policyMod.loadOrchestrationPolicy();
-    vi.spyOn(policyMod, "loadOrchestrationPolicy").mockReturnValue({
-      ...defaultPolicy,
-      jevExecucao: {
-        ...defaultPolicy.jevExecucao,
-        bloqueioSpecAmbigua: "ativo",
-      },
-    });
+    expect(defaultPolicy.jevExecucao.bloqueioSpecAmbigua).toBe("ativo");
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
