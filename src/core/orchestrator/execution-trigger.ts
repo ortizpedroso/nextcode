@@ -406,7 +406,7 @@ async function planNodeTiers(nodes: DecomposedNode[], sessionId: string): Promis
 }
 
 /** Grava a decisão no Microbrief (nivel_modelo) e em payload.jevPlan para o executor e a trilha. */
-function withJevPlan(
+export function withJevPlan(
   payload: Record<string, unknown>,
   decision: MicrobriefPlanningDecision | undefined
 ): Record<string, unknown> {
@@ -420,6 +420,8 @@ function withJevPlan(
       source: decision.source,
       precisaDividir: decision.precisaDividir,
       clusterSugerido: decision.cluster,
+      aplicarTasteSkillPublico: decision.aplicarTasteSkillPublico ?? false,
+      aplicarReactPerfCritico: decision.aplicarReactPerfCritico ?? true,
     },
   };
 }

@@ -38,6 +38,14 @@ referencias_locais_fixas:
     origem_repo: https://github.com/vercel-labs/agent-skills
     origem_arquivo: skills/react-best-practices/SKILL.md
     commit_fixado: 063bee94c3f4df8453406c830b0a7df0f2860278
+  - caminho: skills/avaliador-frontend/references/ui-ux-pro-max-checklist.md
+    origem_repo: local
+    origem_arquivo: .claude/skills/ui-ux-pro-max/references/pro-rules.md
+    commit_fixado: 2.11.0
+  - caminho: skills/avaliador-frontend/references/taste-skill-preflight-publico.md
+    origem_repo: https://github.com/Leonxlnx/taste-skill
+    origem_arquivo: skills/taste-skill/SKILL.md
+    commit_fixado: e3c92037548e3e49bea8e6b906c99a8549654e71
 entrada:
   lente_1_cega:
     - microbriefs_cluster

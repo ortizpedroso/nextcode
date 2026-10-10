@@ -16,6 +16,7 @@ import {
   type MicrobriefAndReportDocument,
 } from "../templates/artifact-templates";
 import type { ClusterKind } from "../config/orchestration-policy";
+import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
 
@@ -85,6 +86,9 @@ export interface ValidateType2Options {
   cluster?: ClusterKind;
   expectedReqs?: string[];
   isPublicPage?: boolean;
+  includeReactPerf?: boolean;
+  nodeId?: string;
+  sessionId?: string;
   executorReport?: MicrobriefAndReportDocument | null;
 }
 
@@ -522,14 +526,39 @@ export class DualLensAuditor {
     let skillBlock = "";
     try {
       const loadedSkill = loadRoleSkill(skillName);
+      const isPublic = Boolean(options?.isPublicPage);
+      const incReact = options?.includeReactPerf ?? true;
       skillBlock =
         "\n\n[INSTRUÇÕES DECLARATIVAS DA SKILL " +
         loadedSkill.name.toUpperCase() +
         "]\n" +
         buildSkillSystemPrompt(loadedSkill, {
           includeLocalReferences: cluster === "frontend",
-          includeTasteSkillPublic: Boolean(options?.isPublicPage),
+          includeTasteSkillPublic: isPublic,
+          includeReactPerf: incReact,
         });
+
+      const referenciasIncluidas: string[] = [];
+      if (cluster === "frontend") {
+        for (const refPath of Object.keys(loadedSkill.resolvedReferencesContent)) {
+          if (refPath.includes("taste-skill") && !isPublic) continue;
+          if (refPath.includes("react-best-practices") && !incReact) continue;
+          referenciasIncluidas.push(refPath);
+        }
+      }
+
+      if (options?.sessionId) {
+        TelemetryLogger.log({
+          sessionId: options.sessionId,
+          action: "EVALUATOR_SKILL_REFS",
+          details: {
+            nodeId: options.nodeId ?? null,
+            skill: skillName,
+            referencias: referenciasIncluidas,
+            caracteres: skillBlock.length,
+          },
+        });
+      }
     } catch {
       /* fallback silencioso caso o diretório skills/ não esteja presente em algum ambiente isolado */
     }

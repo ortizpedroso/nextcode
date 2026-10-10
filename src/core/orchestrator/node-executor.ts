@@ -370,6 +370,14 @@ export function readNodePayload(payload?: string | null): {
   nodeFiles: string[];
   cluster?: ClusterKind;
   reqsCobertos?: string[];
+  jevPlan?: {
+    nivelModelo?: string;
+    source?: string;
+    precisaDividir?: boolean;
+    clusterSugerido?: string;
+    aplicarTasteSkillPublico?: boolean;
+    aplicarReactPerfCritico?: boolean;
+  };
 } {
   try {
     const parsed = payload ? JSON.parse(payload) : null;
@@ -387,6 +395,7 @@ export function readNodePayload(payload?: string | null): {
       reqsCobertos: Array.isArray(parsed?.reqsCobertos)
         ? parsed.reqsCobertos.filter((r: unknown) => typeof r === "string")
         : undefined,
+      jevPlan: parsed?.jevPlan && typeof parsed.jevPlan === "object" ? parsed.jevPlan : undefined,
     };
   } catch {
     return { goal: "", nodeFiles: [] };
@@ -1335,6 +1344,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,
+        isPublicPage: Boolean(nodePayload.jevPlan?.aplicarTasteSkillPublico),
+        includeReactPerf: nodePayload.jevPlan?.aplicarReactPerfCritico ?? true,
+        nodeId: taskDb.id,
+        sessionId: taskDb.sessionId,
         ...(nodeMicrobrief ? { executorReport: validatedExecutorReport } : {}),
       }
     );

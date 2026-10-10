@@ -349,7 +349,11 @@ export function enforceSkillToolPermission(params: {
  */
 export function buildSkillSystemPrompt(
   skill: LoadedRoleSkill,
-  options: { includeLocalReferences?: boolean; includeTasteSkillPublic?: boolean } = {}
+  options: {
+    includeLocalReferences?: boolean;
+    includeTasteSkillPublic?: boolean;
+    includeReactPerf?: boolean;
+  } = {}
 ): string {
   const parts: string[] = [];
   if (skill.inheritedBodyMarkdown) {
@@ -357,9 +361,14 @@ export function buildSkillSystemPrompt(
   }
   parts.push(skill.bodyMarkdown);
 
+  const includeReact = options.includeReactPerf ?? true;
+
   if (options.includeLocalReferences) {
     for (const [refPath, content] of Object.entries(skill.resolvedReferencesContent)) {
       if (refPath.includes("taste-skill") && !options.includeTasteSkillPublic) {
+        continue;
+      }
+      if (refPath.includes("react-best-practices") && !includeReact) {
         continue;
       }
       parts.push(`--- REFERÊNCIA LOCAL FIXA (${refPath}) ---\n${content}`);
