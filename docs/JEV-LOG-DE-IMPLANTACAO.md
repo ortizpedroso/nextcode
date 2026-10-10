@@ -74,3 +74,14 @@ Documento físico oficial de registro de todas as alterações, implementações
 - **Validação Automatizada:**
   - `tests/templates/macrobrief-markdown.test.ts`: 1/1 teste verde validando estrutura e renderização.
 
+### 4.3 Independência de Família do Avaliador (Claude Prioritário)
+- **Princípio:** Quem executa (DeepSeek) NUNCA pode avaliar a si mesmo.
+- **Implementação em `src/core/llm/evaluator-models.ts` e `src/core/orchestrator/node-executor.ts`:**
+  - `dispatchStrongEvaluator` agora suporta `preferIndependentFirst: true`.
+  - Quando o executor roda no DeepSeek, os modelos de famílias independentes (`nvidia/nemotron-3-ultra` e `claude/claude-sonnet-4-5`) são avaliados prioritariamente antes de qualquer tentativa da mesma família.
+  - Com o saldo ativo no Claude, o avaliador obtém independência de julgamento e cumpre a Trava T4/T5.
+- **Validação Automatizada:**
+  - `tests/llm/evaluator-freellmapi.test.ts`: 8/8 testes verdes, incluindo novo teste comprovando que com `preferIndependentFirst: true`, Claude é consultado antes de DeepSeek quando Nemotron estiver indisponível.
+  - `tests/harness/evaluator-and-tier.test.ts`: 7/7 testes verdes.
+
+

@@ -42,9 +42,17 @@ export function resetEvaluatorState(): void {
   skippedUntil.clear();
 }
 
+export interface StrongEvaluatorOptions {
+  timeoutMs?: number;
+  executorFamily?: EvaluatorProvider;
+  loader?: () => Promise<GatewayConfig[]>;
+  chain?: EvaluatorCandidate[];
+  preferIndependentFirst?: boolean;
+}
+
 export async function dispatchStrongEvaluator(
   messages: ChatMessage[],
-  opts: { timeoutMs?: number; executorFamily?: EvaluatorProvider; loader?: () => Promise<GatewayConfig[]> } = {}
+  opts: StrongEvaluatorOptions = {}
 ): Promise<EvaluatorCallResult> {
   const executorFamily = opts.executorFamily ?? "deepseek";
   const failures: string[] = [];
@@ -55,7 +63,16 @@ export async function dispatchStrongEvaluator(
     return { content: null, provider: null, model: null, independent: false, failures: ["freellmapi: não configurado"] };
   }
 
-  for (const c of EVALUATOR_CHAIN) {
+  const baseChain = opts.chain ?? EVALUATOR_CHAIN;
+  const effectiveChain = opts.preferIndependentFirst
+    ? [...baseChain].sort((a, b) => {
+        const aIndep = a.provider !== executorFamily ? 0 : 1;
+        const bIndep = b.provider !== executorFamily ? 0 : 1;
+        return aIndep - bIndep;
+      })
+    : baseChain;
+
+  for (const c of effectiveChain) {
     if ((skippedUntil.get(c.provider) ?? 0) > Date.now()) {
       failures.push(`${c.provider}: fora por falta de crédito/chave (pausa de 10 min)`);
       continue;

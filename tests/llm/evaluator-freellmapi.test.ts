@@ -160,4 +160,38 @@ describe("P3.1 — Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek �
       expect(url).toContain("localhost:3100");
     }
   });
+
+  it("preferIndependentFirst: true prioriza Claude (independente) antes de DeepSeek quando executor for DeepSeek", async () => {
+    const modelsAttempted: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body || "{}"));
+      modelsAttempted.push(body.model);
+      if (body.model.includes("nemotron")) {
+        return new Response('{"error":{"message":"nemotron indisponivel"}}', { status: 503 });
+      }
+      if (body.model.includes("claude")) {
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: '{"verdict":"CLAUDE_APROVADO"}' } }] }),
+          { status: 200, headers: { "x-routed-via": "anthropic/claude-sonnet-4-5" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"verdict":"DEEPSEEK_OK"}' } }] }),
+        { status: 200, headers: { "x-routed-via": "custom/deepseek-v4-pro" } }
+      );
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      executorFamily: "deepseek",
+      preferIndependentFirst: true,
+    });
+
+    expect(res.content).toBe('{"verdict":"CLAUDE_APROVADO"}');
+    expect(res.provider).toBe("claude");
+    expect(res.independent).toBe(true);
+    expect(modelsAttempted[0]).toContain("nemotron");
+    expect(modelsAttempted[1]).toContain("claude");
+    expect(modelsAttempted).not.toContain("deepseek-v4-pro");
+  });
 });

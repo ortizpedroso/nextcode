@@ -468,8 +468,11 @@ export function makeBlindAuditDispatchFn(
   nodeId?: string
 ): LLMDispatchFn {
   return async (messages) => {
-    // Avaliador forte e pago (Nemotron → DeepSeek → Claude). Só cai na rota gratuita se nenhum responder.
-    const strong = await dispatchStrongEvaluator(messages).catch(() => null);
+    // Avaliador forte e pago (prioriza modelos independentes do executor: Nemotron / Claude antes de DeepSeek).
+    const strong = await dispatchStrongEvaluator(messages, {
+      executorFamily: "deepseek",
+      preferIndependentFirst: true,
+    }).catch(() => null);
     const paidOnly = isPaidOnlyRouting(loadOrchestrationPolicy());
     TelemetryLogger.log({
       sessionId,
