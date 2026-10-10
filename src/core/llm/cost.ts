@@ -24,6 +24,7 @@ const PRICES: { match: RegExp; price: ModelPrice }[] = [
   { match: /deepseek-(v4-)?flash/i, price: { input: 0.3, cachedInput: 0.006, output: 1.2 } },
   { match: /gemini-3\.1-pro/i, price: { input: 2, cachedInput: 0.2, output: 12 } },
   { match: /claude-sonnet-5/i, price: { input: 2, cachedInput: 0.2, output: 10 } },
+  { match: /claude-sonnet-4/i, price: { input: 3, cachedInput: 0.3, output: 15 } },
   { match: /claude-opus-5-5/i, price: { input: 4, cachedInput: 0.2, output: 20 } },
   { match: /^jev-/i, price: { input: 0.042, cachedInput: 0.042, output: 0 } },
 ];

@@ -47,7 +47,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     expect(policy.jevExecucao).toEqual({
       diagnosticoFalha: "ativo",
       bloqueioSpecAmbigua: "ativo",
-      verificacaoEvidencia: "sombra",
+      verificacaoEvidencia: "ativo",
       guardaSegredosCodigo: "ativo",
       guardaSegredosChat: "ativo",
       guardaInstalacaoSkill: "ativo",

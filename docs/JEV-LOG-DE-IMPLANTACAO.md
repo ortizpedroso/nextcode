@@ -51,8 +51,11 @@ Documento físico oficial de registro de todas as alterações, implementações
   - Tipagem estrita: `tsc --noEmit` verificado com 0 erros.
 
 ### 3.2 Guarda de Verificação de Evidência (`verificacao_evidencia`)
-- **Status Atual:** Em modo `sombra`.
-- **Objetivo Próximo:** Avaliar amostras em modo sombra da verificação de evidência pelo JEV antes de promover para `ativo`.
+- **Status:** Promovido para `ativo` na política canônica (`config/politicas-orquestracao.yaml`).
+- **Comportamento Operacional:**
+  - O JEV inspeciona em cada etapa se o código concreto entregue nos arquivos de quarentena satisfaz a evidência alegada pelo executor (`registroCumprimento`) e pelo avaliador, com limiar de contradição de 0.80.
+- **Validação Automatizada:**
+  - `tests/harness/orchestration-policy-and-skills.test.ts`: 12/12 testes verdes comprovando carregamento ativo.
 
 ---
 

@@ -194,4 +194,36 @@ describe("P3.1 — Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek �
     expect(modelsAttempted[1]).toContain("claude");
     expect(modelsAttempted).not.toContain("deepseek-v4-pro");
   });
+
+  it("quando FreeLLMAPI falha mas ha claudeKey valida salva, fallback direto para api.anthropic.com e bem-sucedido", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("localhost:3100")) {
+        return new Response('{"error":{"message":"gateway offline"}}', { status: 502 });
+      }
+      if (u.includes("api.anthropic.com")) {
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: '{"verdict":"CLAUDE_DIRECT_OK"}' }],
+            usage: { input_tokens: 150, output_tokens: 30 },
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      executorFamily: "deepseek",
+      preferIndependentFirst: true,
+      directClaudeKey: "sk-ant-test-key",
+    });
+
+    expect(res.content).toBe('{"verdict":"CLAUDE_DIRECT_OK"}');
+    expect(res.provider).toBe("claude");
+    expect(res.independent).toBe(true);
+    expect(res.usage).toEqual({ input_tokens: 150, output_tokens: 30 });
+  });
 });
+

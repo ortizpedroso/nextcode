@@ -48,6 +48,7 @@ export interface StrongEvaluatorOptions {
   loader?: () => Promise<GatewayConfig[]>;
   chain?: EvaluatorCandidate[];
   preferIndependentFirst?: boolean;
+  directClaudeKey?: string | null;
 }
 
 export async function dispatchStrongEvaluator(
@@ -130,5 +131,71 @@ export async function dispatchStrongEvaluator(
     }
   }
 
+  // Fallback transparente: se o provedor Claude foi solicitado e falhou no FreeLLMAPI,
+  // mas o usuário possui claudeKey salva diretamente no banco (Setting), consulta a API oficial da Anthropic.
+  if (effectiveChain.some((c) => c.provider === "claude") && (skippedUntil.get("claude") ?? 0) <= Date.now()) {
+    try {
+      let directKey = opts.directClaudeKey;
+      if (directKey === undefined) {
+        const prisma = (await import("@/lib/prisma")).default;
+        const { readSecret } = await import("@/core/security/crypto");
+        const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
+        directKey = readSecret(setting?.claudeKey);
+      }
+      if (directKey && directKey.trim() && !directKey.startsWith("••••") && !directKey.startsWith("****")) {
+        const { safeFetch } = await import("@/core/security/safe-fetch");
+        const sysMsg = messages.find((m) => m.role === "system")?.content || "";
+        const userMessages = messages
+          .filter((m) => m.role !== "system")
+          .map((m) => ({ role: m.role, content: m.content }));
+        const anthropicModel = process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
+
+        const antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": directKey.trim(),
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: anthropicModel,
+            max_tokens: 8000,
+            ...(sysMsg ? { system: sysMsg } : {}),
+            messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
+          }),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+        });
+
+        if (antRes.ok) {
+          const antJson = (await antRes.json().catch(() => ({}))) as {
+            content?: { type: string; text?: string }[];
+            usage?: { input_tokens?: number; output_tokens?: number };
+          };
+          const text = antJson.content?.[0]?.text ?? "";
+          if (text.trim()) {
+            return {
+              content: text,
+              provider: "claude",
+              model: antJson.content ? anthropicModel : "claude-direct",
+              independent: executorFamily !== "claude",
+              failures,
+              usage: antJson.usage
+                ? {
+                    input_tokens: antJson.usage.input_tokens,
+                    output_tokens: antJson.usage.output_tokens,
+                  }
+                : null,
+            };
+          }
+        } else {
+          failures.push(`claude/direct: HTTP ${antRes.status}`);
+        }
+      }
+    } catch (errDirect) {
+      failures.push(`claude/direct: ${String(errDirect).slice(0, 140)}`);
+    }
+  }
+
   return { content: null, provider: null, model: null, independent: false, failures };
 }
+
