@@ -838,4 +838,255 @@ export async function verifyMacrobriefCoverageWithJev(
   };
 }
 
+// ============================================================================
+// AUDITORIA FINAL DE ENTREGA COM JEV (Spec Canônica × Código Real no Disco)
+// ============================================================================
+
+export const DELIVERY_AUDIT_QUESTIONS: Record<string, JevQuestionSpec> = {
+  requisitos_integralmente_implementados: {
+    type: "noul",
+    instructions:
+      "Compare the Canonical Spec requirements (declared REQs and acceptance criteria) with the delivered codebase in `codeFiles`. Does the delivered code implement all specified features and functional criteria without omissions?",
+    criteria: {
+      true: "all declared functional requirements and acceptance criteria are implemented in the delivered code",
+      false: "one or more functional requirements or acceptance criteria from the spec are missing or omitted in the code",
+    },
+  },
+  fidelidade_regras_negocio: {
+    type: "noul",
+    instructions:
+      "Examine whether business rules, constraints, data validations, and logic flows specified in the Spec are strictly honored by the delivered code.",
+    criteria: {
+      true: "the implementation strictly honors all business rules, invariants, and constraints defined in the spec",
+      false: "the code alters, bypasses, or violates business rules or constraints defined in the spec",
+    },
+  },
+  ausencia_stubs_e_placeholders: {
+    type: "noul",
+    instructions:
+      "Audit the delivered code for placeholder implementations: empty stub functions, mock bypasses, or 'TODO' / 'throw new Error(\"Not implemented\")' shortcuts instead of real business logic.",
+    criteria: {
+      true: "the code is substantive and complete with genuine implementations, free of fake stubs or TODO shortcuts",
+      false: "the code contains dummy stubs, TODO placeholders, empty functions, or fake mocks where real logic is required",
+    },
+  },
+  aderencia_stack_e_contratos: {
+    type: "noul",
+    instructions:
+      "Verify whether the delivered code conforms to the declared technology stack, TypeScript types/interfaces, export signatures, and public API contracts.",
+    criteria: {
+      true: "strictly conforms to declared types, contracts, public endpoints, and technology stack without arbitrary substitutions",
+      false: "deviates from declared types, alters expected interfaces, uses unapproved libraries, or fails signature consistency",
+    },
+  },
+  isolamento_seguranca_e_segredos: {
+    type: "noul",
+    instructions:
+      "Check whether secrets, private keys, environment variables, or backend database handlers are leaked to public client code or insecurely exposed.",
+    criteria: {
+      true: "clean security partition with zero secret exposure and proper client-server boundaries",
+      false: "insecure exposure of sensitive keys, hardcoded credentials, or leaked server logic into public client files",
+    },
+  },
+  integracao_e_consistencia_entre_arquivos: {
+    type: "noul",
+    instructions:
+      "Verify that the delivered files work together cohesively: imports resolve to actual exports across modules, with no orphan routes, missing helpers, or disconnected components.",
+    criteria: {
+      true: "all files integrate cohesively with valid imports and consistent cross-module references",
+      false: "broken cross-file integration, dangling imports, or orphaned handlers that do not connect",
+    },
+  },
+};
+
+export interface JevDeliveryAuditParams {
+  sessionId?: string | null;
+  projetoId: string;
+  spec: {
+    titulo?: string | null;
+    versao?: number;
+    requisitos: Array<{ id: string; titulo: string; criterio: string }>;
+    stack?: string[];
+    regras?: string[];
+    arquivosAfetados?: string[];
+  };
+  codeContentMap: Record<string, string>;
+}
+
+export interface JevDeliveryGap {
+  reqId?: string;
+  arquivo?: string;
+  categoria:
+    | "requisito_faltante"
+    | "stub_ou_placeholder"
+    | "violacao_regra"
+    | "falha_integracao"
+    | "risco_seguranca";
+  descricao: string;
+}
+
+export interface JevDeliveryAuditResult {
+  aprovado: boolean;
+  confiancaMedia: number;
+  scores: {
+    requisitosImplementados: number;
+    fidelidadeRegras: number;
+    ausenciaStubs: number;
+    aderenciaContratos: number;
+    isolamentoSeguranca: number;
+    integracaoArquivos: number;
+  };
+  lacunas: JevDeliveryGap[];
+  jevDisponivel: boolean;
+  resumoAuditoria: string;
+}
+
+export async function verifyProjectDeliveryWithJev(
+  params: JevDeliveryAuditParams
+): Promise<JevDeliveryAuditResult> {
+  // Monta resumo do código limitando o tamanho total para respeitar o budget de caracteres do JEV
+  const compactCodeFiles: Record<string, string> = {};
+  for (const [file, content] of Object.entries(params.codeContentMap)) {
+    // Mantém as primeiras 200 linhas ou 6000 caracteres por arquivo
+    const lines = content.split(/\r?\n/).slice(0, 200).join("\n");
+    compactCodeFiles[file] = lines.slice(0, 6000);
+  }
+
+  const stateJson = JSON.stringify({
+    projetoId: params.projetoId,
+    spec: {
+      titulo: params.spec.titulo || null,
+      versao: params.spec.versao || 1,
+      requisitos: params.spec.requisitos,
+      stack: params.spec.stack || [],
+      regras: params.spec.regras || [],
+      arquivosAfetados: params.spec.arquivosAfetados || [],
+    },
+    codeFiles: compactCodeFiles,
+  });
+
+  const answers = await askJevBatch({
+    purpose: "final_project_delivery_audit",
+    state: stateJson,
+    questions: DELIVERY_AUDIT_QUESTIONS,
+    sessionId: params.sessionId,
+    maxStateChars: 28000,
+  });
+
+  if (!answers) {
+    TelemetryLogger.log({
+      sessionId: params.sessionId ?? undefined,
+      action: "JEV_FINAL_DELIVERY_AUDIT",
+      details: {
+        projetoId: params.projetoId,
+        jevDisponivel: false,
+        aprovado: true,
+        motivo: "fallback_sem_jev",
+      },
+    });
+    return {
+      aprovado: true,
+      confiancaMedia: 0,
+      scores: {
+        requisitosImplementados: 1,
+        fidelidadeRegras: 1,
+        ausenciaStubs: 1,
+        aderenciaContratos: 1,
+        isolamentoSeguranca: 1,
+        integracaoArquivos: 1,
+      },
+      lacunas: [],
+      jevDisponivel: false,
+      resumoAuditoria: "Auditoria final do JEV ignorada por indisponibilidade temporária de serviço.",
+    };
+  }
+
+  const readScore = (key: string): number => {
+    const ans = answers[key];
+    if (ans && ans.type === "noul" && Number.isFinite(ans.noul)) {
+      return ans.noul;
+    }
+    return 0.5;
+  };
+
+  const scores = {
+    requisitosImplementados: readScore("requisitos_integralmente_implementados"),
+    fidelidadeRegras: readScore("fidelidade_regras_negocio"),
+    ausenciaStubs: readScore("ausencia_stubs_e_placeholders"),
+    aderenciaContratos: readScore("aderencia_stack_e_contratos"),
+    isolamentoSeguranca: readScore("isolamento_seguranca_e_segredos"),
+    integracaoArquivos: readScore("integracao_e_consistencia_entre_arquivos"),
+  };
+
+  const lacunas: JevDeliveryGap[] = [];
+
+  if (scores.requisitosImplementados < 0.85) {
+    lacunas.push({
+      categoria: "requisito_faltante",
+      descricao: `Requisitos incompletos: o código entregue não atende integralmente a todos os REQs e critérios de aceite da Spec (score: ${scores.requisitosImplementados.toFixed(2)}).`,
+    });
+  }
+  if (scores.fidelidadeRegras < 0.85) {
+    lacunas.push({
+      categoria: "violacao_regra",
+      descricao: `Desvio de regras de negócio: o código viola ou altera restrições mandatórias definidas na Spec (score: ${scores.fidelidadeRegras.toFixed(2)}).`,
+    });
+  }
+  if (scores.ausenciaStubs < 0.85) {
+    lacunas.push({
+      categoria: "stub_ou_placeholder",
+      descricao: `Presença de stubs ou placeholders: detectadas funções vazias, TODOs ou mocks onde deveria haver código substantivo (score: ${scores.ausenciaStubs.toFixed(2)}).`,
+    });
+  }
+  if (scores.aderenciaContratos < 0.80) {
+    lacunas.push({
+      categoria: "falha_integracao",
+      descricao: `Incompatibilidade de contratos/stack: assinaturas públicas ou tecnologias divergem das exigidas na Spec (score: ${scores.aderenciaContratos.toFixed(2)}).`,
+    });
+  }
+  if (scores.isolamentoSeguranca < 0.80) {
+    lacunas.push({
+      categoria: "risco_seguranca",
+      descricao: `Vulnerabilidade ou exposição de segurança: partição incorreta de segredos ou handlers protegidos (score: ${scores.isolamentoSeguranca.toFixed(2)}).`,
+    });
+  }
+  if (scores.integracaoArquivos < 0.80) {
+    lacunas.push({
+      categoria: "falha_integracao",
+      descricao: `Falha de integração entre arquivos: módulos dependentes possuem importações desencontradas ou rotas desconectadas (score: ${scores.integracaoArquivos.toFixed(2)}).`,
+    });
+  }
+
+  const aprovado = lacunas.length === 0;
+  const values = Object.values(scores);
+  const confiancaMedia = values.reduce((sum, v) => sum + v, 0) / values.length;
+
+  const resumoAuditoria = aprovado
+    ? "O código entregue no disco atende rigorosamente a todos os requisitos, regras, contratos e parâmetros de segurança da Spec Canônica."
+    : `Auditoria de entrega identificou ${lacunas.length} lacuna(s) crítica(s) em relação à Spec Canônica. Reparo necessário.`;
+
+  TelemetryLogger.log({
+    sessionId: params.sessionId ?? undefined,
+    action: "JEV_FINAL_DELIVERY_AUDIT",
+    details: {
+      projetoId: params.projetoId,
+      aprovado,
+      confiancaMedia,
+      scores,
+      lacunas,
+      jevDisponivel: true,
+    },
+  });
+
+  return {
+    aprovado,
+    confiancaMedia,
+    scores,
+    lacunas,
+    jevDisponivel: true,
+    resumoAuditoria,
+  };
+}
+
+
 

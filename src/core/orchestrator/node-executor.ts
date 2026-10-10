@@ -208,6 +208,28 @@ export function checkSpecCompletenessOnDisk(
   return { complete: missingFiles.length === 0, declaredFiles, missingFiles };
 }
 
+/**
+ * Lê o conteúdo real dos arquivos do projeto existentes no disco para auditoria de entrega.
+ */
+export function readProjectFilesContent(
+  files: string[],
+  projectPath?: string | null
+): Record<string, string> {
+  const basePath = projectPath || process.cwd();
+  const map: Record<string, string> = {};
+  for (const f of files) {
+    const full = path.join(basePath, f);
+    if (fs.existsSync(full)) {
+      try {
+        map[f] = fs.readFileSync(full, "utf-8");
+      } catch {
+        map[f] = "";
+      }
+    }
+  }
+  return map;
+}
+
 export interface DeliveryVerificationT10Result {
   passed: boolean;
   specFilesComplete: boolean;

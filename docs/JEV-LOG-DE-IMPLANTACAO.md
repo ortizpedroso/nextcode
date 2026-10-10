@@ -102,7 +102,31 @@ Documento físico oficial de registro de todas as alterações, implementações
 - **Validação Automatizada:**
   - `tests/decision/jev-macrobrief-conference.test.ts`: 5/5 testes verdes cobrindo aprovação plena, reprovação por omissão/escopo, inversão de dependência/segurança e fallback sem JEV.
   - `tests/intake/jev-intake-conference.test.ts`: 2/2 testes verdes comprovando transição para `PLANEJAMENTO` quando aprovado e ciclo de 3 reparos com bloqueio e notificação humana na 4ª volta.
+  - `tests/intake/jev-macrobrief-stress.test.ts`: 2/2 testes pesados de estresse com SaaS multi-tenant completo (4 módulos, 4 arquivos, regras e entidades).
   - Suíte completa de governança e intake (192 testes) passando com 100% de sucesso.
+
+### 4.5 Portão Final de Entrega: JEV Audita Spec Canônica × Código Real no Disco (Trava T10)
+- **Princípio:** Não basta verificar se arquivos existem ou se os nós individuais disseram que passaram. O produto consolidado no disco precisa provar matematicamente que atende ao contrato original da Spec Canônica aprovada.
+- **Bateria Fan-Out de 6 Perguntas de Entrega (`src/core/decision/jev-execution-checks.ts`):**
+  1. `requisitos_integralmente_implementados` (Noul, limiar $\ge 0.85$): valida que cada `REQ-001...` da Spec possui código real, substantivo e verificável no disco.
+  2. `fidelidade_regras_negocio` (Noul, limiar $\ge 0.85$): valida que as regras de negócio, fluxos e validações da Spec foram estritamente honradas.
+  3. `ausencia_stubs_e_placeholders` (Noul, limiar $\ge 0.85$): valida a ausência de funções vazias, TODOs, stubs falsos ou mocks decorativos.
+  4. `aderencia_stack_e_contratos` (Noul, limiar $\ge 0.80$): valida a conformidade de assinaturas TypeScript, interfaces e bibliotecas da stack declarada.
+  5. `isolamento_seguranca_e_segredos` (Noul, limiar $\ge 0.80$): valida que nenhuma credencial, chave ou lógica privada de servidor foi exposta no cliente.
+  6. `integracao_e_consistencia_entre_arquivos` (Noul, limiar $\ge 0.80$): valida se todos os módulos conversam entre si sem rotas desconectadas ou imports órfãos.
+- **Integração no Portão de Entrega (`src/core/orchestrator/job-queue.ts` e `node-executor.ts`):**
+  - Quando a fila de tarefas conclui com sucesso (`allCompleted: true`), lê o código real dos arquivos via `readProjectFilesContent` e aciona `verifyProjectDeliveryWithJev`.
+  - Se aprovado: emite telemetria `JEV_FINAL_DELIVERY_AUDIT` e transiciona com `VERIFICACAO_OK` para `ENTREGUE`.
+  - Se reprovado: gera o `Laudo de Auditoria de Entrega` formal em Markdown + YAML, emite `VERIFICACAO_COM_LACUNAS` e grava mensagem com o laudo para o Analista.
+
+### 4.6 Tratamento de Reprovação com Laudo Imutável e Microbrief de Reparo em Markdown + YAML
+- **Princípio:** O brief anterior NUNCA é alterado ou sobrescrito. O histórico é preservado como fato consumado.
+- **Formulação pelo Analista:** O Analista recebe o Laudo de Auditoria do JEV e formula um **Microbrief de Reparo** específico (`renderMicrobriefReparoMarkdown` em `src/core/templates/artifact-templates.ts`).
+- **Isolamento Estrito:** O Executor recebe **exclusivamente o Microbrief de Reparo** com `files_scope` restrito apenas aos arquivos e funções onde a lacuna foi detectada, sem vazamento da Spec inteira (Trava T-SPEC-SHIELD preservada).
+- **Validação Automatizada:**
+  - `tests/decision/jev-final-delivery-audit.test.ts`: 5/5 testes verdes validando bateria de perguntas, aprovação, reprovação e renderização do Laudo e do Microbrief de Reparo em Markdown + YAML.
+  - `tests/orchestrator/jev-delivery-gate.test.ts`: 2/2 testes verdes comprovando aprovação para `ENTREGUE` e reprovação para `PLANEJAMENTO` com Laudo formal.
+
 
 
 

@@ -5,7 +5,12 @@ import {
   recoverZombieRunningNodes,
   type SessionQueueResult,
 } from "@/core/orchestrator/session-queue";
-import { verifyProjectDeliveryT10 } from "@/core/orchestrator/node-executor";
+import {
+  verifyProjectDeliveryT10,
+  readProjectFilesContent,
+} from "@/core/orchestrator/node-executor";
+import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
+import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
@@ -316,6 +321,57 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             await prisma.message.create({
               data: { sessionId: job.sessionId, role: "assistant", content: describeUiCheckFailure(uiCheck) },
             });
+          }
+        }
+
+        // Auditoria Final do JEV (Spec Canônica × Código Real no Disco)
+        if (deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
+          const parsedSpec = parseSpecDocument(sessionAfterQueue.canonicalSpec);
+          const filesToAudit = parsedSpec?.arquivosAfetados ?? [];
+          if (parsedSpec && filesToAudit.length > 0) {
+            const codeContentMap = readProjectFilesContent(filesToAudit, projectPath);
+            const jevAudit = await verifyProjectDeliveryWithJev({
+              sessionId: job.sessionId,
+              projetoId: parsedSpec.titulo || job.sessionId,
+              spec: {
+                titulo: parsedSpec.titulo,
+                requisitos: (parsedSpec.requisitos ?? []).map((r) => ({
+                  id: r.id,
+                  titulo: r.titulo,
+                  criterio: r.criterio,
+                })),
+                stack: parsedSpec.stack,
+                regras: parsedSpec.notasImplementacao,
+                arquivosAfetados: filesToAudit,
+              },
+              codeContentMap,
+            });
+
+            if (!jevAudit.aprovado) {
+              deliveryT10.passed = false;
+              for (const lacuna of jevAudit.lacunas) {
+                deliveryT10.gaps.push(`[JEV Audit: ${lacuna.categoria}] ${lacuna.descricao}`);
+              }
+              const auditReportDoc = {
+                documento: "laudo_auditoria_entrega" as const,
+                idLaudo: `laudo-entrega-${Date.now()}`,
+                idProjeto: parsedSpec.titulo || job.sessionId,
+                specVersao: 1,
+                aprovado: false,
+                confiancaMedia: jevAudit.confiancaMedia,
+                scores: jevAudit.scores,
+                lacunas: jevAudit.lacunas,
+                resumoAuditoria: jevAudit.resumoAuditoria,
+              };
+              const reportMarkdown = renderDeliveryAuditReportMarkdown(auditReportDoc);
+              await prisma.message.create({
+                data: {
+                  sessionId: job.sessionId,
+                  role: "assistant",
+                  content: reportMarkdown,
+                },
+              });
+            }
           }
         }
         if (deliveryT10.passed) {

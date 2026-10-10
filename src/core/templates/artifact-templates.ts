@@ -1214,4 +1214,147 @@ export function renderMacrobriefMarkdown(macrobrief: MacrobriefDocument): string
   return lines.join("\n");
 }
 
+export interface DeliveryAuditGap {
+  reqId?: string;
+  arquivo?: string;
+  categoria:
+    | "requisito_faltante"
+    | "stub_ou_placeholder"
+    | "violacao_regra"
+    | "falha_integracao"
+    | "risco_seguranca";
+  descricao: string;
+}
+
+export interface DeliveryAuditReportDocument {
+  documento: "laudo_auditoria_entrega";
+  idLaudo: string;
+  idProjeto: string;
+  specVersao: number;
+  aprovado: boolean;
+  confiancaMedia: number;
+  scores: {
+    requisitosImplementados: number;
+    fidelidadeRegras: number;
+    ausenciaStubs: number;
+    aderenciaContratos: number;
+    isolamentoSeguranca: number;
+    integracaoArquivos: number;
+  };
+  lacunas: DeliveryAuditGap[];
+  resumoAuditoria: string;
+}
+
+/**
+ * Renderiza o Laudo de Auditoria de Entrega do JEV em Markdown + YAML.
+ * Fornece a comprovação formal de aderência ou as razões de não-conformidade.
+ */
+export function renderDeliveryAuditReportMarkdown(report: DeliveryAuditReportDocument): string {
+  const lines: string[] = [
+    "---",
+    "documento: laudo_auditoria_entrega",
+    `id: ${yamlQuoted(report.idLaudo)}`,
+    `projeto: ${yamlQuoted(report.idProjeto)}`,
+    `spec_versao: ${report.specVersao}`,
+    `aprovado: ${report.aprovado}`,
+    `confianca_media: ${report.confiancaMedia.toFixed(2)}`,
+    "scores:",
+    `  requisitos_implementados: ${report.scores.requisitosImplementados.toFixed(2)}`,
+    `  fidelidade_regras: ${report.scores.fidelidadeRegras.toFixed(2)}`,
+    `  ausencia_stubs: ${report.scores.ausenciaStubs.toFixed(2)}`,
+    `  aderencia_contratos: ${report.scores.aderenciaContratos.toFixed(2)}`,
+    `  isolamento_seguranca: ${report.scores.isolamentoSeguranca.toFixed(2)}`,
+    `  integracao_arquivos: ${report.scores.integracaoArquivos.toFixed(2)}`,
+    `total_lacunas: ${report.lacunas.length}`,
+    "---",
+    "",
+    `# Laudo de Auditoria Final de Entrega — ${report.idProjeto}`,
+    "",
+    `**Resultado:** ${report.aprovado ? "✅ APROVADO — CÓDIGO CONFORME À SPEC" : "❌ REPROVADO — LACUNAS DETECTADAS"}`,
+    `**Confiança Média:** ${(report.confiancaMedia * 100).toFixed(0)}%`,
+    "",
+    "## Resumo da Auditoria",
+    "",
+    report.resumoAuditoria,
+    "",
+    "## Scores de Conformidade por Dimensão",
+    "",
+    `- **Requisitos Integralmente Implementados:** ${(report.scores.requisitosImplementados * 100).toFixed(0)}% (limiar: 85%)`,
+    `- **Fidelidade às Regras de Negócio:** ${(report.scores.fidelidadeRegras * 100).toFixed(0)}% (limiar: 85%)`,
+    `- **Ausência de Stubs / Placeholders:** ${(report.scores.ausenciaStubs * 100).toFixed(0)}% (limiar: 85%)`,
+    `- **Aderência aos Contratos e Stack:** ${(report.scores.aderenciaContratos * 100).toFixed(0)}% (limiar: 80%)`,
+    `- **Isolamento de Segurança e Segredos:** ${(report.scores.isolamentoSeguranca * 100).toFixed(0)}% (limiar: 80%)`,
+    `- **Integração e Consistência entre Arquivos:** ${(report.scores.integracaoArquivos * 100).toFixed(0)}% (limiar: 80%)`,
+    "",
+  ];
+
+  if (report.lacunas.length > 0) {
+    lines.push("## Apontamentos de Não-Conformidade (Lacunas)", "");
+    report.lacunas.forEach((lacuna, idx) => {
+      const reqStr = lacuna.reqId ? ` [${lacuna.reqId}]` : "";
+      const arqStr = lacuna.arquivo ? ` em \`${lacuna.arquivo}\`` : "";
+      lines.push(`### ${idx + 1}. [${lacuna.categoria}]${reqStr}${arqStr}`);
+      lines.push(lacuna.descricao);
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n");
+}
+
+export interface MicrobriefReparoDocument {
+  documento: "microbrief_reparo";
+  idReparo: string;
+  referenciaEtapaOriginal: string;
+  versaoReparo: number;
+  idProjeto: string;
+  filesScope: string[];
+  reqsAlvo: string[];
+  diretrizCirurgica: string;
+  lacunasParaSanar: string[];
+  contratosEsperados?: string;
+}
+
+/**
+ * Renderiza o Microbrief de Reparo em Markdown + YAML.
+ * O Executor recebe exclusivamente este artefato delimitado, com foco cirúrgico na correção sem ver a Spec inteira.
+ */
+export function renderMicrobriefReparoMarkdown(reparo: MicrobriefReparoDocument): string {
+  const lines: string[] = [
+    "---",
+    "documento: microbrief_reparo",
+    `id_reparo: ${yamlQuoted(reparo.idReparo)}`,
+    `referencia_etapa: ${yamlQuoted(reparo.referenciaEtapaOriginal)}`,
+    `versao_reparo: ${reparo.versaoReparo}`,
+    `projeto: ${yamlQuoted(reparo.idProjeto)}`,
+    "files_scope:",
+    ...reparo.filesScope.map((f) => `  - ${yamlQuoted(f)}`),
+    "reqs_alvo:",
+    ...reparo.reqsAlvo.map((r) => `  - ${r}`),
+    "---",
+    "",
+    `# Microbrief de Reparo: ${reparo.idReparo}`,
+    "",
+    `**Etapa de Referência:** \`${reparo.referenciaEtapaOriginal}\` (versão de reparo #${reparo.versaoReparo})`,
+    `**Arquivos no Escopo:** ${reparo.filesScope.map((f) => `\`${f}\``).join(", ")}`,
+    `**Requisitos Alvo:** ${reparo.reqsAlvo.join(", ")}`,
+    "",
+    "## Diretriz Cirúrgica de Execução",
+    "",
+    reparo.diretrizCirurgica,
+    "",
+    "## Lacunas Identificadas pelo JEV que Devem Ser Sanadas",
+    "",
+    ...reparo.lacunasParaSanar.map((l) => `- ${l}`),
+    "",
+  ];
+
+  if (reparo.contratosEsperados) {
+    lines.push("## Contratos e Critérios Específicos do Reparo", "", "```typescript", reparo.contratosEsperados, "```");
+  }
+
+  return lines.join("\n");
+}
+
+
 
