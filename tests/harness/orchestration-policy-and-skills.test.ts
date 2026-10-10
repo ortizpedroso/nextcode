@@ -436,7 +436,15 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     for (const name of skillNames) {
       const skill = loadRoleSkill(name);
       expect(skill.name).toBe(name);
-      expect(skill.ferramentas.length).toBeGreaterThan(0);
+      if (
+        name.startsWith("executor-") ||
+        name === "analista" ||
+        name === "elicitador"
+      ) {
+        expect(skill.ferramentas.length).toBeGreaterThan(0);
+      } else {
+        expect(skill.ferramentas.length).toBe(0);
+      }
     }
 
     const evalFront = loadRoleSkill("avaliador-frontend");
@@ -464,13 +472,14 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     const avaliador = loadRoleSkill("avaliador");
     const executorBackend = loadRoleSkill("executor-backend");
 
-    // Avaliador nunca pode escrever
-    const denyEvalWrite = enforceSkillToolPermission({
+    // Avaliador nunca pode usar ferramentas nem escrever
+    const denyEvalTool = enforceSkillToolPermission({
       skill: avaliador,
       toolName: "read_file",
       currentStep: 1,
     });
-    expect(denyEvalWrite.allowed).toBe(true);
+    expect(denyEvalTool.allowed).toBe(false);
+    expect(denyEvalTool.violationReason).toContain("não está autorizada");
 
     const denyEvalEdit = enforceSkillToolPermission({
       skill: avaliador,
@@ -479,6 +488,14 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       currentStep: 1,
     });
     expect(denyEvalEdit.allowed).toBe(false);
+
+    // Executor backend possui ferramentas de leitura
+    const allowExecRead = enforceSkillToolPermission({
+      skill: executorBackend,
+      toolName: "read_file",
+      currentStep: 1,
+    });
+    expect(allowExecRead.allowed).toBe(true);
 
     // Executor só pode escrever dentro do escopo do Microbrief e nunca em prisma/dev.db ou .env
     const allowInScope = enforceSkillToolPermission({

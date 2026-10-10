@@ -9,11 +9,7 @@ cluster: integration
 herda_de: skills/avaliador/SKILL.md
 nivel_modelo: forte
 modelo_diferente_do_executor: true
-ferramentas:
-  - read_file
-  - list_files
-  - grep
-  - finish
+ferramentas: []
 permissoes:
   escrever: nunca
   comandos: []
