@@ -133,7 +133,13 @@ Documento físico oficial de registro de todas as alterações, implementações
   - `tests/decision/jev-final-delivery-audit.test.ts`: 6/6 testes verdes validando bateria de perguntas Fan-Out, aprovação, reprovação, renderização em Markdown + YAML e o particionamento isolado por Cluster com dependências.
   - `tests/orchestrator/jev-delivery-gate.test.ts`: 2/2 testes verdes comprovando aprovação para `ENTREGUE` e reprovação para `PLANEJAMENTO` com Laudo formal.
 
-
-
-
-
+### 4.7 Validação Empírica da Conexão do Claude via OpenRouter (BYOK Anthropic)
+- **Status do Teste ao Vivo:**
+  - Chave de API do OpenRouter configurada: `sk-or-v1-f16...7c8`.
+  - Chamada real disparada para `https://openrouter.ai/api/v1/chat/completions`.
+  - Resposta obtida com **HTTP 200 OK**:
+    - Modelo atendido: `anthropic/claude-sonnet-4.5`.
+    - Resposta do modelo: `"CLAUDE_OPERACIONAL_OK"`.
+  - **Diagnóstico de Saldo e BYOK:**
+    - A consulta aos endpoints `/api/v1/credits` e `/api/v1/auth/key` revelou que o OpenRouter retornou `is_byok: false` com `total_credits: 0` na conta do OpenRouter, gerando código HTTP 402 se o `max_tokens` solicitado for alto ($\ge 150$), permitindo apenas requisições curtas (até 44 tokens) na cota residual compartilhada.
+    - **Ação necessária para operação plena:** No painel do OpenRouter (`https://openrouter.ai/settings/integrations` ou `byok`), certificar que a chave da Anthropic está definida como **"Prioritized"** e a opção de fallback configurada adequadamente, ou adicionar créditos na conta OpenRouter para a taxa de serviço de roteamento (5%).
