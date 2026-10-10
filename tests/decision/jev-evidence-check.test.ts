@@ -25,6 +25,14 @@ describe("Passo 10.3 — Verificação de evidência (sombra) via Jev", () => {
       rolledBack: false,
       buildResult: { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 },
     } as any);
+    const basePol = policyMod.loadOrchestrationPolicy();
+    vi.spyOn(policyMod, "loadOrchestrationPolicy").mockReturnValue({
+      ...basePol,
+      jevExecucao: {
+        ...basePol.jevExecucao,
+        verificacaoEvidencia: "sombra",
+      },
+    });
   });
 
   afterEach(() => {
