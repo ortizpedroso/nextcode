@@ -196,7 +196,14 @@ export function inferClusterFromFilePath(filePath: string): ClusterKind {
   ) {
     return "integration";
   }
-  if (norm.startsWith("src/app/api/") || norm.includes("/api/") || norm.endsWith("/route.ts")) {
+  if (
+    norm.startsWith("src/app/api/") ||
+    norm.includes("/api/") ||
+    norm.includes("/services/") ||
+    norm.includes("/controllers/") ||
+    norm.includes("/repositories/") ||
+    norm.endsWith("/route.ts")
+  ) {
     return "backend";
   }
   if (
@@ -1305,6 +1312,7 @@ export function renderDeliveryAuditReportMarkdown(report: DeliveryAuditReportDoc
 export interface MicrobriefReparoDocument {
   documento: "microbrief_reparo";
   idReparo: string;
+  cluster: ClusterKind;
   referenciaEtapaOriginal: string;
   versaoReparo: number;
   idProjeto: string;
@@ -1312,18 +1320,21 @@ export interface MicrobriefReparoDocument {
   reqsAlvo: string[];
   diretrizCirurgica: string;
   lacunasParaSanar: string[];
+  dependeDe?: string[];
   contratosEsperados?: string;
 }
 
 /**
  * Renderiza o Microbrief de Reparo em Markdown + YAML.
- * O Executor recebe exclusivamente este artefato delimitado, com foco cirúrgico na correção sem ver a Spec inteira.
+ * O Executor recebe exclusivamente este artefato delimitado por Cluster, com foco cirúrgico na correção sem ver a Spec inteira.
  */
 export function renderMicrobriefReparoMarkdown(reparo: MicrobriefReparoDocument): string {
+  const deps = reparo.dependeDe ?? [];
   const lines: string[] = [
     "---",
     "documento: microbrief_reparo",
     `id_reparo: ${yamlQuoted(reparo.idReparo)}`,
+    `cluster: ${reparo.cluster}`,
     `referencia_etapa: ${yamlQuoted(reparo.referenciaEtapaOriginal)}`,
     `versao_reparo: ${reparo.versaoReparo}`,
     `projeto: ${yamlQuoted(reparo.idProjeto)}`,
@@ -1331,13 +1342,22 @@ export function renderMicrobriefReparoMarkdown(reparo: MicrobriefReparoDocument)
     ...reparo.filesScope.map((f) => `  - ${yamlQuoted(f)}`),
     "reqs_alvo:",
     ...reparo.reqsAlvo.map((r) => `  - ${r}`),
+    `depende_de: [${deps.map((d) => yamlQuoted(d)).join(", ")}]`,
     "---",
     "",
-    `# Microbrief de Reparo: ${reparo.idReparo}`,
+    `# Microbrief de Reparo: ${reparo.idReparo} [Cluster: ${reparo.cluster}]`,
     "",
-    `**Etapa de Referência:** \`${reparo.referenciaEtapaOriginal}\` (versão de reparo #${reparo.versaoReparo})`,
+    `**Cluster:** \`${reparo.cluster}\` | **Versão de Reparo:** #${reparo.versaoReparo}`,
+    `**Etapa de Referência:** \`${reparo.referenciaEtapaOriginal}\``,
     `**Arquivos no Escopo:** ${reparo.filesScope.map((f) => `\`${f}\``).join(", ")}`,
     `**Requisitos Alvo:** ${reparo.reqsAlvo.join(", ")}`,
+  ];
+
+  if (deps.length > 0) {
+    lines.push(`**Depende de Reparos Anteriores:** ${deps.map((d) => `\`${d}\``).join(", ")}`);
+  }
+
+  lines.push(
     "",
     "## Diretriz Cirúrgica de Execução",
     "",
@@ -1346,14 +1366,95 @@ export function renderMicrobriefReparoMarkdown(reparo: MicrobriefReparoDocument)
     "## Lacunas Identificadas pelo JEV que Devem Ser Sanadas",
     "",
     ...reparo.lacunasParaSanar.map((l) => `- ${l}`),
-    "",
-  ];
+    ""
+  );
 
   if (reparo.contratosEsperados) {
     lines.push("## Contratos e Critérios Específicos do Reparo", "", "```typescript", reparo.contratosEsperados, "```");
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Particiona o Laudo de Reprovação do JEV em Microbriefs de Reparo específicos por Cluster.
+ * Cada cluster afetado recebe seu próprio Microbrief de Reparo isolado, garantindo:
+ * - Especialização de papéis (executor-backend não mexe no frontend e vice-versa);
+ * - files_scope rigorosamente restrito;
+ * - Ordenação de dependências na DAG de reparo (ex.: frontend depende do reparo de backend).
+ */
+export function partitionRepairsByCluster(
+  laudo: DeliveryAuditReportDocument,
+  idProjeto?: string
+): MicrobriefReparoDocument[] {
+  const projeto = idProjeto || laudo.idProjeto;
+  const groups = new Map<
+    ClusterKind,
+    {
+      files: Set<string>;
+      reqs: Set<string>;
+      lacunas: string[];
+    }
+  >();
+
+  for (const lacuna of laudo.lacunas) {
+    const cluster: ClusterKind = lacuna.arquivo
+      ? inferClusterFromFilePath(lacuna.arquivo)
+      : "backend";
+
+    if (!groups.has(cluster)) {
+      groups.set(cluster, { files: new Set(), reqs: new Set(), lacunas: [] });
+    }
+
+    const g = groups.get(cluster)!;
+    if (lacuna.arquivo) g.files.add(lacuna.arquivo);
+    if (lacuna.reqId) g.reqs.add(lacuna.reqId);
+    g.lacunas.push(lacuna.descricao);
+  }
+
+  // Ordem canônica de execução dos reparos: core -> backend -> integration -> frontend
+  const clusterOrder: ClusterKind[] = ["core", "backend", "integration", "frontend"];
+  const result: MicrobriefReparoDocument[] = [];
+  const generatedRepairIds = new Map<ClusterKind, string>();
+
+  for (const cluster of clusterOrder) {
+    const g = groups.get(cluster);
+    if (!g || g.lacunas.length === 0) continue;
+
+    const idReparo = `reparo-${cluster}-v${laudo.specVersao}`;
+    generatedRepairIds.set(cluster, idReparo);
+
+    // Determina dependências com reparos de clusters inferiores já gerados
+    const depClusters: ClusterKind[] = [];
+    if (cluster === "frontend") {
+      if (generatedRepairIds.has("backend")) depClusters.push("backend");
+      if (generatedRepairIds.has("integration")) depClusters.push("integration");
+    } else if (cluster === "integration" && generatedRepairIds.has("backend")) {
+      depClusters.push("backend");
+    } else if (cluster === "backend" && generatedRepairIds.has("core")) {
+      depClusters.push("core");
+    }
+
+    const dependeDe = depClusters.map((c) => generatedRepairIds.get(c)!);
+
+    result.push({
+      documento: "microbrief_reparo",
+      idReparo,
+      cluster,
+      referenciaEtapaOriginal: `etapa-original-${cluster}`,
+      versaoReparo: laudo.specVersao,
+      idProjeto: projeto,
+      filesScope: Array.from(g.files),
+      reqsAlvo: Array.from(g.reqs),
+      diretrizCirurgica:
+        `Atuar com precisão cirúrgica no cluster ${cluster}. NÃO reescrever arquivos inteiros. ` +
+        `Sanar exclusivamente as lacunas apontadas pelo JEV mantendo compatibilidade com as dependências.`,
+      lacunasParaSanar: g.lacunas,
+      dependeDe,
+    });
+  }
+
+  return result;
 }
 
 

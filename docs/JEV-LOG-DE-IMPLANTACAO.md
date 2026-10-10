@@ -119,13 +119,20 @@ Documento físico oficial de registro de todas as alterações, implementações
   - Se aprovado: emite telemetria `JEV_FINAL_DELIVERY_AUDIT` e transiciona com `VERIFICACAO_OK` para `ENTREGUE`.
   - Se reprovado: gera o `Laudo de Auditoria de Entrega` formal em Markdown + YAML, emite `VERIFICACAO_COM_LACUNAS` e grava mensagem com o laudo para o Analista.
 
-### 4.6 Tratamento de Reprovação com Laudo Imutável e Microbrief de Reparo em Markdown + YAML
+### 4.6 Tratamento de Reprovação com Laudo Imutável e Microbriefs de Reparo Especializados por Cluster
 - **Princípio:** O brief anterior NUNCA é alterado ou sobrescrito. O histórico é preservado como fato consumado.
-- **Formulação pelo Analista:** O Analista recebe o Laudo de Auditoria do JEV e formula um **Microbrief de Reparo** específico (`renderMicrobriefReparoMarkdown` em `src/core/templates/artifact-templates.ts`).
-- **Isolamento Estrito:** O Executor recebe **exclusivamente o Microbrief de Reparo** com `files_scope` restrito apenas aos arquivos e funções onde a lacuna foi detectada, sem vazamento da Spec inteira (Trava T-SPEC-SHIELD preservada).
+- **Especialização por Cluster (`partitionRepairsByCluster` em `src/core/templates/artifact-templates.ts`):**
+  - O Analista não mistura correções de camadas diferentes em um único documento.
+  - O Laudo de Não-Conformidade do JEV é particionado em **Microbriefs de Reparo individualizados por Cluster** (`core`, `backend`, `integration`, `frontend`).
+  - Cada cluster afetado recebe seu próprio Microbrief de Reparo com:
+    - `cluster: ClusterKind` explícito no frontmatter YAML;
+    - `files_scope` restrito unicamente aos arquivos daquele cluster (ex.: `executor-backend` só mexe em arquivos de backend; `executor-frontend` só em UI);
+    - Relação de dependências topológicas na DAG de reparo (ex.: o reparo de `frontend` declara `depende_de: [reparo-backend-v1]` quando consome dados corrigidos no backend).
+- **Isolamento Estrito:** Cada Executor recebe **exclusivamente o Microbrief de Reparo do seu cluster** sem vazamento da Spec inteira (Trava T-SPEC-SHIELD preservada).
 - **Validação Automatizada:**
-  - `tests/decision/jev-final-delivery-audit.test.ts`: 5/5 testes verdes validando bateria de perguntas, aprovação, reprovação e renderização do Laudo e do Microbrief de Reparo em Markdown + YAML.
+  - `tests/decision/jev-final-delivery-audit.test.ts`: 6/6 testes verdes validando bateria de perguntas Fan-Out, aprovação, reprovação, renderização em Markdown + YAML e o particionamento isolado por Cluster com dependências.
   - `tests/orchestrator/jev-delivery-gate.test.ts`: 2/2 testes verdes comprovando aprovação para `ENTREGUE` e reprovação para `PLANEJAMENTO` com Laudo formal.
+
 
 
 

@@ -8,6 +8,7 @@ import { TelemetryLogger } from "../../src/core/telemetry/telemetry-logger.js";
 import {
   renderDeliveryAuditReportMarkdown,
   renderMicrobriefReparoMarkdown,
+  partitionRepairsByCluster,
   type DeliveryAuditReportDocument,
   type MicrobriefReparoDocument,
 } from "../../src/core/templates/artifact-templates.js";
@@ -170,6 +171,7 @@ describe("Auditoria Final de Entrega pelo JEV (Spec Canônica × Código Real no
     const reparoDoc: MicrobriefReparoDocument = {
       documento: "microbrief_reparo",
       idReparo: "REPARO-LEAD-V1",
+      cluster: "backend",
       referenciaEtapaOriginal: "etapa-lead-services",
       versaoReparo: 1,
       idProjeto: "SaaS de Gestão de Leads",
@@ -185,15 +187,71 @@ describe("Auditoria Final de Entrega pelo JEV (Spec Canônica × Código Real no
     expect(md.startsWith("---\n")).toBe(true);
     expect(md).toContain("documento: microbrief_reparo");
     expect(md).toContain("id_reparo: \"REPARO-LEAD-V1\"");
+    expect(md).toContain("cluster: backend");
     expect(md).toContain("referencia_etapa: \"etapa-lead-services\"");
     expect(md).toContain("files_scope:");
     expect(md).toContain("- \"src/services/lead.service.ts\"");
     expect(md).toContain("reqs_alvo:");
     expect(md).toContain("- REQ-003");
-    expect(md).toContain("# Microbrief de Reparo: REPARO-LEAD-V1");
+    expect(md).toContain("# Microbrief de Reparo: REPARO-LEAD-V1 [Cluster: backend]");
     expect(md).toContain("Diretriz Cirúrgica de Execução");
     expect(md).toContain("Implementar estritamente o método dispatchWebhook");
     expect(md).toContain("```typescript");
     expect(md).toContain("export interface WebhookPayload");
   });
+
+  it("deve particionar o Laudo do JEV em Microbriefs de Reparo específicos por Cluster (backend e frontend isolados com dependência)", () => {
+    const laudoComDoisClusters: DeliveryAuditReportDocument = {
+      documento: "laudo_auditoria_entrega",
+      idLaudo: "laudo-multi-cluster",
+      idProjeto: "Portal Fullstack",
+      specVersao: 1,
+      aprovado: false,
+      confiancaMedia: 0.65,
+      scores: {
+        requisitosImplementados: 0.60,
+        fidelidadeRegras: 0.90,
+        ausenciaStubs: 0.85,
+        aderenciaContratos: 0.85,
+        isolamentoSeguranca: 0.90,
+        integracaoArquivos: 0.80,
+      },
+      lacunas: [
+        {
+          categoria: "requisito_faltante",
+          reqId: "REQ-001",
+          arquivo: "src/services/billing.service.ts",
+          descricao: "Método emitInvoice ausente no backend.",
+        },
+        {
+          categoria: "requisito_faltante",
+          reqId: "REQ-002",
+          arquivo: "src/components/InvoiceList.tsx",
+          descricao: "Componente de listagem de faturas não consome a API no frontend.",
+        },
+      ],
+      resumoAuditoria: "Falhas encontradas em backend e frontend.",
+    };
+
+    const reparos = partitionRepairsByCluster(laudoComDoisClusters);
+
+    expect(reparos).toHaveLength(2);
+
+    const reparoBackend = reparos.find((r) => r.cluster === "backend");
+    const reparoFrontend = reparos.find((r) => r.cluster === "frontend");
+
+    expect(reparoBackend).toBeDefined();
+    expect(reparoFrontend).toBeDefined();
+
+    // Backend isolado
+    expect(reparoBackend?.filesScope).toEqual(["src/services/billing.service.ts"]);
+    expect(reparoBackend?.reqsAlvo).toEqual(["REQ-001"]);
+    expect(reparoBackend?.dependeDe).toEqual([]);
+
+    // Frontend isolado, mas com dependência declarada do reparo de backend!
+    expect(reparoFrontend?.filesScope).toEqual(["src/components/InvoiceList.tsx"]);
+    expect(reparoFrontend?.reqsAlvo).toEqual(["REQ-002"]);
+    expect(reparoFrontend?.dependeDe).toEqual([reparoBackend!.idReparo]);
+  });
 });
+
