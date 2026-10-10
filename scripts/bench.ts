@@ -24,6 +24,20 @@ export function sanitizarSegredos(texto: string): string {
     .replace(/(?:key|token|secret|password|authorization)=([^\s&]+)/gi, "$1=***");
 }
 
+export interface EtapaDetalheBench {
+  nodeId: string;
+  titulo: string;
+  cluster: string;
+  nivelPlanejado: string;
+  fontePlano: "jev" | "fallback" | "ausente";
+  executorModelos: string[];
+  executorTokensEntrada: number;
+  executorTokensSaida: number;
+  executorUsd: number;
+  avaliadorModelos: string[];
+  avaliadorUsd: number;
+}
+
 export interface MetricasExecucao {
   projeto: ProjetoBench;
   variante: VarianteBench;
@@ -52,6 +66,7 @@ export interface MetricasExecucao {
   divergenciasEvidencia: number;
   jevChamadas: number;
   erroBench?: string;
+  etapasDetalhe?: EtapaDetalheBench[];
 }
 
 export interface MediasVariante {
@@ -186,6 +201,25 @@ export function formatarRelatorioMarkdown(
   }
 
   linhas.push("");
+  linhas.push("");
+  linhas.push("## Detalhe por etapa");
+  linhas.push("");
+  for (const m of metricas) {
+    linhas.push(`### ${m.projeto.toUpperCase()} - ${m.variante} (Rep ${m.repeticao})`);
+    if (m.etapasDetalhe && m.etapasDetalhe.length > 0) {
+      linhas.push("| Node ID | Título | Cluster | Nível Plan. | Fonte | Exec. Modelos | Tokens In | Tokens Out | Exec. USD | Aval. Modelos | Aval. USD |");
+      linhas.push("|---|---|---|---|---|---|---|---|---|---|---|");
+      for (const ed of m.etapasDetalhe) {
+        linhas.push(
+          `| ${ed.nodeId} | ${ed.titulo} | ${ed.cluster} | ${ed.nivelPlanejado} | ${ed.fontePlano} | ${ed.executorModelos.join(", ") || "-"} | ${ed.executorTokensEntrada} | ${ed.executorTokensSaida} | ${ed.executorUsd.toFixed(4)} | ${ed.avaliadorModelos.join(", ") || "-"} | ${ed.avaliadorUsd.toFixed(4)} |`
+        );
+      }
+    } else {
+      linhas.push("*(Sem detalhes de etapa disponíveis)*");
+    }
+    linhas.push("");
+  }
+
   linhas.push("## Detalhe Bruto dos Aceites");
   linhas.push("");
   for (const m of metricas) {
@@ -570,6 +604,76 @@ async function rodarUmaExecucao(
     }
   }
 
+  // Montar etapasDetalhe por tarefa/nó
+  const etapasDetalhe: EtapaDetalheBench[] = [];
+  for (const t of tasks) {
+    let payloadParsed: any = {};
+    try {
+      payloadParsed = JSON.parse(t.payload || "{}");
+    } catch {}
+
+    const jevPlan = payloadParsed.jevPlan;
+    const mb = payloadParsed.microbrief;
+    const cluster = t.cluster || mb?.cluster || "core";
+    const nivelPlanejado = jevPlan?.nivelModelo || mb?.nivelModeloSugerido || "medio";
+    const fontePlano: "jev" | "fallback" | "ausente" = jevPlan?.source === "jev" ? "jev" : jevPlan?.source ? "fallback" : "ausente";
+
+    const nodeCostLogs = costRows.filter((l) => {
+      try {
+        const d = JSON.parse(l.details || "{}");
+        return d.nodeId === t.id;
+      } catch {
+        return false;
+      }
+    });
+
+    const execLogs = nodeCostLogs.filter((l) => {
+      try { return JSON.parse(l.details || "{}").papel === "executor"; } catch { return false; }
+    });
+    const evalCostLogs = nodeCostLogs.filter((l) => {
+      try { return JSON.parse(l.details || "{}").papel === "avaliador"; } catch { return false; }
+    });
+
+    const executorModelos: string[] = [];
+    let executorTokensEntrada = 0;
+    let executorTokensSaida = 0;
+    let executorUsd = 0;
+    for (const el of execLogs) {
+      try {
+        const d = JSON.parse(el.details || "{}");
+        if (d.model && !executorModelos.includes(d.model)) executorModelos.push(d.model);
+        executorUsd += Number(d.usd) || 0;
+        const u = d.usage || {};
+        executorTokensEntrada += Number(u.prompt_tokens ?? u.input_tokens ?? 0);
+        executorTokensSaida += Number(u.completion_tokens ?? u.output_tokens ?? 0);
+      } catch {}
+    }
+
+    const avaliadorModelos: string[] = [];
+    let avaliadorUsd = 0;
+    for (const ev of evalCostLogs) {
+      try {
+        const d = JSON.parse(ev.details || "{}");
+        if (d.model && !avaliadorModelos.includes(d.model)) avaliadorModelos.push(d.model);
+        avaliadorUsd += Number(d.usd) || 0;
+      } catch {}
+    }
+
+    etapasDetalhe.push({
+      nodeId: t.id,
+      titulo: t.title,
+      cluster,
+      nivelPlanejado,
+      fontePlano,
+      executorModelos,
+      executorTokensEntrada,
+      executorTokensSaida,
+      executorUsd,
+      avaliadorModelos,
+      avaliadorUsd,
+    });
+  }
+
   await prisma.$disconnect().catch(() => {});
   try {
     fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -602,6 +706,7 @@ async function rodarUmaExecucao(
     timeoutsAvaliador,
     divergenciasEvidencia,
     jevChamadas,
+    etapasDetalhe,
   };
 }
 

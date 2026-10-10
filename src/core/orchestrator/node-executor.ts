@@ -455,7 +455,8 @@ export function buildBriefMarkdown(task: { title: string; role?: string | null; 
 export function makeBlindAuditDispatchFn(
   smartRouter: SmartRouter,
   setting: Setting | null,
-  sessionId?: string
+  sessionId?: string,
+  nodeId?: string
 ): LLMDispatchFn {
   return async (messages) => {
     // Avaliador forte e pago (Nemotron → DeepSeek → Claude). Só cai na rota gratuita se nenhum responder.
@@ -472,7 +473,7 @@ export function makeBlindAuditDispatchFn(
       },
     });
     if (strong?.content && strong.provider && strong.model) {
-      await recordLlmCost({ sessionId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
+      await recordLlmCost({ sessionId, nodeId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
       return strong.content;
     }
     if (paidOnly) {
@@ -1072,6 +1073,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         });
         await recordLlmCost({
           sessionId: taskDb.sessionId,
+          nodeId: taskDb.id,
           papel: "executor",
           provider: String(dispatchRes.providerUsed),
           model: String(dispatchRes.modelUsed || ""),
@@ -1278,6 +1280,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             const retryJson = await retryRes.response.json().catch(() => ({}));
             await recordLlmCost({
               sessionId: taskDb.sessionId,
+              nodeId: taskDb.id,
               papel: "executor",
               provider: String(retryRes.providerUsed),
               model: String(retryRes.modelUsed || ""),
@@ -1328,7 +1331,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           : ""),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId),
+      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id),
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,

@@ -303,4 +303,60 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
     expect(mP3?.aceiteMediaPct).toBe(100);
     expect(mP4?.aceiteMediaPct).toBeCloseTo((10 / 12) * 100, 1);
   });
+
+  it("detalhe por etapa soma igual ao custo do papel", () => {
+    const metricaComEtapas: MetricasExecucao = {
+      projeto: "p1",
+      variante: "padrao",
+      repeticao: 1,
+      faseFinal: "ENTREGUE",
+      tempoSeg: 100.0,
+      etapas: 2,
+      aprovadasNa1a: 2,
+      tentativasTotais: 0,
+      tscProjeto: 0,
+      uiCheck: "ausente",
+      aceite: { aprovados: 10, total: 10, reprovadosIds: [] },
+      custo: { executor: 0.035, avaliador: 0.015, jev: 0.001, total: 0.051 },
+      avaliadorServedBy: ["nemotron"],
+      timeoutsAvaliador: 0,
+      divergenciasEvidencia: 0,
+      jevChamadas: 2,
+      etapasDetalhe: [
+        {
+          nodeId: "node-1",
+          titulo: "Store",
+          cluster: "core",
+          nivelPlanejado: "medio",
+          fontePlano: "jev",
+          executorModelos: ["deepseek-v4-pro"],
+          executorTokensEntrada: 1000,
+          executorTokensSaida: 500,
+          executorUsd: 0.02,
+          avaliadorModelos: ["nemotron"],
+          avaliadorUsd: 0.008,
+        },
+        {
+          nodeId: "node-2",
+          titulo: "API",
+          cluster: "backend",
+          nivelPlanejado: "medio",
+          fontePlano: "jev",
+          executorModelos: ["deepseek-v4-pro"],
+          executorTokensEntrada: 800,
+          executorTokensSaida: 400,
+          executorUsd: 0.015,
+          avaliadorModelos: ["nemotron"],
+          avaliadorUsd: 0.007,
+        },
+      ],
+    };
+
+    const somaExec = metricaComEtapas.etapasDetalhe!.reduce((acc, e) => acc + e.executorUsd, 0);
+    const somaEval = metricaComEtapas.etapasDetalhe!.reduce((acc, e) => acc + e.avaliadorUsd, 0);
+
+    expect(Number(somaExec.toFixed(4))).toBe(metricaComEtapas.custo.executor);
+    expect(Number(somaEval.toFixed(4))).toBe(metricaComEtapas.custo.avaliador);
+  });
 });
+

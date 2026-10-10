@@ -56,6 +56,7 @@ export const LLM_COST_ACTION = "LLM_COST";
 /** Grava o custo de uma chamada na trilha da sessão (append-only). Aguarda a gravação: o teto lê em seguida. */
 export async function recordLlmCost(params: {
   sessionId?: string | null;
+  nodeId?: string;
   papel: "executor" | "avaliador" | "jev" | "outro";
   provider: string;
   model: string;
@@ -74,6 +75,7 @@ export async function recordLlmCost(params: {
             model: params.model,
             usd,
             usage: params.usage ?? null,
+            ...(params.nodeId ? { nodeId: params.nodeId } : {}),
           }),
         },
       })
