@@ -547,7 +547,8 @@ export async function POST(request: NextRequest) {
     }
 
     const systemPromptContent = isQuestionWithoutPhaseChange
-      ? `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
+      ? `DIRETIVA DE IDIOMA: Responda OBRIGATORIAMENTE em Português do Brasil (pt-BR).\n` +
+        `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
         `Responda apenas com explicação clara e objetiva. ` +
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : isSpecDraftingPhase

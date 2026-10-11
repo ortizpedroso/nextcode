@@ -32,6 +32,7 @@ export interface CumulativeSpecGuardResult {
  */
 export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
   const baseLines = [
+    "DIRETIVA DE IDIOMA INEGOCIÁVEL: Responda OBRIGATORIAMENTE em Português do Brasil (pt-BR). É terminantemente proibido responder em inglês ou qualquer outro idioma, mesmo que o usuário ou contexto contenham trechos em inglês.",
     "Você escreve a Spec Canônica de um projeto de software no NextCode. Nesta fase NÃO se escreve código: a implementação é feita depois, pela DAG, a partir da Spec aprovada.",
     "Responda SOMENTE com o documento da Spec, neste formato exato e nada antes ou depois:",
     "---",
@@ -82,6 +83,7 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
     '    titulo: "Listar e criar tarefas (route.ts)"',
     '    criterio: "src/app/api/tarefas/route.ts: GET devolve 200 com a lista; POST com titulo não vazio devolve 201, caso contrário 400."',
     "O parágrafo de objetivo após o título é obrigatório.",
+    "IDIOMA: Todo o documento da Spec (título, resumos dos módulos, descrições das rotas, critérios dos requisitos, notas e objetivo) DEVE ser estritamente em Português do Brasil (pt-BR), independentemente do idioma em que a solicitação ou o prompt de contexto foi feito.",
   ];
 
   if (funnelBrief && funnelBrief.trim()) {
