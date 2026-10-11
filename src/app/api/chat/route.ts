@@ -17,7 +17,9 @@ import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
-import { decideSpecReviewMessageIntent } from "@/core/decision/jev-decisions";
+import { decideSpecReviewMessageIntent, decideSpecClarity } from "@/core/decision/jev-decisions";
+import { runUniversalIntakeFunnel, formatIntakeFunnelBrief } from "@/core/intake/universal-funnel";
+import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
 import {
   checkSpecCompletenessOnDisk,
   describeUnverifiedBuild,
@@ -531,12 +533,25 @@ export async function POST(request: NextRequest) {
         resultingPhase === "ELICITACAO_CORRECAO" ||
         resultingPhase === "SPEC_REVISAO");
 
+    let funnelBrief: string | undefined;
+    if (isSpecDraftingPhase && !isQuestionWithoutPhaseChange) {
+      try {
+        const funnel = await runUniversalIntakeFunnel({
+          prompt: targetPrompt,
+          sessionId: activeSessionId,
+        });
+        funnelBrief = formatIntakeFunnelBrief(funnel);
+      } catch {
+        /* ignora falha do funnel */
+      }
+    }
+
     const systemPromptContent = isQuestionWithoutPhaseChange
       ? `Você está respondendo a uma dúvida avulsa do usuário no NextCode (fase atual: ${resultingPhase}). ` +
         `Responda apenas com explicação clara e objetiva. ` +
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : isSpecDraftingPhase
-        ? buildSpecWriterSystemPrompt()
+        ? buildSpecWriterSystemPrompt(funnelBrief)
         : IntakeEngine.getGovernanceSystemPrompt();
 
     const dispatchMessages: DispatchMessage[] = [
@@ -722,11 +737,26 @@ export async function POST(request: NextRequest) {
           }
         }
         if (guardRes.isValidSpec && guardRes.finalSpec) {
-          aiResponseContent =
-            guardRes.finalMessageContent +
-            (structureProblems.length
-              ? `\n\n⚠️ **Antes de aprovar, ajuste:**\n${structureProblems.map((p) => `- ${p}`).join("\n")}`
-              : "");
+          // Auto-Cura Mecânica Determinística + Quality Gate do Jev (M2):
+          // Elimina diretórios soltos, garante requisitos e preenche objetivo sem jogar erro no usuário
+          try {
+            const healed = autoHealSpecDocument(guardRes.finalSpec);
+            guardRes.finalSpec = healed.healedSpec;
+            guardRes.finalMessageContent = healed.healedSpec;
+            structureProblems = checkSpecStructure(healed.parsed);
+
+            // Quality Gate do Jev (M2)
+            await decideSpecClarity({
+              rascunhoSpec: guardRes.finalSpec,
+              hasOpenQuestionsSection7: false,
+              hasValidReqTable: Boolean(healed.parsed.requisitos && healed.parsed.requisitos.length > 0),
+              sessionId: activeSessionId,
+            }).catch(() => null);
+          } catch {
+            /* ignora falha de auto-cura */
+          }
+
+          aiResponseContent = guardRes.finalMessageContent;
           await prisma.session.update({
             where: { id: activeSessionId },
             data: {

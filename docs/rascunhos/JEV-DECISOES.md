@@ -363,3 +363,29 @@ Mesmo com **folga de 3×** (ex.: reexecuções de tentativas e consultas extras 
 | **7** | **Instruções e critérios contraditórios (*Contradictory instructions and criteria*):** Confiança colapsa se a pergunta aponta para uma direção e os critérios para outra. | Todas as perguntas `noul` têm `instructions` e `criteria.true` perfeitamente alinhados na mesma direção sem inversão de sentido. |
 | **8** | **Ordem das opções em `choice` (*Choice option order*):** Viés documentado em favor da **primeira opção** listada em `criteria`. | As opções mais seguras/conservadoras são posicionadas **primeiro** no objeto `criteria`: `"ajustar"` vem antes de `"aprovar"` em `intencao_mensagem` (evita aprovação acidental T2); `"forte"` e `"medio"` vêm antes de `"rapido"` em `complexidade_microbrief` (evita subestimar tarefas complexas). |
 | **9** | **Geração de texto (*Generation*):** Jev é um modelo de decisão convergente (System 1), incapaz de redigir código ou prosa. | Rigorosamente separado pelo Princípio P9: o Jev retorna apenas probabilidades/escolhas estruturadas (`choice`, `score`, `noul`); toda redação de Spec, código e Veredito é feita pelos LLMs geradores. |
+
+---
+
+## 7. M0 — Peneira de Afunilamento Universal do Intake (Intake Funnel Sieve)
+
+Para garantir que o NextCode não se prenda a um único tipo de projeto (gateway, e-commerce, CRM, CLI, etc.), o Jev executa uma **bateria de afunilamento hierárquico** em 1 única requisição HTTP (`POST /v1/systemone`) antes de acionar o Elicitador pesado:
+
+### Perguntas da Bateria M0:
+1. **Camada Macro (Tipo de Software & Arquitetura):**
+   - `tipo_aplicacao` (`choice`): `web_fullstack`, `api_backend`, `dashboard_admin`, `cli_automacao`, `landing_page`, `outro`.
+   - `modelo_usuarios` (`choice`): `multi_tenant_saas`, `usuarios_autenticados`, `publico_aberto`, `corporativo_interno`.
+   - `complexidade_geral` (`score` de 0 a 3).
+2. **Camada de Recursos e Infraestrutura (Mid-Level):**
+   - `requer_banco_dados` (`noul`): Requer persistência relacional/documental?
+   - `requer_autenticacao` (`noul`): Requer login/sessão de usuário?
+   - `requer_pagamento_financeiro` (`noul`): Envolve transações, cobranças, checkout ou faturamento?
+   - `requer_comunicacao_externa` (`noul`): Envia e-mails, WhatsApp, SMS ou webhooks externos?
+   - `requer_api_publica_terceiros` (`noul`): Expõe endpoints para terceiros integrarem via chave de API?
+3. **Camada de Particularidades Específicas do Projeto (Deep-Level):**
+   - `exige_whitelabel_personalizado` (`noul`): Suporta marca própria, logos e cores por cliente?
+   - `modelo_divisao_financeira` (`choice`): `subcontas_split_repasse`, `conta_unica_direta`, `sem_repasse_outro`.
+   - `canais_notificacao` (`choice`): `whatsapp_e_email`, `apenas_whatsapp`, `apenas_email`, `nenhum`.
+   - `possui_regras_negocio_estritas` (`noul`): O usuário declarou restrições e regras inegociáveis?
+
+### Uso da Ficha de Fatos:
+O resultado do `M0` é compilado em código TypeScript puro numa **Ficha de Fatos do Projeto** injetada no system prompt do Elicitador. Em seguida, a saída gerada é fiscalizada pelo **`M2` Quality Gate do Jev**, garantindo que se o `M0` detectou subcontas, WhatsApp ou API pública, a Spec DEVE conter esses requisitos mapeados com critérios de aceite testáveis.
