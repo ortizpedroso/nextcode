@@ -225,5 +225,74 @@ describe("P3.1 — Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek �
     expect(res.independent).toBe(true);
     expect(res.usage).toEqual({ input_tokens: 150, output_tokens: 30 });
   });
+
+  it("quando modelo Claude direto responde 404 (descontinuado), auto-cura silenciosa busca /v1/models e refaz chamada com sucesso", async () => {
+    const urlsCalled: string[] = [];
+    const modelsUsed: string[] = [];
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const u = String(url);
+      urlsCalled.push(u);
+
+      if (u.includes("localhost:3100")) {
+        return new Response('{"error":{"message":"gateway offline"}}', { status: 502 });
+      }
+
+      // Endpoint de modelos (GET /v1/models)
+      if (u.includes("api.anthropic.com/v1/models")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { id: "claude-3-haiku-20240307", display_name: "Claude 3 Haiku" },
+              { id: "claude-3-5-sonnet-20241022", display_name: "Claude 3.5 Sonnet" },
+              { id: "claude-3-5-sonnet-latest", display_name: "Claude 3.5 Sonnet (Latest)" },
+            ],
+          }),
+          { status: 200 }
+        );
+      }
+
+      // Endpoint de mensagens (POST /v1/messages)
+      if (u.includes("api.anthropic.com/v1/messages")) {
+        const body = JSON.parse(String(init?.body || "{}"));
+        modelsUsed.push(body.model);
+
+        // Se for o modelo inicial antigo/descontinuado, simula 404 da Anthropic
+        if (body.model === "claude-sonnet-4-5-20250929") {
+          return new Response(
+            JSON.stringify({ error: { type: "not_found_error", message: "model not found" } }),
+            { status: 404 }
+          );
+        }
+
+        // Se for o modelo curado dinamicamente, responde 200 com sucesso
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "text", text: '{"verdict":"AUTO_HEAL_OK"}' }],
+            usage: { input_tokens: 200, output_tokens: 45 },
+          }),
+          { status: 200 }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      executorFamily: "deepseek",
+      preferIndependentFirst: true,
+      directClaudeKey: "sk-ant-test-key",
+    });
+
+    expect(res.content).toBe('{"verdict":"AUTO_HEAL_OK"}');
+    expect(res.provider).toBe("claude");
+    expect(res.model).toBe("claude-3-5-sonnet-latest");
+    expect(res.independent).toBe(true);
+    // Verificação de que houve chamada para consulta dinâmica e nova tentativa
+    expect(urlsCalled.some((u) => u.includes("/v1/models"))).toBe(true);
+    expect(modelsUsed).toContain("claude-sonnet-4-5-20250929");
+    expect(modelsUsed).toContain("claude-3-5-sonnet-latest");
+  });
 });
 

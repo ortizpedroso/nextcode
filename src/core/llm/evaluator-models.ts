@@ -37,9 +37,11 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 const SKIP_MS = 10 * 60_000;
 const skippedUntil = new Map<EvaluatorProvider, number>();
+let activeClaudeModel: string | null = null;
 
 export function resetEvaluatorState(): void {
   skippedUntil.clear();
+  activeClaudeModel = null;
 }
 
 export interface StrongEvaluatorOptions {
@@ -148,9 +150,9 @@ export async function dispatchStrongEvaluator(
         const userMessages = messages
           .filter((m) => m.role !== "system")
           .map((m) => ({ role: m.role, content: m.content }));
-        const anthropicModel = process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
+        let anthropicModel = activeClaudeModel || process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
 
-        const antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
+        let antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
             "x-api-key": directKey.trim(),
@@ -165,6 +167,58 @@ export async function dispatchStrongEvaluator(
           }),
           signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
         });
+
+        // Auto-recuperação sob demanda (Lazy Self-Healing):
+        // Se a Anthropic responder 404 (not_found_error / modelo descontinuado),
+        // consulta silenciosamente o catálogo em GET /v1/models, seleciona o Sonnet ativo mais recente
+        // e refaz a chamada sem interromper o fluxo do usuário.
+        if (antRes.status === 404) {
+          try {
+            const catalogRes = await safeFetch("https://api.anthropic.com/v1/models", {
+              headers: {
+                "x-api-key": directKey.trim(),
+                "anthropic-version": "2023-06-01",
+              },
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (catalogRes.ok) {
+              const catalogJson = (await catalogRes.json().catch(() => ({}))) as {
+                data?: { id: string; display_name?: string }[];
+              };
+              const modelsList = catalogJson.data || [];
+              // Procura Sonnet mais recente ou alias flutuante
+              const candidates = modelsList.map((m) => m.id);
+              const bestCandidate =
+                candidates.find((id) => /claude-.*sonnet.*latest/i.test(id)) ||
+                candidates.filter((id) => /sonnet/i.test(id)).sort().reverse()[0] ||
+                candidates.filter((id) => /claude/i.test(id)).sort().reverse()[0];
+
+              if (bestCandidate && bestCandidate !== anthropicModel) {
+                anthropicModel = bestCandidate;
+                activeClaudeModel = bestCandidate;
+
+                // Nova tentativa silenciosa com o modelo ativo descoberto
+                antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  headers: {
+                    "x-api-key": directKey.trim(),
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: anthropicModel,
+                    max_tokens: 8000,
+                    ...(sysMsg ? { system: sysMsg } : {}),
+                    messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
+                  }),
+                  signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+                });
+              }
+            }
+          } catch {
+            // Falha na descoberta silenciosa: preserva o tratamento de erro original abaixo
+          }
+        }
 
         if (antRes.ok) {
           const antJson = (await antRes.json().catch(() => ({}))) as {
