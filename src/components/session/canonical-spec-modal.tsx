@@ -45,7 +45,20 @@ export function CanonicalSpecModal({
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
+  // Impede aprovação de templates vazios, sem módulos ou sem arquivos concretos
+  const isSpecExecutable = useMemo(() => {
+    if (!parsedSpec) return false;
+    if (parsedSpec.titulo?.toLowerCase().includes("pendente")) return false;
+    if (!parsedSpec.modulos || parsedSpec.modulos.length === 0) return false;
+    if (!parsedSpec.arquivosAfetados || parsedSpec.arquivosAfetados.length === 0) return false;
+    return true;
+  }, [parsedSpec]);
+
   const handleApproveAndUnlock = async () => {
+    if (!isSpecExecutable) {
+      alert("Atenção: Esta especificação ainda está pendente ou não possui módulos/arquivos definidos. Descreva seu projeto no chat para a IA gerar os contratos antes de aprovar.");
+      return;
+    }
     setSaving(true);
     try {
       const res = await authFetch(`/api/sessions/${sessionId}`, {
@@ -187,8 +200,17 @@ export function CanonicalSpecModal({
           {!isApproved ? (
             <button
               onClick={handleApproveAndUnlock}
-              disabled={saving}
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+              disabled={saving || !isSpecExecutable}
+              className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                isSpecExecutable
+                  ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-lg cursor-pointer"
+                  : "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700"
+              }`}
+              title={
+                !isSpecExecutable
+                  ? "A especificação precisa conter módulos e arquivos válidos antes da aprovação."
+                  : "Aprovar Spec e liberar execução da DAG"
+              }
             >
               <Unlock className="w-4 h-4" />
               <span>Aprovar Spec Canônica & Liberar Execução DAG (Trava T1)</span>

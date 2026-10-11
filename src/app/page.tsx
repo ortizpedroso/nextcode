@@ -746,10 +746,18 @@ export default function DashboardOrchestrator() {
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}
         onOpenSpecModal={(content) => {
-          // O rascunho cumulativo do servidor (canonicalSpec) tem prioridade; o conteúdo da
-          // mensagem clicada só entra se a sessão ainda não tiver rascunho no servidor (4b.3).
-          if (!canonicalSpec.trim() && content) {
+          // Se o usuário clicou no botão "Editar / Aprovar Spec" de uma mensagem específica, usa esse conteúdo
+          if (content && content.trim()) {
             setCanonicalSpec(content);
+          } else if (!canonicalSpec.trim()) {
+            // Se o usuário clicou no botão "Spec T1" do topo e o servidor ainda não sincronizou canonicalSpec,
+            // procura no histórico da sessão a última mensagem do assistente que seja uma Spec Canônica válida
+            const lastSpecMsg = [...messages]
+              .reverse()
+              .find((m) => m.role === "assistant" && parseSpecDocument(m.content) !== null);
+            if (lastSpecMsg) {
+              setCanonicalSpec(lastSpecMsg.content);
+            }
           }
           setShowSpecModal(true);
         }}

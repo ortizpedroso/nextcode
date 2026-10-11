@@ -91,7 +91,11 @@ export async function approveSpecAndStart(
   const effectiveSpec =
     canonicalSpec !== undefined ? String(canonicalSpec) : (session.canonicalSpec ?? "");
 
-  if (!effectiveSpec.trim()) {
+  if (
+    !effectiveSpec.trim() ||
+    effectiveSpec.includes("Especificação pendente") ||
+    effectiveSpec.includes("Nenhuma Spec foi gerada ainda")
+  ) {
     return { ok: false, reason: "SPEC_AUSENTE" };
   }
 

@@ -291,6 +291,13 @@ export function unwrapSpecDocument(content: string): string {
     }
   }
 
+  // Caso C: Se o conteúdo tiver texto solto antes da Spec (ex.: "Aqui está a spec:\n--- ..."),
+  // isola a partir do primeiro delimitador '---' que contém 'titulo:' logo a seguir
+  const embeddedFence = trimmed.search(/(?:^|\r?\n)---\r?\n\s*titulo\s*:/i);
+  if (embeddedFence > 0) {
+    trimmed = trimmed.slice(embeddedFence).replace(/^[\r\n]+/, "");
+  }
+
   // Caso C: O documento não tem delimitadores '---' no texto mas começa com 'titulo:' (Bare YAML)
   if (!trimmed.includes("---") && /^titulo\s*:/m.test(trimmed)) {
     const tituloIdx = trimmed.search(/^titulo\s*:/m);
