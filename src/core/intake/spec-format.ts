@@ -291,8 +291,8 @@ export function unwrapSpecDocument(content: string): string {
     }
   }
 
-  // Caso C: O documento não tem delimitador '---' inicial mas contém 'titulo:' no início
-  if (!trimmed.startsWith("---") && /^titulo\s*:/m.test(trimmed)) {
+  // Caso C: O documento não tem delimitadores '---' no texto mas começa com 'titulo:' (Bare YAML)
+  if (!trimmed.includes("---") && /^titulo\s*:/m.test(trimmed)) {
     const tituloIdx = trimmed.search(/^titulo\s*:/m);
     if (tituloIdx >= 0) {
       trimmed = `---\n${trimmed.slice(tituloIdx)}`;
@@ -323,6 +323,10 @@ export function unwrapSpecDocument(content: string): string {
     const titulo = m[1].match(/^titulo\s*:\s*(.*)$/m)?.[1] ?? "";
     return titulo.trim() !== "" && !/<[^>]+>/.test(titulo);
   });
+  if (docs.length > 0 && real.length === 0) {
+    // Todos os blocos encontrados continham apenas <placeholders> de template: não é Spec real
+    return "";
+  }
   if (real.length > 0 && !(real.length === 1 && trimmed.startsWith("---") && real[0].index === 0)) {
     const last = real[real.length - 1];
     return trimmed
@@ -343,6 +347,9 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
 
   const [, frontmatter, body] = match;
   const [root] = parseYamlMapping(toYamlLines(frontmatter), 0, 0);
+
+  const titulo = typeof root.titulo === "string" ? root.titulo : null;
+  if (!titulo || /<[^>]+>/.test(titulo)) return null;
 
   // Defensivo: LLMs às vezes emitem uma lista como escalar único separado por
   // vírgulas (ex.: stack: "Next.js, Prisma, Tailwind") em vez de sequência YAML.
