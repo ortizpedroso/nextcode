@@ -150,4 +150,64 @@ Objetivo.`;
       "SQLite",
     ]);
   });
+
+  it("recupera e interpreta Bare YAML sem '---' e com quebras de linha duplas (caso real DeepSeek)", () => {
+    const raw = `
+titulo: "Gateway de Pagamento Whitelabel"
+
+status: aguardando_aprovacao
+
+data: "2025-04-04"
+
+stack:
+
+- "Next.js (App Router)"
+
+- "TypeScript"
+
+- "Asaas API"
+
+modulos:
+
+- id: dashboard
+
+nome: "Dashboard do Prestador"
+
+resumo: "Painel administrativo para gerenciar produtos, cobranças e visualizar status de pagamentos."
+
+arquivos:
+
+- "src/app/dashboard/page.tsx"
+
+- "src/lib/dashboard-store.ts"
+`;
+
+    const parsed = parseSpecDocument(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.titulo).toBe("Gateway de Pagamento Whitelabel");
+    expect(parsed!.status).toBe("aguardando_aprovacao");
+    expect(parsed!.stack).toEqual(["Next.js (App Router)", "TypeScript", "Asaas API"]);
+    expect(parsed!.modulos.length).toBe(1);
+    expect(parsed!.modulos[0].id).toBe("dashboard");
+    expect(parsed!.modulos[0].nome).toBe("Dashboard do Prestador");
+    expect(parsed!.modulos[0].arquivos).toEqual([
+      "src/app/dashboard/page.tsx",
+      "src/lib/dashboard-store.ts",
+    ]);
+  });
+
+  it("repara frontmatter truncado no meio de aspas por limite de tokens", () => {
+    const truncated = `---
+titulo: "Gateway Resiliente"
+status: aguardando_aprovacao
+data: "2026-10-05"
+notas_implementacao:
+  - "As credenciais do Asaas devem ser armazenadas em variáveis de ambiente (ex.: ASAAS_API_KEY) e nunca no códig`;
+
+    const parsed = parseSpecDocument(truncated);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.titulo).toBe("Gateway Resiliente");
+    expect(parsed!.notasImplementacao.length).toBe(1);
+    expect(parsed!.notasImplementacao[0]).toContain("As credenciais do Asaas");
+  });
 });

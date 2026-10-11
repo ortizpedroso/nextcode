@@ -167,10 +167,24 @@ function toYamlLines(block: string): YamlLine[] {
     .map((l) => ({ indent: l.length - l.replace(/^ +/, "").length, content: l.trim() }));
 }
 
+const ROOT_KEYS = new Set([
+  "titulo",
+  "status",
+  "data",
+  "stack",
+  "modulos",
+  "entidades",
+  "rotas",
+  "arquivos_afetados",
+  "notas_implementacao",
+  "requisitos_ids",
+  "requisitos",
+]);
+
 function parseYamlList(lines: YamlLine[], start: number, indent: number): [YamlValue[], number] {
   const items: YamlValue[] = [];
   let i = start;
-  while (i < lines.length && lines[i].indent === indent && lines[i].content.startsWith("- ")) {
+  while (i < lines.length && lines[i].content.startsWith("- ") && (lines[i].indent === indent || indent === 0)) {
     const inline = lines[i].content.slice(2).trim();
     const fieldMatch = inline.match(/^(\w+):\s*(.*)$/);
     i++;
@@ -178,10 +192,35 @@ function parseYamlList(lines: YamlLine[], start: number, indent: number): [YamlV
       const [, key, rawValue] = fieldMatch;
       const item: Record<string, YamlValue> = {};
       if (rawValue.trim()) item[key] = unquote(rawValue);
-      const [rest, nextI] = parseYamlMapping(lines, i, indent + 2);
-      Object.assign(item, rest);
+      if (i < lines.length && lines[i].indent > indent) {
+        const [rest, nextI] = parseYamlMapping(lines, i, lines[i].indent);
+        Object.assign(item, rest);
+        i = nextI;
+      } else {
+        // Fallback: se o LLM emitiu campos sem indentação extra (indent 0)
+        while (i < lines.length && !lines[i].content.startsWith("- ")) {
+          const match = lines[i].content.match(/^(\w+):\s*(.*)$/);
+          if (!match) {
+            i++;
+            continue;
+          }
+          const [, subKey, subVal] = match;
+          if (indent === 0 && ROOT_KEYS.has(subKey)) {
+            break;
+          }
+          i++;
+          if (subVal.trim()) {
+            item[subKey] = unquote(subVal);
+          } else if (i < lines.length && lines[i].content.startsWith("- ")) {
+            const [subList, nextI] = parseYamlList(lines, i, lines[i].indent);
+            item[subKey] = subList;
+            i = nextI;
+          } else {
+            item[subKey] = [];
+          }
+        }
+      }
       items.push(item);
-      i = nextI;
     } else {
       items.push(unquote(inline));
     }
@@ -208,7 +247,8 @@ function parseYamlMapping(
       result[key] = unquote(rawValue);
       continue;
     }
-    if (i < lines.length && lines[i].indent > indent && lines[i].content.startsWith("- ")) {
+    // Suporta listas mesmo com indentação relaxada (>= indent ou 0)
+    if (i < lines.length && lines[i].content.startsWith("- ") && lines[i].indent >= indent) {
       const [list, nextI] = parseYamlList(lines, i, lines[i].indent);
       result[key] = list;
       i = nextI;
@@ -226,19 +266,54 @@ function parseYamlMapping(
  */
 /**
  * LLMs reais costumam embrulhar a Spec num bloco de código (```yaml ... ```), às vezes com
- * uma frase antes. Extrai o documento "---
-..." de dentro do bloco; se não houver bloco,
- * devolve o texto como veio. Sem isto o rascunho nunca era reconhecido nem gravado.
+ * uma frase antes, ou emitem sem delimitadores '---' ou truncadas por limite de tokens.
+ * Extrai o documento "--- ... ---" tratando cercas abertas, falta de delimitadores e linhas truncadas.
  */
 export function unwrapSpecDocument(content: string): string {
   if (!content) return content;
   let trimmed = content.trim();
 
-  // Frontmatter aberto e nunca fechado (visto com gpt-oss-20b via FreeLLMAPI, 06/10): o YAML
-  // vai até o primeiro título Markdown. Fecha o bloco ali.
+  // Caso A: Cerca de código aberta sem fechamento (truncamento por tokens)
+  const unclosedFence = trimmed.match(/^```(?:ya?ml)?[ \t]*\r?\n([\s\S]*)$/i);
+  if (unclosedFence && !trimmed.slice(3).includes("```")) {
+    trimmed = unclosedFence[1].trim();
+  }
+
+  // Caso B: Cerca de código fechada (```yaml ... ```)
+  const fence = trimmed.match(/```(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/i);
+  if (fence) {
+    const inner = fence[1].trim();
+    const after = trimmed.slice((fence.index ?? 0) + fence[0].length).trim();
+    if (inner.startsWith("---")) {
+      trimmed = after ? `${inner}\n\n${after}` : inner;
+    } else if (/^titulo\s*:/m.test(inner)) {
+      trimmed = `---\n${inner}\n---\n\n${after}`.trim();
+    }
+  }
+
+  // Caso C: O documento não tem delimitador '---' inicial mas contém 'titulo:' no início
+  if (!trimmed.startsWith("---") && /^titulo\s*:/m.test(trimmed)) {
+    const tituloIdx = trimmed.search(/^titulo\s*:/m);
+    if (tituloIdx >= 0) {
+      trimmed = `---\n${trimmed.slice(tituloIdx)}`;
+    }
+  }
+
+  // Caso D: Frontmatter aberto e nunca fechado (truncamento ou falta de delimitador de fechamento)
   if (/^---\r?\n/.test(trimmed) && !/\r?\n---[ \t]*(\r?\n|$)/.test(trimmed.slice(3))) {
     const h1 = trimmed.search(/\r?\n#\s/);
-    if (h1 > 0) trimmed = `${trimmed.slice(0, h1)}\n---\n${trimmed.slice(h1)}`;
+    if (h1 > 0) {
+      trimmed = `${trimmed.slice(0, h1)}\n---\n${trimmed.slice(h1)}`;
+    } else {
+      // Repara última linha se truncada no meio de aspas
+      const lines = trimmed.split(/\r?\n/);
+      const lastLine = lines[lines.length - 1];
+      const quoteCount = (lastLine.match(/"/g) || []).length;
+      if (quoteCount % 2 === 1) {
+        lines[lines.length - 1] = `${lastLine}"`;
+      }
+      trimmed = `${lines.join("\n")}\n---`;
+    }
   }
 
   // Modelos com raciocínio às vezes escrevem o "pensamento" antes da Spec e até repetem o
@@ -250,23 +325,12 @@ export function unwrapSpecDocument(content: string): string {
   });
   if (real.length > 0 && !(real.length === 1 && trimmed.startsWith("---") && real[0].index === 0)) {
     const last = real[real.length - 1];
-    // Se o documento estava dentro de um bloco ```, o fechamento da cerca fica para trás.
     return trimmed
       .slice(last.index ?? 0)
       .replace(/\r?\n```[ \t]*(\r?\n[\s\S]*)?$/, "")
       .trim();
   }
-  if (trimmed.startsWith("---")) return trimmed;
 
-  // Primeiro bloco ```yaml / ```yml / ``` do texto.
-  const fence = trimmed.match(/```(?:ya?ml)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/i);
-  if (!fence) return trimmed;
-  const inner = fence[1].trim();
-  const after = trimmed.slice((fence.index ?? 0) + fence[0].length).trim();
-  // Caso 1: o bloco já traz o documento completo (--- yaml --- markdown).
-  if (inner.startsWith("---")) return after ? `${inner}\n\n${after}` : inner;
-  // Caso 2 (visto com GLM/DeepSeek): só o YAML, sem os ---; o Markdown vem depois do bloco.
-  if (/^titulo\s*:/m.test(inner)) return `---\n${inner}\n---\n\n${after}`.trim();
   return trimmed;
 }
 

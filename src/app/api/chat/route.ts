@@ -614,10 +614,10 @@ export async function POST(request: NextRequest) {
       const dispatchRes = await smartRouter.dispatchWithFallback({
         messages: dispatchMessages,
         // Spec: o fundador pediu para não economizar no Elicitador. Tier pesado = modelo forte
-        // pago (DeepSeek) quando configurado; o FreeLLMAPI gratuito é a reserva. Medido em 06/10:
-        // gpt-oss-20b (auto:fast) falhou em gerar Spec válida 1 de 3 vezes. Teto de 4000 tokens.
+        // pago (DeepSeek) quando configurado; o FreeLLMAPI gratuito é a reserva. Teto de 8192 tokens
+        // para acomodar raciocínio denso e specs ricas (10+ requisitos/módulos) sem truncamento.
         tier: isSpecDraftingPhase ? "heavy" : "fast",
-        ...(isSpecDraftingPhase ? { maxTokens: 4000 } : {}),
+        ...(isSpecDraftingPhase ? { maxTokens: 8192 } : {}),
         modelOverride,
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -633,10 +633,15 @@ export async function POST(request: NextRequest) {
       const resJson = await dispatchRes.response.json().catch(() => ({}));
       if (resJson.choices?.[0]?.message?.content) {
         aiResponseContent = resJson.choices[0].message.content;
+      } else if (resJson.choices?.[0]?.message?.reasoning_content) {
+        aiResponseContent = resJson.choices[0].message.reasoning_content;
       } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
         aiResponseContent = resJson.candidates[0].content.parts[0].text;
+      } else if (typeof resJson.choices?.[0]?.text === "string" && resJson.choices[0].text) {
+        aiResponseContent = resJson.choices[0].text;
       } else {
-        aiResponseContent = "A resposta do modelo foi retornada sem conteúdo legível.";
+        const errorDetail = resJson.error?.message ? ` (${resJson.error.message})` : "";
+        aiResponseContent = `A resposta do modelo foi retornada sem conteúdo legível${errorDetail}.`;
       }
 
       // Modelos com raciocínio às vezes não chegam ao documento (gastam a resposta "pensando").
@@ -657,7 +662,7 @@ export async function POST(request: NextRequest) {
             },
           ],
           tier: isSpecDraftingPhase ? "heavy" : "fast",
-          maxTokens: 4000,
+          maxTokens: 8192,
           geminiKey: readSecret(setting?.geminiKey),
           omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
           omniRouteKey: readSecret(setting?.omniRouteKey),
@@ -699,7 +704,7 @@ export async function POST(request: NextRequest) {
               },
             ],
             tier: isSpecDraftingPhase ? "heavy" : "fast",
-            maxTokens: 4000,
+            maxTokens: 8192,
             geminiKey: readSecret(setting?.geminiKey),
             omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
             omniRouteKey: readSecret(setting?.omniRouteKey),

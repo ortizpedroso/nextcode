@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Database, FolderTree, Lightbulb, Route, Target } from "lucide-react";
+import { Boxes, CheckSquare, Database, FolderTree, Lightbulb, Route, Target } from "lucide-react";
 import type { ParsedSpec } from "@/core/intake/spec-format";
 
 interface SpecSummaryCardProps {
@@ -119,6 +119,34 @@ export function SpecSummaryCard({ spec, approved }: SpecSummaryCardProps) {
             {spec.arquivosAfetados.map((item, idx) => (
               <div key={idx} className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
                 {item}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {spec.requisitos && spec.requisitos.length > 0 && (
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+            <CheckSquare className="w-3 h-3 text-[#0066cc] dark:text-blue-400" /> Requisitos ({spec.requisitos.length})
+          </div>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {spec.requisitos.map((req, idx) => (
+              <div
+                key={idx}
+                className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs"
+              >
+                <div className="font-semibold text-slate-850 dark:text-slate-150 flex items-center gap-1.5">
+                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
+                    {req.id || `REQ-${idx + 1}`}
+                  </span>
+                  <span>{req.titulo}</span>
+                </div>
+                {req.criterio && (
+                  <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {req.criterio}
+                  </p>
+                )}
               </div>
             ))}
           </div>

@@ -39,12 +39,13 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role, approvedSp
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
-  // Verifica se o texto é uma Spec Canônica: formato novo (YAML Frontmatter) ou legado (prosa livre)
+  // Verifica se o texto é uma Spec Canônica: formato novo (YAML Frontmatter), bare YAML ou legado (prosa livre)
   const isSpec =
     parsedSpec !== null ||
     content.includes("SPEC CANÔNICA") ||
     content.includes("DIRECTIVES & MECHANICAL LOCKS") ||
-    content.includes("SPEC-TEMPLATE-NEXTCODE-V5");
+    content.includes("SPEC-TEMPLATE-NEXTCODE-V5") ||
+    (/^titulo\s*:/m.test(content) && (content.includes("modulos:") || content.includes("status:")));
 
   const handleCopy = async () => {
     try {
@@ -100,7 +101,7 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role, approvedSp
               onClick={() => setActiveTab(activeTab === "formatted" ? "raw" : "formatted")}
               className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             >
-              {activeTab === "formatted" ? "Ver Texto Puro" : "Ver Formatado"}
+              {activeTab === "formatted" ? "Ver Contratos Técnicos (YAML)" : "Ver Resumo Executivo"}
             </button>
 
             <button
