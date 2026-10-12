@@ -1066,6 +1066,7 @@ export async function evaluateChatFanOutWithJev(
     state: JSON.stringify(stateObj),
     questions,
     sessionId: params.sessionId,
+    useCache: true,
   });
 
   const latenciaMs = Date.now() - started;

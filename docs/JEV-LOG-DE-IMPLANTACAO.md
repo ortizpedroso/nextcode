@@ -384,3 +384,30 @@ Documento físico oficial de registro de todas as alterações, implementações
     5. Formatação de 4 casas decimais para micro-valores e 2 casas para valores altos.
   - Bancada de governança e orquestração: **73 testes verdes (9 arquivos)** em 23.45s.
   - TypeScript: `npx tsc --noEmit` completado com 0 erros.
+
+### 4.22 Homologação do Pacote P6: Cache Local de Decisões do JEV (12/10/2026)
+- **Motivação e Eficiência Extrema:**
+  - Decisões atômicas com mesmo propósito, estado e perguntas produzem vereditos idênticos.
+  - Repetições de consultas durante conversas, verificações ou retentativas geravam latência desnecessária de ~100ms e custos repetidos.
+- **Arquitetura Implementada:**
+  - Criado `src/core/decision/jev-cache.ts` com a classe `JevDecisionCache`:
+    - Chave determinística gerada via hash SHA-256 (`purpose::state::sorted(questions)`);
+    - TTL configurável (padrão 1 hora);
+    - Capacidade limitada em memória (500 entradas mais recentes com descarte LRU/FIFO);
+    - Métricas de telemetria (`hits`, `misses`, `hitRatePct`).
+  - Integrado em `src/core/decision/jev.ts` de forma opt-in:
+    - `askJevBatch` e `askJevChoice` aceitam `useCache?: boolean`.
+    - Quando ativado e em caso de *cache hit*: devolve a resposta em **< 1ms**, sem nenhuma requisição de rede, emitindo telemetria `JEV_CACHE_HIT` com **custo US$ 0.0000**.
+    - Em caso de *miss*: executa a consulta HTTP normalmente e alimenta o cache de forma atômica.
+    - O Fan-Out Unificado do Chat (`evaluateChatFanOutWithJev`) foi conectado com `useCache: true`, acelerando mensagens idênticas ou muito próximas.
+- **Validação de Bancada com Testes Pesados:**
+  - Criada a suíte `tests/decision/jev-cache.test.ts` com 7 testes dedicados (100% verdes):
+    1. Determinismo e ordenação de chaves;
+    2. Armazenamento, recuperação e estatísticas de acerto;
+    3. Expiração estrita por TTL de tempo;
+    4. Descarte LRU ao atingir `maxEntries`;
+    5. Bypass quando desabilitado;
+    6. Integração E2E com `askJevBatch` comprovando 0 chamadas de rede no hit;
+    7. Integração E2E com `askJevChoice` comprovando 0 chamadas de rede no hit.
+  - Suíte completa de decisões: **12 arquivos de teste, 63 testes passando (100% aprovados, 0 falhas)**.
+  - TypeScript: `npx tsc --noEmit` completado com 0 erros.

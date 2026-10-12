@@ -13,6 +13,7 @@ import { recordLlmCost } from "@/core/llm/cost";
 import { readSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { globalJevCache } from "@/core/decision/jev-cache";
 
 export const JEV_MODEL = "jev-1.13.0"; // versão fixa (arquitetura: nunca jev-latest)
 export const JEV_INPUT_PRICE_PER_MILLION_USD = 0.042; // US$ 0,042 por 1M tokens de entrada (saída grátis)
@@ -147,11 +148,31 @@ export async function askJevChoice<T extends string>(params: {
   criteria: Record<T, string>;
   sessionId?: string | null;
   signal?: AbortSignal;
+  useCache?: boolean;
 }): Promise<JevChoice<T> | null> {
   const key = await readJevKey();
   if (!key) return null;
 
   const started = Date.now();
+  const shouldCache = Boolean(params.useCache);
+  const cacheKey = shouldCache
+    ? globalJevCache.computeKey(params.purpose, params.state, {
+        q: { instructions: params.instructions, criteria: params.criteria },
+      })
+    : null;
+
+  if (shouldCache && cacheKey) {
+    const cached = globalJevCache.get<JevChoice<T>>(cacheKey);
+    if (cached) {
+      TelemetryLogger.log({
+        sessionId: params.sessionId ?? undefined,
+        action: "JEV_CACHE_HIT",
+        details: { purpose: params.purpose, choice: cached.choice, latencyMs: Date.now() - started },
+      });
+      return cached;
+    }
+  }
+
   try {
     const res = await postJev(
       {
@@ -214,6 +235,9 @@ export async function askJevChoice<T extends string>(params: {
         usage: data.usage ?? null,
       });
     }
+    if (shouldCache && cacheKey) {
+      globalJevCache.set(cacheKey, result);
+    }
     return result;
   } catch (err) {
     TelemetryLogger.log({
@@ -236,6 +260,7 @@ export async function askJevBatch(params: {
   sessionId?: string | null;
   signal?: AbortSignal;
   maxStateChars?: number;
+  useCache?: boolean;
 }): Promise<Record<string, JevBatchAnswer> | null> {
   const key = await readJevKey();
   if (!key) return null;
@@ -250,6 +275,27 @@ export async function askJevBatch(params: {
       details: { purpose: params.purpose, length: params.state.length, max: maxChars },
     });
     return null;
+  }
+
+  const shouldCache = Boolean(params.useCache);
+  const cacheKey = shouldCache
+    ? globalJevCache.computeKey(params.purpose, params.state, params.questions)
+    : null;
+
+  if (shouldCache && cacheKey) {
+    const cached = globalJevCache.get<Record<string, JevBatchAnswer>>(cacheKey);
+    if (cached) {
+      TelemetryLogger.log({
+        sessionId: params.sessionId ?? undefined,
+        action: "JEV_CACHE_HIT",
+        details: {
+          purpose: params.purpose,
+          questionIds: Object.keys(params.questions),
+          latencyMs: Date.now() - started,
+        },
+      });
+      return cached;
+    }
   }
 
   try {
@@ -363,6 +409,9 @@ export async function askJevBatch(params: {
       });
     }
 
+    if (shouldCache && cacheKey) {
+      globalJevCache.set(cacheKey, parsedAnswers);
+    }
     return parsedAnswers;
   } catch (err) {
     TelemetryLogger.log({
