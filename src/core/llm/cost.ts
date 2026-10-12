@@ -102,3 +102,75 @@ export async function sessionCostUsd(sessionId: string): Promise<number> {
   }
   return total;
 }
+
+export interface SessionCostBreakdown {
+  totalUsd: number;
+  executorUsd: number;
+  avaliadorUsd: number;
+  jevUsd: number;
+  outroUsd: number;
+  tokensInput: number;
+  tokensOutput: number;
+  tokensTotal: number;
+  byNode: Record<string, number>;
+}
+
+/**
+ * Retorna a decomposição consolidada dos custos e tokens da sessão por papel e por nó.
+ * Fail-safe contra registros incompletos ou corrompidos.
+ */
+export async function sessionCostBreakdown(sessionId: string): Promise<SessionCostBreakdown> {
+  const rows = await prisma.telemetryLog.findMany({
+    where: { sessionId, action: LLM_COST_ACTION },
+    select: { details: true },
+  });
+
+  let totalUsd = 0;
+  let executorUsd = 0;
+  let avaliadorUsd = 0;
+  let jevUsd = 0;
+  let outroUsd = 0;
+  let tokensInput = 0;
+  let tokensOutput = 0;
+  const byNode: Record<string, number> = {};
+
+  for (const r of rows) {
+    try {
+      const p = JSON.parse(r.details || "{}");
+      const usd = Number(p.usd);
+      if (Number.isFinite(usd) && usd > 0) {
+        totalUsd += usd;
+        const papel = p.papel;
+        if (papel === "executor") executorUsd += usd;
+        else if (papel === "avaliador") avaliadorUsd += usd;
+        else if (papel === "jev") jevUsd += usd;
+        else outroUsd += usd;
+
+        if (p.nodeId && typeof p.nodeId === "string") {
+          byNode[p.nodeId] = (byNode[p.nodeId] ?? 0) + usd;
+        }
+      }
+
+      if (p.usage) {
+        const inp = Number(p.usage.prompt_tokens ?? p.usage.input_tokens ?? 0);
+        const out = Number(p.usage.completion_tokens ?? p.usage.output_tokens ?? 0);
+        if (Number.isFinite(inp) && inp > 0) tokensInput += inp;
+        if (Number.isFinite(out) && out > 0) tokensOutput += out;
+      }
+    } catch {
+      // Ignora linhas com JSON corrompido
+    }
+  }
+
+  return {
+    totalUsd,
+    executorUsd,
+    avaliadorUsd,
+    jevUsd,
+    outroUsd,
+    tokensInput,
+    tokensOutput,
+    tokensTotal: tokensInput + tokensOutput,
+    byNode,
+  };
+}

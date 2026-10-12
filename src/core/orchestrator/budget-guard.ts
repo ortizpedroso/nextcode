@@ -8,7 +8,7 @@
  * mesmo que passe do teto.
  */
 import prisma from "@/lib/prisma";
-import { sessionCostUsd } from "@/core/llm/cost";
+import { sessionCostUsd, sessionCostBreakdown, type SessionCostBreakdown } from "@/core/llm/cost";
 import { loadOrchestrationPolicy, type OrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
@@ -37,15 +37,17 @@ export interface BudgetState {
   limitUsd: number;
   alertUsd: number;
   status: "ok" | "alerta" | "teto";
+  breakdown?: SessionCostBreakdown;
 }
 
 export async function getSessionBudget(sessionId: string, policy?: OrchestrationPolicy): Promise<BudgetState> {
   const p = policy ?? loadOrchestrationPolicy();
-  const [spentUsd, extra] = await Promise.all([sessionCostUsd(sessionId), authorizedExtraUsd(sessionId)]);
+  const [breakdown, extra] = await Promise.all([sessionCostBreakdown(sessionId), authorizedExtraUsd(sessionId)]);
+  const spentUsd = breakdown.totalUsd;
   const limitUsd = p.orcamento.tetoCustoPorProjetoUsd + extra;
   const alertUsd = limitUsd * (p.orcamento.alertaPercentualTeto / 100);
   const status = spentUsd >= limitUsd ? "teto" : spentUsd >= alertUsd ? "alerta" : "ok";
-  return { spentUsd, limitUsd, alertUsd, status };
+  return { spentUsd, limitUsd, alertUsd, status, breakdown };
 }
 
 const fmt = (v: number) => `US$ ${v.toFixed(2)}`;

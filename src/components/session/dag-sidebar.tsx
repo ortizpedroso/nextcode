@@ -35,11 +35,30 @@ interface DagSidebarProps {
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
 }
 
+export interface SessionCostBreakdown {
+  totalUsd: number;
+  executorUsd: number;
+  avaliadorUsd: number;
+  jevUsd: number;
+  outroUsd: number;
+  tokensInput: number;
+  tokensOutput: number;
+  tokensTotal: number;
+  byNode: Record<string, number>;
+}
+
 export interface SessionBudget {
   spentUsd: number;
   limitUsd: number;
   alertUsd: number;
   status: "ok" | "alerta" | "teto";
+  breakdown?: SessionCostBreakdown;
+}
+
+export function formatUsd(val: number): string {
+  if (!Number.isFinite(val) || val === 0) return "US$ 0.00";
+  if (val < 1.0) return `US$ ${val.toFixed(4)}`;
+  return `US$ ${val.toFixed(2)}`;
 }
 
 const AUTHORIZE_STEP_USD = 0.5;
@@ -203,42 +222,85 @@ export function DagSidebar({
         </div>
       </div>
 
-      {/* Custo do projeto (teto aprovado pelo fundador) */}
-      {budget && (
-        <div
-          className={`rounded-xl border p-2.5 text-[11px] ${
-            budget.status === "teto"
-              ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-              : budget.status === "alerta"
-                ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+      {/* Custo do projeto (Trava T9 com telemetria e breakdown) */}
+      {budget && (() => {
+        const pct = Math.min(100, Math.max(0, (budget.spentUsd / (budget.limitUsd || 1)) * 100));
+        const barColor =
+          budget.status === "teto"
+            ? "bg-rose-500"
+            : budget.status === "alerta"
+            ? "bg-amber-500"
+            : "bg-emerald-500";
+
+        return (
+          <div
+            className={`rounded-xl border p-2.5 text-[11px] space-y-2 ${
+              budget.status === "teto"
+                ? "border-rose-300 bg-rose-50/70 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                : budget.status === "alerta"
+                ? "border-amber-300 bg-amber-50/70 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                 : "border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400"
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span>Custo do projeto</span>
-            <span className="font-semibold">
-              US$ {budget.spentUsd.toFixed(2)} / US$ {budget.limitUsd.toFixed(2)}
-            </span>
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-slate-700 dark:text-slate-300">Custo do projeto</span>
+              <span className="font-semibold font-mono text-slate-900 dark:text-white">
+                {formatUsd(budget.spentUsd)} / US$ {budget.limitUsd.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Barra de progresso visual do orçamento */}
+            <div className="w-full bg-slate-200/80 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${barColor}`}
+                style={{ width: `${pct.toFixed(1)}%` }}
+              />
+            </div>
+
+            {/* Chips de Decomposição por Papel */}
+            {budget.breakdown && (
+              <div className="pt-1 border-t border-slate-200/60 dark:border-slate-800/60 grid grid-cols-3 gap-1 text-[9px]">
+                <div className="bg-slate-100/90 dark:bg-slate-800/90 rounded px-1 py-0.5 text-center">
+                  <span className="text-slate-400 block text-[8px] uppercase tracking-wider">Exec</span>
+                  <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                    {formatUsd(budget.breakdown.executorUsd)}
+                  </span>
+                </div>
+                <div className="bg-slate-100/90 dark:bg-slate-800/90 rounded px-1 py-0.5 text-center">
+                  <span className="text-slate-400 block text-[8px] uppercase tracking-wider">Eval</span>
+                  <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                    {formatUsd(budget.breakdown.avaliadorUsd)}
+                  </span>
+                </div>
+                <div className="bg-slate-100/90 dark:bg-slate-800/90 rounded px-1 py-0.5 text-center">
+                  <span className="text-slate-400 block text-[8px] uppercase tracking-wider">Jev</span>
+                  <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                    {formatUsd(budget.breakdown.jevUsd)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {budget.status === "teto" && onAuthorizeBudget && (
+              <button
+                type="button"
+                disabled={authorizing}
+                onClick={async () => {
+                  setAuthorizing(true);
+                  try {
+                    await onAuthorizeBudget(AUTHORIZE_STEP_USD);
+                  } finally {
+                    setAuthorizing(false);
+                  }
+                }}
+                className="mt-1 w-full rounded-lg bg-rose-600 px-2 py-1.5 font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {authorizing ? "Autorizando..." : `Autorizar mais verba (+US$ ${AUTHORIZE_STEP_USD.toFixed(2)})`}
+              </button>
+            )}
           </div>
-          {budget.status === "teto" && onAuthorizeBudget && (
-            <button
-              type="button"
-              disabled={authorizing}
-              onClick={async () => {
-                setAuthorizing(true);
-                try {
-                  await onAuthorizeBudget(AUTHORIZE_STEP_USD);
-                } finally {
-                  setAuthorizing(false);
-                }
-              }}
-              className="mt-2 w-full rounded-lg bg-rose-600 px-2 py-1.5 font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
-            >
-              {authorizing ? "Autorizando..." : `Autorizar mais verba (+US$ ${AUTHORIZE_STEP_USD.toFixed(2)})`}
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Lista ou Grafo da DAG */}
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
@@ -255,6 +317,7 @@ export function DagSidebar({
         ) : (
           tasks.map((task) => {
             const isExecuting = executingNodeId === task.id || task.status === "running";
+            const taskCostUsd = budget?.breakdown?.byNode?.[task.id];
             return (
               <div
                 key={task.id}
@@ -273,10 +336,15 @@ export function DagSidebar({
                   <div className="shrink-0">{getStatusBadge(task.status)}</div>
                 </div>
 
-                <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                <div className="flex items-center flex-wrap gap-1.5 text-[10px] text-slate-500">
                   <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-400 font-medium">
                     Role: {task.role}
                   </span>
+                  {taskCostUsd !== undefined && taskCostUsd > 0 && (
+                    <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 px-1.5 py-0.5 rounded font-mono font-semibold">
+                      {formatUsd(taskCostUsd)}
+                    </span>
+                  )}
                   {task.mcpScope && (
                     <span className="bg-blue-50 dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 px-1.5 py-0.5 rounded font-mono">
                       {task.mcpScope}

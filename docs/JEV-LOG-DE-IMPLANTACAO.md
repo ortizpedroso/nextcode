@@ -359,3 +359,28 @@ Documento físico oficial de registro de todas as alterações, implementações
   - `tests/orchestrator/delivery-t10-strict.test.ts`: 3/3 testes verdes comprovando estanqueidade da Trava T10 contra specs incompletas ou relatórios reprovados.
   - `tests/orchestrator/jev-delivery-gate.test.ts`: 2/2 testes verdes comprovando a auditoria final com JEV no portão de entrega.
 - **Conclusão:** Todos os 10 itens fundamentais do Plano de Ação do NextCode (M1 a M10) encontram-se 100% concluídos, homologados com testes automatizados e commitados no Git.
+
+### 4.21 Homologação do Pacote P5: Telemetria e Monitoramento de Custos em Tempo Real na UI (12/10/2026)
+- **Motivação e Transparência Financeira:**
+  - Permitir ao operador e fundador acompanhar exatamente o consumo de tokens e centavos de dólar da sessão durante a orquestração autônoma, sem truncamentos ou atrasos.
+- **Arquitetura Implementada:**
+  - Em `src/core/llm/cost.ts`, criada a função pura `sessionCostBreakdown(sessionId)` que calcula em uma única leitura otimizada:
+    - Custo total (`totalUsd`);
+    - Custos por papel (`executorUsd`, `avaliadorUsd`, `jevUsd`, `outroUsd`);
+    - Tokens agregados de entrada, saída e totais;
+    - Custo individual por nó finalizado (`byNode: Record<string, number>`).
+  - Em `src/core/orchestrator/budget-guard.ts`, o `BudgetState` foi enriquecido para expor o `breakdown` diretamente no polling de sessão (`/api/dag`).
+  - Em `src/components/session/dag-sidebar.tsx`:
+    - Adicionada barra de progresso visual colorida proporcional ao teto da Trava T9 (verde para seguro, amarelo para alerta e vermelho para teto);
+    - Adicionados chips visuais detalhados de gastos por papel (`Exec`, `Eval`, `Jev`);
+    - Formatação com alta precisão de 4 casas decimais para valores menores que US$ 1.00 (`formatUsd`), assegurando visibilidade transparente de micro-custos;
+    - Badge de custo específico por nó implementado renderizada dentro de cada card de tarefa da DAG.
+- **Validação de Bancada com Testes Pesados:**
+  - Criada a suíte `tests/governance/session-cost-breakdown.test.ts` (5/5 testes verdes):
+    1. Sessão sem custos retorna breakdown seguro e zerado;
+    2. Agrupamento e consistência matemática perfeita entre soma dos papéis e custo total;
+    3. Resiliência fail-safe contra logs de telemetria corrompidos;
+    4. Acoplamento fiel com `getSessionBudget`;
+    5. Formatação de 4 casas decimais para micro-valores e 2 casas para valores altos.
+  - Bancada de governança e orquestração: **73 testes verdes (9 arquivos)** em 23.45s.
+  - TypeScript: `npx tsc --noEmit` completado com 0 erros.
