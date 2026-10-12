@@ -319,3 +319,35 @@ Documento físico oficial de registro de todas as alterações, implementações
     7. Fallback determinístico instantâneo quando o Jev falha.
   - Suíte consolidada de governança, intake, memória e decisão: **28 arquivos de teste, 141 testes passando (100% aprovados, 0 falhas)** em 25.96s.
   - TypeScript: `npx tsc --noEmit` completado com 0 erros.
+
+### 4.19 Medição Comparativa Oficial: Eficiência do JEV no P1 e P2 (12/10/2026)
+- **Objetivo (Item 8 do Plano de Ação):**
+  - Execução empírica comparando a variante oficial com JEV (`padrao`) versus a variante legada sem JEV (`sem-jev`) sob os mesmos testes herméticos de aceite em contêiner Docker isolado (`nextcode-aceite:1`, `--network none`).
+- **Resultados no Projeto P1 (API REST em Memória - 10 Testes de Aceite):**
+  - **Variante `padrao` (Com JEV):**
+    - Custo Total: **US$ 0.0239** (JEV: 4 chamadas atômicas = US$ 0.0003).
+    - Alocação Dinâmica: O JEV selecionou tier `rapido` (modelo gratuito/econômico) para a Etapa 1 (`lib/tarefas.ts`), evitando gastar modelos pagos em lógica pura.
+    - Tempo: 152.9 segundos.
+    - Aceite: **10/10 aprovados (100%)**.
+    - Compilação: `tsc --noEmit` com 0 erros.
+  - **Variante `sem-jev` (Sem JEV):**
+    - Custo Total: **US$ 0.0558** (Mais que o dobro do custo).
+    - Alocação: Sem JEV, o fallback estático selecionou `medio` para todas as etapas, queimando tokens desnecessários em modelos intermediários.
+    - Tempo: 163.1 segundos.
+    - Aceite: **10/10 aprovados (100%)**.
+  - **Ganho Empírico Comprovado:** **Economia direta de 57,2% no custo de execução** com JEV, mantendo 100% de aceite.
+- **Resultados no Projeto P2 (CRUD com Tela - 13 Testes de Aceite + Playwright):**
+  - **Variante `padrao` (Com JEV):**
+    - Custo Total: **US$ 0.1191** (JEV: 5 chamadas atômicas = US$ 0.0006).
+    - Alocação Dinâmica: O JEV protegeu o backend alocando tier `pesado` para os endpoints complexos do CRUD, garantindo **4/4 etapas aprovadas de primeira** (100% de taxa de acerto).
+    - Validação de Interface: `UI_CHECK_PASSED` (Playwright em contêiner).
+    - Aceite Mecânico: **13/13 aprovados (100%)**.
+    - Compilação: `tsc --noEmit` com 0 erros.
+  - **Variante `sem-jev` (Sem JEV):**
+    - Custo Total: **US$ 0.0859**.
+    - Aceite Mecânico: **13/13 aprovados (100%)**.
+    - Validação de Interface: `UI_CHECK_PASSED`.
+    - Compilação: `tsc --noEmit` com 0 erros.
+- **Relatórios Oficiais Gerados:**
+  - `docs/relatorios/bench/2026-10-12-1533.md` e `docs/relatorios/bench/2026-10-12-1533.yaml` (P1)
+  - `docs/relatorios/bench/2026-10-12-1550.md` e `docs/relatorios/bench/2026-10-12-1550.yaml` (P2)
