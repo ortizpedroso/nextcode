@@ -26,6 +26,7 @@ export interface ProjectSnapshot {
   manifestName?: string; // package.json / requirements.txt / go.mod ...
   manifestContent?: string;
   readmeExcerpt?: string;
+  memoryContent?: string;
   tree: string[]; // linhas de árvore já truncadas
   totalFilesScanned: number;
   truncated: boolean;
@@ -164,6 +165,14 @@ export function buildProjectSnapshot(project: {
     }
   }
 
+  // Memória Persistente de Longo Prazo do Projeto (.nextcode/MEMORY.md)
+  let memoryContent: string | undefined;
+  const memoryFile = path.join(normalized, ".nextcode", "MEMORY.md");
+  const memRaw = safeReadFile(memoryFile, 6_000);
+  if (memRaw && memRaw.trim()) {
+    memoryContent = memRaw.trim();
+  }
+
   // Árvore de arquivos
   const counter: { files: number; lines: string[] } = { files: 0, lines: [] };
   buildTree(normalized, { counter });
@@ -176,6 +185,7 @@ export function buildProjectSnapshot(project: {
     manifestName,
     manifestContent,
     readmeExcerpt,
+    memoryContent,
     tree: counter.lines,
     totalFilesScanned: counter.files,
     truncated,
@@ -193,6 +203,9 @@ export function formatProjectContext(snapshot: ProjectSnapshot): string {
   if (snapshot.description) parts.push(`Descrição cadastrada: ${snapshot.description}`);
   parts.push(`Arquivos mapeados na estrutura: ${snapshot.totalFilesScanned}${snapshot.truncated ? " (lista truncada)" : ""}`);
 
+  if (snapshot.memoryContent) {
+    parts.push(`\n--- MEMÓRIA PERSISTENTE DO PROJETO (.nextcode/MEMORY.md) ---\n${snapshot.memoryContent}`);
+  }
   if (snapshot.manifestName && snapshot.manifestContent) {
     parts.push(`\n--- ${snapshot.manifestName} ---\n${snapshot.manifestContent}`);
   }

@@ -10,6 +10,7 @@ import {
 } from "../templates/artifact-templates";
 import type { ClusterKind } from "../config/orchestration-policy";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
+import { loadRoleSkill, buildSkillSystemPrompt } from "./skill-runtime";
 
 export interface DecompositionResult {
   goal: string;
@@ -304,6 +305,173 @@ export class SpecDecomposerSkill {
       microbriefs,
       t8bCheck,
     };
+  }
+
+  /**
+   * Decomposição com o modelo LLM da skill `analista` (Item 4 do PLANO-DE-ACAO):
+   * 1. Consulta o modelo forte da skill `analista` (skills/analista/SKILL.md);
+   * 2. Submete os Microbriefs propostos à Trava T8b mecânica (validateMacrobriefMechanical);
+   * 3. Se aprovado pela Trava T8b, adota o particionamento do Analista;
+   * 4. Se falhar na Trava T8b ou se o modelo estiver offline, faz fallback gracioso para decomposeSpec.
+   */
+  public static async decomposeWithAnalistaSkill(options: {
+    specText: string;
+    titulo: string | null;
+    files: string[];
+    stack?: string[];
+    sessionId?: string;
+    smartRouter?: any;
+    geminiKey?: string | null;
+    omniRouteUrl?: string | null;
+    omniRouteKey?: string | null;
+    skipModel?: boolean;
+  }): Promise<DecompositionResult> {
+    const { specText, titulo, files, stack = [], sessionId, smartRouter, skipModel } = options;
+
+    const baseDecomp = SpecDecomposerSkill.decomposeSpec(
+      specText,
+      titulo,
+      files,
+      stack,
+      sessionId
+    );
+
+    if (skipModel || !smartRouter) {
+      return baseDecomp;
+    }
+
+    try {
+      const analistaSkill = loadRoleSkill("analista");
+      const systemPrompt = buildSkillSystemPrompt(analistaSkill);
+      const prompt = [
+        `Você é o Analista arquitetural. Analise a Spec Canônica abaixo e proponha a divisão em Microbriefs por cluster (core, backend, frontend, integration).`,
+        `DIRETRIZES DA TRAVA T8b:`,
+        `1. Todo requisito REQ-xxx declarado na Spec DEVE estar coberto em pelo menos um Microbrief.`,
+        `2. Cada arquivo do projeto DEVE pertencer a EXATAMENTE UM Microbrief (partição disjunta; proibido dois executores no mesmo arquivo).`,
+        `3. A DAG deve ser sem ciclos: cluster core (contratos/schemas) na Onda 1 (dependeDe: []), e demais clusters nas ondas seguintes.`,
+        `4. Retorne EXCLUSIVAMENTE um bloco JSON no formato:`,
+        `\`\`\`json`,
+        `{`,
+        `  "microbriefs": [`,
+        `    {`,
+        `      "id": "mb-core-1",`,
+        `      "cluster": "core",`,
+        `      "arquivos": ["prisma/schema.prisma"],`,
+        `      "reqs": ["REQ-001"],`,
+        `      "dependeDe": [],`,
+        `      "contratosTypescript": "// interfaces core"`,
+        `    }`,
+        `  ]`,
+        `}`,
+        `\`\`\``,
+        `\n--- SPEC CANÔNICA ---\n${specText}`,
+      ].join("\n");
+
+      const dispatchRes = await smartRouter.dispatchWithFallback({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt },
+        ],
+        tier: "heavy",
+        maxTokens: 4096,
+        geminiKey: options.geminiKey,
+        omniRouteUrl: options.omniRouteUrl,
+        omniRouteKey: options.omniRouteKey,
+        stream: false,
+        signal: AbortSignal.timeout(5000),
+      });
+
+      const resJson = await dispatchRes.response.json().catch(() => ({}));
+      const content = resJson.choices?.[0]?.message?.content || "";
+      const jsonMatch =
+        content.match(/```json\s*([\s\S]*?)\s*```/) ||
+        content.match(/(\{[\s\S]*"microbriefs"[\s\S]*\})/);
+
+      if (jsonMatch) {
+        const rawParsed = JSON.parse(jsonMatch[1]);
+        if (Array.isArray(rawParsed.microbriefs) && rawParsed.microbriefs.length > 0) {
+          const macrobrief: MacrobriefDocument = {
+            documento: "macrobrief",
+            idMacrobrief: `macro-analista-${Date.now()}`,
+            idProjeto: (titulo || "projeto").toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+            specVersao: 1,
+            requisitosTotais: baseDecomp.macrobrief?.requisitosTotais || [],
+            clustersAtivos: Array.from(new Set(rawParsed.microbriefs.map((m: any) => m.cluster))),
+            microbriefs: rawParsed.microbriefs.map((m: any) => ({
+              id: m.id,
+              cluster: m.cluster,
+              dependeDe: Array.isArray(m.dependeDe) ? m.dependeDe : [],
+              arquivos: Array.isArray(m.arquivos) ? m.arquivos : [],
+              reqs: Array.isArray(m.reqs) ? m.reqs : [],
+            })),
+            contratosTypescript: "// Contratos propostos pelo Analista",
+          };
+
+          const t8bCheck = validateMacrobriefMechanical(
+            macrobrief,
+            macrobrief.requisitosTotais,
+            FILES_PER_NODE
+          );
+
+          if (t8bCheck.valid) {
+            const nodes: DAGNode[] = macrobrief.microbriefs.map((mb, idx) => ({
+              id: `task-analista-${mb.id}`,
+              title: `Etapa ${idx + 1} (${mb.cluster}): ${mb.arquivos.slice(0, 2).join(", ")}`,
+              role: roleForCluster(mb.cluster),
+              status: "pending",
+              dependencies: mb.dependeDe.map((d: string) => `task-analista-${d}`),
+              filesScope: mb.arquivos,
+              mcpScope: "write_file,edit_file,run_check,finish",
+              payload: {
+                step: `analista_step_${idx + 1}`,
+                cluster: mb.cluster,
+                reqs: mb.reqs,
+                files: mb.arquivos,
+                macrobriefId: macrobrief.idMacrobrief,
+              },
+            }));
+
+            TelemetryLogger.log({
+              sessionId,
+              action: "ANALISTA_PLAN_APPROVED",
+              details: {
+                microbriefsCount: nodes.length,
+                clusters: macrobrief.clustersAtivos,
+                t8bValid: true,
+              },
+            });
+
+            return {
+              goal: specText,
+              nodes,
+              summary: `Spec decomposta com sucesso pelo Analista LLM em ${nodes.length} etapas, aprovada pela Trava T8b.`,
+              macrobrief,
+              t8bCheck,
+            };
+          } else {
+            TelemetryLogger.log({
+              sessionId,
+              action: "ANALISTA_PLAN_FALLBACK",
+              details: {
+                reason: "t8b_validation_failed",
+                errors: t8bCheck.errors,
+              },
+            });
+          }
+        }
+      }
+    } catch (err) {
+      TelemetryLogger.log({
+        sessionId,
+        action: "ANALISTA_PLAN_FALLBACK",
+        details: {
+          reason: "exception_or_offline",
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    }
+
+    return baseDecomp;
   }
 
   /**

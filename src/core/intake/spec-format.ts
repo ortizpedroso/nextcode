@@ -429,7 +429,7 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
     stack: asStringList(root.stack),
     modulos,
     entidades,
-    arquivosAfetados: asStringList(root.arquivos_afetados),
+    arquivosAfetados: asStringList(root.arquivos_afetados ?? root.arquivosAfetados),
     rotas,
     notasImplementacao: asStringList(root.notas_implementacao),
     ...(requisitosIds.length > 0 ? { requisitosIds } : {}),

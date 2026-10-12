@@ -93,6 +93,9 @@ Requisitos detalhados.
     const res = await postChat(req);
     expect(res.status).toBe(200);
     const data = await res.json();
+    if (!data.specApproved) {
+      console.error("DEBUG_JEV_INTENT_DATA:", data);
+    }
 
     expect(askJevBatchSpy).toHaveBeenCalled();
     expect(data.specApproved).toBe(true);

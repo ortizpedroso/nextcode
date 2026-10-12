@@ -7,6 +7,7 @@ import {
   claimJob,
   executeClaimedJob,
 } from "@/core/orchestrator/job-queue";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 
 export const DEFAULT_WORKER_CONCURRENCY = 2;
 export const DEFAULT_WORKER_POLL_MS = 2000;
@@ -114,6 +115,107 @@ export async function recoverOrphanExecutionSessions(): Promise<number> {
   return orphanSessions.length;
 }
 
+export const DEFAULT_STUCK_NODE_TIMEOUT_MS = 300_000;
+const SUPERVISE_INTERVAL_MS = 10_000;
+let lastSuperviseExecutionAt = 0;
+
+/**
+ * Supervisor Periódico da Fila (Item 1 do PLANO-DE-ACAO / Supervisor M5):
+ * 1. Resgata sessões em EXECUCAO sem job ativo (queued/running);
+ * 2. Destrava nós presos em 'running' com timeout excedido (zumbis);
+ * 3. Registra QUEUE_STALLED na trilha para cada intervenção do supervisor.
+ */
+export async function superviseExecutionQueue(options?: {
+  now?: Date;
+  stuckTimeoutMs?: number;
+  force?: boolean;
+}): Promise<{ orphanSessionsResumed: number; stuckNodesReset: number }> {
+  const now = options?.now ?? new Date();
+  const nowMs = now.getTime();
+
+  if (!options?.force && nowMs - lastSuperviseExecutionAt < SUPERVISE_INTERVAL_MS) {
+    return { orphanSessionsResumed: 0, stuckNodesReset: 0 };
+  }
+  lastSuperviseExecutionAt = nowMs;
+
+  const stuckTimeoutMs = options?.stuckTimeoutMs ?? DEFAULT_STUCK_NODE_TIMEOUT_MS;
+  const stuckThreshold = new Date(nowMs - stuckTimeoutMs);
+
+  let orphanSessionsResumed = 0;
+  let stuckNodesReset = 0;
+
+  // 1. Sessões órfãs em EXECUCAO sem Job ativo
+  const orphanSessions = await prisma.session.findMany({
+    where: {
+      phase: "EXECUCAO",
+      tasks: {
+        some: {
+          status: { in: ["pending", "failed", "running"] },
+        },
+      },
+      jobs: {
+        none: {
+          status: { in: ["queued", "running"] },
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  for (const session of orphanSessions) {
+    await enqueueSessionQueueJob(session.id);
+    orphanSessionsResumed++;
+    TelemetryLogger.log({
+      sessionId: session.id,
+      action: "QUEUE_STALLED",
+      details: {
+        reason: "orphan_execution_session",
+        intervention: "enqueued_job",
+      },
+    });
+  }
+
+  // 2. Nós presos em 'running' além do teto
+  const stuckNodes = await prisma.taskNode.findMany({
+    where: {
+      status: "running",
+      updatedAt: { lt: stuckThreshold },
+    },
+    select: { id: true, sessionId: true, title: true },
+  });
+
+  for (const node of stuckNodes) {
+    const activeJob = await prisma.job.findFirst({
+      where: {
+        sessionId: node.sessionId,
+        status: "running",
+        lockedUntil: { gt: now },
+      },
+    });
+
+    if (!activeJob) {
+      await prisma.taskNode.update({
+        where: { id: node.id },
+        data: { status: "pending" },
+      });
+      stuckNodesReset++;
+      TelemetryLogger.log({
+        sessionId: node.sessionId,
+        action: "QUEUE_STALLED",
+        details: {
+          reason: "stuck_running_node",
+          nodeId: node.id,
+          title: node.title,
+          intervention: "reset_to_pending",
+        },
+      });
+      await enqueueSessionQueueJob(node.sessionId).catch(() => null);
+    }
+  }
+
+  return { orphanSessionsResumed, stuckNodesReset };
+}
+
 /**
  * Busca jobs elegíveis (queued ou running com lease vencido), tenta claimJob
  * e executa até NEXTCODE_WORKER_CONCURRENCY (padrão 2) simultaneamente.
@@ -121,6 +223,7 @@ export async function recoverOrphanExecutionSessions(): Promise<number> {
  */
 export async function runOnce(workerId: string = defaultProcessWorkerId): Promise<number> {
   await supervisePausedSessions().catch(() => 0);
+  await superviseExecutionQueue().catch(() => ({ orphanSessionsResumed: 0, stuckNodesReset: 0 }));
 
   const concurrency = getWorkerConcurrency();
   const now = new Date();

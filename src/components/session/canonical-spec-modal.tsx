@@ -45,18 +45,19 @@ export function CanonicalSpecModal({
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
-  // Impede aprovação de templates vazios, sem módulos ou sem arquivos concretos
+  // Impede aprovação de templates vazios, sem módulos, sem arquivos concretos ou sem requisitos (REQ-001...)
   const isSpecExecutable = useMemo(() => {
     if (!parsedSpec) return false;
     if (parsedSpec.titulo?.toLowerCase().includes("pendente")) return false;
     if (!parsedSpec.modulos || parsedSpec.modulos.length === 0) return false;
     if (!parsedSpec.arquivosAfetados || parsedSpec.arquivosAfetados.length === 0) return false;
+    if (!parsedSpec.requisitos || parsedSpec.requisitos.length === 0) return false;
     return true;
   }, [parsedSpec]);
 
   const handleApproveAndUnlock = async () => {
     if (!isSpecExecutable) {
-      alert("Atenção: Esta especificação ainda está pendente ou não possui módulos/arquivos definidos. Descreva seu projeto no chat para a IA gerar os contratos antes de aprovar.");
+      alert("Atenção: Esta especificação ainda está pendente ou não possui módulos, arquivos e requisitos (REQ-001...) definidos. Descreva seu projeto no chat para a IA gerar a especificação completa antes de aprovar.");
       return;
     }
     setSaving(true);

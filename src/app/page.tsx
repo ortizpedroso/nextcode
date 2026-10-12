@@ -8,6 +8,7 @@ import type { SessionBudget } from "@/components/session/dag-sidebar";
 import { ProjectFormData } from "@/components/projects/open-project-dialog";
 import { ProjectData } from "@/components/projects/project-actions-menu";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
+import { parseSpecDocument } from "@/core/intake/spec-format";
 import { QuarantineDiffModal } from "@/components/session/quarantine-diff-modal";
 import { CanonicalSpecModal } from "@/components/session/canonical-spec-modal";
 import { TelemetryModal } from "@/components/session/telemetry-modal";
@@ -414,7 +415,13 @@ export default function DashboardOrchestrator() {
         }
 
         if (chatData.specApproved) {
-          await triggerBackgroundDAG(prompt, targetSessionId, modelOverride);
+          // O backend (execution-trigger / approveSpecAndStart) já iniciou a orquestração
+          // autônoma no servidor. A interface apenas sincroniza as tarefas e escuta via polling.
+          await fetchSessionDetails(targetSessionId);
+          setConsoleLogs((prev) => [
+            ...prev,
+            "[EXECUÇÃO] Spec Canônica aprovada. Orquestrador autônomo iniciado no servidor.",
+          ]);
         }
       }
     } catch (err: unknown) {
@@ -848,16 +855,8 @@ export default function DashboardOrchestrator() {
             await fetchSessionDetails(activeSessionId);
             setConsoleLogs((prev) => [
               ...prev,
-              "[ESPECIFICAÇÃO] Spec Canônica APROVADA e Trava T1 LIBERADA com sucesso!",
+              "[ESPECIFICAÇÃO] Spec Canônica APROVADA e Trava T1 LIBERADA com sucesso! Orquestrador em execução no servidor.",
             ]);
-
-            // Dispara o processador de fila no servidor para iniciar a execução da DAG
-            await authFetch("/api/dag", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "process_queue", sessionId: activeSessionId }),
-            });
-            await fetchSessionDetails(activeSessionId);
           }}
         />
       )}

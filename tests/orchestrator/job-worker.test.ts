@@ -13,6 +13,7 @@ import {
   runOnce,
   startJobWorker,
   stopJobWorker,
+  superviseExecutionQueue,
 } from "@/core/orchestrator/job-worker";
 import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 
@@ -607,4 +608,54 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
       }
     }
   }, 30000);
+
+  it("9. supervisor periódico contínuo (Item 1 / M5): resgata sessão em EXECUCAO sem job e desengata nó preso em running com QUEUE_STALLED", async () => {
+    const { session } = await setupProjectAndSession("Supervisor Periodico");
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { phase: "EXECUCAO" },
+    });
+
+    const stuckTask = await prisma.taskNode.create({
+      data: {
+        sessionId: session.id,
+        title: "Nó Preso",
+        role: "executor-backend",
+        cluster: "backend",
+        status: "running",
+        attempts: 1,
+        filesScope: '["src/index.ts"]',
+        specVersion: 1,
+        updatedAt: new Date(Date.now() - 400_000), // 400s atrás (> 300s)
+      },
+    });
+
+    // Sem jobs ativos na sessão
+    const result = await superviseExecutionQueue({
+      now: new Date(),
+      stuckTimeoutMs: 300_000,
+      force: true,
+    });
+
+    expect(result.stuckNodesReset).toBe(1);
+    expect(result.orphanSessionsResumed).toBe(1);
+
+    const reloadedTask = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: stuckTask.id },
+    });
+    expect(reloadedTask.status).toBe("pending");
+
+    const stalledJobs = await prisma.job.findMany({
+      where: { sessionId: session.id },
+    });
+    expect(stalledJobs.length).toBeGreaterThanOrEqual(1);
+
+    const stallTelemetry = await prisma.telemetryLog.findMany({
+      where: {
+        sessionId: session.id,
+        action: "QUEUE_STALLED",
+      },
+    });
+    expect(stallTelemetry.length).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import * as fs from "fs";
+import * as path from "path";
 import prisma from "@/lib/prisma";
 import { readSecret } from "@/core/security/crypto";
 import { SmartRouter, AvailableKeys, DispatchMessage } from "@/core/router/smart-router";
@@ -17,7 +18,15 @@ import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
-import { decideSpecReviewMessageIntent, decideSpecClarity } from "@/core/decision/jev-decisions";
+import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import {
+  decideSpecReviewMessageIntent,
+  decideSpecClarity,
+  decideGraphifyEligibilityWithJev,
+  evaluateChatFanOutWithJev,
+  type ChatFanOutDecision,
+} from "@/core/decision/jev-decisions";
 import { runUniversalIntakeFunnel, formatIntakeFunnelBrief } from "@/core/intake/universal-funnel";
 import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
 import {
@@ -234,36 +243,102 @@ export async function POST(request: NextRequest) {
     });
     const phaseBefore = ((sessionBefore?.phase as Phase) || "ENTRADA");
 
-    // 4. Avalia intenção de aprovação explícita da Spec (M1 — Jev com Fallback Seguro)
-    let isExplicitApproval = isExplicitSpecApproval(targetPrompt);
+    const ctxProjectEarly =
+      sessionBefore?.project ??
+      (projectId ? await prisma.project.findUnique({ where: { id: projectId } }) : null);
+
     const isPreExecutionPhase =
       phaseBefore === "SPEC_REVISAO" ||
       phaseBefore === "ELICITACAO" ||
       phaseBefore === "CONVERSA" ||
       phaseBefore === "ENTRADA";
 
-    if (sessionBefore?.canonicalSpec?.trim() && isPreExecutionPhase) {
-      try {
-        const jevIntent = await decideSpecReviewMessageIntent({
-          resumoSpec: sessionBefore.canonicalSpec,
-          ultimaMensagem: targetPrompt,
+    const smartRouter = new SmartRouter();
+    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
+
+    // Helper para persistir resposta determinística (sem chamar LLM) e devolver o JSON padrão da rota
+    const respondDeterministically = async (content: string) => {
+      const assistantMessage = await prisma.message.create({
+        data: {
           sessionId: activeSessionId,
-        });
-        if (jevIntent && jevIntent.source === "jev") {
-          isExplicitApproval = jevIntent.aprovadoParaFase2;
-        }
-      } catch {
-        // Fallback seguro mantém isExplicitApproval determinístico
-      }
+          role: "assistant",
+          content,
+          tokens: 0,
+          tier: "fast",
+        },
+      });
+      const cleanMessages = await prisma.message.findMany({
+        where: {
+          sessionId: activeSessionId,
+          role: { in: ["user", "assistant"] },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      const currentSession = await prisma.session.findUnique({
+        where: { id: activeSessionId },
+      });
+      return NextResponse.json({
+        success: true,
+        sessionId: activeSessionId,
+        specApproved: currentSession?.specApproved || false,
+        phase: currentSession?.phase || phaseBefore,
+        canonicalSpec: currentSession?.canonicalSpec ?? null,
+        userMessage,
+        assistantMessage,
+        messages: cleanMessages,
+        intent: rawAnalysis,
+        graphifySuggestion: null,
+        tokensSaved: 0,
+        projectContextInjected: false,
+      });
+    };
+
+    // 4. Pacote P4: Fan-Out Especulativo Unificado do Jev na Entrada do Chat (~100ms)
+    const chatPolicy = loadOrchestrationPolicy();
+    const fanOut = await evaluateChatFanOutWithJev({
+      mensagem: targetPrompt,
+      faseAtual: phaseBefore,
+      temSpecEmRevisao: Boolean(sessionBefore?.canonicalSpec?.trim() && isPreExecutionPhase),
+      resumoSpec: sessionBefore?.canonicalSpec ?? null,
+      temCodigoExistente: Boolean(ctxProjectEarly?.path && fs.existsSync(ctxProjectEarly.path)),
+      sessionId: activeSessionId,
+      policy: chatPolicy,
+    });
+
+    // Guardrail de Entrada (J5): bloqueio preventivo de injeções adversariais
+    if (fanOut.guardrailEntrada.inseguro) {
+      TelemetryLogger.log({
+        sessionId: activeSessionId,
+        action: "GUARDRAIL_INPUT_BLOCKED",
+        details: {
+          motivo: fanOut.guardrailEntrada.motivo,
+          probabilidade: fanOut.guardrailEntrada.probabilidadeInseguro,
+        },
+      });
+      return respondDeterministically(
+        "⚠️ **Aviso de Segurança (Guardrail de Entrada J5):** Sua mensagem contém instruções incompatíveis com as políticas de desenvolvimento seguro do NextCode. Por favor, reformule seu pedido focando nos requisitos da aplicação."
+      );
     }
+
+    // Avalia intenção de aprovação explícita da Spec (M1 / J2)
+    let isExplicitApproval =
+      fanOut.aprovacaoSpec.aprovadoParaFase2 || isExplicitSpecApproval(targetPrompt);
 
     if (isExplicitApproval) {
       const approvalTriggerResult: ApproveSpecResult = await approveSpecAndStart(activeSessionId);
       if (!approvalTriggerResult.ok) {
-        const refusalText =
-          approvalTriggerResult.reason === "SPEC_AUSENTE"
-            ? "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação."
-            : `⚠️ Aprovação recusada (${approvalTriggerResult.reason}).`;
+        let refusalText = `⚠️ Aprovação recusada (${approvalTriggerResult.reason}).`;
+        if (approvalTriggerResult.reason === "SPEC_AUSENTE") {
+          refusalText = "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação.";
+        } else if (approvalTriggerResult.reason === "SPEC_SEM_REQUISITOS") {
+          refusalText = "⚠️ A Spec Canônica não possui requisitos funcionais verificáveis (REQ-001...). Forneça mais detalhes sobre o seu pedido para gerarmos os requisitos antes de aprovar.";
+        } else if (approvalTriggerResult.reason === "SPEC_SEM_MODULOS") {
+          refusalText = "⚠️ A Spec Canônica não declara nenhum módulo. Complete a especificação antes de aprovar.";
+        } else if (approvalTriggerResult.reason === "SPEC_SEM_ARQUIVOS") {
+          refusalText = "⚠️ A Spec Canônica não define arquivos afetados. Complete a arquitetura antes de aprovar.";
+        } else if (approvalTriggerResult.reason === "SPEC_INVALIDA_OU_MALFORMATADA") {
+          refusalText = "⚠️ O documento de Spec atual está com formatação inválida. Solicite ao assistente a regeneração da Spec antes de aprovar.";
+        }
 
         const assistantMessage = await prisma.message.create({
           data: {
@@ -287,6 +362,7 @@ export async function POST(request: NextRequest) {
             reason: approvalTriggerResult.reason,
             success: false,
             sessionId: activeSessionId,
+            phase: sessionBefore?.phase || "SPEC_REVISAO",
             specApproved: false,
             userMessage,
             assistantMessage,
@@ -347,7 +423,9 @@ export async function POST(request: NextRequest) {
     const classifiedIntention =
       interventionChoice !== null
         ? null
-        : await classifyMessage(targetPrompt, phaseBefore, activeSessionId);
+        : (fanOut.source === "jev"
+            ? fanOut.intencao
+            : await classifyMessage(targetPrompt, phaseBefore, activeSessionId));
 
     const transitionRes =
       interventionChoice !== null
@@ -359,46 +437,6 @@ export async function POST(request: NextRequest) {
             type: "MENSAGEM_CLASSIFICADA",
             intencao: classifiedIntention!,
           });
-
-    const smartRouter = new SmartRouter();
-    const rawAnalysis = smartRouter.routeTask({ prompt: targetPrompt });
-
-    // Helper para persistir resposta determinística (sem chamar LLM) e devolver o JSON padrão da rota
-    const respondDeterministically = async (content: string) => {
-      const assistantMessage = await prisma.message.create({
-        data: {
-          sessionId: activeSessionId,
-          role: "assistant",
-          content,
-          tokens: 0,
-          tier: "fast",
-        },
-      });
-      const cleanMessages = await prisma.message.findMany({
-        where: {
-          sessionId: activeSessionId,
-          role: { in: ["user", "assistant"] },
-        },
-        orderBy: { createdAt: "asc" },
-      });
-      const currentSession = await prisma.session.findUnique({
-        where: { id: activeSessionId },
-      });
-      return NextResponse.json({
-        success: true,
-        sessionId: activeSessionId,
-        specApproved: currentSession?.specApproved || false,
-        phase: currentSession?.phase || phaseBefore,
-        canonicalSpec: currentSession?.canonicalSpec ?? null,
-        userMessage,
-        assistantMessage,
-        messages: cleanMessages,
-        intent: rawAnalysis,
-        graphifySuggestion: null,
-        tokensSaved: 0,
-        projectContextInjected: false,
-      });
-    };
 
     // 4a. Transição recusada -> responde com reason e allowedIntents / allowedEvents, SEM LLM (§3 regra 14 / Teste 11)
     if (!transitionRes.ok) {
@@ -509,13 +547,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Monta o contexto e chama o LLM fast (para dúvida avulsa, conversa ou elicitação de Spec)
-    const history = await prisma.message.findMany({
+    // 5. Monta o contexto e chama o LLM fast (para dúvida avulsa, conversa ou elicitação de Spec)
+    // Janela Deslizante (Pacote E1): limita aos últimos 6 turnos para estancar estouro de tokens
+    const recentMessages = await prisma.message.findMany({
       where: {
         sessionId: activeSessionId,
         role: { in: ["user", "assistant"] },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: "desc" },
+      take: 6,
     });
+    const history = Array.isArray(recentMessages) ? [...recentMessages].reverse() : [];
 
     const headroomRes = pruneContextWithHeadroom(
       history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
@@ -743,7 +785,11 @@ export async function POST(request: NextRequest) {
           try {
             const healed = autoHealSpecDocument(guardRes.finalSpec);
             guardRes.finalSpec = healed.healedSpec;
-            guardRes.finalMessageContent = healed.healedSpec;
+            const reinjectionNotice =
+              guardRes.reinjectedCount > 0
+                ? `\n\nMantive ${guardRes.reinjectedCount} itens da versão anterior que não apareceram na nova.`
+                : "";
+            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}`;
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)
@@ -765,6 +811,43 @@ export async function POST(request: NextRequest) {
               specApproved: false,
             },
           });
+
+          const currentParsed = parseSpecDocument(guardRes.finalSpec);
+
+          // Item 7 do PLANO-DE-ACAO: Geração de Macrobrief e Conferência T8a (Elicitador × Analista)
+          if (currentParsed) {
+            try {
+              const decompResult = SpecDecomposerSkill.decomposeSpec(
+                guardRes.finalSpec,
+                currentParsed.titulo,
+                currentParsed.arquivosAfetados,
+                currentParsed.stack,
+                activeSessionId
+              );
+              if (decompResult.macrobrief) {
+                TelemetryLogger.log({
+                  sessionId: activeSessionId,
+                  action: "MACROBRIEF_GENERATED",
+                  details: {
+                    idMacrobrief: decompResult.macrobrief.idMacrobrief,
+                    clustersAtivos: decompResult.macrobrief.clustersAtivos,
+                    requisitosTotais: decompResult.macrobrief.requisitosTotais,
+                    microbriefsCount: decompResult.macrobrief.microbriefs.length,
+                    t8bValid: decompResult.t8bCheck?.valid ?? true,
+                  },
+                });
+                TelemetryLogger.log({
+                  sessionId: activeSessionId,
+                  action: decompResult.t8bCheck?.valid ? "CONFERENCIA_T8A_OK" : "CONFERENCIA_T8A_VERDICT",
+                  details: {
+                    errors: decompResult.t8bCheck?.errors ?? [],
+                  },
+                });
+              }
+            } catch {
+              /* ignora falha secundária de telemetria */
+            }
+          }
           if (
             resultingPhase === "ELICITACAO" ||
             resultingPhase === "ELICITACAO_CORRECAO"
@@ -781,7 +864,6 @@ export async function POST(request: NextRequest) {
       aiResponseContent = `⚠️ **Falha ao ler resposta da IA:** ${String(err)}`;
     }
 
-    const chatPolicy = loadOrchestrationPolicy();
     const chatSecretGuard = await redactSecretsInChatWithJev({
       sessionId: activeSessionId,
       text: aiResponseContent,
@@ -811,6 +893,32 @@ export async function POST(request: NextRequest) {
 
     const currentSession = await prisma.session.findUnique({ where: { id: activeSessionId } });
 
+    let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
+    if (ctxProject?.id && ctxProject?.path && fs.existsSync(ctxProject.path)) {
+      try {
+        const graphJsonPath = path.join(ctxProject.path, "graphify-out", "graph.json");
+        const graphJaExiste = fs.existsSync(graphJsonPath);
+        if (!graphJaExiste) {
+          const graphifyDecision =
+            fanOut.source === "jev"
+              ? { elegivel: fanOut.graphify.elegivel, motivo: fanOut.graphify.motivo }
+              : await decideGraphifyEligibilityWithJev({
+                  prompt: targetPrompt,
+                  temCodigoExistente: true,
+                  sessionId: activeSessionId,
+                });
+          if (graphifyDecision.elegivel) {
+            graphifySuggestion = {
+              projectId: ctxProject.id,
+              reasoning: graphifyDecision.motivo,
+            };
+          }
+        }
+      } catch {
+        // Fallback defensivo: falha silenciosa para nunca quebrar a resposta do chat
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -822,7 +930,7 @@ export async function POST(request: NextRequest) {
         assistantMessage,
         messages: cleanMessages,
         intent,
-        graphifySuggestion: null,
+        graphifySuggestion,
         tokensSaved:
           headroomRes.tokensSaved +
           (preprocessedInput.originalLength - preprocessedInput.processedLength),

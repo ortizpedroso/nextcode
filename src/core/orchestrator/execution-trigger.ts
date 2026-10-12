@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { SmartRouter, type AvailableKeys } from "@/core/router/smart-router";
+import { readSecret } from "@/core/security/crypto";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { enqueueSessionQueueJob } from "@/core/orchestrator/job-queue";
@@ -15,6 +16,7 @@ import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { splitNodesByJev } from "@/core/orchestrator/node-split";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
+import { consolidateMemoryFromSpec } from "@/core/memory/project-memory";
 
 export type ApproveSpecResult =
   | {
@@ -54,6 +56,14 @@ export async function approveSpecAndStart(
       id: true,
       phase: true,
       canonicalSpec: true,
+      projectId: true,
+      project: {
+        select: {
+          id: true,
+          name: true,
+          path: true,
+        },
+      },
     },
   });
 
@@ -86,27 +96,7 @@ export async function approveSpecAndStart(
     return { ok: false, reason: "INTERVENCAO_PENDENTE" };
   }
 
-  // 1. Se canonicalSpec veio no argumento, grava em Session.canonicalSpec.
-  // Se a sessão não tiver canonicalSpec não vazia depois disso, recusa com SPEC_AUSENTE sem alterar nada.
-  const effectiveSpec =
-    canonicalSpec !== undefined ? String(canonicalSpec) : (session.canonicalSpec ?? "");
-
-  if (
-    !effectiveSpec.trim() ||
-    effectiveSpec.includes("Especificação pendente") ||
-    effectiveSpec.includes("Nenhuma Spec foi gerada ainda")
-  ) {
-    return { ok: false, reason: "SPEC_AUSENTE" };
-  }
-
-  if (canonicalSpec !== undefined && canonicalSpec !== session.canonicalSpec) {
-    await prisma.session.update({
-      where: { id: sessionId },
-      data: { canonicalSpec: effectiveSpec },
-    });
-  }
-
-  // 2. Leva a fase até SPEC_REVISAO com eventos legais
+  // 1. Se a sessão já estiver em fase de execução/planejamento ou concluída, retorna idempotente imediatamente
   const currentBeforeAdvance = await prisma.session.findUnique({
     where: { id: sessionId },
     select: { phase: true },
@@ -131,6 +121,47 @@ export async function approveSpecAndStart(
 
   if (currentPhase === "INTERVENCAO") {
     return { ok: false, reason: "INTERVENCAO_PENDENTE" };
+  }
+
+  // 2. Se canonicalSpec veio no argumento, grava em Session.canonicalSpec.
+  // Se a sessão não tiver canonicalSpec não vazia depois disso, recusa com SPEC_AUSENTE sem alterar nada.
+  const effectiveSpec =
+    canonicalSpec !== undefined ? String(canonicalSpec) : (session.canonicalSpec ?? "");
+
+  if (
+    !effectiveSpec.trim() ||
+    effectiveSpec.includes("Especificação pendente") ||
+    effectiveSpec.includes("Nenhuma Spec foi gerada ainda")
+  ) {
+    return { ok: false, reason: "SPEC_AUSENTE" };
+  }
+
+  // Trava Mecânica T1 / Pacote E2: Specs estruturadas com frontmatter YAML precisam ser parseáveis
+  // e conter módulos e arquivos afetados. Se declararem a seção 'requisitos:', ela não pode ser vazia.
+  if (effectiveSpec.trim().startsWith("---")) {
+    const parsedForApproval = parseSpecDocument(effectiveSpec);
+    if (!parsedForApproval) {
+      return { ok: false, reason: "SPEC_INVALIDA_OU_MALFORMATADA" };
+    }
+    if (
+      effectiveSpec.includes("requisitos:") &&
+      (!parsedForApproval.requisitos || parsedForApproval.requisitos.length === 0)
+    ) {
+      return { ok: false, reason: "SPEC_SEM_REQUISITOS" };
+    }
+    if (!parsedForApproval.modulos || parsedForApproval.modulos.length === 0) {
+      return { ok: false, reason: "SPEC_SEM_MODULOS" };
+    }
+    if (!parsedForApproval.arquivosAfetados || parsedForApproval.arquivosAfetados.length === 0) {
+      return { ok: false, reason: "SPEC_SEM_ARQUIVOS" };
+    }
+  }
+
+  if (canonicalSpec !== undefined && canonicalSpec !== session.canonicalSpec) {
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { canonicalSpec: effectiveSpec },
+    });
   }
 
   if (currentPhase === "ENTRADA" || currentPhase === "CONVERSA") {
@@ -253,6 +284,23 @@ export async function approveSpecAndStart(
       },
     });
 
+    // 4b.3b: Consolidação da Memória de Longo Prazo do Projeto (.nextcode/MEMORY.md)
+    try {
+      const parsedForMemory = parseSpecDocument(effectiveSpec);
+      const projectPath = session.project?.path;
+      const projectName = session.project?.name ?? "Projeto";
+      if (projectPath && parsedForMemory) {
+        consolidateMemoryFromSpec({
+          projectPath,
+          projectName,
+          spec: parsedForMemory,
+          sessionId,
+        });
+      }
+    } catch {
+      // Falha de escrita de memória em disco é tratada de forma fail-open (nunca aborta o pipeline)
+    }
+
     // 4b.4: Nós pendentes da versão anterior viram status "superseded" e nunca mais executam.
     // Os completed ficam intocados como histórico.
     await prisma.taskNode.updateMany({
@@ -290,12 +338,24 @@ export async function approveSpecAndStart(
 
       const parsedSpec = parseSpecDocument(effectiveSpec);
       const specFilesScope = parsedSpec?.arquivosAfetados;
-      // Spec com arquivos declarados → uma etapa por grupo pequeno de arquivos; sem arquivos,
-      // o trio legado (heurística de domínio).
-      const { nodes: rawNodes } =
+      // Spec com arquivos declarados → Analista LLM com validação mecânica T8b e fallback determinístico;
+      // sem arquivos declarados, heurística de domínio.
+      const decompResult =
         specFilesScope && specFilesScope.length > 0
-          ? SpecDecomposerSkill.decomposeSpec(effectiveSpec, parsedSpec?.titulo ?? null, specFilesScope, parsedSpec?.stack ?? [], sessionId)
+          ? await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+              specText: effectiveSpec,
+              titulo: parsedSpec?.titulo ?? null,
+              files: specFilesScope,
+              stack: parsedSpec?.stack ?? [],
+              sessionId,
+              smartRouter,
+              geminiKey: readSecret(setting?.geminiKey),
+              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+              omniRouteKey: readSecret(setting?.omniRouteKey),
+              skipModel: process.env.NODE_ENV === "test" && process.env.ENABLE_ANALISTA_LLM !== "true",
+            })
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
+      const rawNodes = decompResult.nodes;
 
       // Jev decide o nível de modelo de cada etapa (uma chamada para todas) e se alguma etapa mistura
       // responsabilidades; nesse caso ela é dividida (uma parte por arquivo). Sem Jev, reserva em código.

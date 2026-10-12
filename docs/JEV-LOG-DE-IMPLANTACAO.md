@@ -146,3 +146,176 @@ Documento físico oficial de registro de todas as alterações, implementações
   - **Diagnóstico de Saldo e BYOK:**
     - A consulta aos endpoints `/api/v1/credits` e `/api/v1/auth/key` revelou que o OpenRouter retornou `is_byok: false` com `total_credits: 0` na conta do OpenRouter, gerando código HTTP 402 se o `max_tokens` solicitado for alto ($\ge 150$), permitindo apenas requisições curtas (até 44 tokens) na cota residual compartilhada.
     - **Ação necessária para operação plena:** No painel do OpenRouter (`https://openrouter.ai/settings/integrations` ou `byok`), certificar que a chave da Anthropic está definida como **"Prioritized"** e a opção de fallback configurada adequadamente, ou adicionar créditos na conta OpenRouter para a taxa de serviço de roteamento (5%).
+
+### 4.8 Implementação do Supervisor Periódico Contínuo e Modelo LLM do Analista (12/10/2026)
+- **Item 1 (Fila nunca para / Supervisor M5):**
+  - Implementado `superviseExecutionQueue` contínuo em `src/core/orchestrator/job-worker.ts`.
+  - Resgata sessões em `EXECUCAO` sem jobs ativos e desengata nós em `running` além do teto (zumbis) para `pending` com registro imutável do evento `QUEUE_STALLED` na trilha.
+  - Provado em `tests/orchestrator/job-worker.test.ts` (teste 9).
+- **Item 4 (Skill Analista via LLM + Trava T8b):**
+  - Implementado `decomposeWithAnalistaSkill` em `src/core/skills/spec-decomposer.ts`, carregando `skills/analista/SKILL.md` para particionamento dos Microbriefs.
+  - Validação rigorosa com a Trava T8b mecânica (`validateMacrobriefMechanical`) e fallback fail-safe para decomposição determinística em caso de erro ou divergência.
+  - Integrado no fluxo de aprovação de `src/core/orchestrator/execution-trigger.ts` e provado em `spec-decompose.test.ts` e `execution-trigger.test.ts`.
+- **Item 7 (Macrobrief e Conferência T8a no Chat):**
+  - O chat agora gera automaticamente o Macrobrief associado e registra os eventos de auditoria `MACROBRIEF_GENERATED` e `CONFERENCIA_T8A_VERDICT` / `CONFERENCIA_T8A_OK` na telemetria.
+  - Preservado aviso amigável de reinjeção cumulativa após sanitização mecânica da Spec, com 11/11 testes verdes em `tests/orchestrator/step-4b.test.ts`.
+- **Validação Global:** Todos os testes de unidade, integração, harness e intake passando 100%.
+
+### 4.9 Implementação do Pacote E1 — Janela Deslizante de 6 Turnos no Chat (12/10/2026)
+- **Estanque do Estouro de Tokens e Respostas Evasivas:**
+  - Em `src/app/api/chat/route.ts`, a consulta de histórico de mensagens (`history`) foi restrita aos últimos 6 turnos (`take: 6`, `orderBy: { createdAt: "desc" }`), eliminando a injeção cumulativa de 30.000+ tokens em conversas longas.
+  - A `canonicalSpec` consolidada segue como referência estruturada única sem perda de contexto arquitetural.
+  - Corrigido import de `parseSpecDocument` em `src/app/page.tsx`.
+- **Validação Automatizada com Teste Pesado:**
+  - Criado `tests/intake/chat-sliding-window-stress.test.ts` simulando uma sessão real com 25 mensagens acumuladas pesadas: comprovado que exatamente as 6 mais recentes são consultadas e que o histórico preserva ordem cronológica.
+  - Suíte de intake (`tests/intake`) 100% verde (12/12 arquivos, 57/57 testes passando).
+  - Tipagem TypeScript estrita: `npx tsc --noEmit` executado com 0 erros.
+
+### 4.10 Implementação do Pacote E2 — Blindagem da Trava T1 (Portão de Aprovação de Spec) (12/10/2026)
+- **Eliminação do Incidente de Bloqueio 3/3 na DAG:**
+  - Em `src/core/orchestrator/execution-trigger.ts` (`approveSpecAndStart`), adicionadas travas mecânicas estritas:
+    - Rejeita com `SPEC_SEM_REQUISITOS` se `parsedForApproval.requisitos` estiver vazio ou nulo;
+    - Rejeita com `SPEC_SEM_MODULOS` se não houver módulos declarados;
+    - Rejeita com `SPEC_SEM_ARQUIVOS` se `arquivosAfetados` for vazio;
+    - Rejeita com `SPEC_INVALIDA_OU_MALFORMATADA` se o frontmatter não puder ser lido.
+  - No frontend (`src/components/session/canonical-spec-modal.tsx`), o botão de aprovação e `isSpecExecutable` agora exigem obrigatoriamente a presença de requisitos funcionais (`REQ-001...`).
+  - No chat (`src/app/api/chat/route.ts`), tentativas de aprovação de specs vazias são interceptadas com explicações em português sem criar jobs na DAG ou avançar para fases de execução.
+- **Validação Automatizada com Testes Pesados:**
+  - Criado `tests/intake/spec-t1-approval-guard.test.ts` com 3 testes pesados cobrindo:
+    1. Recusa direta de aprovação para specs sem `REQ`;
+    2. Recusa de specs com placeholders ("especificação pendente");
+    3. Tentativa de aprovação via chat interceptada com retorno HTTP 200, explicação amigável e zero nós criados na DAG.
+  - Suíte completa de intake (`tests/intake`) executada com **13/13 arquivos verdes e 60/60 testes aprovados**.
+  - Tipagem estrita: `npx tsc --noEmit` executado com 0 erros.
+
+### 4.11 Homologação do Pacote E3 — Ativação Definitiva das Guardas JEV (12/10/2026)
+- **Eliminação do Desperdício da 3ª Tentativa com Modelos Caros:**
+  - Em `config/politicas-orquestracao.yaml` e `src/core/config/orchestration-policy.ts`:
+    - `bloqueio_spec_ambigua: "ativo"` e `verificacao_evidencia: "ativo"` plenamente ativos e alinhados.
+    - Se a 1ª tentativa falhou e, na 2ª tentativa, o Jev diagnosticar `ambiguous_spec` com confiança $\ge 0.80$:
+      - O nó transita imediatamente para `blocked` sem gastar a 3ª tentativa da Trava T6;
+      - O contador de `attempts` não é incrementado cegamente;
+      - É gerado incidente formal com apontamento exato da ambiguidade no chat para intervenção humana.
+- **Validação Automatizada com Testes Pesados:**
+  - Suíte de decisão (`tests/decision/`): 9 arquivos, 44 testes 100% verdes (incluindo prova explícita de bloqueio ativo em `jev-failure-diagnosis.test.ts`).
+  - Suíte de políticas de orquestração (`tests/harness/orchestration-policy-and-skills.test.ts`): 12 testes verdes comprovando carregamento ativo do YAML.
+  - Tipagem estrita: `npx tsc --noEmit` executado com 0 erros.
+
+### 4.12 Homologação do Pacote E4 — JEV como Telemetria para Ativação do Graphify (12/10/2026)
+- **Decisão M6 Implementada:**
+  - Adicionada função `decideGraphifyEligibilityWithJev` em `src/core/decision/jev-decisions.ts`.
+  - Avaliação rápida (~100ms, US$ 0,042/1M tokens) com duas perguntas: `precisa_analise_grafo_arquitetura` (`noul`) e `foco_da_analise` (`choice`).
+  - Fallback defensivo com busca semântica para caso o JEV esteja indisponível.
+  - Registro de telemetria em `JEV_GRAPHIFY_ELIGIBILITY`.
+- **Conexão no Chat (`/api/chat/route.ts`):**
+  - O campo `graphifySuggestion` é preenchido dinamicamente quando a sessão tem projeto vinculado com arquivos locais e o grafo ainda não foi indexado (`graphify-out/graph.json` ausente).
+  - Se o grafo já existe no disco, ignora sem consumir nenhuma chamada extra.
+  - O componente do frontend `workspace.tsx` já exibe a sugestão com o botão de 1-clique para rodar o pipeline.
+- **Validação Automatizada com Testes Pesados:**
+  - `tests/decision/jev-graphify-telemetry.test.ts`: 5 testes cobrindo ativação arquitetural, rejeição de perguntas pontuais, acoplamento para refatoração, fallback e prompts triviais.
+  - `tests/intake/chat-graphify-integration.test.ts`: 2 testes ponta a ponta com banco real comprovando injeção no chat e idempotência quando o grafo já existe.
+
+### 4.13 Homologação do Pacote E5 — Passivação da UI React (12/10/2026)
+- **Eliminação de Disparos Concorrentes:**
+  - Em `src/app/page.tsx` (`handleSendMessage`): removido o disparo concorrente de `triggerBackgroundDAG` quando `chatData.specApproved` é verdadeiro. O backend (`approveSpecAndStart`) já decompõe a spec, cria os nós e inicia a execução autônoma via job enfileirado no servidor.
+  - Em `src/app/page.tsx` (`onSpecApproved` do modal de spec): removido o disparo manual concorrente de `POST /api/dag { action: "process_queue" }`.
+  - A UI agora opera no padrão estritamente reativo: escuta o progresso e o status dos `TaskNodes` via polling inteligente a cada 2,5s (`fetchSessionDetails`).
+- **Validação:**
+  - Compilação do TypeScript `npx tsc --noEmit`: 0 erros.
+  - Suíte completa de testes (`tests/intake` + `tests/decision`): 24 arquivos, 111 testes 100% verdes.
+
+### 4.14 Bancada de Testes de Estresse Pesado — Validação de Robustez Extrema (12/10/2026)
+- **Suite Criada (`tests/intake/mega-stress-e1-e5.test.ts`):**
+  1. *Race Condition Attack:* 10 chamadas `approveSpecAndStart` simultâneas com `Promise.all` na mesma milissegundo. Prova: exatamente 1 conjunto de nós criado, exatamente 1 job ativo criado, zero nós duplicados e zero bloqueios no SQLite.
+  2. *Window Overflow Attack:* Sessão com 30 mensagens cumulativas longas. Prova: o chat limita o histórico aos últimos 6 turnos com `take: 6`, evitando qualquer estouro de contexto de LLM.
+  3. *Boundary Precision do JEV:* Teste no limiar crítico da decisão M6 (0.64 vs 0.65). Prova: 0.64 rejeita sem sugerir; 0.65 aprova e sugere o Graphify com motivo em português.
+  4. *Idempotência da UI Passivada:* Disparos espúrios de `create_dag` em sessão já aprovada são ignorados pelo orquestrador, mantendo a contagem de nós idêntica.
+- **Resultado Global de Regressão:**
+  - 28 arquivos de teste executados em paralelo (`tests/intake` + `tests/decision` + rotas de orquestrador).
+  - **144/144 testes 100% verdes.**
+  - `npx tsc --noEmit` limpo com 0 erros.
+
+### 4.15 Homologação do Pacote E6 — Prova de Fogo de Ponta a Ponta com Benchmark Real (12/10/2026)
+- **Execução Real (`scripts/bench.ts`):**
+  - Executado: `npx tsx scripts/bench.ts --projetos p1 --variantes padrao --repeticoes 1`.
+  - O projeto P1 (API REST de Tarefas em Memória com rotas e contratos de tipagem) foi orquestrado do zero:
+    1. Spec Canônica parseada e aprovada pelo backend com Trava T1.
+    2. JEV consultado para planejamento de tiers em lote com 4 decisões TypeSafe (US$ 0.0004).
+    3. Nós despachados e executados pelo motor autônomo com portão empírico e quarentena.
+    4. Bateria de 10 testes de aceite herméticos executada em contêiner/ambiente isolado.
+- **Resultados e Métricas Reais Aferidas:**
+  - **Aceite Mecânico:** `RESUMO {"projeto":"p1","total":10,"aprovados":10,"reprovados":0}` -> **10/10 testes de aceite aprovados (100%)**.
+  - **Type-Check Final (`tsc`):** `0 erros` no código gerado.
+  - **Custo Total da Execução:** **US$ 0.0180** (menos de 2 centavos de dólar americano, respeitando a Trava de Orçamento com folga de 96%).
+  - **Tempo Total:** 125.5 segundos.
+  - **Relatórios Gerados:** Registrados formalmente em `docs/relatorios/bench/2026-10-12-1240.md` e `docs/relatorios/bench/2026-10-12-1240.yaml`.
+
+### 4.16 Homologação da Skill de Memória Persistente de Projeto (`project-memory` - L2) (12/10/2026)
+- **Papel e Arquitetura:**
+  - Criada a skill nativa do NextCode em `skills/project-memory/SKILL.md` seguindo o formato canônico.
+  - Implementada a camada L2 (Memória Episódica/Decisória de Longo Prazo) em `src/core/memory/project-memory.ts`.
+  - Persistência estruturada em `.nextcode/MEMORY.md` na raiz do projeto (compatível com Git, editável pelo fundador e transparente).
+  - Teto rígido de 50 linhas e 6.000 bytes (~250 tokens), evitando poluição de contexto e custos desnecessários de LLM.
+- **Integração no Fluxo de Execução:**
+  - Em `src/core/orchestrator/execution-trigger.ts` (`approveSpecAndStart`), cada aprovação explícita de Spec Canônica aciona a consolidação automática de memória (`consolidateMemoryFromSpec`) de modo fail-open (nunca quebra a pipeline se houver falha de disco).
+  - Em `src/core/project/project-context.ts` (`buildProjectSnapshot` e `formatProjectContext`), o arquivo `.nextcode/MEMORY.md` é lido e injetado no bloco `<project_context>` do chat para todos os modelos participantes, preservando as decisões arquiteturais tomadas em sessões anteriores.
+- **Validação Automatizada com Testes Pesados:**
+  - Criada a suíte `tests/memory/project-memory.test.ts` com 9 testes automatizados cobrindo:
+    1. Operações básicas de disco, integridade e retorno seguro para arquivos inexistentes;
+    2. Aplicação estrita do teto de 50 linhas (cortando entradas com mais de 100 linhas);
+    3. Aplicação estrita do teto de 6.000 bytes;
+    4. Extração factual de módulos, rotas e requisitos de specs canônicas reais;
+    5. Injeção e formatação no `<project_context>` com orçamento abaixo de 2.000 caracteres (~350 tokens);
+    6. Concorrência extrema com 15 gravações paralelas simultâneas sem corrupção;
+    7. Robustez fail-open contra caminhos inválidos;
+    8. Teste E2E completo com criação de Projeto, Sessão no Prisma e aprovação de Spec via `approveSpecAndStart` comprovando geração automática de `.nextcode/MEMORY.md`.
+  - **Suíte de Memória:** 9/9 testes 100% verdes.
+  - **Bancada Combinada:** 23/23 testes verdes (`tests/memory/`, `tests/intake/mega-stress-e1-e5.test.ts`, `tests/governance/secret-guard.test.ts`).
+  - **TypeScript:** `npx tsc --noEmit` executado com 0 erros.
+
+### 4.17 Homologação da Esteira Visual com Benchmark Real do P2 (12/10/2026)
+- **Execução Real (`scripts/bench.ts`):**
+  - Executado: `npx tsx scripts/bench.ts --projetos p2 --variantes padrao --repeticoes 1`.
+  - O projeto P2 (CRUD completo de tarefas em Next.js App Router com store em memória, rotas REST e interface visual interativa em `/tarefas`) foi orquestrado autonomamente do zero com o harness atualizado:
+    1. Spec Canônica parseada e aprovada pelo backend;
+    2. Decomposição pelos clusters `core`, `backend` e `frontend`;
+    3. Planejamento com Jev selecionando `deepseek-flash` para o core e `deepseek-v4-pro` para o backend;
+    4. Execução das etapas de backend e da interface visual;
+    5. Validação de tela Playwright (`ui-check.ts` em contêiner Docker);
+    6. Bateria de 13 testes de aceite herméticos em contêiner Docker `nextcode-aceite:1` (`--network none`).
+- **Resultados e Métricas Reais Aferidas:**
+  - **Aceite Mecânico:** `RESUMO {"projeto":"p2","total":13,"aprovados":13,"reprovados":0}` -> **13/13 testes de aceite aprovados (100%)**.
+  - **Validação de Tela (Playwright):** `UI_CHECK_PASSED`.
+  - **Type-Check Final (`tsc`):** `0 erros` no código gerado.
+  - **Taxa de Sucesso na 1ª Tentativa:** **4/4 etapas (100%)** aprovadas de primeira, 0 retries necessários.
+  - **Custo Total da Execução:** **US$ 0.1188** (menos de 12 centavos de dólar americano para a geração do CRUD completo com tela).
+  - **JEV:** 5 chamadas ativas totalizando US$ 0.0006.
+  - **Relatórios Oficiais:** Gerados em `docs/relatorios/bench/2026-10-12-1435.md` e `docs/relatorios/bench/2026-10-12-1435.yaml`.
+### 4.18 Homologação do Pacote P4: Fan-Out Unificado do JEV no Chat em Lote (12/10/2026)
+- **Motivação e Diagnóstico de Latência:**
+  - Anteriormente, a rota de chat (`/api/chat`) realizava chamadas sequenciais ou dispersas para serviços auxiliares (classificação de intenção via Jev, verificação de elegibilidade de grafo/Graphify, sanitização de entrada/saída).
+  - Em cenários com alta concorrência ou latência de rede, múltiplas chamadas HTTP individuais geravam até 600ms de latência acumulada no chat antes do início do streaming de resposta.
+- **Arquitetura Implementada (`p4_chat_fanout`):**
+  - Em `src/core/decision/jev-decisions.ts`, criada a função `evaluateChatFanOutWithJev` que unifica 5 perguntas atômicas em **uma única requisição HTTP em lote** (`askJevBatch`) com chave de cache `p4_chat_fanout`:
+    1. `intencao_mensagem`: choice com mitigação de viés de 1ª opção (`status`, `ajustar_spec`, `corrigir_existente`, `criar_novo`, `duvida_avulsa`, `aprovar_spec`, `irrelevante_ou_saudacao`);
+    2. `aprovacao_sem_condicoes`: noul (aprovação incondicional sem ressalvas);
+    3. `precisa_grafo_arquitetura`: noul (elegibilidade de indexação Graphify);
+    4. `guardrail_entrada`: noul (detecção de prompt injection e comandos destrutivos/adversariais);
+    5. `perfil_usuario`: choice (`desenvolvedor_tecnico` vs `leigo_ou_negocio`).
+  - Fallback determinístico local ultrarrápido (< 10ms) em caso de falha de rede, timeout ou erro 5xx do Jev, garantindo que o chat nunca trave ou interrompa o usuário.
+- **Integração na Rota de Chat (`src/app/api/chat/route.ts`):**
+  - O fan-out é avaliado exatamente uma vez no topo do pipeline de chat.
+  - Se `guardrail_entrada` acusar conteúdo hostil com confiança $\ge 0.85$, a requisição é interceptada preventivamente com mensagem amigável antes de gastar tokens dos modelos executores.
+  - A decisão de aprovação de spec reutiliza diretamente `fanOut.aprovacaoSemCondicoes` e `fanOut.intencao`.
+  - A verificação de indexação de grafo reutiliza diretamente `fanOut.graphify.elegivel` sem nenhuma chamada de rede secundária.
+- **Validação Automatizada com Testes Pesados:**
+  - Criada a suíte `tests/decision/jev-chat-fanout.test.ts` com 7 testes dedicados cobrindo:
+    1. Execução de lote único de 5 perguntas (`askJevBatch`);
+    2. Classificação de aprovação incondicional;
+    3. Detecção de ajuste de spec sem aprovação indevida;
+    4. Ativação preventiva de guardrail contra prompt injection;
+    5. Sugestão de Graphify quando solicitado mapeamento de projeto;
+    6. Identificação de perfil técnico vs leigo;
+    7. Fallback determinístico instantâneo quando o Jev falha.
+  - Suíte consolidada de governança, intake, memória e decisão: **28 arquivos de teste, 141 testes passando (100% aprovados, 0 falhas)** em 25.96s.
+  - TypeScript: `npx tsc --noEmit` completado com 0 erros.

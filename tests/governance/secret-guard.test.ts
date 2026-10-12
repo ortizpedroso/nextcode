@@ -15,6 +15,7 @@ import {
   redactSecretsInChatWithJev,
   maskSecretInExcerpt,
 } from "@/core/governance/secret-guard";
+import * as jevDecisions from "@/core/decision/jev-decisions";
 
 describe("Passo 10.4 — Guarda de segredos no código gerado (ativo, fail-closed)", () => {
   const prevJevUrl = process.env.JEV_API_URL;
@@ -255,6 +256,38 @@ describe("Passo 10.5 — Guarda de segredos na resposta do chat (ativo)", () => 
       project: { id: "p1", name: "P1", path: process.cwd() },
       tasks: [],
     };
+
+    vi.spyOn(jevDecisions, "decideGraphifyEligibilityWithJev").mockResolvedValue({
+      elegivel: false,
+      motivo: "mock",
+      clusterRecomendado: "nenhum",
+      confidence: 0.1,
+      source: "mock",
+    } as any);
+
+    vi.spyOn(jevDecisions, "evaluateChatFanOutWithJev").mockResolvedValue({
+      intencao: "duvida_avulsa",
+      intencaoRaw: "duvida_avulsa",
+      confiancaIntencao: 0.9,
+      aprovacaoSpec: {
+        aprovadoParaFase2: false,
+        confianca: 0.1,
+        probabilidadeIncondicional: 0.05,
+      },
+      graphify: {
+        elegivel: false,
+        probabilidade: 0.1,
+        confianca: 0.8,
+        motivo: "mock",
+      },
+      guardrailEntrada: {
+        inseguro: false,
+        probabilidadeInseguro: 0.05,
+      },
+      perfilUsuario: "desenvolvedor_tecnico",
+      source: "fallback",
+      latenciaMs: 1,
+    });
 
     vi.spyOn(prisma.session, "findUnique").mockResolvedValue(fakeSession);
     vi.spyOn(prisma.session, "updateMany").mockResolvedValue({ count: 1 } as any);
