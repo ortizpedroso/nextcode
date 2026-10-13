@@ -27,3 +27,4 @@ Correção da base do P4 (09/10, auditor): o `package.json` fixava `@types/react
 que a etapa de base acrescenta → `npm install` falhava e o P4 bloqueava antes do executor (rodada `2026-10-09-1358`, inválida para
 o P4). Agora a base usa as mesmas faixas e o mesmo `tsconfig` de `src/core/execution/project-base.ts`. Prova refeita: base 9/12,
 correção 12/12, correção que apaga o GET 10/12; execução real do P4 → ENTREGUE 12/12 (`2026-10-09-1827-auditor-p4.md`).
+Controles de diagnóstico (13/10, auditor): `bench/projetos/p1-referencia/` (P1 correto → 10/10) e `bench/specs/p1.ts` (cópia literal de `p1Spec` de `scripts/bench.ts`). Base do P4 conferida de novo → 9/12. Usados no J1 para medir a auditoria final do Jev; o código dos controles é do auditor e pode ser enviado ao Jev.

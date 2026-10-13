@@ -5,6 +5,17 @@
 
 ---
 
+## 13/10/2026 (31) — D1b aceito; controles da régua; prompt J1
+
+**D1b (Antigravity):** `48142e1`. Auditoria: reflog limpo; só referência + relatório; relatório só acrescentou (98+/0-); §7 com o texto exato; todas as provas da §9 existem (ou `git show` válido); 0 tópicos com documento no lugar de hash; tópico do D1 fechado. Veredito: **aceito** (detalhe menor: complemento cita "referência §4.24", que é do JEV-LOG apagado).
+**Causa provável do `PLANEJAMENTO` com Jev (lida no código):** `verifyProjectDeliveryWithJev` (`jev-execution-checks.ts:944`) é barreira única (contra §4.3 "Jev é sinal, não barreira"), em modo ativo sem medição prévia, limiares 0,85/0,80 sobre `noul`; reprova → `VERIFICACAO_COM_LACUNAS` (`job-queue.ts:386`) → `PLANEJAMENTO`; sem chave do Jev aprova por reserva → explica ENTREGUE no sem-jev. Também envia código do projeto ao Jev (pendência de privacidade §6).
+**Régua (auditor):** `bench/projetos/p1-referencia/` (régua 10/10) como controle correto; `bench/specs/p1.ts` (cópia literal de `p1Spec` de `scripts/bench.ts:307-369`); `p4-base` 9/12 como controle com bug.
+**Prompt:** `docs/prompts/J1-diagnostico-entrega-jev.md` — só medir (5× por controle, teto Jev US$ 0,05) e responder se a sessão fica parada após `PLANEJAMENTO`.
+**Próximo passo:** Antigravity roda J1 → auditar → levar ao fundador a decisão (sombra, limiar, 2ª opinião ou outra) com números.
+**Pendências do fundador:** cota/crédito do FreeLLMAPI (429); privacidade do Jev (código do projeto vai ao Jev na auditoria final); independência imposta no avaliador; `skill_apoio_principal`; terminal Windows; Claude no FreeLLMAPI; Gateway; teto de custo.
+
+---
+
 ## 13/10/2026 (30) — auditoria do D1: **aceito com ressalvas; correção D1b obrigatória**
 
 **D1 (Antigravity):** `bc63e09` (§9), `98beb93` (apaga 10), `0664efc` (relatório). Reflog limpo; nenhum código/teste/config mudou (diff de `src tests config scripts bench skills prisma` vazio); apagou exatamente os 10 da lista e nada da lista proibida; D1.1 só acrescentou (72+/0-); §9 com 69 linhas e hashes reais.
