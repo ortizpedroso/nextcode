@@ -9,6 +9,7 @@
 | 08/10 | P2, laço de ferramentas | ENTREGUE, `ui-check` ok | US$ 0,1146 (+48%: laço reenvia conversa) | — |
 | 08/10 | P1, item 10 (Jev na execução) | ENTREGUE, 162 s | US$ 0,0394 | 3 chamadas, 7.089 tokens, US$ 0,0003 |
 | 08/10 | P2, item 10 | ENTREGUE, 426 s | US$ 0,1398 | 4 chamadas, 8.902 tokens, US$ 0,0004 |
+| 13/10 | J1 — auditoria final do Jev (`verifyProjectDeliveryWithJev`) 5× em `p1-referencia` (correto) e `p4-base` (3 bugs) | p1 reprovado 5/5 (falso negativo); p4 reprovado 5/5 (certo). Separam: requisitos 0,92×0,06 · regras 0,88×0,14 · contratos 0,92×0,45 · integração 0,96×0,81. **Não separam:** stubs 0,45×0,46 · segurança 0,38×0,37 | — | 10 chamadas, 17.960 tokens, US$ 0,00075 |
 
 ## Achados de custo (07–08/10)
 - Raciocínio da DeepSeek = 75–90% da saída (ex.: 5.256 de 7.200 tokens na etapa de tela); saída custa 3× a entrada.

@@ -1,3 +1,13 @@
+## 13/10/2026 (32) — Auditoria do J1: aceito com ressalva
+
+**J1 (Antigravity):** `ce3fb55` (script), `ce90d3d` (relatório). Reflog limpo; só os 2 arquivos novos; LF; tsc 0; vitest 115/750. Conferi no código: o script monta os parâmetros igual a `job-queue.ts:329-345`, o estado igual a `jev-execution-checks.ts:944-970`, limiares 0,85/0,85/0,85/0,80/0,80/0,80; caminho (d) confirmado (`phase-machine.ts:395` só sai com `PLANO_PRONTO`, emitido só em `execution-trigger.ts:416`; supervisor `job-worker.ts:148` só olha `EXECUCAO`).
+**Números:** p1-referencia (correto) reprovado 5/5; p4-base (bugs) reprovado 5/5. Quatro perguntas separam bem correto de errado (requisitos 0,92×0,06; regras 0,88×0,14; contratos 0,92×0,45; integração 0,96×0,81). Duas **não separam nada** (stubs 0,45×0,46; segurança 0,38×0,37) e reprovam qualquer projeto. Estável (variação ≤ 0,04). Custo US$ 0,00075. Linha em `memory/medicoes.md`.
+**Ressalva:** 4º relatório infiel — §8 traz `git diff --stat` inventado (240 linhas/432 inserções; real 176/368) e "Nenhum desvio"; sem tsc/vitest do commit R.
+**Achado (d):** reprovou → sessão fica parada em `PLANEJAMENTO` para sempre, sem aviso a ninguém.
+**Próximo passo:** fundador decide o destino da auditoria final; depois, registrar na referência/decisões e escrever o prompt J2.
+
+---
+
 # Diário — onde paramos
 
 > Entrada nova **no topo**. Cada entrada: data, o que foi feito (com commit), onde parou, próximo passo,
