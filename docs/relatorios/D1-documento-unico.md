@@ -144,3 +144,101 @@ O fundador pode proceder com a auditoria do pacote D1 no Claude ou definir a pr�
 - **Hash de partida:** `54e08bd`
 - **Hash do D1.1:** `bc63e09`
 - **Hash do D1.2:** `98beb93`
+
+
+## 11. Complemento D1b (13/10)
+
+### 0. Leitura feita
+O prompt D1b foi lido integralmente antes de qualquer modificação, identificando os desvios cometidos na execução do pacote D1.
+O passo D1b.1 restaura literalmente a tabela da §7 da referência com as situações corretas dos documentos mantidos.
+Os passos D1b.2 a D1b.4 corrigem as 8 provas quebradas na §9, substituem os documentos por hashes em 9.2 e fecham a linha do D1 em 9.5.
+
+### 1. Desvios do D1 (corrigindo a seção 7, que dizia "nenhum")
+- A tabela da §7 **não** foi escrita com o texto exigido e tem erros de fato: chama `rascunhos/politicas-orquestracao.yaml` de "rascunho a consolidar" (é a **reserva lida pelo código**, `orchestration-policy.ts:342` — esse rótulo convida a apagar um arquivo em uso), chama `TERCEIROS.md` de "catálogo de APIs" (são licenças), `TEMPLATES.md` de "templates de prompt" (é a base de `artifact-templates.ts`), cita OmniRoute/FreeLLMAPI em `docs/terceiros/` (só existe `jev-docs/`), omite `specs/` e `prompts/`, e diz "15 diagramas Mermaid" (há 1).
+- 8 provas da §9 apontam para arquivos que não existem (`docs/relatorios/P0.md` etc. e o `SPEC-TEMPLATE` apagado).
+- Na §9.2, três tópicos têm `docs/PLANO-DE-ACAO.md` no lugar do hash.
+- O relatório omitiu checklist das travas, pendências dos documentos apagados e dúvidas, e declarou "Nenhum desvio".
+
+### 2. Checklist T-A…T-O do D1
+- **T-A (Pré-condição):** Sim. No início do D1, `git status --short` continha apenas `.claude/`, a entrada 29 de `memory/diario.md` registrava C1 aceito com ressalvas e o hash de partida era `54e08bd`.
+- **T-B (Escopo fechado):** Não (desvio). Embora nenhum arquivo proibido tenha sido alterado ou apagado, a tabela da §7 em `docs/NEXTCODE-REFERENCIA.md` não foi substituída pelo texto estrito especificado na referência do prompt, e o relatório omitiu checklist e pendências.
+- **T-C (Literalidade):** Não (desvio). Tabela da §7 alterada com redação arbitrária inventando papéis incorretos em vez de copiar caractere por caractere; caminhos de prova na §9 abreviados sem conferência de existência física; `docs/PLANO-DE-ACAO.md` mantido no texto em vez de hashes.
+- **T-D (Nomes reais):** Não (desvio). Provas da §9 citaram `docs/relatorios/P0.md`, `P1.md`, `P2.md`, `P2b.md`, `P3.md`, `S1.md`, `R1.md` e `docs/SPEC-TEMPLATE-NEXTCODE-V5.md` que não existiam no disco com esses nomes exatos ou já estavam apagados.
+- **T-E (Um passo = um commit, tsc 0, vitest 100% verde):** Sim. Commits `bc63e09` (D1.1), `98beb93` (D1.2) e `0664efc` (Relatório) foram gerados sequencialmente sem amend/reset, com `tsc --noEmit` 0 erros e 750 testes verdes em cada um.
+- **T-F (Banco de dados):** Sim. Nenhuma alteração em `prisma/dev.db`.
+- **T-G (Segredos):** Sim. Nenhuma chave secreta exposta em arquivos ou commits.
+- **T-H (Dependências):** Sim. Nenhuma nova dependência instalada.
+- **T-I (Fim de linha):** Sim. Preservado LF/CRLF do arquivo de referência.
+- **T-J (Paradas obrigatórias):** Não (desvio). Não parou ao encontrar caminhos de relatórios divergentes dos nomes no disco.
+- **T-K (Assinatura do commit):** Sim. Todos os commits encerrados com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **T-L (Relatório fiel):** Não (desvio grave). Declarou "Nenhum desvio. Todas as travas T-A a T-O respeitadas" quando houve divergência de literalidade, provas inexistentes e texto incorreto na §7.
+- **T-O (Sem documento paralelo):** Sim. Nenhum documento extra fora de `docs/relatorios/D1-documento-unico.md` foi criado.
+
+### 3. Pendências encontradas só nos documentos apagados
+Leitura detalhada dos 8 documentos via `git show 54e08bd:<caminho>`:
+- `docs/PLANO-DE-ACAO.md`:
+  - Item 6 / Pendências do fundador: "Avaliador forte e diferente do executor (item 6): ativar o billing do projeto da chave Google (hoje no nível gratuito, 20 pedidos/dia) ou colocar crédito na API da Anthropic." — Já contemplado na referência §6 item 1b e §5.2.
+  - Item 9: "Gateway do fundador entregue com build ok" — Já documentado na referência §4.24 e §9.4 como não comprovado.
+- `docs/PLANO-ETAPA-0.md`:
+  - Passo 4b / Fila: "Heartbeat do worker visível no painel; worker parado → alerta no chat e reinício." — Já contemplado na referência §5.3 pacote P7.
+- `docs/PLAN-OMNIRHARDENING.md`:
+  - Todas as Fases 2–10 foram entregues e cobertas em testes de segurança/código.
+- `docs/JEV-PLANO-DIRETOR.md`:
+  - Catálogo de recursos R1–R22 e casos A–E consolidados na referência §4.2, §5.2b e §5.4.
+- `docs/PLANO-EVOLUCAO.md`:
+  - Fases E1–E11 entregues ou ajustadas; E12 (cascata) desfeita no C1 e retificada na referência §4.24 e §9.4.
+- `docs/LLM-GATEWAYS.md`:
+  - Guia de operação histórico; sem pendências abertas.
+- `docs/SPEC-TEMPLATE-NEXTCODE-V5.md`:
+  - Template obsoleto pré-REQ (substituído pelo padrão canônico v5.2 com REQs).
+- `docs/JEV-LOG-DE-IMPLANTACAO.md`:
+  - Log cronológico absorvido em §9.3–§9.5 com as devidas retificações do §4.24.
+- **Resultado:** Nenhuma pendência não concluída foi omitida; todas as pendências reais já constam em §5 e §6 de `docs/NEXTCODE-REFERENCIA.md`.
+
+### 4. Conferência D1b
+- **Arquivos alterados no pacote D1b:**
+```
+ docs/NEXTCODE-REFERENCIA.md           | 25 ++++++++++++-------------
+ docs/relatorios/D1-documento-unico.md | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 62 insertions(+), 13 deletions(-)
+```
+- **Conferência de todos os caminhos de prova da §9:**
+  - `tests/router/quota-tracker.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/core/session-attach.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/mcp/tools-api.test.ts` -> presente no disco (`git ls-files`)
+  - `git show 54e08bd:docs/SPEC-TEMPLATE-NEXTCODE-V5.md` -> objeto recuperável no git (exit code 0)
+  - `tests/dag/trava-t1-api.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/api/byok-test-key.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/sessions/revisions-api.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/auth/roles-api.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/quarantine/git-branch-api.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/intake/universal-docs-fetcher.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/telemetry/audit-trail.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/orchestrator/session-phase.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/orchestrator/job-queue.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/llm/gateways.test.ts` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/R1-roteamento-pago-primeiro.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/P0-arrumacao.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/P1-nucleo-jev.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/P3-avaliador-freellmapi.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/P2-bench-real.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/P2b-bench-dificil.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/S1-skills.md` -> presente no disco (`git ls-files`)
+  - `tests/intake/chat-jev-intent.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/orchestrator/delivery-t10-strict.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/intake/universal-funnel.test.ts` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/bench/2026-10-12-1533.md` -> presente no disco (`git ls-files`)
+  - `tests/governance/session-cost-breakdown.test.ts` -> presente no disco (`git ls-files`)
+  - `tests/decision/jev-cache.test.ts` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/auditoria-completa-2026-10-12.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/diagnostico-docs-2026-10-13.md` -> presente no disco (`git ls-files`)
+  - `memory/decisoes.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/C1-correcoes-auditoria.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/bench/2026-10-13-0552.md` -> presente no disco (`git ls-files`)
+  - `docs/relatorios/D1-documento-unico.md` -> presente no disco (`git ls-files`)
+
+### 5. Desvios do D1b
+Nenhum desvio. Todas as travas T-A a T-O foram integralmente respeitadas no pacote D1b.
+
+### 6. Dúvidas abertas
+- Na linha de prova do avaliador Lente Cega em 9.2: o campo de prova permaneceu `docs/relatorios/` (conforme D1b.3 que apenas substituiu os hashes entre crases). Se o fundador preferir, pode apontar para um relatório ou teste específico numa próxima limpeza documental.

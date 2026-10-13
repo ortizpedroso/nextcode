@@ -476,18 +476,18 @@ usados, exceto R10 só a partir do P9.
 
 ## 7. Documentos antigos (mantidos)
 
-| Documento | Papel |
+| Documento | Situação |
 |---|---|
-| `docs/NEXTCODE-REFERENCIA.md` | **DOCUMENTO ÚNICO**: plano diretor, estado atual de cada componente, regras operacionais e registro de evolução (§9) |
-| `docs/ARQUITETURA-ORQUESTRACAO.md` | Referência visual dos fluxos: 15 diagramas Mermaid dos papéis, gates e estados |
-| `docs/rascunhos/politicas-orquestracao.yaml` | Rascunho das políticas de orquestração (a consolidar quando o orquestrador for implementado) |
-| `docs/rascunhos/JEV-DECISOES.md` | Rascunho da tabela de decisão do JEV (a consolidar) |
-| `docs/rascunhos/TEMPLATES.md` | Rascunho de templates de prompt (a consolidar) |
-| `docs/rascunhos/TERCEIROS.md` | Rascunho de catálogo de APIs de terceiros (a consolidar) |
-| `docs/terceiros/*.md` | Documentação técnica de APIs de terceiros (OMNIRoute, FreeLLMAPI, Jev) |
-| `docs/relatorios/*.md` | Relatórios de execução dos pacotes (P0, P1, P2, P2b, P3, S1, R1, C1, D1 etc.) — registro histórico imutável |
+| `ARQUITETURA-ORQUESTRACAO.md` | detalhe do desenho (fases, templates, travas); vale onde não contradiz este |
+| `rascunhos/JEV-DECISOES.md` | catálogo do Jev do projeto |
+| `rascunhos/TEMPLATES.md` | base de `src/core/templates/artifact-templates.ts` |
+| `rascunhos/TERCEIROS.md` | licenças e origem do material de terceiros |
+| `rascunhos/politicas-orquestracao.yaml` | **reserva lida pelo código** se `config/` faltar (`orchestration-policy.ts:342`); não mover |
+| `terceiros/jev-docs/` | documentação oficial do Jev (cópia local) |
+| `specs/gatway-system-spec.md` | Spec do Gateway (formato antigo, sem `REQ`) |
+| `prompts/`, `relatorios/` | prompts ao Antigravity e relatórios/auditorias — são a prova dos números |
 
-*Documentos apagados em D1 (13/10): ver §9.0 (com o comando para recuperar cada um).*
+Documentos apagados em D1 (13/10): ver §9.0 (com o comando para recuperar cada um).
 
 ---
 
@@ -564,7 +564,7 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 - **28/09 a 29/09** — Suíte vitest (59 testes), rotação envelope v2 e quota-tracker com cooldown (Fase 12) · `d996fd9, ec45e55, a3b18b8` · prova: `tests/router/quota-tracker.test.ts`
 - **29/09** — Leitura e anexo de contexto de projeto local (Fase 14.2) e explorador nativo · `dc13098, 3211c02, f779700` · prova: `tests/core/session-attach.test.ts`
 - **30/09** — Slash commands, instalador de skills GitHub e execução autônoma via SmartRouter · `c5a8100, ab3adc9, 7c4505a` · prova: `tests/mcp/tools-api.test.ts`
-- **30/09** — Arquitetura OpenCode v5, promoção de código da quarentena ao disco e Spec canônica v5 · `5d32a74, 6e0c1fc, 32ea374` · prova: `docs/SPEC-TEMPLATE-NEXTCODE-V5.md`
+- **30/09** — Arquitetura OpenCode v5, promoção de código da quarentena ao disco e Spec canônica v5 · `5d32a74, 6e0c1fc, 32ea374` · prova: `git show 54e08bd:docs/SPEC-TEMPLATE-NEXTCODE-V5.md`
 - **30/09** — Trava T1 (Spec Approval Lock), sanitização de prompts e safeFetch anti-SSRF · `e651010, 2c3ddca, aa9da00` · prova: `tests/dag/trava-t1-api.test.ts`
 - **01/10** — Descoberta de modelos BYOK (Groq, NVIDIA, DeepSeek, Gemini) e criptografia AES-256-GCM · `7dccdf3, 366b261, efbcafe` · prova: `tests/api/byok-test-key.test.ts`
 - **01/10** — Fila server-side, unblock manual de nós e inspeção de diff da quarentena · `5c7c6d3, dd93ec4, 0d052b7` · prova: `tests/quarantine/`
@@ -579,19 +579,19 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 - **05/10** — Job worker com reserva atômica via lease, retentativas e fila por sessão (Passos 3 e 4a da Etapa 0) · `9f9584e, 3a530f6, 52bc206, aa3f3a6` · prova: `tests/orchestrator/job-queue.test.ts`
 - **05/10** — Gateways FreeLLMAPI e OmniRoute em ordem com diagnóstico de rede e separação rápido/pesado · `e0a9c90, 9c09dcc` · prova: `tests/llm/gateways.test.ts`
 - **05/10** — Chat guiado por fases, Spec cumulativa no servidor e segredos criptografados · `3336b17, a1aef47, 3678fd1, 6fec9de` · prova: `tests/intake/`
-- **06/10** — Definição do plano de 10 itens (D5): NextCode como harness de skills · `docs/PLANO-DE-ACAO.md` · ⚠️ sem prova
-- **07/10** — Runtime de skills: runExecutorToolLoop, ferramentas com permissões, autoteste e relatório validado · `docs/PLANO-DE-ACAO.md` · prova: `tests/skills/`
-- **07/10** — Avaliador Lente Cega por REQ e Lente 2 contra relatório; P1 entregue (US$ 0,0247) e P2 com Playwright (US$ 0,1146) · `docs/PLANO-DE-ACAO.md` · prova: `docs/relatorios/`
+- **06/10** — Definição do plano de 10 itens (D5): NextCode como harness de skills · `4153633` · ⚠️ sem prova
+- **07/10** — Runtime de skills: runExecutorToolLoop, ferramentas com permissões, autoteste e relatório validado · `7f1c5c8, d3c90f4` · prova: `tests/skills/`
+- **07/10** — Avaliador Lente Cega por REQ e Lente 2 contra relatório; P1 entregue (US$ 0,0247) e P2 com Playwright (US$ 0,1146) · `1d4f331, f31c375, 7308bd2` · prova: `docs/relatorios/`
 - **08/10** — Portão JEV na execução (Item 10): diagnóstico de falha, evidência REQ, guarda de segredos e skills · `5e546d1, 926a5d6, e4b2db6` · prova: `tests/decision/`
-- **08/10** — Roteamento papéis críticos (R1): somente pago (`custom/`), sem queda para gratuito; trava X-Routed-Via · `69d8a94, 51e141e, a2c9b2c, 9a9d539, 6ab284e` · prova: `docs/relatorios/R1.md`
+- **08/10** — Roteamento papéis críticos (R1): somente pago (`custom/`), sem queda para gratuito; trava X-Routed-Via · `69d8a94, 51e141e, a2c9b2c, 9a9d539, 6ab284e` · prova: `docs/relatorios/R1-roteamento-pago-primeiro.md`
 
 ### 9.3 08/10–09/10 — pacotes P0–P3, bench (régua do auditor), P2b, auditoria das skills S0/S1
-- **08/10** — P0: McpServer.env cifrado em repouso e resolução do teste intermitente · `77b3adb, bc2095a` · prova: `docs/relatorios/P0.md`
-- **08/10** — P1: Núcleo do JEV v2: telemetria de custo, novas tentativas em 429/529, estado estruturado e limiares YAML · `4dd6733, e1acc35, 6639232, c8b63a6` · prova: `docs/relatorios/P1.md`
-- **08/10** — P3: Cadeia de avaliador pelo FreeLLMAPI (Nemotron, DeepSeek, Claude) preservando executor pago · `cbdb0a0, 3e93e8b` · prova: `docs/relatorios/P3.md`
-- **09/10** — P2: Régua de aceite oficial do auditor, contêiner Docker sem rede e npm run bench real · `ffb0b46, a559364, 53b62ae` · prova: `docs/relatorios/P2.md`, `bench/aceite/`
-- **09/10** — P2b: Projetos P3 (login) e P4 (correção) com 3 repetições; correção de versões na base do P4 · `efd8c1c, 1337edc, acb00d6, 885e80e` · prova: `docs/relatorios/P2b.md`
-- **09/10 a 10/10** — S1: Otimização das skills: custo por etapa, taste de tela guiado pelo Jev e avaliadores zero-tool · `4447198, 2e91335, 60e81f0, 0afa285` · prova: `docs/relatorios/S1.md`
+- **08/10** — P0: McpServer.env cifrado em repouso e resolução do teste intermitente · `77b3adb, bc2095a` · prova: `docs/relatorios/P0-arrumacao.md`
+- **08/10** — P1: Núcleo do JEV v2: telemetria de custo, novas tentativas em 429/529, estado estruturado e limiares YAML · `4dd6733, e1acc35, 6639232, c8b63a6` · prova: `docs/relatorios/P1-nucleo-jev.md`
+- **08/10** — P3: Cadeia de avaliador pelo FreeLLMAPI (Nemotron, DeepSeek, Claude) preservando executor pago · `cbdb0a0, 3e93e8b` · prova: `docs/relatorios/P3-avaliador-freellmapi.md`
+- **09/10** — P2: Régua de aceite oficial do auditor, contêiner Docker sem rede e npm run bench real · `ffb0b46, a559364, 53b62ae` · prova: `docs/relatorios/P2-bench-real.md`, `bench/aceite/`
+- **09/10** — P2b: Projetos P3 (login) e P4 (correção) com 3 repetições; correção de versões na base do P4 · `efd8c1c, 1337edc, acb00d6, 885e80e` · prova: `docs/relatorios/P2b-bench-dificil.md`
+- **09/10 a 10/10** — S1: Otimização das skills: custo por etapa, taste de tela guiado pelo Jev e avaliadores zero-tool · `4447198, 2e91335, 60e81f0, 0afa285` · prova: `docs/relatorios/S1-skills.md`
 
 ### 9.4 10/10–12/10 — fases E1–E12, P4–P6, cascata (Antigravity sem prompt do auditor)
 - **10/10** — Chat com intenção via Jev, ativação de bloqueio de spec ambígua e trava T-SPEC-SHIELD · `c8ec38e, 7f92a6e, 6472144` · prova: `tests/intake/chat-jev-intent.test.ts`
@@ -607,4 +607,4 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 - **12/10** — Auditoria completa do código em 786d393: apontou rota gratuita (C1), cascata (C2), falso P3 12/12 (C3) e bug no cache (C6) · `40fd206` · prova: `docs/relatorios/auditoria-completa-2026-10-12.md`
 - **13/10** — Diagnóstico da pasta docs e decisão de documento único · `6cfc75d, 6076d28` · prova: `docs/relatorios/diagnostico-docs-2026-10-13.md`, `memory/decisoes.md`
 - **13/10** — C1: rota paga só `custom/`, executor sem cascata, chave do cache do Jev, correção do JEV-LOG — aceito com ressalvas (P3 não provado de ponta a ponta: FreeLLMAPI 429) · `f19152c, af431e8, cdaf53e, 97b07fc` · prova: `docs/relatorios/C1-correcoes-auditoria.md`, `docs/relatorios/bench/2026-10-13-0552.md`
-- **13/10** — D1: documentos antigos consolidados em §9 e apagados
+- **13/10** — D1: documentos antigos consolidados em §9 e apagados; §7 e provas corrigidas em D1b · `bc63e09, 98beb93, 0664efc` · prova: `docs/relatorios/D1-documento-unico.md`
