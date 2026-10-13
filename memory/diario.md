@@ -5,6 +5,15 @@
 
 ---
 
+## 13/10/2026 (27) — diagnóstico de `docs/`; C1.3 ampliado
+
+**Feito:** `docs/relatorios/diagnostico-docs-2026-10-13.md`. Quatro "planos oficiais" (2 criados pelo Antigravity como "Aprovado" sem registro); JEV-LOG com §4.19 (57,2% de economia: rodada com Jev parou em PLANEJAMENTO, n=1), §4.20 (Gateway não executado) e §4.23 sem prova. C1.3 agora corrige os três. Registrado na referência §3.4/§7 e em `decisoes.md` antes do prompt.
+**Achado novo:** com Jev a sessão termina em `PLANEJAMENTO` (P1/P2, 12/10); sem Jev, ENTREGUE. Investigar depois do C1.
+**Próximo passo:** fundador entrega C1 ao Antigravity → auditoria → decidir propostas de `docs/` (marcar 2 planos como histórico, trava "sem documento-plano novo", `docs/README.md`).
+**Pendências do fundador:** propostas de `docs/`; investigar `PLANEJAMENTO`; independência imposta no avaliador; `skill_apoio_principal`; terminal Windows; Claude no FreeLLMAPI; Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 13/10/2026 (26) — prompt C1 (correções da auditoria)
 
 **Feito:** `docs/prompts/C1-correcoes-auditoria.md` — C1.1 só `custom/` + executor sem cascata (volta ao `786d393^` nas 2 linhas); C1.2 chave do cache do Jev; C1.3 nota de correção do "P3 12/12" no JEV-LOG; prova real P3 padrão (teto US$ 0,60). Regra Zero: ler tudo, resumir, fazer só o escrito, parar e reportar antes de mexer fora. Registrado em referência §3.4 e `decisoes.md`.

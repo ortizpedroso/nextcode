@@ -1,6 +1,6 @@
 # Prompt C1 — Correções da auditoria de 12/10 (só o que está quebrado)
 
-> Origem: `docs/relatorios/auditoria-completa-2026-10-12.md` (achados C1, C2, C3, C6, C7).
+> Origem: `docs/relatorios/auditoria-completa-2026-10-12.md` (achados C1, C2, C3, C6, C7) e `docs/relatorios/diagnostico-docs-2026-10-13.md` (afirmações sem prova no JEV-LOG).
 > Máxima do fundador: **não se mexe no que está funcionando.** Se for preciso mexer em algo fora deste prompt, **pare e reporte ao fundador antes.**
 > Copie do marcador **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
 
@@ -16,11 +16,11 @@
 5. Dúvida de interpretação → **PARE e pergunte.** Nunca escolha sozinho.
 
 ## OBJETIVO
-Voltar o executor ao comportamento que funcionava antes de `786d393` (só rota paga `custom/`, sem cascata), corrigir o bug da chave do cache do Jev, e corrigir no registro a afirmação "P3 12/12" sem prova.
+Voltar o executor ao comportamento que funcionava antes de `786d393` (só rota paga `custom/`, sem cascata), corrigir o bug da chave do cache do Jev, e corrigir no registro as afirmações sem prova ("P3 12/12", "economia de 57,2% com Jev", "Gateway entregue").
 
 ## TRAVAS
 - **T-A Pré-condição.** `git status --short` só mostra arquivos em `.claude/`. `git rev-parse HEAD` = `git log -1 --format=%H -- docs/prompts/C1-correcoes-auditoria.md`. Diferente → PARE.
-- **T-B Escopo fechado.** Só os arquivos de PODE ALTERAR de cada passo, e só as linhas descritas. Nada em `bench/`, `skills/`, `prisma/`. **Proibido alterar `src/core/llm/paid-routing.ts`, `src/core/llm/cost.ts`, `src/core/skills/executor-tool-loop.ts`, `scripts/bench.ts`, `src/core/llm/evaluator-models.ts`** e os testes existentes (só **acrescentar** `it` novos onde o passo manda). Precisou de outro arquivo → PARE.
+- **T-B Escopo fechado.** Só os arquivos de PODE ALTERAR de cada passo, e só as linhas descritas. Nada em `bench/`, `skills/`, `prisma/`; nenhum documento de `docs/` além do `JEV-LOG-DE-IMPLANTACAO.md` e do relatório do pacote (não marque planos como histórico, não crie `docs/README.md` — isso aguarda o fundador). **Proibido alterar `src/core/llm/paid-routing.ts`, `src/core/llm/cost.ts`, `src/core/skills/executor-tool-loop.ts`, `scripts/bench.ts`, `src/core/llm/evaluator-models.ts`** e os testes existentes (só **acrescentar** `it` novos onde o passo manda). Precisou de outro arquivo → PARE.
 - **T-C Literalidade.** Nomes, valores e textos exatamente como escritos. Ambiguidade → PARE e pergunte.
 - **T-D Nomes reais.** Todo nome citado conferido com `git grep -n`; saídas no relatório. Nome novo só os deste prompt.
 - **T-E Um passo = um commit**, com `npx tsc --noEmit` (0 erros) e `npx vitest run` **completo** verde **nesse estado**; saídas coladas. Proibido `--amend`, `rebase`, `reset` (qualquer tipo), `revert`, `checkout -- <arquivo>`, `restore`, `stash`, `push --force`, `--no-verify`. Errou? Novo commit corrigindo, declarado em Desvios.
@@ -41,7 +41,8 @@ Voltar o executor ao comportamento que funcionava antes de `786d393` (só rota p
 - `src/core/orchestrator/node-executor.ts` (~linhas 1020-1025, chamada de `loadPaidGatewaysForTier`).
 - `src/core/decision/jev-cache.ts` (`computeKey`, ~linha 38-42) e `tests/decision/jev-cache.test.ts`.
 - `tests/orchestrator/executor-somente-pago.test.ts` (função `setupTask`, teste "chamadas pagas levam allowedRoutedViaPrefixes…").
-- `docs/JEV-LOG-DE-IMPLANTACAO.md` §4.23 e `docs/relatorios/bench/2026-10-12-1634.md`, `-2101.md`, `-2103.md`, `-2116.md`.
+- `docs/relatorios/diagnostico-docs-2026-10-13.md` (tabela "Afirmações sem prova").
+- `docs/JEV-LOG-DE-IMPLANTACAO.md` §4.19, §4.20, §4.23 e `docs/relatorios/bench/2026-10-12-1533.md`, `-1550.md`, `-1634.md`, `-2101.md`, `-2103.md`, `-2116.md`.
 
 ## O QUE NÃO MUDA (está funcionando — não tocar)
 Rastreio `actualExecutorFamily` e `lastModelUsed`; preços novos em `cost.ts`; preservação da pasta no `bench.ts`; o código de contingência em `paid-routing.ts` e seus 2 testes (ficam, só deixam de ser ligados pelo executor); `makeBlindAuditDispatchFn`; cadeia do avaliador. Qualquer vontade de mexer nisso → Sugestões de melhoria.
@@ -87,17 +88,17 @@ Commit: `fix(jev): C1.2 - chave do cache considera o conteudo das perguntas`.
 
 ---
 
-## PASSO C1.3 — Corrigir o registro do "P3 12/12"
+## PASSO C1.3 — Corrigir os registros sem prova (§4.19, §4.20, §4.23)
 
-**PODE ALTERAR:** `docs/JEV-LOG-DE-IMPLANTACAO.md` (só **acrescentar** uma seção no fim; a §4.23 não é editada nem apagada — regra 4 do fundador).
+**PODE ALTERAR:** `docs/JEV-LOG-DE-IMPLANTACAO.md` (só **acrescentar** uma seção no fim; as seções §4.19, §4.20 e §4.23 não são editadas nem apagadas — regra 4 do fundador).
 
-1. Acrescentar ao fim do arquivo a seção `### 4.24 Correção do registro da §4.23 (13/10/2026)` com:
-   - frase: "A §4.23 afirmou homologação do P3 com 12/12. Nenhum relatório de bench de 12/10 com o código de `786d393` mostra esse resultado."
-   - tabela copiada dos relatórios (Projeto, Fase, Aceite, Custo, arquivo) das rodadas `2026-10-12-1634`, `-2101`, `-2103`, `-2116`, com os números **exatamente** como estão nos `.md`.
-   - frase: "A cascata no executor e os prefixos `electronhub/`, `groq/`, `mistral/` foram desligados em C1.1 (commit `<hash do C1.1>`)."
-2. Nada mais no arquivo muda.
+1. Acrescentar ao fim do arquivo a seção `### 4.24 Correção dos registros §4.19, §4.20 e §4.23 (13/10/2026)` com três blocos:
+   - **§4.23:** frase "A §4.23 afirmou homologação do P3 com 12/12. Nenhum relatório de bench de 12/10 com o código de `786d393` mostra esse resultado." + tabela (Projeto, Fase, Aceite, Custo, arquivo) das rodadas `2026-10-12-1634`, `-2101`, `-2103`, `-2116`, números **exatamente** como estão nos `.md` + frase "A cascata no executor e os prefixos `electronhub/`, `groq/`, `mistral/` foram desligados em C1.1 (commit `<hash do C1.1>`)."
+   - **§4.19:** frase "A economia de 57,2% com Jev não está provada: a rodada com Jev (`2026-10-12-1533`) terminou na fase PLANEJAMENTO, não ENTREGUE; é uma única rodada (n=1); e o nível `rapido` usa `deepseek-flash`, modelo pago, não gratuito." + tabela (Projeto, Variante, Fase, Aceite, Custo) das linhas P1 e P2 de `2026-10-12-1533.md` e `2026-10-12-1550.md`, copiadas exatamente.
+   - **§4.20:** frase "O critério do item 9 do `PLANO-DE-ACAO.md` é 'Gateway do fundador entregue com build ok'. A §4.20 cita apenas testes automatizados; não houve execução real do Gateway. O item 9 segue **não comprovado**."
+2. Nada mais no arquivo muda. Não edite `PLANO-DE-ACAO.md` nem nenhum outro documento.
 
-Commit: `docs(jev-log): C1.3 - corrige registro do P3 da secao 4.23`.
+Commit: `docs(jev-log): C1.3 - corrige registros sem prova das secoes 4.19, 4.20 e 4.23`.
 
 ---
 

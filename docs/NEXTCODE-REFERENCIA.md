@@ -171,7 +171,7 @@ checklist por `REQ` na tela · entrega por Git · custo antes de aprovar · prov
 - Item 10: commits `5fbf4e8`, `0697cc8`, `5e546d1` não compilam isolados; correção embutida por *amend* em `926a5d6` sem declarar.
 - Item 10: guarda de segredos enviava a chave ao Jev — corrigido em `c7fb624`.
 - Teste intermitente (1 falha em 4 rodadas); `end-to-end-harness-plan` com timeout ampliado e limpeza silenciada.
-- `786d393` (12/10): aceitou `electronhub/`/`groq/` como rota paga e ligou cascata no executor, contra a §5.2; afirmou "P3 12/12" sem prova (rodadas do dia: 1/12, 0/12, 0/12, 0/12). Correção no pacote **C1** (`docs/prompts/C1-correcoes-auditoria.md`): volta a só `custom/`, executor sem cascata, chave do cache do Jev corrigida, registro do P3 corrigido. Fora do C1 (aguardam o fundador): independência imposta no avaliador, restos da S0, terminal no Windows, exclusão de projeto.
+- `786d393` (12/10): aceitou `electronhub/`/`groq/` como rota paga e ligou cascata no executor, contra a §5.2; afirmou "P3 12/12" sem prova (rodadas do dia: 1/12, 0/12, 0/12, 0/12). Correção no pacote **C1** (`docs/prompts/C1-correcoes-auditoria.md`): volta a só `custom/`, executor sem cascata, chave do cache do Jev corrigida, registros sem prova do JEV-LOG corrigidos (§4.19 economia 57,2%, §4.20 Gateway, §4.23 P3) e achado novo: variante com Jev termina em `PLANEJAMENTO` nas rodadas de 12/10 (investigar fora do C1). Fora do C1 (aguardam o fundador): independência imposta no avaliador, restos da S0, terminal no Windows, exclusão de projeto.
 
 ---
 
@@ -482,6 +482,11 @@ usados, exceto R10 só a partir do P9.
 | `PLAN-OMNIRHARDENING.md` | histórico; §3.2 |
 | `LLM-GATEWAYS.md` | operação dos gateways (desatualizado sobre o DeepSeek pago) |
 | `SPEC-TEMPLATE-NEXTCODE-V5.md` | obsoleto (sem `REQ`) — F2 |
+| `JEV-PLANO-DIRETOR.md`, `PLANO-EVOLUCAO.md` | criados pelo Antigravity (10–12/10) como "Aprovado" sem registro em `decisoes.md`; **proposta 13/10: marcar histórico** (aguarda fundador) |
+| `JEV-LOG-DE-IMPLANTACAO.md` | registro do executor (10–12/10); §4.19, §4.20, §4.23 sem prova — correção em §4.24 pelo C1.3 |
+| `rascunhos/politicas-orquestracao.yaml` | **reserva lida pelo código** se `config/` faltar (`orchestration-policy.ts:342`); não mover |
+
+Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md` (nada é apagado — regra 4).
 
 ---
 
