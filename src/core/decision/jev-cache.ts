@@ -36,7 +36,20 @@ export class JevDecisionCache {
    * Gera uma chave SHA-256 estável e determinística.
    */
   public computeKey(purpose: string, state: string, questions: unknown): string {
-    const serializedQuestions = JSON.stringify(questions, Object.keys(questions as object).sort());
+    function stableStringify(val: unknown): string {
+      if (val === null || typeof val !== "object") {
+        return JSON.stringify(val);
+      }
+      if (Array.isArray(val)) {
+        return `[${val.map((item) => stableStringify(item)).join(",")}]`;
+      }
+      const obj = val as Record<string, unknown>;
+      const keys = Object.keys(obj).sort();
+      const entries = keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`);
+      return `{${entries.join(",")}}`;
+    }
+
+    const serializedQuestions = stableStringify(questions);
     const payload = `${purpose}::${state.trim()}::${serializedQuestions}`;
     return crypto.createHash("sha256").update(payload).digest("hex");
   }

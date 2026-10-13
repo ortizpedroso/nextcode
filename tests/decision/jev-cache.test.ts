@@ -163,4 +163,34 @@ describe("Pacote P6 — Cache Local de Decisões do JEV (TypeSafe AI)", () => {
     expect(networkCallCount).toBe(1); // Reutilizou cache!
     expect(globalJevCache.getStats().hits).toBe(1);
   });
+
+  it("C1.2: perguntas com conteúdo diferente geram chaves diferentes", () => {
+    const cache = new JevDecisionCache();
+    const key1 = cache.computeKey("teste_purpose", "Estado", {
+      a: { type: "choice", instructions: "Instrução X", criteria: { s: "Sim" } },
+    });
+    const key2 = cache.computeKey("teste_purpose", "Estado", {
+      a: { type: "choice", instructions: "Instrução Y", criteria: { s: "Sim" } },
+    });
+    expect(key1).not.toBe(key2);
+  });
+
+  it("C1.2: ordem das chaves aninhadas não muda a chave", () => {
+    const cache = new JevDecisionCache();
+    const key1 = cache.computeKey("teste_purpose", "Estado", {
+      a: {
+        type: "choice",
+        instructions: "Instrução",
+        criteria: { primeira: "1", segunda: "2" },
+      },
+    });
+    const key2 = cache.computeKey("teste_purpose", "Estado", {
+      a: {
+        criteria: { segunda: "2", primeira: "1" },
+        instructions: "Instrução",
+        type: "choice",
+      },
+    });
+    expect(key1).toBe(key2);
+  });
 });
