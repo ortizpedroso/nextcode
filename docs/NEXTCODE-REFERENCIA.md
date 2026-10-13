@@ -476,18 +476,18 @@ usados, exceto R10 só a partir do P9.
 
 ## 7. Documentos antigos (mantidos)
 
-| Documento | Situação |
+| Documento | Papel |
 |---|---|
-| `ARQUITETURA-ORQUESTRACAO.md` | detalhe do desenho (fases, templates, travas); vale onde não contradiz este |
-| `PLANO-ETAPA-0.md`, `PLANO-DE-ACAO.md` | histórico; pendências trazidas para §5 |
-| `PLAN-OMNIRHARDENING.md` | histórico; §3.2 |
-| `LLM-GATEWAYS.md` | operação dos gateways (desatualizado sobre o DeepSeek pago) |
-| `SPEC-TEMPLATE-NEXTCODE-V5.md` | obsoleto (sem `REQ`) — F2 |
-| `JEV-PLANO-DIRETOR.md`, `PLANO-EVOLUCAO.md` | criados pelo Antigravity (10–12/10) como "Aprovado" sem registro em `decisoes.md`; **proposta 13/10: marcar histórico** (aguarda fundador) |
-| `JEV-LOG-DE-IMPLANTACAO.md` | registro do executor (10–12/10); §4.19, §4.20, §4.23 sem prova — correção em §4.24 pelo C1.3 |
-| `rascunhos/politicas-orquestracao.yaml` | **reserva lida pelo código** se `config/` faltar (`orchestration-policy.ts:342`); não mover |
+| `docs/NEXTCODE-REFERENCIA.md` | **DOCUMENTO ÚNICO**: plano diretor, estado atual de cada componente, regras operacionais e registro de evolução (§9) |
+| `docs/ARQUITETURA-ORQUESTRACAO.md` | Referência visual dos fluxos: 15 diagramas Mermaid dos papéis, gates e estados |
+| `docs/rascunhos/politicas-orquestracao.yaml` | Rascunho das políticas de orquestração (a consolidar quando o orquestrador for implementado) |
+| `docs/rascunhos/JEV-DECISOES.md` | Rascunho da tabela de decisão do JEV (a consolidar) |
+| `docs/rascunhos/TEMPLATES.md` | Rascunho de templates de prompt (a consolidar) |
+| `docs/rascunhos/TERCEIROS.md` | Rascunho de catálogo de APIs de terceiros (a consolidar) |
+| `docs/terceiros/*.md` | Documentação técnica de APIs de terceiros (OMNIRoute, FreeLLMAPI, Jev) |
+| `docs/relatorios/*.md` | Relatórios de execução dos pacotes (P0, P1, P2, P2b, P3, S1, R1, C1, D1 etc.) — registro histórico imutável |
 
-Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md`. **Pacote D1 (aprovado 13/10, roda depois do C1):** cria §9 (registro de evolução) e apaga `PLANO-DE-ACAO.md`, `PLANO-ETAPA-0.md`, `PLAN-OMNIRHARDENING.md`, `JEV-PLANO-DIRETOR.md`, `PLANO-EVOLUCAO.md`, `LLM-GATEWAYS.md`, `SPEC-TEMPLATE-NEXTCODE-V5.md`, `JEV-LOG-DE-IMPLANTACAO.md`, `rascunhos/skills/` — prompt `docs/prompts/D1-documento-unico.md`.
+*Documentos apagados em D1 (13/10): ver §9.0 (com o comando para recuperar cada um).*
 
 ---
 
