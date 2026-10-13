@@ -536,3 +536,75 @@ Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md`. **Pacot
 Recompila cada commit isolado numa cópia (`git worktree`), roda a suíte no HEAD 2×, confere escopo
 (`git diff --stat <partida>..HEAD`), confere as tabelas de nomes e eventos, procura segredos no diff e
 compara o relatório com o código. Resultado: **aceito / aceito com ressalvas / rejeitado**, no diário.
+
+---
+
+## 9. Registro de evolução (o que já foi feito)
+
+> Resumo em tópicos de tudo o que foi entregue, do mais antigo ao mais novo. Fonte: commits, diário e os documentos antigos
+> listados em §9.0 (apagados em D1; recuperáveis com `git show <hash>:<caminho>`). `⚠️ sem prova` = o documento de origem
+> afirmou sem relatório ou saída que comprove.
+
+### 9.0 Documentos antigos consolidados aqui
+| Documento apagado | Recuperar com | O que tinha | Tópicos em §9 |
+|---|---|---|---|
+| `docs/PLANO-DE-ACAO.md` | `git show 54e08bd:docs/PLANO-DE-ACAO.md` | Plano original de 10 itens do NextCode como harness de skills (06/10) | 9.2, 9.4 |
+| `docs/PLANO-ETAPA-0.md` | `git show 54e08bd:docs/PLANO-ETAPA-0.md` | Plano e execução dos passos 1 a 4 da Etapa 0: máquina de fases, job worker e unificação | 9.1, 9.2 |
+| `docs/PLAN-OMNIRHARDENING.md` | `git show 54e08bd:docs/PLAN-OMNIRHARDENING.md` | Plano de hardening do OmniRoute (Fases 2–6 e 7–10) com criptografia e quota-tracker | 9.1 |
+| `docs/JEV-PLANO-DIRETOR.md` | `git show 54e08bd:docs/JEV-PLANO-DIRETOR.md` | Catálogo dos 22 recursos do JEV (R1–R22) e agrupamento dos casos de uso (A–E) | 9.3, 9.4 |
+| `docs/PLANO-EVOLUCAO.md` | `git show 54e08bd:docs/PLANO-EVOLUCAO.md` | Plano diretor de evolução com fases E1 a E12 | 9.4 |
+| `docs/LLM-GATEWAYS.md` | `git show 54e08bd:docs/LLM-GATEWAYS.md` | Guia operacional de configuração dos gateways FreeLLMAPI e OmniRoute | 9.2 |
+| `docs/SPEC-TEMPLATE-NEXTCODE-V5.md` | `git show 54e08bd:docs/SPEC-TEMPLATE-NEXTCODE-V5.md` | Template inicial canônico da spec v5.0 pré-REQ | 9.1 |
+| `docs/JEV-LOG-DE-IMPLANTACAO.md` | `git show 54e08bd:docs/JEV-LOG-DE-IMPLANTACAO.md` | Log das fases de implantação do JEV, pacotes e retificação §4.24 | 9.3, 9.4, 9.5 |
+| `docs/rascunhos/skills/avaliador/SKILL.md` | `git show 54e08bd:docs/rascunhos/skills/avaliador/SKILL.md` | Rascunho inicial da skill genérica de avaliador com promessas de ferramentas não executadas | 9.2, 9.3 |
+| `docs/rascunhos/skills/avaliador-frontend/SKILL.md` | `git show 54e08bd:docs/rascunhos/skills/avaliador-frontend/SKILL.md` | Rascunho inicial da skill de avaliador de frontend com checklist duplicado | 9.2, 9.3 |
+
+### 9.1 Até 04/10 — fundação (arquitetura v4, etapa 0, hardening do OmniRoute)
+- **27/09 a 28/09** — Inicialização do NextCode Engine, integração OmniRoute e hardening de segurança (Fases 2–6) · `1d6edb3, 8d7e639, fcf212d, 46b8683` · prova: `tests/`
+- **28/09 a 29/09** — Suíte vitest (59 testes), rotação envelope v2 e quota-tracker com cooldown (Fase 12) · `d996fd9, ec45e55, a3b18b8` · prova: `tests/router/quota-tracker.test.ts`
+- **29/09** — Leitura e anexo de contexto de projeto local (Fase 14.2) e explorador nativo · `dc13098, 3211c02, f779700` · prova: `tests/core/session-attach.test.ts`
+- **30/09** — Slash commands, instalador de skills GitHub e execução autônoma via SmartRouter · `c5a8100, ab3adc9, 7c4505a` · prova: `tests/mcp/tools-api.test.ts`
+- **30/09** — Arquitetura OpenCode v5, promoção de código da quarentena ao disco e Spec canônica v5 · `5d32a74, 6e0c1fc, 32ea374` · prova: `docs/SPEC-TEMPLATE-NEXTCODE-V5.md`
+- **30/09** — Trava T1 (Spec Approval Lock), sanitização de prompts e safeFetch anti-SSRF · `e651010, 2c3ddca, aa9da00` · prova: `tests/dag/trava-t1-api.test.ts`
+- **01/10** — Descoberta de modelos BYOK (Groq, NVIDIA, DeepSeek, Gemini) e criptografia AES-256-GCM · `7dccdf3, 366b261, efbcafe` · prova: `tests/api/byok-test-key.test.ts`
+- **01/10** — Fila server-side, unblock manual de nós e inspeção de diff da quarentena · `5c7c6d3, dd93ec4, 0d052b7` · prova: `tests/quarantine/`
+- **01/10** — Portais modais (Quotas, Skills, Benchmark, MCP, Search, Revisions) e streaming SSE de terminal · `329e9cf, 3beee07, 012f521, 2f7e582, 1a34c93` · prova: `tests/sessions/revisions-api.test.ts`
+- **01/10** — RBAC roles/permissions e staging de git branch de quarentena · `e79e811, 73e6476` · prova: `tests/auth/roles-api.test.ts`, `tests/quarantine/git-branch-api.test.ts`
+- **02/10** — Auto-healing feedback loop no DAG e validadores AST/App Router no DualLensAuditor · `aebd161, 8cb65ed, ff86bfc` · prova: `tests/governance/`
+- **02/10** — UniversalDocsFetcher com autoridade de fontes primárias e stack na spec · `4fe4478, dc90606` · prova: `tests/intake/universal-docs-fetcher.test.ts`
+- **03/10** — Travas T1–T6 consolidadas (3 tentativas, rollback de build quebrado, TelemetryLog append-only WAL) · `28eda43, fa2c322, e613f54, 571915b, 016b6a5` · prova: `tests/telemetry/audit-trail.test.ts`
+- **04/10** — Arquitetura v4 consolidada, máquina de fases da sessão (Etapa 0 passo 1) e extração de execute_node · `6b6d1cd, 1476128, de18252` · prova: `tests/orchestrator/session-phase.test.ts`
+
+### 9.2 05/10–08/10 — plano de ação itens 1–10, gateways, roteamento pago (R1)
+- **05/10** — Job worker com reserva atômica via lease, retentativas e fila por sessão (Passos 3 e 4a da Etapa 0) · `9f9584e, 3a530f6, 52bc206, aa3f3a6` · prova: `tests/orchestrator/job-queue.test.ts`
+- **05/10** — Gateways FreeLLMAPI e OmniRoute em ordem com diagnóstico de rede e separação rápido/pesado · `e0a9c90, 9c09dcc` · prova: `tests/llm/gateways.test.ts`
+- **05/10** — Chat guiado por fases, Spec cumulativa no servidor e segredos criptografados · `3336b17, a1aef47, 3678fd1, 6fec9de` · prova: `tests/intake/`
+- **06/10** — Definição do plano de 10 itens (D5): NextCode como harness de skills · `docs/PLANO-DE-ACAO.md` · ⚠️ sem prova
+- **07/10** — Runtime de skills: runExecutorToolLoop, ferramentas com permissões, autoteste e relatório validado · `docs/PLANO-DE-ACAO.md` · prova: `tests/skills/`
+- **07/10** — Avaliador Lente Cega por REQ e Lente 2 contra relatório; P1 entregue (US$ 0,0247) e P2 com Playwright (US$ 0,1146) · `docs/PLANO-DE-ACAO.md` · prova: `docs/relatorios/`
+- **08/10** — Portão JEV na execução (Item 10): diagnóstico de falha, evidência REQ, guarda de segredos e skills · `5e546d1, 926a5d6, e4b2db6` · prova: `tests/decision/`
+- **08/10** — Roteamento papéis críticos (R1): somente pago (`custom/`), sem queda para gratuito; trava X-Routed-Via · `69d8a94, 51e141e, a2c9b2c, 9a9d539, 6ab284e` · prova: `docs/relatorios/R1.md`
+
+### 9.3 08/10–09/10 — pacotes P0–P3, bench (régua do auditor), P2b, auditoria das skills S0/S1
+- **08/10** — P0: McpServer.env cifrado em repouso e resolução do teste intermitente · `77b3adb, bc2095a` · prova: `docs/relatorios/P0.md`
+- **08/10** — P1: Núcleo do JEV v2: telemetria de custo, novas tentativas em 429/529, estado estruturado e limiares YAML · `4dd6733, e1acc35, 6639232, c8b63a6` · prova: `docs/relatorios/P1.md`
+- **08/10** — P3: Cadeia de avaliador pelo FreeLLMAPI (Nemotron, DeepSeek, Claude) preservando executor pago · `cbdb0a0, 3e93e8b` · prova: `docs/relatorios/P3.md`
+- **09/10** — P2: Régua de aceite oficial do auditor, contêiner Docker sem rede e npm run bench real · `ffb0b46, a559364, 53b62ae` · prova: `docs/relatorios/P2.md`, `bench/aceite/`
+- **09/10** — P2b: Projetos P3 (login) e P4 (correção) com 3 repetições; correção de versões na base do P4 · `efd8c1c, 1337edc, acb00d6, 885e80e` · prova: `docs/relatorios/P2b.md`
+- **09/10 a 10/10** — S1: Otimização das skills: custo por etapa, taste de tela guiado pelo Jev e avaliadores zero-tool · `4447198, 2e91335, 60e81f0, 0afa285` · prova: `docs/relatorios/S1.md`
+
+### 9.4 10/10–12/10 — fases E1–E12, P4–P6, cascata (Antigravity sem prompt do auditor)
+- **10/10** — Chat com intenção via Jev, ativação de bloqueio de spec ambígua e trava T-SPEC-SHIELD · `c8ec38e, 7f92a6e, 6472144` · prova: `tests/intake/chat-jev-intent.test.ts`
+- **10/10** — Conferência T8a/T8b em lote, auditoria final T10 e particionamento por cluster · `9e93594, 19d5758, 359e06b` · prova: `tests/orchestrator/delivery-t10-strict.test.ts`
+- **10/10** — Avaliador com Claude Sonnet 4.5 e verificação de evidência ativada · `6e00e57, bdb6ade` · prova: `tests/decision/`
+- **11/10** — Afunilamento universal M0 com auto-cura mecânica M2 e blindagem contra placeholders de spec · `06bb533, 156d01b, a3f0992` · prova: `tests/intake/universal-funnel.test.ts`
+- **12/10** — E1 a E9: Memória de projeto L2 (project-memory), comparativo P1/P2 e fan-out do chat · `a93cf3e, f0039c1` · prova: `docs/relatorios/bench/2026-10-12-1533.md` (retificação §4.24: economia de 57,2% não provada: rodada terminou em PLANEJAMENTO, n=1, modelo pago)
+- **12/10** — Item 9 declarado concluído · `2754f7f` · (retificação §4.24: critério era Gateway entregue com build ok; prova foram apenas testes unitários sem execução real, item segue não comprovado)
+- **12/10** — P5 e P6: Breakdown de custos na DAG e cache local de decisões do JEV com TTL · `207f9a2, 6e77789` · prova: `tests/governance/session-cost-breakdown.test.ts`, `tests/decision/jev-cache.test.ts`
+- **12/10** — E12: Cascata de contingência no executor (paid-routing.ts) e prefixos pagos expandidos · `786d393` · (retificação §4.24: homologação P3 12/12 desmentida por 4 rodadas com 1/12 e 0/12; cascata desfeita em C1)
+
+### 9.5 12/10–13/10 — auditoria completa, C1, D1
+- **12/10** — Auditoria completa do código em 786d393: apontou rota gratuita (C1), cascata (C2), falso P3 12/12 (C3) e bug no cache (C6) · `40fd206` · prova: `docs/relatorios/auditoria-completa-2026-10-12.md`
+- **13/10** — Diagnóstico da pasta docs e decisão de documento único · `6cfc75d, 6076d28` · prova: `docs/relatorios/diagnostico-docs-2026-10-13.md`, `memory/decisoes.md`
+- **13/10** — C1: rota paga só `custom/`, executor sem cascata, chave do cache do Jev, correção do JEV-LOG — aceito com ressalvas (P3 não provado de ponta a ponta: FreeLLMAPI 429) · `f19152c, af431e8, cdaf53e, 97b07fc` · prova: `docs/relatorios/C1-correcoes-auditoria.md`, `docs/relatorios/bench/2026-10-13-0552.md`
+- **13/10** — D1: documentos antigos consolidados em §9 e apagados
