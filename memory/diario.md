@@ -5,6 +5,15 @@
 
 ---
 
+## 12/10/2026 (25) — auditoria completa do código em `786d393`
+
+**Feito:** `docs/relatorios/auditoria-completa-2026-10-12.md`. Base: tsc exit 0; vitest 114/745 verdes. Núcleo (fila, T6, escopo de arquivos, autenticação) confere.
+**Pior achado:** commit `786d393` (Antigravity, 21:25) aceita `electronhub/` e `groq/` como "rota paga" (electronhub é revendedor gratuito, referência :322) e põe cascata no executor contra §5.2; afirma "P3 12/12", mas as 4 rodadas do P3 de hoje deram 1/12, 0/12, 0/12, 0/12 (BLOQUEADA). Também: independência executor×avaliador só registrada, não imposta; "governada pelo Jev" sem chamada ao Jev; bug provado na chave do cache do Jev (P6); restos A5/A7/A8 da S0.
+**Próximo passo:** fundador decidir reverter C1/C2 do `786d393` (recomendado) → teste de regressão da trava paga → corrigir registro do P3.
+**Pendências do fundador:** reverter `786d393`?; contingência paga entra na §5.2?; remover `skill_apoio_principal`?; Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 09/10/2026 (24) — auditoria das skills S0 (auditor) e prompt S1
 
 **Feito:** `docs/relatorios/auditoria-skills-S0.md` (achados A1–A10 com tamanhos medidos por `loadRoleSkill`/`buildSkillSystemPrompt`). Pior achado: checklist de página pública aplicado em toda tela (o contrário do prometido). Também: avaliador de tela 60.576 caracteres; ferramentas/playwright falsos; respostas do Jev descartadas; `skill_apoio_principal` sem pacotes; elicitador/analista não executados.
