@@ -181,7 +181,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       modeloPagoForte: "deepseek-v4-pro",
       perfilFreellmapiForte: "",
       perfilFreellmapiBarato: "",
-      prefixosRotaPaga: ["custom/"],
+      prefixosRotaPaga: ["custom/", "electronhub/", "mistral/", "groq/"],
     });
 
     const tmpRootMissing = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-r1-3b-missing-"));

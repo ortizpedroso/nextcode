@@ -1,0 +1,155 @@
+{
+  "benchmark_timestamp": "2026-10-12-2116",
+  "medias": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 143.3,
+      "aprovadasNa1aMedia": 2,
+      "tentativasTotaisMedia": 5,
+      "tscZeroErrosPct": 0,
+      "aceiteMediaPct": 0,
+      "custoTotalMedio": 0.02212251,
+      "custoExecutorMedio": 0.022027799999999997,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.00009471,
+      "jevChamadasMedia": 4
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 143.3,
+      "etapas": 5,
+      "aprovadasNa1a": 2,
+      "tentativasTotais": 5,
+      "tscProjeto": 1,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 0,
+        "total": 12,
+        "reprovadosIds": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":0,\"reprovados\":12}"
+      },
+      "custo": {
+        "executor": 0.022027799999999997,
+        "avaliador": 0,
+        "jev": 0.00009471,
+        "total": 0.02212251
+      },
+      "avaliadorServedBy": [
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra",
+        "ollama/nemotron-3-ultra"
+      ],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 4,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-analista-mb-core-1",
+          "titulo": "Etapa 1 (core): src/lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [
+            "mistral/codestral-latest"
+          ],
+          "executorTokensEntrada": 2035,
+          "executorTokensSaida": 493,
+          "executorUsd": 0.0010542000000000001,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-mb-backend-auth-1",
+          "titulo": "Etapa 2 (backend): src/app/api/auth/registrar/route.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [
+            "electronhub/deepseek-v4-flash",
+            "mistral/codestral-latest"
+          ],
+          "executorTokensEntrada": 5245,
+          "executorTokensSaida": 750,
+          "executorUsd": 0.002379,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-mb-backend-auth-2",
+          "titulo": "Etapa 3 (backend): src/app/api/auth/login/route.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [
+            "electronhub/deepseek-v4-flash"
+          ],
+          "executorTokensEntrada": 7764,
+          "executorTokensSaida": 7985,
+          "executorUsd": 0.0119112,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-mb-backend-auth-3",
+          "titulo": "Etapa 4 (backend): src/app/api/auth/sessao/route.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [
+            "mistral/codestral-latest"
+          ],
+          "executorTokensEntrada": 2599,
+          "executorTokensSaida": 320,
+          "executorUsd": 0.0010676999999999998,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-mb-backend-auth-4",
+          "titulo": "Etapa 5 (backend): src/app/api/auth/logout/route.ts",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [
+            "electronhub/deepseek-v4-flash"
+          ],
+          "executorTokensEntrada": 5131,
+          "executorTokensSaida": 3397,
+          "executorUsd": 0.0056156999999999995,
+          "avaliadorModelos": [
+            "ollama/nemotron-3-ultra"
+          ],
+          "avaliadorUsd": 0
+        }
+      ]
+    }
+  ]
+}

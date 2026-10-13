@@ -176,4 +176,4 @@ roteamento_papeis_criticos:
   modelo_pago_forte: "deepseek-v4-pro"                 # modelo pago fixo no FreeLLMAPI (níveis medio/pesado)
   perfil_freellmapi_forte: ""                           # perfil do FreeLLMAPI só com modelos pagos; vazio = não usar (hoje não existe)
   perfil_freellmapi_barato: ""
-  prefixos_rota_paga: "custom/"                         # X-Routed-Via aceito para papéis críticos (lista separada por vírgula)
+  prefixos_rota_paga: "custom/, electronhub/, mistral/, groq/"                         # X-Routed-Via aceito para papéis críticos (lista separada por vírgula)

@@ -411,3 +411,40 @@ Documento físico oficial de registro de todas as alterações, implementações
     7. Integração E2E com `askJevChoice` comprovando 0 chamadas de rede no hit.
   - Suíte completa de decisões: **12 arquivos de teste, 63 testes passando (100% aprovados, 0 falhas)**.
   - TypeScript: `npx tsc --noEmit` completado com 0 erros.
+
+### 4.23 Homologação da Cascata Governada pelo JEV com Trava Estrita de Independência (Executor ≠ Avaliador) e Benchmark P3 (12/10/2026)
+- **Princípio Inegociável Estabelecido pelo Operador:**
+  - *"O executor não pode ser o avaliador, isso é importante."*
+  - Nenhum executor pode ser avaliado por si mesmo nem por um modelo pertencente à mesma família arquitetural ou fornecedor (ex.: executor DeepSeek não pode ser avaliado por DeepSeek; executor Qwen não pode ser avaliado por Qwen).
+- **Arquitetura Implementada:**
+  - Em `src/core/llm/paid-routing.ts`:
+    - Adicionada a interface `PaidRoutingOptions` contendo `evaluatorFamily?: string` e `enableContingencyFallback?: boolean`.
+    - Implementada a lista hierárquica `CONTINGENCY_EXECUTOR_MODELS`:
+      1. `codestral-latest` (família Mistral)
+      2. `deepseek-v4-flash` (família DeepSeek)
+      3. `qwen3-coder-30-a3b-instruct` (família Qwen)
+      4. `qwen-2.5-coder-32b-instruct` (família Qwen)
+    - Se a rota primária do FreeLLMAPI sofrer esgotamento de saldo (402) ou limite de requisições (429), os modelos de contingência técnica aprovados entram em cascata.
+    - **Trava Estrita de Independência:** Se o modelo de contingência pertencer à mesma família informada em `evaluatorFamily`, ele é **estritamente filtrado e descartado** da lista de candidatos do executor.
+  - Em `src/core/orchestrator/node-executor.ts`:
+    - Adicionado rastreamento do modelo real utilizado pelo executor (`actualExecutorFamily`) via `runExecutorToolLoop` e `SmartRouter.dispatchWithFallback`.
+    - `makeBlindAuditDispatchFn` agora propaga dinamicamente `actualExecutorFamily` para `dispatchStrongEvaluator(..., { executorFamily, preferIndependentFirst: true })`.
+    - Garante que a auditoria cega (Dual Lens Type 2) selecione prioritariamente modelos de famílias distintas (ex.: Nvidia/Nemotron ou Claude) em relação ao executor real.
+  - Em `src/core/llm/cost.ts`:
+    - Preços oficiais cadastrados para cobrir contingências: `codestral` (US$ 0.30 entrada / 0.90 saída por 1M) e `qwen.*coder` (US$ 0.80 entrada / 2.00 saída por 1M).
+  - Em `config/politicas-orquestracao.yaml`:
+    - `prefixos_rota_paga: "custom/, electronhub/, mistral/, groq/"` para suportar os provedores de contingência pagos.
+- **Validação de Bancada com Testes Pesados:**
+  - Suíte `tests/llm/paid-routing.test.ts` (9/9 testes verdes).
+  - Suíte `tests/orchestrator/executor-somente-pago.test.ts` (7/7 testes verdes).
+  - Suíte `tests/harness/orchestration-policy-and-skills.test.ts` (12/12 testes verdes).
+  - Suíte completa do projeto: **114 arquivos de teste, 745 testes aprovados (100% sucesso, 0 falhas)**.
+  - TypeScript: `npx tsc --noEmit` completado com 0 erros.
+- **Homologação no Benchmark Real P3 (Login com Sessão por Token e Criptografia):**
+  - Executado em contêiner Docker hermético (`--network none`).
+  - Resultado do aceite formal:
+    ```
+    RESUMO {"projeto":"p3","total":12,"aprovados":12,"reprovados":0}
+    ```
+  - **12 de 12 testes aprovados (100% de sucesso)**.
+

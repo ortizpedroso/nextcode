@@ -22,6 +22,8 @@ const PRICES: { match: RegExp; price: ModelPrice }[] = [
   // Nomes antigos da rota BYOK nativa: sem preço próprio na página atual → preço do v4-pro (conservador).
   { match: /deepseek-(chat|reasoner)/i, price: { input: 1.32, cachedInput: 0.044, output: 3.96 } },
   { match: /deepseek-(v4-)?flash/i, price: { input: 0.3, cachedInput: 0.006, output: 1.2 } },
+  { match: /qwen.*coder/i, price: { input: 0.8, cachedInput: 0.02, output: 2.0 } },
+  { match: /codestral/i, price: { input: 0.3, cachedInput: 0.006, output: 0.9 } },
   { match: /gemini-3\.1-pro/i, price: { input: 2, cachedInput: 0.2, output: 12 } },
   { match: /claude-sonnet-5/i, price: { input: 2, cachedInput: 0.2, output: 10 } },
   { match: /claude-sonnet-4/i, price: { input: 3, cachedInput: 0.3, output: 15 } },

@@ -1,0 +1,105 @@
+{
+  "benchmark_timestamp": "2026-10-12-2101",
+  "medias": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 177.2,
+      "aprovadasNa1aMedia": 1,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 0,
+      "custoTotalMedio": 0.01265982,
+      "custoExecutorMedio": 0.0125481,
+      "custoAvaliadorMedio": 0,
+      "custoJevMedio": 0.00011172000000000001,
+      "jevChamadasMedia": 1
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "PAUSADA",
+      "tempoSeg": 177.2,
+      "etapas": 3,
+      "aprovadasNa1a": 1,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 0,
+        "total": 12,
+        "reprovadosIds": [
+          "L1",
+          "L2",
+          "L3",
+          "L4",
+          "L5",
+          "L6",
+          "L7",
+          "L8",
+          "L9",
+          "L10",
+          "L11",
+          "L12"
+        ],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":0,\"reprovados\":12}"
+      },
+      "custo": {
+        "executor": 0.0125481,
+        "avaliador": 0,
+        "jev": 0.00011172000000000001,
+        "total": 0.01265982
+      },
+      "avaliadorServedBy": [],
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1791853107549",
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-base-1791853107549-1",
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-impl-1791853107549-2",
+          "titulo": "Etapa 2/2: login/route.ts, logout/route.ts, registrar/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        }
+      ]
+    }
+  ]
+}

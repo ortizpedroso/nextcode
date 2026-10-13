@@ -487,12 +487,13 @@ export function makeBlindAuditDispatchFn(
   smartRouter: SmartRouter,
   setting: Setting | null,
   sessionId?: string,
-  nodeId?: string
+  nodeId?: string,
+  executorFamily: string = "deepseek"
 ): LLMDispatchFn {
   return async (messages) => {
-    // Avaliador forte e pago (prioriza modelos independentes do executor: Nemotron / Claude antes de DeepSeek).
+    // Avaliador forte e pago (prioriza modelos independentes do executor real da etapa).
     const strong = await dispatchStrongEvaluator(messages, {
-      executorFamily: "deepseek",
+      executorFamily: (executorFamily as any) || "deepseek",
       preferIndependentFirst: true,
     }).catch(() => null);
     const paidOnly = isPaidOnlyRouting(loadOrchestrationPolicy());
@@ -1017,7 +1018,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   });
 
   const paidGateways = isPaidOnlyRouting(policy)
-    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos)
+    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos, undefined, {
+        enableContingencyFallback: true,
+        evaluatorFamily: "nvidia", // Avaliador padrão do sistema (Nemotron/Ollama/Nvidia)
+      })
     : undefined;
   if (paidGateways) {
     TelemetryLogger.log({
@@ -1040,6 +1044,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let stepResultText = "";
   let noLlmAvailable = false;
   let loopCodeContentMap: Record<string, string> | null = null;
+  let actualExecutorFamily = "deepseek";
 
   if (useToolLoop && nodeMicrobrief && loadedExecutorSkill) {
     const loopRes = await runExecutorToolLoop({
@@ -1070,6 +1075,13 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     noLlmAvailable = loopRes.noLlmAvailable;
     loopCodeContentMap = loopRes.codeContentMap;
     stepResultText = loopRes.finishReportText || loopRes.failureReason || "";
+    if (loopRes.lastModelUsed) {
+      if (/qwen/i.test(loopRes.lastModelUsed)) actualExecutorFamily = "qwen";
+      else if (/claude/i.test(loopRes.lastModelUsed)) actualExecutorFamily = "claude";
+      else if (/gemini/i.test(loopRes.lastModelUsed)) actualExecutorFamily = "gemini";
+      else if (/nemotron|nvidia/i.test(loopRes.lastModelUsed)) actualExecutorFamily = "nvidia";
+      else actualExecutorFamily = "deepseek";
+    }
     qm.extractionIssues = [];
     if (!loopRes.noLlmAvailable) {
       if (!loopRes.finished && loopRes.failureReason) {
@@ -1145,6 +1157,13 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           });
           return {};
         });
+        if (dispatchRes.modelUsed) {
+          if (/qwen/i.test(dispatchRes.modelUsed)) actualExecutorFamily = "qwen";
+          else if (/claude/i.test(dispatchRes.modelUsed)) actualExecutorFamily = "claude";
+          else if (/gemini/i.test(dispatchRes.modelUsed)) actualExecutorFamily = "gemini";
+          else if (/nemotron|nvidia/i.test(dispatchRes.modelUsed)) actualExecutorFamily = "nvidia";
+          else actualExecutorFamily = "deepseek";
+        }
         await recordLlmCost({
           sessionId: taskDb.sessionId,
           nodeId: taskDb.id,
@@ -1405,7 +1424,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           : ""),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id),
+      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id, actualExecutorFamily),
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,

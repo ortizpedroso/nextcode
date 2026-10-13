@@ -115,4 +115,32 @@ describe("R1.3b — loadPaidGatewaysForTier", () => {
     });
     expect(res).toEqual([]);
   });
+
+  it("contingência: adiciona modelos técnicos preservando independência do avaliador", async () => {
+    // Quando o avaliador é nvidia (Nemotron), o executor pode usar qwen e deepseek, mas não nvidia
+    const res = await loadPaidGatewaysForTier(
+      "pesado",
+      defaultCfg,
+      async () => fakeGateways,
+      { enableContingencyFallback: true, evaluatorFamily: "nvidia" }
+    );
+    const models = res.map((g) => g.modelHeavy);
+    expect(models).toContain("deepseek-v4-pro"); // primário
+    expect(models).toContain("qwen-2.5-coder-32b-instruct"); // contingência 1
+    expect(models).toContain("deepseek-v4-flash"); // contingência 2
+  });
+
+  it("trava de independência: executor NÃO inclui modelo se coincidir com família do avaliador", async () => {
+    // Se o avaliador fosse da família deepseek, os modelos deepseek de contingência são filtrados
+    const res = await loadPaidGatewaysForTier(
+      "pesado",
+      defaultCfg,
+      async () => fakeGateways,
+      { enableContingencyFallback: true, evaluatorFamily: "deepseek" }
+    );
+    const models = res.map((g) => g.modelHeavy);
+    expect(models).toContain("deepseek-v4-pro"); // primário configurado
+    expect(models).toContain("qwen-2.5-coder-32b-instruct"); // qwen entra
+    expect(models).not.toContain("deepseek-v4-flash"); // contingência deepseek é vetada para independência!
+  });
 });

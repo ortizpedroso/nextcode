@@ -675,9 +675,13 @@ async function rodarUmaExecucao(
   }
 
   await prisma.$disconnect().catch(() => {});
-  try {
-    fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  } catch {}
+  if (finalSession.phase !== "PAUSADA" && finalSession.phase !== "BLOQUEADA") {
+    try {
+      fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {}
+  } else {
+    console.warn(`[BENCH] Pasta de diagnóstico preservada em: ${runRoot}`);
+  }
 
   return {
     projeto,

@@ -396,6 +396,7 @@ export interface ExecutorToolLoopResult {
   finishReportText: string;
   stepsUsed: number;
   failureReason?: string;
+  lastModelUsed?: string;
 }
 
 export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promise<ExecutorToolLoopResult> {
@@ -429,6 +430,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
   const loopStartMs = Date.now();
   let consecutiveInvalidTurns = 0;
   let currentStep = 0;
+  let lastModelUsed = "";
 
   while (true) {
     currentStep += 1;
@@ -527,6 +529,10 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         });
         return {};
       });
+
+      if (dispatchRes.modelUsed) {
+        lastModelUsed = dispatchRes.modelUsed;
+      }
 
       await recordLlmCost({
         sessionId,
@@ -678,6 +684,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
         finishReportText,
         stepsUsed: currentStep,
+        lastModelUsed,
       };
     }
 
