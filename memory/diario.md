@@ -5,6 +5,16 @@
 
 ---
 
+## 13/10/2026 (29) — auditoria do C1: **aceito com ressalvas**
+
+**C1 (Antigravity):** `f19152c` (C1.1), `af431e8` (C1.2), `cdaf53e` (C1.3), `97b07fc` (bench), `6e80871` (relatório). Parou 2× corretamente: D1 recebido antes do C1 (T-A) e linha 184 de `tests/harness/orchestration-policy-and-skills.test.ts` fora do escopo — **erro do prompt do auditor** (o `786d393` também mudou esse teste); fundador autorizou restaurar ao `786d393^`. Desvio declarado no relatório.
+**Auditoria:** reflog só com commits (sem reset/amend); escopo = 11 arquivos, todos do prompt + autorização; `config/` e teste da linha 184 idênticos ao `786d393^`; `node-executor.ts` sem cascata; `stableStringify` correto; EOL LF. tsc 0 em `f19152c` e `af431e8` isolados; suíte isolada (worktree com `.env`/`test.db` locais): 1 falha em `f19152c` e `af431e8` e **a mesma 1 falha no `6076d28` (antes do C1)** → ambiente do worktree, não do C1. HEAD 2×: 115 arquivos / 750 testes verdes.
+**Ressalvas:** (1) bench `2026-10-13-0552` PAUSADA, US$ 0: FreeLLMAPI 429 em `deepseek-v4-pro`, sem contingência nem gratuito, 0 tentativas gastas — comportamento certo, mas o P3 **não** foi provado de ponta a ponta; refazer quando houver cota. (2) Erro do prompt do auditor (arquivo de teste não listado).
+**Próximo passo:** D1 (documento único) entregue ao fundador para o Antigravity → auditar D1.
+**Pendências do fundador:** cota/crédito do FreeLLMAPI (429); investigar `PLANEJAMENTO` com Jev; independência imposta no avaliador; `skill_apoio_principal`; terminal Windows; Claude no FreeLLMAPI; Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 13/10/2026 (28) — decisão: documento único; prompt D1
 
 **Feito (registro antes de implantar):** `decisoes.md`, CLAUDE.md regra 4, referência §0 regra 6, §7 (lista do D1) e §8.2 trava T-O. Prompt `docs/prompts/D1-documento-unico.md`: §9 "Registro de evolução" em tópicos na referência, tabela documento apagado → hash, depois apaga 8 documentos + `rascunhos/skills/`. Mantidos os que o código/memória usam e as provas (`prompts/`, `relatorios/`).
