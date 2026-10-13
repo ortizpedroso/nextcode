@@ -11,7 +11,7 @@
 1. **Fonte única:** `docs/NEXTCODE-REFERENCIA.md`. Melhoria aprovada entra nela **antes** de ser executada.
 2. **Tudo documentado:** cada sessão registra em `memory/diario.md` o que foi feito, onde parou e o próximo passo.
 3. **Não alucinar:** só citar arquivo/função que existe (`git grep`); "funciona" só com a saída real colada.
-4. **Não apagar** os documentos antigos de `docs/` (são histórico); só a referência é atualizada.
+4. **Documento único:** `docs/NEXTCODE-REFERENCIA.md` (plano e estado) com o **registro de evolução em §9**. Documento antigo só é apagado com aprovação do fundador e **depois** de resumido em §9 com o hash para recuperar (`git show <hash>:<caminho>`). Antigravity não cria plano/log paralelo (trava T-O).
 5. Um passo por vez; commit por passo com `tsc` e `vitest` **daquele commit**.
 6. Discordar com veredito técnico quando a ideia estiver errada (ver memória `push-back-honestly`).
 7. Nenhum segredo em texto puro e nenhum segredo sai da máquina (nem para LLM, nem para o Jev).

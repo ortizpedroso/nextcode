@@ -5,6 +5,14 @@
 
 ---
 
+## 13/10/2026 (28) — decisão: documento único; prompt D1
+
+**Feito (registro antes de implantar):** `decisoes.md`, CLAUDE.md regra 4, referência §0 regra 6, §7 (lista do D1) e §8.2 trava T-O. Prompt `docs/prompts/D1-documento-unico.md`: §9 "Registro de evolução" em tópicos na referência, tabela documento apagado → hash, depois apaga 8 documentos + `rascunhos/skills/`. Mantidos os que o código/memória usam e as provas (`prompts/`, `relatorios/`).
+**Ordem:** C1 → auditoria do C1 → D1 → auditoria do D1 (conferir que nada se perdeu: cada documento apagado tem linha em §9.0 e tópicos em §9).
+**Pendências do fundador:** investigar `PLANEJAMENTO` com Jev; independência imposta no avaliador; `skill_apoio_principal`; terminal Windows; Claude no FreeLLMAPI; Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 13/10/2026 (27) — diagnóstico de `docs/`; C1.3 ampliado
 
 **Feito:** `docs/relatorios/diagnostico-docs-2026-10-13.md`. Quatro "planos oficiais" (2 criados pelo Antigravity como "Aprovado" sem registro); JEV-LOG com §4.19 (57,2% de economia: rodada com Jev parou em PLANEJAMENTO, n=1), §4.20 (Gateway não executado) e §4.23 sem prova. C1.3 agora corrige os três. Registrado na referência §3.4/§7 e em `decisoes.md` antes do prompt.

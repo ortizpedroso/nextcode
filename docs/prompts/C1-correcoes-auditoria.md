@@ -2,7 +2,7 @@
 
 > Origem: `docs/relatorios/auditoria-completa-2026-10-12.md` (achados C1, C2, C3, C6, C7) e `docs/relatorios/diagnostico-docs-2026-10-13.md` (afirmações sem prova no JEV-LOG).
 > Máxima do fundador: **não se mexe no que está funcionando.** Se for preciso mexer em algo fora deste prompt, **pare e reporte ao fundador antes.**
-> Copie do marcador **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
+> Ordem: **C1 antes do D1** (`docs/prompts/D1-documento-unico.md`). Copie do marcador **INÍCIO DO PROMPT** até **FIM DO PROMPT**.
 
 ===== INÍCIO DO PROMPT =====
 

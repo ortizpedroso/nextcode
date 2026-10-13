@@ -21,6 +21,7 @@
 3. **Não alucinar.** Só citar arquivo/função que existe (`git grep`). "Funciona" só com a saída real.
 4. **Um passo por vez**, com `tsc` e `vitest` do **próprio** commit (incidente do Item 10, §3.4).
 5. Trabalho feito por outro agente (Antigravity) é **auditado** antes de ser aceito.
+6. **Documento único** (fundador, 13/10): este arquivo é o plano e o estado; o que já foi feito fica em §9 (registro de evolução, em tópicos). Documento antigo só sai depois de resumido em §9 com o hash para recuperar. Antigravity escreve/executa, Claude audita.
 
 ---
 
@@ -486,7 +487,7 @@ usados, exceto R10 só a partir do P9.
 | `JEV-LOG-DE-IMPLANTACAO.md` | registro do executor (10–12/10); §4.19, §4.20, §4.23 sem prova — correção em §4.24 pelo C1.3 |
 | `rascunhos/politicas-orquestracao.yaml` | **reserva lida pelo código** se `config/` faltar (`orchestration-policy.ts:342`); não mover |
 
-Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md` (nada é apagado — regra 4).
+Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md`. **Pacote D1 (aprovado 13/10, roda depois do C1):** cria §9 (registro de evolução) e apaga `PLANO-DE-ACAO.md`, `PLANO-ETAPA-0.md`, `PLAN-OMNIRHARDENING.md`, `JEV-PLANO-DIRETOR.md`, `PLANO-EVOLUCAO.md`, `LLM-GATEWAYS.md`, `SPEC-TEMPLATE-NEXTCODE-V5.md`, `JEV-LOG-DE-IMPLANTACAO.md`, `rascunhos/skills/` — prompt `docs/prompts/D1-documento-unico.md`.
 
 ---
 
@@ -512,6 +513,7 @@ Diagnóstico completo: `docs/relatorios/diagnostico-docs-2026-10-13.md` (nada é
 - **T-I Fim de linha:** preservar CRLF/LF de cada arquivo (`git ls-files --eol`).
 - **T-J Paradas obrigatórias:** resposta 422 do Jev; teste antigo quebrando; custo real > teto do prompt; arquivo fora do escopo; contradição entre prompt e código. Ao parar: relatório parcial com o motivo.
 - **T-K Commits** terminam com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **T-O Sem documento paralelo:** o Antigravity não cria plano, log ou "documento oficial" novo; escreve só `docs/relatorios/<pacote>.md` e as seções da referência que o prompt mandar. Status "aprovado" só existe se estiver em `memory/decisoes.md`.
 
 ### 8.3 Estrutura de cada prompt
 `Objetivo` (1 frase) · `Hash de partida` · `PODE ALTERAR` / `PROIBIDO` · `Leitura obrigatória` (arquivo:linha) ·
