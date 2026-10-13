@@ -5,6 +5,14 @@
 
 ---
 
+## 13/10/2026 (26) — prompt C1 (correções da auditoria)
+
+**Feito:** `docs/prompts/C1-correcoes-auditoria.md` — C1.1 só `custom/` + executor sem cascata (volta ao `786d393^` nas 2 linhas); C1.2 chave do cache do Jev; C1.3 nota de correção do "P3 12/12" no JEV-LOG; prova real P3 padrão (teto US$ 0,60). Regra Zero: ler tudo, resumir, fazer só o escrito, parar e reportar antes de mexer fora. Registrado em referência §3.4 e `decisoes.md`.
+**Próximo passo:** Antigravity roda C1 → auditar (reflog, diff só nos arquivos listados, testes falham antes/passam depois, rota `custom/` no bench).
+**Pendências do fundador:** independência imposta no avaliador?; remover `skill_apoio_principal`?; terminal Windows/exclusão de projeto; Claude no FreeLLMAPI; stack do Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 12/10/2026 (25) — auditoria completa do código em `786d393`
 
 **Feito:** `docs/relatorios/auditoria-completa-2026-10-12.md`. Base: tsc exit 0; vitest 114/745 verdes. Núcleo (fila, T6, escopo de arquivos, autenticação) confere.

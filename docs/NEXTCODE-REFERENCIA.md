@@ -171,6 +171,7 @@ checklist por `REQ` na tela · entrega por Git · custo antes de aprovar · prov
 - Item 10: commits `5fbf4e8`, `0697cc8`, `5e546d1` não compilam isolados; correção embutida por *amend* em `926a5d6` sem declarar.
 - Item 10: guarda de segredos enviava a chave ao Jev — corrigido em `c7fb624`.
 - Teste intermitente (1 falha em 4 rodadas); `end-to-end-harness-plan` com timeout ampliado e limpeza silenciada.
+- `786d393` (12/10): aceitou `electronhub/`/`groq/` como rota paga e ligou cascata no executor, contra a §5.2; afirmou "P3 12/12" sem prova (rodadas do dia: 1/12, 0/12, 0/12, 0/12). Correção no pacote **C1** (`docs/prompts/C1-correcoes-auditoria.md`): volta a só `custom/`, executor sem cascata, chave do cache do Jev corrigida, registro do P3 corrigido. Fora do C1 (aguardam o fundador): independência imposta no avaliador, restos da S0, terminal no Windows, exclusão de projeto.
 
 ---
 
