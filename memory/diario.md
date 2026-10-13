@@ -1,3 +1,12 @@
+## 13/10/2026 (33) — Diagnóstico das 6 perguntas da auditoria final do Jev
+
+**Pedido do fundador:** verificar as perguntas antes de decidir limiar (decisão anterior: sombra + aviso no chat, ainda **não registrada** na referência/decisões).
+**Achado principal (doc oficial `docs/terceiros/jev-docs/model-jaggedness_jev-1.13.md`, modo 7 "instruções e critérios contraditórios"; `primitives_noul.md`: noul = probabilidade de "sim"):** as 2 perguntas que não separam certo de errado são exatamente as 2 com **polaridade invertida** em `DELIVERY_AUDIT_QUESTIONS` (`jev-execution-checks.ts:865` stubs: "Audit ... for placeholder" = assunto é ter stub, `true` = não ter; `:883` segurança: "Check whether secrets ... leaked" = sim é vazou, `true` = limpo). As 4 que funcionam têm pergunta e `true` no mesmo sentido. O próprio código já tem a versão correta da pergunta de stub (`jev-decisions.ts:451` `cascata_stub_ou_alucinacao`, sim = tem stub).
+**Outros:** segurança junta 5 julgamentos e exige provar fronteira cliente/servidor em projeto sem segredo; requisitos é 1 pergunta para todos os REQ (doc: 1 julgamento por pergunta); truncamento 200 linhas/6000 caracteres pode parecer stub em arquivo grande; não há controle com stub ou segredo plantado (não dá para provar que as perguntas novas pegam o defeito). Mesmo risco "nada para julgar" na pergunta de segurança do Macrobrief (`jev-execution-checks.ts:703`, não medida).
+**Próximo passo:** fundador decide: reescrever as 2 perguntas (+ por REQ) e medir em 4 controles (2 novos do auditor: stub e segredo plantados) antes de produção.
+
+---
+
 ## 13/10/2026 (32) — Auditoria do J1: aceito com ressalva
 
 **J1 (Antigravity):** `ce3fb55` (script), `ce90d3d` (relatório). Reflog limpo; só os 2 arquivos novos; LF; tsc 0; vitest 115/750. Conferi no código: o script monta os parâmetros igual a `job-queue.ts:329-345`, o estado igual a `jev-execution-checks.ts:944-970`, limiares 0,85/0,85/0,85/0,80/0,80/0,80; caminho (d) confirmado (`phase-machine.ts:395` só sai com `PLANO_PRONTO`, emitido só em `execution-trigger.ts:416`; supervisor `job-worker.ts:148` só olha `EXECUCAO`).
