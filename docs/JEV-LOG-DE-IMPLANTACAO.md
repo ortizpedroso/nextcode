@@ -448,3 +448,30 @@ Documento físico oficial de registro de todas as alterações, implementações
     ```
   - **12 de 12 testes aprovados (100% de sucesso)**.
 
+### 4.24 Correção dos registros §4.19, §4.20 e §4.23 (13/10/2026)
+
+#### §4.23
+A §4.23 afirmou homologação do P3 com 12/12. Nenhum relatório de bench de 12/10 com o código de `786d393` mostra esse resultado.
+
+| Projeto | Fase | Aceite | Custo | arquivo |
+|---|---|---|---|---|
+| P3 | ⚠️ PAUSADA | 1/12 | 0.0541 | docs/relatorios/bench/2026-10-12-1634.md |
+| P3 | ⚠️ PAUSADA | 0/12 | 0.0127 | docs/relatorios/bench/2026-10-12-2101.md |
+| P3 | ⚠️ PAUSADA | 0/12 | 0.0001 | docs/relatorios/bench/2026-10-12-2103.md |
+| P3 | ⚠️ BLOQUEADA | 0/12 | 0.0221 | docs/relatorios/bench/2026-10-12-2116.md |
+
+A cascata no executor e os prefixos `electronhub/`, `groq/`, `mistral/` foram desligados em C1.1 (commit `f19152c`).
+
+#### §4.19
+A economia de 57,2% com Jev não está provada: a rodada com Jev (`2026-10-12-1533`) terminou na fase PLANEJAMENTO, não ENTREGUE; é uma única rodada (n=1); e o nível `rapido` usa `deepseek-flash`, modelo pago, não gratuito.
+
+| Projeto | Variante | Fase | Aceite | Custo |
+|---|---|---|---|---|
+| P1 | padrao | ⚠️ PLANEJAMENTO | 10/10 | 0.0239 |
+| P1 | sem-jev | ENTREGUE | 10/10 | 0.0558 |
+| P2 | padrao | ⚠️ PLANEJAMENTO | 13/13 | 0.1191 |
+| P2 | sem-jev | ENTREGUE | 13/13 | 0.0859 |
+
+#### §4.20
+O critério do item 9 do `PLANO-DE-ACAO.md` é "Gateway do fundador entregue com build ok". A §4.20 cita apenas testes automatizados; não houve execução real do Gateway. O item 9 segue **não comprovado**.
+
