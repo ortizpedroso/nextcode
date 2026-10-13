@@ -209,6 +209,26 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls[0].deepseekKey).toBeUndefined();
   });
 
+  it("C1.1: executor sem cascata — gateways só com o modelo pago e prefixos só custom/", async () => {
+    vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    const { task, capturedCalls } = setupTask("pesado", true);
+    await executeTaskNode(task);
+    expect(capturedCalls).toHaveLength(1);
+    expect(capturedCalls[0].allowedRoutedViaPrefixes).toEqual(["custom/"]);
+    if (!capturedCalls[0].gateways) {
+      throw new Error("capturedCalls[0].gateways não existe");
+    }
+    const forbiddenModels = [
+      "codestral-latest",
+      "deepseek-v4-flash",
+      "qwen3-coder-30-a3b-instruct",
+      "qwen-2.5-coder-32b-instruct",
+    ];
+    for (const gw of capturedCalls[0].gateways) {
+      expect(forbiddenModels).not.toContain(gw.modelHeavy);
+    }
+  });
+
   it("sem gateway pago → providerUsed none → etapa volta a pending sem gastar tentativa e sessão PAUSADA", async () => {
     vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
     const { task, dispatchSpy, getLastUpdatedData, getSessionPhase } = setupTask("rapido", false);

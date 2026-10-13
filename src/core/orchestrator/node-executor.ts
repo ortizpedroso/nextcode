@@ -1018,10 +1018,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   });
 
   const paidGateways = isPaidOnlyRouting(policy)
-    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos, undefined, {
-        enableContingencyFallback: true,
-        evaluatorFamily: "nvidia", // Avaliador padrão do sistema (Nemotron/Ollama/Nvidia)
-      })
+    ? await loadPaidGatewaysForTier(executorTier, policy.roteamentoPapeisCriticos)
     : undefined;
   if (paidGateways) {
     TelemetryLogger.log({
