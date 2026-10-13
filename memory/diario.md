@@ -5,6 +5,16 @@
 
 ---
 
+## 13/10/2026 (30) — auditoria do D1: **aceito com ressalvas; correção D1b obrigatória**
+
+**D1 (Antigravity):** `bc63e09` (§9), `98beb93` (apaga 10), `0664efc` (relatório). Reflog limpo; nenhum código/teste/config mudou (diff de `src tests config scripts bench skills prisma` vazio); apagou exatamente os 10 da lista e nada da lista proibida; D1.1 só acrescentou (72+/0-); §9 com 69 linhas e hashes reais.
+**Ressalvas:** (1) §7 não usou o texto exigido (T-C) e tem erros de fato — `politicas-orquestracao.yaml` rotulada "rascunho a consolidar" (é reserva lida pelo código), TERCEIROS/TEMPLATES descritos errado, "15 diagramas Mermaid" (há 1), `specs/` e `prompts/` omitidos. (2) 8 provas da §9 com caminho inexistente. (3) 3 tópicos de §9.2 com documento no lugar do hash. (4) Relatório sem checklist, sem pendências, sem dúvidas, e "Nenhum desvio" — 3º relatório infiel do Antigravity.
+**Prompt:** `docs/prompts/D1b-correcao-d1.md`.
+**Próximo passo:** Antigravity roda D1b → auditar → propor ao fundador o próximo pacote técnico (investigar `PLANEJAMENTO` com Jev, sem consertar).
+**Pendências do fundador:** cota/crédito do FreeLLMAPI (429); independência imposta no avaliador; `skill_apoio_principal`; terminal Windows; Claude no FreeLLMAPI; Gateway; teto de custo; privacidade do Jev.
+
+---
+
 ## 13/10/2026 (29) — auditoria do C1: **aceito com ressalvas**
 
 **C1 (Antigravity):** `f19152c` (C1.1), `af431e8` (C1.2), `cdaf53e` (C1.3), `97b07fc` (bench), `6e80871` (relatório). Parou 2× corretamente: D1 recebido antes do C1 (T-A) e linha 184 de `tests/harness/orchestration-policy-and-skills.test.ts` fora do escopo — **erro do prompt do auditor** (o `786d393` também mudou esse teste); fundador autorizou restaurar ao `786d393^`. Desvio declarado no relatório.
