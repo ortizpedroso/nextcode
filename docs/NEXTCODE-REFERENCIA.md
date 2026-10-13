@@ -172,7 +172,7 @@ checklist por `REQ` na tela · entrega por Git · custo antes de aprovar · prov
 - Item 10: commits `5fbf4e8`, `0697cc8`, `5e546d1` não compilam isolados; correção embutida por *amend* em `926a5d6` sem declarar.
 - Item 10: guarda de segredos enviava a chave ao Jev — corrigido em `c7fb624`.
 - Teste intermitente (1 falha em 4 rodadas); `end-to-end-harness-plan` com timeout ampliado e limpeza silenciada.
-- `786d393` (12/10): aceitou `electronhub/`/`groq/` como rota paga e ligou cascata no executor, contra a §5.2; afirmou "P3 12/12" sem prova (rodadas do dia: 1/12, 0/12, 0/12, 0/12). Correção no pacote **C1** (`docs/prompts/C1-correcoes-auditoria.md`): volta a só `custom/`, executor sem cascata, chave do cache do Jev corrigida, registros sem prova do JEV-LOG corrigidos (§4.19 economia 57,2%, §4.20 Gateway, §4.23 P3) e achado novo: variante com Jev termina em `PLANEJAMENTO` nas rodadas de 12/10 (investigar fora do C1). **J1 (13/10, diagnóstico):** auditoria final do Jev suspeita de reprovar código correto e travar a sessão em `PLANEJAMENTO` — prompt `docs/prompts/J1-diagnostico-entrega-jev.md` (só medição). **C1 aceito com ressalvas em 13/10** (`f19152c`, `af431e8`, `cdaf53e`; P3 não provado de ponta a ponta: FreeLLMAPI 429 → PAUSADA, sem gratuito). Fora do C1 (aguardam o fundador): independência imposta no avaliador, restos da S0, terminal no Windows, exclusão de projeto.
+- `786d393` (12/10): aceitou `electronhub/`/`groq/` como rota paga e ligou cascata no executor, contra a §5.2; afirmou "P3 12/12" sem prova (rodadas do dia: 1/12, 0/12, 0/12, 0/12). Correção no pacote **C1** (`docs/prompts/C1-correcoes-auditoria.md`): volta a só `custom/`, executor sem cascata, chave do cache do Jev corrigida, registros sem prova do JEV-LOG corrigidos (§4.19 economia 57,2%, §4.20 Gateway, §4.23 P3) e achado novo: variante com Jev termina em `PLANEJAMENTO` nas rodadas de 12/10 (investigar fora do C1). **J1 (13/10, diagnóstico):** auditoria final do Jev suspeita de reprovar código correto e travar a sessão em `PLANEJAMENTO` — prompt `docs/prompts/J1-diagnostico-entrega-jev.md` (só medição). **C1 aceito com ressalvas em 13/10** (`f19152c`, `af431e8`, `cdaf53e`; P3 não provado de ponta a ponta: FreeLLMAPI 429 → PAUSADA, sem gratuito). Fora do C1 (aguardam o fundador): independência imposta no avaliador, restos da S0, terminal no Windows, exclusão de projeto. **J1 aceito com ressalva (13/10):** a auditoria final do Jev reprova o P1 correto 5/5 (e o P4 com bug 5/5); 2 das 6 perguntas (stubs, segurança) têm polaridade invertida e não separam certo de errado; reprovada, a sessão fica parada em `PLANEJAMENTO` sem aviso. Plano em §5.5.
 
 ---
 
@@ -460,6 +460,20 @@ J23 volta a ser 2ª opinião (sombra ou limiar mais baixo) — decidir com os n�
 Ligados ao fim do plano: J1–J27 (J22 só fora de Spec/executor) + medição. Recursos R1–R22 todos
 usados, exceto R10 só a partir do P9.
 
+### 5.5 Plano J — nenhuma parada silenciosa e auditoria final do Jev (✅ aprovado pelo fundador em 13/10)
+
+Base: J1 (`docs/relatorios/J1-diagnostico-entrega-jev.md`; `memory/medicoes.md` 13/10). Regras do fundador: **não rebaixar nada** (sem baixar limiar; sem economizar em Spec, executor e avaliador); toda parada avisa no chat; prazo de aviso **5 minutos**.
+
+| Pacote | Conteúdo | Situação |
+|---|---|---|
+| **J2** | auditoria final do Jev com interruptor `auditoria_entrega` (padrão **sombra**: registra, não bloqueia; a T10 segue exigindo arquivos, REQ aprovados e build); `AVISAR_HUMANO` executado num lugar só (`applyPhaseEvent`); entrega reprovada → `BLOQUEADA` com as lacunas no chat; erro repetido no job (3×, ou 1× em `VERIFICACAO`) → `BLOQUEADA`; pausa sem modelo > 5 min → novo aviso; vigia de silêncio (`PLANEJAMENTO`/`EXECUCAO`/`VERIFICACAO` sem job e sem atividade há 5 min) → `BLOQUEADA` com aviso; teste estrutural "nenhuma ida a `BLOQUEADA` sem aviso" | prompt `docs/prompts/J2-nenhuma-parada-silenciosa.md` |
+| **J2b** | reparo automático da entrega reprovada: analista gera Microbriefs só do que falta (arquitetura, regra 13), até 3 rodadas, depois `BLOQUEADA` + relatório; medido no bench | depois do J2 |
+| **J3** | perguntas da auditoria final reescritas no sentido certo (stub: "contém stub?"; segurança em 2 perguntas; requisitos 1 por REQ), medidas no script do J1 em 4 controles (P1 correto, P4 com bug, P1 com TODO e P1 com chave plantados — escritos pelo auditor) | depois do J2 |
+| **J4** | só se o J3 passar (P1 correto aprovado em todas; cada pergunta reprova o controle do seu defeito): perguntas novas no código e, após remedição com Jev × sem Jev (P1–P3, 3×), auditoria volta a `ativo` | depois do J3 |
+| **T (autoteste)** | skill que escreve testes a partir do Microbrief **sem ver o código do executor**; Jev classifica o tipo de teste de cada REQ (Choice, 2× com ordem invertida) e confere teste × critério (noul); testes rodam só no contêiner sem rede; **avaliador totalmente cego aos testes** (decisão do fundador); prova contra a régua do auditor (P1 ref passa, P4 pega os 3 bugs) | desenho a registrar; 2 decisões pendentes (§6) |
+
+Fora do J2 (anotado): sessões paradas em `MACROBRIEF`/`CONFERENCIA` (rodam na requisição do chat; vigia pode dar alarme falso numa chamada longa — medir antes); o aviso de pausa não diz qual provedor falhou (a trilha não registra o erro do gateway hoje).
+
 ---
 
 ## 6. Decisões pendentes do fundador
@@ -471,6 +485,8 @@ usados, exceto R10 só a partir do P9.
    retenção zero só no plano enterprise). Proposta: aceitar agora para o NextCode do fundador; rever antes de outros usuários.
 4. **Gateway:** stack (Next.js já provado × React+Vite) e recorte do primeiro Gate (P10).
 5. **Busca da T7:** Exa (sem conta) como 1ª opção (D2) — confirmar.
+6. **Autoteste (§5.5 T):** testes em dois grupos — visíveis ao executor e escondidos (só o sistema roda no fim, para o executor não "decorar" o teste)? Recomendação do Claude: sim.
+7. **Autoteste:** teste e avaliador cego discordam → a sessão para e reporta ao fundador? Recomendação do Claude: sim.
 
 ---
 
@@ -608,3 +624,4 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 - **13/10** — Diagnóstico da pasta docs e decisão de documento único · `6cfc75d, 6076d28` · prova: `docs/relatorios/diagnostico-docs-2026-10-13.md`, `memory/decisoes.md`
 - **13/10** — C1: rota paga só `custom/`, executor sem cascata, chave do cache do Jev, correção do JEV-LOG — aceito com ressalvas (P3 não provado de ponta a ponta: FreeLLMAPI 429) · `f19152c, af431e8, cdaf53e, 97b07fc` · prova: `docs/relatorios/C1-correcoes-auditoria.md`, `docs/relatorios/bench/2026-10-13-0552.md`
 - **13/10** — D1: documentos antigos consolidados em §9 e apagados; §7 e provas corrigidas em D1b · `bc63e09, 98beb93, 0664efc` · prova: `docs/relatorios/D1-documento-unico.md`
+- **13/10** — J1: auditoria final do Jev medida — reprova código correto (polaridade invertida em 2 perguntas) e trava a sessão sem aviso; plano J (§5.5) aprovado · `ce3fb55, ce90d3d` · prova: `docs/relatorios/J1-diagnostico-entrega-jev.md`

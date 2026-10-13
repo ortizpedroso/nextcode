@@ -1,3 +1,13 @@
+## 13/10/2026 (34) — Plano J aprovado e registrado; prompt J2
+
+**Decisões do fundador:** não rebaixar nada; auditoria final em sombra; nenhuma parada silenciosa (aviso no chat); reparo automático no J2b; prazo de 5 min; avaliador cego aos testes; autoteste por skill a partir do Microbrief. Registrado em `memory/decisoes.md` e referência §5.5 (+ §3.4, §6 itens 6–7, §9.5).
+**Diagnóstico de paradas (lido no código):** avisa bem — executor bloqueado (`reportBlockedNodeToHuman`), teto de custo (`budget-guard.ts`), sem LLM (`node-executor.ts:1205`). Para calado — entrega reprovada (T10 → `PLANEJAMENTO`, `job-queue.ts:384`, sem saída: `phase-machine.ts:395`, supervisor só `EXECUCAO`), erro de job (`job-queue.ts:395`, só no banco; provável reenfileiramento sem fim — não provado), pausa sem fim (1 aviso só). Efeito `AVISAR_HUMANO` não é executado por ninguém.
+**Autoteste hoje:** não existe — `run_check test` devolve "não disponível neste item" (`executor-tool-loop.ts:802`), `empirical-gate.ts` só tsc+lint, campo `testes` sempre nulo.
+**Prompt:** `docs/prompts/J2-nenhuma-parada-silenciosa.md` (6 passos + relatório; nenhuma chamada real a LLM/Jev).
+**Próximo passo:** Antigravity roda J2 → auditar → J2b/J3. Pendentes do fundador: autoteste (testes escondidos? discordância → reportar?), mais as anteriores.
+
+---
+
 ## 13/10/2026 (33) — Diagnóstico das 6 perguntas da auditoria final do Jev
 
 **Pedido do fundador:** verificar as perguntas antes de decidir limiar (decisão anterior: sombra + aviso no chat, ainda **não registrada** na referência/decisões).
