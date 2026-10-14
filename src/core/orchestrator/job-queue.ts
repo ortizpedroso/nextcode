@@ -14,6 +14,7 @@ import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-tem
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import type { Job } from "@prisma/client";
 
 export const DEFAULT_JOB_LEASE_MS = 30000;
@@ -325,7 +326,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         }
 
         // Auditoria Final do JEV (Spec Canônica × Código Real no Disco)
-        if (deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
+        const auditoriaEntregaModo = loadOrchestrationPolicy().jevExecucao.auditoriaEntrega;
+        if (auditoriaEntregaModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
           const parsedSpec = parseSpecDocument(sessionAfterQueue.canonicalSpec);
           const filesToAudit = parsedSpec?.arquivosAfetados ?? [];
           if (parsedSpec && filesToAudit.length > 0) {
@@ -347,30 +349,44 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
               codeContentMap,
             });
 
-            if (!jevAudit.aprovado) {
-              deliveryT10.passed = false;
-              for (const lacuna of jevAudit.lacunas) {
-                deliveryT10.gaps.push(`[JEV Audit: ${lacuna.categoria}] ${lacuna.descricao}`);
-              }
-              const auditReportDoc = {
-                documento: "laudo_auditoria_entrega" as const,
-                idLaudo: `laudo-entrega-${Date.now()}`,
-                idProjeto: parsedSpec.titulo || job.sessionId,
-                specVersao: 1,
-                aprovado: false,
-                confiancaMedia: jevAudit.confiancaMedia,
-                scores: jevAudit.scores,
-                lacunas: jevAudit.lacunas,
-                resumoAuditoria: jevAudit.resumoAuditoria,
-              };
-              const reportMarkdown = renderDeliveryAuditReportMarkdown(auditReportDoc);
-              await prisma.message.create({
-                data: {
-                  sessionId: job.sessionId,
-                  role: "assistant",
-                  content: reportMarkdown,
+            if (auditoriaEntregaModo === "sombra") {
+              TelemetryLogger.log({
+                sessionId: job.sessionId,
+                action: "JEV_FINAL_DELIVERY_AUDIT_SOMBRA",
+                details: {
+                  modo: "sombra",
+                  aprovadoJev: jevAudit.aprovado,
+                  jevDisponivel: jevAudit.jevDisponivel,
+                  scores: jevAudit.scores,
+                  lacunas: jevAudit.lacunas.map((l) => l.categoria),
                 },
               });
+            } else {
+              if (!jevAudit.aprovado) {
+                deliveryT10.passed = false;
+                for (const lacuna of jevAudit.lacunas) {
+                  deliveryT10.gaps.push(`[JEV Audit: ${lacuna.categoria}] ${lacuna.descricao}`);
+                }
+                const auditReportDoc = {
+                  documento: "laudo_auditoria_entrega" as const,
+                  idLaudo: `laudo-entrega-${Date.now()}`,
+                  idProjeto: parsedSpec.titulo || job.sessionId,
+                  specVersao: 1,
+                  aprovado: false,
+                  confiancaMedia: jevAudit.confiancaMedia,
+                  scores: jevAudit.scores,
+                  lacunas: jevAudit.lacunas,
+                  resumoAuditoria: jevAudit.resumoAuditoria,
+                };
+                const reportMarkdown = renderDeliveryAuditReportMarkdown(auditReportDoc);
+                await prisma.message.create({
+                  data: {
+                    sessionId: job.sessionId,
+                    role: "assistant",
+                    content: reportMarkdown,
+                  },
+                });
+              }
             }
           }
         }

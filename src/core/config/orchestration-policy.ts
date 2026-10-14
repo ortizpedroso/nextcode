@@ -109,6 +109,7 @@ export interface OrchestrationPolicy {
     diagnosticoFalha: "ativo" | "desligado";
     bloqueioSpecAmbigua: "ativo" | "sombra" | "desligado";
     verificacaoEvidencia: "ativo" | "sombra" | "desligado";
+    auditoriaEntrega: "ativo" | "sombra" | "desligado";
     guardaSegredosCodigo: "ativo" | "desligado";
     guardaSegredosChat: "ativo" | "desligado";
     guardaInstalacaoSkill: "ativo" | "desligado";
@@ -293,6 +294,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     diagnosticoFalha: "ativo",
     bloqueioSpecAmbigua: "ativo",
     verificacaoEvidencia: "sombra",
+    auditoriaEntrega: "sombra",
     guardaSegredosCodigo: "ativo",
     guardaSegredosChat: "ativo",
     guardaInstalacaoSkill: "ativo",
@@ -525,6 +527,15 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   );
   if (verifEvidRaw === "ativo" || verifEvidRaw === "sombra" || verifEvidRaw === "desligado") {
     policy.jevExecucao.verificacaoEvidencia = verifEvidRaw;
+  }
+
+  const auditEntrRaw = extractScalarString(
+    raw,
+    "auditoria_entrega",
+    policy.jevExecucao.auditoriaEntrega
+  );
+  if (auditEntrRaw === "ativo" || auditEntrRaw === "sombra" || auditEntrRaw === "desligado") {
+    policy.jevExecucao.auditoriaEntrega = auditEntrRaw;
   }
 
   const guardaCodigoRaw = extractScalarString(
