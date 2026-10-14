@@ -292,7 +292,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
     if (sessionAfterQueue?.phase === "EXECUCAO") {
       const hasBlockedNode = queueResult.tasks.some((t) => t.status === "blocked");
       if (hasBlockedNode) {
-        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" });
+        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" }, { avisoJaPostado: true });
       } else if (queueResult.allCompleted) {
         await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
         const deliveryT10 = verifyProjectDeliveryT10({

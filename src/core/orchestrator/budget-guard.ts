@@ -78,7 +78,7 @@ export async function enforceBudgetBeforeBatch(sessionId: string): Promise<boole
     return true;
   }
 
-  const res = await applyPhaseEvent(sessionId, { type: "TETO_CUSTO" });
+  const res = await applyPhaseEvent(sessionId, { type: "TETO_CUSTO" }, { avisoJaPostado: true });
   TelemetryLogger.log({
     sessionId,
     action: "BUDGET_CEILING_REACHED",

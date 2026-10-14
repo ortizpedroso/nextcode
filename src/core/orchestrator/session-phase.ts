@@ -6,6 +6,7 @@ import {
   type PhaseEvent,
   type TransitionResult,
 } from "@/core/orchestrator/phase-machine";
+import { postHumanNotice } from "@/core/orchestrator/human-notice";
 
 export type PersistedPhaseContextData = Omit<PhaseContext, "phase">;
 
@@ -68,6 +69,10 @@ export interface ApplyPhaseEventOptions {
    * idempotentes de approveSpecAndStart).
    */
   stopRetryIfPhaseIn?: Phase[];
+  /** Indica se o aviso ao humano já foi postado antes da transição (evita aviso duplicado no chat). */
+  avisoJaPostado?: boolean;
+  /** Detalhe adicional a ser incluído no aviso ao humano caso o efeito AVISAR_HUMANO seja disparado. */
+  detalheAviso?: string;
 }
 
 /**
@@ -169,6 +174,13 @@ export async function applyPhaseEvent(
           },
         });
       }
+
+      for (const effect of result.effects) {
+        if (effect.type === "AVISAR_HUMANO" && options?.avisoJaPostado !== true) {
+          await postHumanNotice(sessionId, effect.motivo, options?.detalheAviso);
+        }
+      }
+
       return result;
     }
   }
