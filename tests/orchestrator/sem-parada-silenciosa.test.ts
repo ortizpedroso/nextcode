@@ -9,7 +9,12 @@ import {
   type IntervencaoEscolha,
 } from "../../src/core/orchestrator/phase-machine.js";
 import { applyPhaseEvent } from "../../src/core/orchestrator/session-phase.js";
-import { enqueueSessionQueueJob, claimJob, executeClaimedJob } from "../../src/core/orchestrator/job-queue.js";
+import {
+  enqueueSessionQueueJob,
+  claimJob,
+  executeClaimedJob,
+  handleJobFailureForSession,
+} from "../../src/core/orchestrator/job-queue.js";
 import { renderCanonicalSpecDocument } from "../../src/core/intake/spec-format.js";
 import * as sessionQueueModule from "../../src/core/orchestrator/session-queue.js";
 import * as nodeExecutorModule from "../../src/core/orchestrator/node-executor.js";
@@ -89,6 +94,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "DESBLOQUEIO_HUMANO" },
   { type: "VERIFICACAO_COM_LACUNAS" },
   { type: "VERIFICACAO_OK" },
+  { type: "FALHA_REPETIDA" },
   { type: "NOVO_PEDIDO" },
 ];
 
@@ -241,5 +247,81 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
     expect(unblockResult.ok).toBe(true);
     const unblockedSession = await prisma.session.findUnique({ where: { id: session.id } });
     expect(unblockedSession?.phase).toBe("EXECUCAO");
+  });
+
+  it("J2.4: 3 jobs seguidos com falha em EXECUCAO levam a sessão para BLOQUEADA e avisam no chat", async () => {
+    const session = await prisma.session.create({
+      data: {
+        title: "Sessão Falhas Repetidas",
+        phase: "EXECUCAO",
+      },
+    });
+    createdSessionIds.push(session.id);
+
+    vi.spyOn(sessionQueueModule, "processSessionQueue").mockRejectedValue(
+      new Error("falha simulada no processSessionQueue")
+    );
+
+    // Job 1
+    const j1 = await enqueueSessionQueueJob(session.id);
+    await claimJob(j1, "w1");
+    await executeClaimedJob(j1, "w1");
+    let sess = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(sess?.phase).toBe("EXECUCAO");
+
+    // Job 2
+    const j2 = await enqueueSessionQueueJob(session.id);
+    await claimJob(j2, "w1");
+    await executeClaimedJob(j2, "w1");
+    sess = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(sess?.phase).toBe("EXECUCAO");
+
+    // Job 3
+    const j3 = await enqueueSessionQueueJob(session.id);
+    await claimJob(j3, "w1");
+    await executeClaimedJob(j3, "w1");
+    sess = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(sess?.phase).toBe("BLOQUEADA");
+
+    const messages = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(messages.length).toBe(1);
+    expect(messages[0].content).toContain("erro interno repetido na execução");
+    expect(messages[0].content).toContain("falha simulada no processSessionQueue");
+  });
+
+  it("J2.4: handleJobFailureForSession bloqueia imediatamente na 1ª chamada em VERIFICACAO, mas não altera ELICITACAO", async () => {
+    // 1. Em VERIFICACAO -> bloqueia na 1ª chamada
+    const sessVerif = await prisma.session.create({
+      data: {
+        title: "Sessão Verificacao Falhou",
+        phase: "VERIFICACAO",
+      },
+    });
+    createdSessionIds.push(sessVerif.id);
+
+    await handleJobFailureForSession(sessVerif.id, "erro fatal em verificacao");
+    const updatedVerif = await prisma.session.findUnique({ where: { id: sessVerif.id } });
+    expect(updatedVerif?.phase).toBe("BLOQUEADA");
+
+    const msgsVerif = await prisma.message.findMany({ where: { sessionId: sessVerif.id } });
+    expect(msgsVerif.length).toBe(1);
+    expect(msgsVerif[0].content).toContain("erro interno repetido na execução");
+    expect(msgsVerif[0].content).toContain("erro fatal em verificacao");
+
+    // 2. Em ELICITACAO -> nada muda
+    const sessElic = await prisma.session.create({
+      data: {
+        title: "Sessão Elicitacao",
+        phase: "ELICITACAO",
+      },
+    });
+    createdSessionIds.push(sessElic.id);
+
+    await handleJobFailureForSession(sessElic.id, "erro em elicitacao");
+    const updatedElic = await prisma.session.findUnique({ where: { id: sessElic.id } });
+    expect(updatedElic?.phase).toBe("ELICITACAO");
+
+    const msgsElic = await prisma.message.findMany({ where: { sessionId: sessElic.id } });
+    expect(msgsElic.length).toBe(0);
   });
 });

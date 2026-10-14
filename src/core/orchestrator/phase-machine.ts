@@ -51,6 +51,7 @@ export type PhaseEvent =
   | { type: 'DESBLOQUEIO_HUMANO' }
   | { type: 'VERIFICACAO_COM_LACUNAS' }
   | { type: 'VERIFICACAO_OK' }
+  | { type: 'FALHA_REPETIDA' }
   | { type: 'NOVO_PEDIDO' };
 
 export type PhaseEffect =
@@ -410,7 +411,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   EXECUCAO: {
-    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'FALHA_REPETIDA', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['mudanca_durante_execucao', 'duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_PENDENCIAS') {
@@ -436,6 +437,13 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'teto de custo do projeto atingido' }],
+        };
+      }
+      if (event.type === 'FALHA_REPETIDA') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução' }],
         };
       }
       if (
@@ -530,7 +538,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   VERIFICACAO: {
-    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'FALHA_REPETIDA', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
@@ -541,6 +549,13 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'entrega reprovada na verificação final' }],
+        };
+      }
+      if (event.type === 'FALHA_REPETIDA') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução' }],
         };
       }
       if (event.type === 'VERIFICACAO_OK') {

@@ -15,6 +15,7 @@ import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckRep
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
 
 export const DEFAULT_JOB_LEASE_MS = 30000;
@@ -447,8 +448,60 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       return null;
     }
 
+    const jobRecord = await prisma.job
+      .findUnique({
+        where: { id: jobId },
+        select: { sessionId: true },
+      })
+      .catch(() => null);
+    if (jobRecord?.sessionId) {
+      await handleJobFailureForSession(jobRecord.sessionId, errorMessage).catch(() => {});
+    }
+
     return await prisma.job.findUnique({ where: { id: jobId } }).catch(() => null);
   } finally {
     stopHeartbeat();
+  }
+}
+
+/**
+ * Trata falhas de jobs para a sessão:
+ * - Em VERIFICACAO: bloqueia imediatamente com FALHA_REPETIDA (ninguém retoma VERIFICACAO sozinho).
+ * - Em EXECUCAO: busca os 3 jobs mais recentes da sessão; se forem 3 e todos "failed", bloqueia com FALHA_REPETIDA.
+ * - Outras fases: não faz nada.
+ * - detalheAviso inclui a mensagem de erro com segredos de alta entropia sanitizados para [oculto].
+ */
+export async function handleJobFailureForSession(
+  sessionId: string,
+  errorMessage: string
+): Promise<void> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { phase: true },
+  });
+  if (!session) return;
+
+  const pedacos = errorMessage.slice(0, 500).split(" ");
+  const seguro = pedacos
+    .map((pedaco) => (isHighEntropySecretLiteral(pedaco) ? "[oculto]" : pedaco))
+    .join(" ");
+  const detalheAviso = `**Último erro:** \`${seguro}\``;
+
+  if (session.phase === "VERIFICACAO") {
+    await applyPhaseEvent(sessionId, { type: "FALHA_REPETIDA" }, { detalheAviso });
+    return;
+  }
+
+  if (session.phase === "EXECUCAO") {
+    const recentJobs = await prisma.job.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: { status: true },
+    });
+    if (recentJobs.length === 3 && recentJobs.every((j) => j.status === "failed")) {
+      await applyPhaseEvent(sessionId, { type: "FALHA_REPETIDA" }, { detalheAviso });
+    }
+    return;
   }
 }
