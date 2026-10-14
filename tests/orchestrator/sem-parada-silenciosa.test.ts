@@ -18,7 +18,10 @@ import {
 import { renderCanonicalSpecDocument } from "../../src/core/intake/spec-format.js";
 import * as sessionQueueModule from "../../src/core/orchestrator/session-queue.js";
 import * as nodeExecutorModule from "../../src/core/orchestrator/node-executor.js";
-import { supervisePausedSessions } from "../../src/core/orchestrator/job-worker.js";
+import {
+  supervisePausedSessions,
+  superviseSilentSessions,
+} from "../../src/core/orchestrator/job-worker.js";
 
 const createdSessionIds: string[] = [];
 
@@ -96,6 +99,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "VERIFICACAO_COM_LACUNAS" },
   { type: "VERIFICACAO_OK" },
   { type: "FALHA_REPETIDA" },
+  { type: "SILENCIO_DETECTADO" },
   { type: "NOVO_PEDIDO" },
 ];
 
@@ -367,5 +371,100 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
     await supervisePausedSessions(async () => false, seteMinutos);
     msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
     expect(msgs.length).toBe(1);
+  });
+
+  it("J2.6: superviseSilentSessions detecta parada sem atividade há mais de 5 minutos em fases ativas", async () => {
+    const agora = new Date("2026-10-14T02:00:00.000Z");
+    const seisMinutosDepois = new Date(agora.getTime() + 6 * 60 * 1000);
+
+    // 1. Sessão VERIFICACAO sem job, parada há 6 minutos -> BLOQUEADA + 1 mensagem
+    const sessVerifSilenciosa = await prisma.session.create({
+      data: {
+        title: "Sessão Verificacao Silenciosa",
+        phase: "VERIFICACAO",
+        updatedAt: agora,
+      },
+    });
+    createdSessionIds.push(sessVerifSilenciosa.id);
+
+    const bloqueadas1 = await superviseSilentSessions({
+      force: true,
+      onlySessionIds: [sessVerifSilenciosa.id],
+      now: seisMinutosDepois,
+    });
+    expect(bloqueadas1).toBe(1);
+
+    const updatedVerif = await prisma.session.findUnique({ where: { id: sessVerifSilenciosa.id } });
+    expect(updatedVerif?.phase).toBe("BLOQUEADA");
+
+    const msgsVerif = await prisma.message.findMany({ where: { sessionId: sessVerifSilenciosa.id } });
+    expect(msgsVerif.length).toBe(1);
+    expect(msgsVerif[0].content).toContain("parada sem atividade há mais de 5 minutos");
+    expect(msgsVerif[0].content).toContain("Fase em que parou: VERIFICACAO");
+
+    // 2. Sessão EXECUCAO com job queued -> não muda (tem job na fila)
+    const sessExecComJob = await prisma.session.create({
+      data: {
+        title: "Sessão Execucao Com Job",
+        phase: "EXECUCAO",
+        updatedAt: agora,
+      },
+    });
+    createdSessionIds.push(sessExecComJob.id);
+
+    await prisma.job.create({
+      data: {
+        sessionId: sessExecComJob.id,
+        kind: "session_queue",
+        status: "queued",
+      },
+    });
+
+    const bloqueadas2 = await superviseSilentSessions({
+      force: true,
+      onlySessionIds: [sessExecComJob.id],
+      now: seisMinutosDepois,
+    });
+    expect(bloqueadas2).toBe(0);
+    const updatedExec = await prisma.session.findUnique({ where: { id: sessExecComJob.id } });
+    expect(updatedExec?.phase).toBe("EXECUCAO");
+
+    // 3. Sessão ELICITACAO -> não muda (fase de interação do usuário)
+    const sessElic = await prisma.session.create({
+      data: {
+        title: "Sessão Elicitacao",
+        phase: "ELICITACAO",
+        updatedAt: agora,
+      },
+    });
+    createdSessionIds.push(sessElic.id);
+
+    const bloqueadas3 = await superviseSilentSessions({
+      force: true,
+      onlySessionIds: [sessElic.id],
+      now: seisMinutosDepois,
+    });
+    expect(bloqueadas3).toBe(0);
+    const updatedElic = await prisma.session.findUnique({ where: { id: sessElic.id } });
+    expect(updatedElic?.phase).toBe("ELICITACAO");
+
+    // 4. Sessão VERIFICACAO com now = agora (atividade recente) -> não muda
+    const sessVerifRecente = await prisma.session.create({
+      data: {
+        title: "Sessão Verificacao Recente",
+        phase: "VERIFICACAO",
+        updatedAt: agora,
+      },
+    });
+    createdSessionIds.push(sessVerifRecente.id);
+
+    const bloqueadas4 = await superviseSilentSessions({
+      force: true,
+      onlySessionIds: [sessVerifRecente.id],
+      now: agora,
+    });
+    expect(bloqueadas4).toBe(0);
+    const updatedRecente = await prisma.session.findUnique({ where: { id: sessVerifRecente.id } });
+    expect(updatedRecente?.phase).toBe("VERIFICACAO");
   });
 });

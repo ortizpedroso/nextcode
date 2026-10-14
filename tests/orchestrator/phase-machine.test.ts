@@ -587,6 +587,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
           'EXECUTOR_BLOQUEADO',
           'TETO_CUSTO',
           'FALHA_REPETIDA',
+          'SILENCIO_DETECTADO',
           'MENSAGEM_CLASSIFICADA',
         ]);
         expect(res.allowedIntents).toEqual(['mudanca_durante_execucao', 'duvida_avulsa', 'status']);
@@ -683,6 +684,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'VERIFICACAO_COM_LACUNAS' },
       { type: 'VERIFICACAO_OK' },
       { type: 'FALHA_REPETIDA' },
+      { type: 'SILENCIO_DETECTADO' },
       { type: 'NOVO_PEDIDO' },
     ];
 

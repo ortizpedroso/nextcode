@@ -267,6 +267,109 @@ export async function superviseExecutionQueue(options?: {
   return { orphanSessionsResumed, stuckNodesReset };
 }
 
+export const SILENCE_NOTICE_MS = 300_000;
+const SUPERVISE_SILENCE_INTERVAL_MS = 60_000;
+let lastSuperviseSilenceAt = 0;
+
+/**
+ * Vigia de Silêncio (J2.6):
+ * Detecta sessões em PLANEJAMENTO, EXECUCAO ou VERIFICACAO que ficaram sem jobs/nós ativos
+ * e sem nenhuma atividade (mensagens, telemetria, update) há mais de 5 minutos,
+ * transicionando para BLOQUEADA e avisando o humano no chat para não ficarem paradas caladas.
+ */
+export async function superviseSilentSessions(options?: {
+  now?: Date;
+  silenceMs?: number;
+  force?: boolean;
+  onlySessionIds?: string[];
+}): Promise<number> {
+  const now = options?.now ?? new Date();
+  const nowMs = now.getTime();
+
+  if (!options?.force && nowMs - lastSuperviseSilenceAt < SUPERVISE_SILENCE_INTERVAL_MS) {
+    return 0;
+  }
+  lastSuperviseSilenceAt = nowMs;
+
+  const silenceMs = options?.silenceMs ?? SILENCE_NOTICE_MS;
+
+  const whereClause: {
+    phase: { in: string[] };
+    jobs: { none: { status: { in: string[] } } };
+    tasks: { none: { status: string } };
+    id?: { in: string[] };
+  } = {
+    phase: { in: ["PLANEJAMENTO", "EXECUCAO", "VERIFICACAO"] },
+    jobs: {
+      none: {
+        status: { in: ["queued", "running"] },
+      },
+    },
+    tasks: {
+      none: {
+        status: "running",
+      },
+    },
+  };
+
+  if (options?.onlySessionIds && options.onlySessionIds.length > 0) {
+    whereClause.id = { in: options.onlySessionIds };
+  }
+
+  const silentCandidates = await prisma.session.findMany({
+    where: whereClause,
+    select: {
+      id: true,
+      phase: true,
+      updatedAt: true,
+    },
+  });
+
+  let blockedCount = 0;
+
+  for (const session of silentCandidates) {
+    const lastMessage = await prisma.message.findFirst({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+
+    const lastTelemetry = await prisma.telemetryLog.findFirst({
+      where: { sessionId: session.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+
+    const timestamps: number[] = [session.updatedAt.getTime()];
+    if (lastMessage) timestamps.push(lastMessage.createdAt.getTime());
+    if (lastTelemetry) timestamps.push(lastTelemetry.createdAt.getTime());
+
+    const ultimaAtividadeMs = Math.max(...timestamps);
+    const ultimaAtividade = new Date(ultimaAtividadeMs);
+
+    if (nowMs - ultimaAtividadeMs >= silenceMs) {
+      const res = await applyPhaseEvent(
+        session.id,
+        { type: "SILENCIO_DETECTADO" },
+        {
+          detalheAviso: `Fase em que parou: ${session.phase}. Última atividade: ${ultimaAtividade.toISOString()}.`,
+        }
+      );
+
+      if (res.ok) {
+        TelemetryLogger.log({
+          sessionId: session.id,
+          action: "QUEUE_STALLED",
+          details: { reason: "silent_session", phase: session.phase },
+        });
+        blockedCount++;
+      }
+    }
+  }
+
+  return blockedCount;
+}
+
 /**
  * Busca jobs elegíveis (queued ou running com lease vencido), tenta claimJob
  * e executa até NEXTCODE_WORKER_CONCURRENCY (padrão 2) simultaneamente.
@@ -275,6 +378,7 @@ export async function superviseExecutionQueue(options?: {
 export async function runOnce(workerId: string = defaultProcessWorkerId): Promise<number> {
   await supervisePausedSessions().catch(() => 0);
   await superviseExecutionQueue().catch(() => ({ orphanSessionsResumed: 0, stuckNodesReset: 0 }));
+  await superviseSilentSessions().catch(() => 0);
 
   const concurrency = getWorkerConcurrency();
   const now = new Date();
