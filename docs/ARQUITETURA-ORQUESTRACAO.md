@@ -92,7 +92,7 @@ stateDiagram-v2
   BLOQUEADA --> SPEC_REVISAO: usuário pede ajuste da Spec
   BLOQUEADA --> EXECUCAO: humano desbloqueia (volta à fase anterior)
   EXECUCAO --> VERIFICACAO: sem executores pendentes
-  VERIFICACAO --> PLANEJAMENTO: falta requisito/arquivo no disco (T10)
+  VERIFICACAO --> BLOQUEADA: lacuna na T10 — avisa o humano (J2, 13/10); reparo automático no J2b
   VERIFICACAO --> ENTREGUE: Spec completa no disco + build ok
   ENTREGUE --> ELICITACAO: novo pedido (criar)
   ENTREGUE --> ELICITACAO_CORRECAO: novo pedido (corrigir)

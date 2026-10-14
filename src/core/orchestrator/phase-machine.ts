@@ -539,8 +539,8 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
       if (event.type === 'VERIFICACAO_COM_LACUNAS') {
         return {
           ok: true,
-          ctx: { ...ctx, phase: 'PLANEJAMENTO' },
-          effects: [],
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'entrega reprovada na verificação final' }],
         };
       }
       if (event.type === 'VERIFICACAO_OK') {

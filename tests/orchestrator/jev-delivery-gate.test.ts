@@ -283,7 +283,7 @@ describe("Portão Final de Entrega com JEV no job-queue (Spec Canônica × Códi
     await executeClaimedJob(jobId, "worker-test");
 
     const updatedSession = await prisma.session.findUnique({ where: { id: session.id } });
-    expect(updatedSession?.phase).toBe("PLANEJAMENTO");
+    expect(updatedSession?.phase).toBe("BLOQUEADA");
 
     const messages = await prisma.message.findMany({ where: { sessionId: session.id } });
     const laudoMsg = messages.find((m) => m.content.includes("documento: laudo_auditoria_entrega"));

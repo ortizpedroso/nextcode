@@ -400,7 +400,14 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           await applyPhaseEvent(
             job.sessionId,
             { type: "VERIFICACAO_COM_LACUNAS" },
-            { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 } }
+            {
+              extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 },
+              detalheAviso:
+                "**Lacunas encontradas:**\n" +
+                (deliveryT10.gaps.length > 0
+                  ? deliveryT10.gaps.map((g) => `- ${g}`).join("\n")
+                  : "- (a verificação não detalhou a lacuna)"),
+            }
           );
         }
       }

@@ -136,7 +136,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
   });
 
   it.each([
-    { label: "reprova", ok: false, expectedPhase: "PLANEJAMENTO" },
+    { label: "reprova", ok: false, expectedPhase: "BLOQUEADA" },
     { label: "aprova", ok: true, expectedPhase: "ENTREGUE" },
   ])("Verificação de tela na entrega: quando $label, a sessão termina em $expectedPhase", async ({ ok, expectedPhase }) => {
     const projectDir = makeTempProjectDir();

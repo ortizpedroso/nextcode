@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import prisma from "../../src/lib/prisma.js";
 import {
   transition,
@@ -9,6 +9,10 @@ import {
   type IntervencaoEscolha,
 } from "../../src/core/orchestrator/phase-machine.js";
 import { applyPhaseEvent } from "../../src/core/orchestrator/session-phase.js";
+import { enqueueSessionQueueJob, claimJob, executeClaimedJob } from "../../src/core/orchestrator/job-queue.js";
+import { renderCanonicalSpecDocument } from "../../src/core/intake/spec-format.js";
+import * as sessionQueueModule from "../../src/core/orchestrator/session-queue.js";
+import * as nodeExecutorModule from "../../src/core/orchestrator/node-executor.js";
 
 const createdSessionIds: string[] = [];
 
@@ -90,6 +94,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
 
 describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", () => {
   beforeEach(async () => {
+    vi.restoreAllMocks();
     await cleanupTestRecords();
   });
 
@@ -172,5 +177,69 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
 
     const messages = await prisma.message.findMany({ where: { sessionId: session.id } });
     expect(messages.length).toBe(0);
+  });
+
+  it("J2.3: entrega reprovada na verificação final (T10 com gaps) leva a BLOQUEADA e gera aviso com lacunas; desbloqueio volta a EXECUCAO", async () => {
+    const spec = renderCanonicalSpecDocument({
+      titulo: "App Teste Lacunas",
+      status: "aprovada",
+      data: "2026-10-13",
+      stack: ["TypeScript"],
+      modulos: [],
+      entidades: [],
+      arquivosAfetados: ["src/x.ts"],
+      objetivo: "Testar lacuna na entrega.",
+      requisitosIds: ["REQ-001"],
+      requisitos: [{ id: "REQ-001", titulo: "Req 1", criterio: "Crit 1" }],
+    });
+
+    const session = await prisma.session.create({
+      data: {
+        title: "Sessão Entrega Reprovada T10",
+        phase: "EXECUCAO",
+        specApproved: true,
+        canonicalSpec: spec,
+      },
+    });
+    createdSessionIds.push(session.id);
+
+    vi.spyOn(sessionQueueModule, "processSessionQueue").mockResolvedValue({
+      tasks: [],
+      allCompleted: true,
+      pendingCount: 0,
+      runningCount: 0,
+      completedCount: 1,
+      failedCount: 0,
+      blockedCount: 0,
+      specCompleteness: { complete: false, declaredFiles: ["src/x.ts"], missingFiles: ["src/x.ts"] },
+    });
+
+    vi.spyOn(nodeExecutorModule, "verifyProjectDeliveryT10").mockReturnValue({
+      passed: false,
+      specFilesComplete: false,
+      allReqsApproved: true,
+      buildVerified: true,
+      missingFiles: ["src/x.ts"],
+      unapprovedReqs: [],
+      gaps: ["Arquivo faltando: src/x.ts"],
+    });
+
+    const jobId = await enqueueSessionQueueJob(session.id);
+    await claimJob(jobId, "worker-test");
+    await executeClaimedJob(jobId, "worker-test");
+
+    const updatedSession = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(updatedSession?.phase).toBe("BLOQUEADA");
+
+    const messages = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(messages.length).toBe(1);
+    expect(messages[0].content).toContain("entrega reprovada na verificação final");
+    expect(messages[0].content).toContain("Arquivo faltando: src/x.ts");
+
+    // Desbloqueio humano leva de volta a EXECUCAO
+    const unblockResult = await applyPhaseEvent(session.id, { type: "DESBLOQUEIO_HUMANO" });
+    expect(unblockResult.ok).toBe(true);
+    const unblockedSession = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(unblockedSession?.phase).toBe("EXECUCAO");
   });
 });
