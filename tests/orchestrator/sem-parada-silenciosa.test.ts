@@ -18,6 +18,7 @@ import {
 import { renderCanonicalSpecDocument } from "../../src/core/intake/spec-format.js";
 import * as sessionQueueModule from "../../src/core/orchestrator/session-queue.js";
 import * as nodeExecutorModule from "../../src/core/orchestrator/node-executor.js";
+import { supervisePausedSessions } from "../../src/core/orchestrator/job-worker.js";
 
 const createdSessionIds: string[] = [];
 
@@ -323,5 +324,48 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
 
     const msgsElic = await prisma.message.findMany({ where: { sessionId: sessElic.id } });
     expect(msgsElic.length).toBe(0);
+  });
+
+  it("J2.5: supervisePausedSessions posta aviso de pausa longa após 5 minutos, não duplica e não posta antes do prazo", async () => {
+    const inicioPausa = new Date("2026-10-14T01:00:00.000Z");
+
+    const session = await prisma.session.create({
+      data: {
+        title: "Sessão Pausada Longa",
+        phase: "PAUSADA",
+        phaseContext: JSON.stringify({ faseAntesDaPausa: "EXECUCAO" }),
+      },
+    });
+    createdSessionIds.push(session.id);
+
+    // Grava PHASE_TRANSITION com to: PAUSADA
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: session.id,
+        action: "PHASE_TRANSITION",
+        details: JSON.stringify({ from: "EXECUCAO", to: "PAUSADA" }),
+        createdAt: inicioPausa,
+        durationMs: 0,
+      },
+    });
+
+    // 1. Com início + 2 minutos -> 0 mensagens
+    const doisMinutos = new Date(inicioPausa.getTime() + 2 * 60 * 1000);
+    await supervisePausedSessions(async () => false, doisMinutos);
+    let msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(msgs.length).toBe(0);
+
+    // 2. Com início + 6 minutos -> 1 mensagem postada
+    const seisMinutos = new Date(inicioPausa.getTime() + 6 * 60 * 1000);
+    await supervisePausedSessions(async () => false, seisMinutos);
+    msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(msgs.length).toBe(1);
+    expect(msgs[0].content).toContain("Execução pausada há mais de 5 minutos");
+
+    // 3. Chamar de novo (com início + 7 minutos) -> continua com 1 mensagem (não duplica)
+    const seteMinutos = new Date(inicioPausa.getTime() + 7 * 60 * 1000);
+    await supervisePausedSessions(async () => false, seteMinutos);
+    msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(msgs.length).toBe(1);
   });
 });

@@ -47,6 +47,8 @@ export async function isAnyLlmGatewayReachable(): Promise<boolean> {
   return value;
 }
 
+export const LONG_PAUSE_NOTICE_MS = 300_000;
+
 /**
  * Supervisor periódico da fila (Item 1 do PLANO-DE-ACAO):
  * Verifica sessões em `PAUSADA` (que possuem `faseAntesDaPausa` registrada por `SEM_LLM`).
@@ -54,7 +56,8 @@ export async function isAnyLlmGatewayReachable(): Promise<boolean> {
  * e reenfileira o Job da sessão sem ter consumido nenhuma tentativa das etapas.
  */
 export async function supervisePausedSessions(
-  probeGatewayFn: () => Promise<boolean> = isAnyLlmGatewayReachable
+  probeGatewayFn: () => Promise<boolean> = isAnyLlmGatewayReachable,
+  now: Date = new Date()
 ): Promise<number> {
   const pausedSessions = await prisma.session.findMany({
     where: {
@@ -72,6 +75,54 @@ export async function supervisePausedSessions(
 
   const reachable = await probeGatewayFn().catch(() => false);
   if (!reachable) {
+    for (const session of pausedSessions) {
+      const transitionLog = await prisma.telemetryLog.findFirst({
+        where: {
+          sessionId: session.id,
+          action: "PHASE_TRANSITION",
+          details: {
+            contains: '"to":"PAUSADA"',
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: { createdAt: true },
+      });
+
+      if (!transitionLog) {
+        continue;
+      }
+
+      const inicio = transitionLog.createdAt.getTime();
+      const agora = now.getTime();
+
+      if (agora - inicio >= LONG_PAUSE_NOTICE_MS) {
+        const existingNotice = await prisma.message.findFirst({
+          where: {
+            sessionId: session.id,
+            role: "assistant",
+            createdAt: {
+              gte: transitionLog.createdAt,
+            },
+            content: {
+              contains: "Execução pausada há mais de 5 minutos",
+            },
+          },
+        });
+
+        if (!existingNotice) {
+          await prisma.message.create({
+            data: {
+              sessionId: session.id,
+              role: "assistant",
+              content:
+                "⏳ **Execução pausada há mais de 5 minutos:** nenhum provedor de modelo respondeu. A sessão continua guardada e retoma sozinha quando um provedor voltar. Confira crédito, cota e chaves dos provedores no painel.",
+            },
+          });
+        }
+      }
+    }
     return 0;
   }
 
