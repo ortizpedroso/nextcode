@@ -1,3 +1,23 @@
+## 14/10/2026 (38) — Ordem aprovada e prompt I1 (inventário)
+
+**Decisão do fundador:** seguir a ordem I1 → P5 → J2b → J3 → J4 (registrada em `memory/decisoes.md` e referência §5.5). J2.7 em espera.
+**Prompt:** `docs/prompts/I1-inventario-ligado-desligado.md` — só diagnóstico: 20 commits de código de 10/10 a 12/10 (Tabela A), 16 decisões do Jev (`purpose:`, Tabela B), fases e papéis do fluxo pensado (Tabela C), conflitos com decisões e caminhos duplicados; classificação LIGADO / CALCULADO_DESCARTADO / DESLIGADO_CONFIG / SO_TESTES / MORTO / INCERTO, cada uma com `git grep` colado; contagem da trilha só na cópia do banco.
+**Próximo passo:** Antigravity roda I1 → eu audito (confiro por amostragem cada classificação no código) → escrevo o P5 com base no inventário.
+**Pendências do fundador:** autoteste (testes escondidos? discordância → reportar?); cota FreeLLMAPI (429); privacidade do Jev; independência executor×avaliador; remover `skill_apoio_principal`; terminal no Windows e exclusão de projeto; Claude no FreeLLMAPI; stack/recorte do Gateway; teto de custo; remedir com/sem Jev; `docs/spec-architecture.md` quebrado em `spec-decomposer.ts:550`.
+
+---
+
+## 14/10/2026 (37) — Diagnóstico global (pedido do fundador): plano × código × o que o Plano J mexeu
+
+**Correção da entrada 36:** errei ao dizer que as perguntas estratégicas vieram do elicitador. As perguntas estratégicas são a **peneira M0 do Jev** (`156d01b`, 11/10, `src/core/intake/universal-funnel.ts`), e ela **está ativa**: roda a cada mensagem de Spec (`src/app/api/chat/route.ts:581`), sem interruptor. Defeitos (medidos na sessão de 11/10): limite de 3 s (`jev.ts:24`) estourou na 1ª mensagem; julga só a última mensagem; limiar 0,6 sem olhar confiança; resultado vai como "INCLUSÃO OBRIGATÓRIA" mesmo quando errado.
+**Não ativos (código existe, fluxo real não chama):** conferência Macrobrief × Spec com 6 perguntas do Jev (`9e93594`, `intake-engine.ts:308`, só testes chamam `runElicitadorAndAnalistaCycle`; produção usa `etapa1Ativa: false`, `session-phase.ts:124`); M2 clareza (calculado e descartado, `route.ts:796`); Microbrief de reparo por cluster (`19d5758`, `359e06b`: `renderMicrobriefReparoMarkdown`/`partitionRepairsByCluster` em `artifact-templates.ts:1331,1386`, nunca chamados). Testes de 10–11/10 todos com Jev simulado; nenhuma medição em `medicoes.md`.
+**O que o Plano J mexeu no desenho:** desenho (§2.2 e `19d5758`) = entrega reprovada volta a `PLANEJAMENTO` e o analista gera Microbrief de reparo; isso nunca foi ligado (J1 provou: parada muda). O J2.3 trocou para `BLOQUEADA` sem eu ter conferido que o reparo já existia em parte — não quebrou nada que funcionava, mas o J2b precisa **reusar** `359e06b` e devolver o fluxo ao desenho (`VERIFICACAO → PLANEJAMENTO` com reparo), não reinventar.
+**Plano oficial (§5, P0→P10):** feitos P0, P1, P2, P2b, P3, S1; 10–12/10 o Antigravity fez E1–E12 fora de ordem e sem auditor; desde então C1, D1, J1, J2 corrigem essa fase. **P5 (entrada como pensada: elicitador + Jev na Spec + Macrobrief + CONFERENCIA com analista) nunca foi feito** — é a maior distância entre o pensado e o real (§2.3).
+**J2.7 em espera:** mexe em `phase-machine.ts` só por causa de teste; aguarda decisão do fundador.
+**Próximo passo:** fundador decide a ordem: (a) P5 com o que já existe (M0 corrigida, conferência ligada, M2 usada) antes de J3; ou (b) seguir J3/J2b. Nada alterado nesta entrada.
+
+---
+
 ## 14/10/2026 (36) — Auditoria do J2 (aceito com ressalva) + diagnóstico do Jev na Spec
 
 **J2 (Antigravity):** `b7a21e2` J2.1, `9a90425` J2.2, `db34802` J2.3, `8ece017` J2.4, `acf3a89` J2.5, `3cbcde1` J2.6, `1dae1e7` relatório. Reflog limpo, escopo na T-B + linha 139 autorizada; rodei eu: tsc 0, vitest 116 arquivos/760 testes verdes. Código confere com o prompt (sombra, aviso centralizado, T10 → `BLOQUEADA` com lacunas, falha repetida, pausa 5 min, vigia de silêncio). Formato `"to":"PAUSADA"` confere com `session-phase.ts` (JSON sem espaço).
