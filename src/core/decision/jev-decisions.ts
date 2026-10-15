@@ -176,7 +176,7 @@ export async function decideSpecClarity(params: {
 
   const batch = await askJevBatch({
     purpose: "m2_clareza_spec",
-    state: JSON.stringify({ rascunho_spec: params.rascunhoSpec.slice(0, 12000) }),
+    state: JSON.stringify({ rascunho_spec: params.rascunhoSpec.slice(0, 22000) }),
     questions,
     sessionId: params.sessionId,
   });

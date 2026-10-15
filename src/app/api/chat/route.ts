@@ -807,12 +807,16 @@ export async function POST(request: NextRequest) {
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)
-            await decideSpecClarity({
+            const clareza = await decideSpecClarity({
               rascunhoSpec: guardRes.finalSpec,
               hasOpenQuestionsSection7: false,
               hasValidReqTable: Boolean(healed.parsed.requisitos && healed.parsed.requisitos.length > 0),
               sessionId: activeSessionId,
             }).catch(() => null);
+
+            if (clareza && clareza.source === "jev" && !clareza.readyForUserApproval) {
+              guardRes.finalMessageContent += `\n\n⚠️ O Jev avaliou que esta Spec ainda não está pronta para aprovar — clareza ${clareza.clarityScore}/3 (confiança ${clareza.clarityConfidence.toFixed(2)}), escopo fechado ${clareza.escopoFechadoProb.toFixed(2)}, sem contradições ${clareza.semContradicoesProb.toFixed(2)}. Revise os requisitos e a seção 7 antes de aprovar.`;
+            }
           } catch {
             /* ignora falha de auto-cura */
           }
