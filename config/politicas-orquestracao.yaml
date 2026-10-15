@@ -162,6 +162,7 @@ jev_execucao:
   bloqueio_spec_ambigua: ativo        # ativo | sombra | desligado
   verificacao_evidencia: ativo        # ativo | sombra | desligado
   auditoria_entrega: sombra          # ativo | sombra | desligado (J2, 13/10: sombra até J3/J4 provarem as perguntas)
+  conferencia_entrada: sombra         # ativo | sombra | desligado (P5, 14/10: sombra até medir com Specs reais — Specs no formato antigo seriam recusadas)
   guarda_segredos_codigo: ativo       # ativo | desligado
   guarda_segredos_chat: ativo         # ativo | desligado
   guarda_instalacao_skill: ativo      # ativo | desligado

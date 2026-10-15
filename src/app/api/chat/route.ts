@@ -338,6 +338,10 @@ export async function POST(request: NextRequest) {
           refusalText = "⚠️ A Spec Canônica não define arquivos afetados. Complete a arquitetura antes de aprovar.";
         } else if (approvalTriggerResult.reason === "SPEC_INVALIDA_OU_MALFORMATADA") {
           refusalText = "⚠️ O documento de Spec atual está com formatação inválida. Solicite ao assistente a regeneração da Spec antes de aprovar.";
+        } else if (approvalTriggerResult.reason === "CONFERENCIA_REPROVADA") {
+          refusalText =
+            "⚠️ A conferência entre a Spec e o plano de execução encontrou problemas. Corrija e aprove de novo:\n" +
+            (approvalTriggerResult.problems ?? []).map((p) => "- " + p).join("\n");
         }
 
         const assistantMessage = await prisma.message.create({

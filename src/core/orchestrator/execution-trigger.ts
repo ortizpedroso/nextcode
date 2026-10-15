@@ -17,6 +17,7 @@ import { splitNodesByJev } from "@/core/orchestrator/node-split";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 import { consolidateMemoryFromSpec } from "@/core/memory/project-memory";
+import { IntakeEngine } from "@/core/intake/intake-engine";
 
 export type ApproveSpecResult =
   | {
@@ -29,6 +30,7 @@ export type ApproveSpecResult =
   | {
       ok: false;
       reason: "SPEC_AUSENTE" | "INTERVENCAO_PENDENTE" | "SESSAO_NAO_ENCONTRADA" | string;
+      problems?: string[];
     };
 
 const ALREADY_STARTED_PHASES: Phase[] = [
@@ -221,6 +223,43 @@ export async function approveSpecAndStart(
       alreadyStarted: true,
       phase: ((latest?.phase as Phase) || currentPhase),
     };
+  }
+
+  const policyConf = loadOrchestrationPolicy().jevExecucao.conferenciaEntrada;
+  if (policyConf === "ativo" || policyConf === "sombra") {
+    try {
+      const conf = await IntakeEngine.runElicitadorAndAnalistaCycle({
+        initialSpec: effectiveSpec,
+        sessionId,
+      });
+      TelemetryLogger.log({
+        sessionId,
+        action: "CONFERENCIA_ENTRADA",
+        details: {
+          modo: policyConf,
+          ok: conf.ok,
+          cyclesUsed: conf.cyclesUsed,
+          problemas: conf.problems.length,
+        },
+      });
+      if (policyConf === "ativo" && !conf.ok) {
+        return {
+          ok: false,
+          reason: "CONFERENCIA_REPROVADA",
+          problems: conf.problems.slice(0, 10),
+        };
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      TelemetryLogger.log({
+        sessionId,
+        action: "CONFERENCIA_ENTRADA",
+        details: {
+          modo: policyConf,
+          erro: errMsg.slice(0, 200),
+        },
+      });
+    }
   }
 
   // 3. Aplica SPEC_APROVADA (SPEC_REVISAO → PLANEJAMENTO).
