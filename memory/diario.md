@@ -1,3 +1,11 @@
+## 15/10/2026 (43) — Relatório de situação ao fundador (feito × falta) e recomendação B0
+
+**Achado central:** a última entrega de ponta a ponta provada é de 09/10 (bench P1–P4 100% de aceite, 12/12 no P3/P4). Desde 12/10 todas as rodadas do bench falharam: `2026-10-12-2116` P3 BLOQUEADA 0/12; `2026-10-13-0552` P3 PAUSADA 0/12 (FreeLLMAPI 429). Desde então: 67 commits, só testes unitários (suíte 772 verdes), nenhuma prova real.
+**Recomendação ao fundador (aguarda decisão):** P5.5 → **B0** (rodar o bench P1–P4, 1 repetição, com a cota do provedor resolvida) antes do J2b; J2.7 junto com o J2b (ambos mexem em `phase-machine.ts`); depois J3 → J4 → P10 (1º Gate do Gateway). P6–P9 só se o Gateway mostrar a necessidade (bench P1–P4 tem efeito teto: 100% em tudo, não mede ganho).
+**Jev em números:** nenhum ganho de custo provado (executor com Jev +0,009 a +0,014 US$ por execução no P3, n=3; economia no P1 dentro do ruído); auditoria final reprovou código correto 5/5 (J1). 16 decisões no código: 10 agindo, 3 em sombra, 3 mortas ou só em testes.
+
+---
+
 ## 15/10/2026 (42) — Auditoria do P5: aceito com ressalva grave na máscara (P5.5)
 
 **Conferido:** commits `76da16f`, `6e6e267`, `7505dd3`, `5b2f7aa`, relatório `7afc4a3`; reflog limpo; escopo = T-B + 3 linhas autorizadas do teste 10.1; eu rodei tsc 0 e vitest 119 arquivos / 772 testes verdes. Código confere com o prompt: máscara em `postJev` (`jev.ts:89-112`), `timeoutMs` opcional, M0 com conversa inteira e `aConfirmar`, M2 vira aviso (`route.ts:~820`), conferência na aprovação antes de `SPEC_APROVADA` em sombra.
