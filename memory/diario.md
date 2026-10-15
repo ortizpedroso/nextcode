@@ -1,3 +1,11 @@
+## 14/10/2026 (40) — P5 registrado e prompt escrito
+
+**Registro antes de implantar:** referência §5.5 (parágrafo P5), `memory/decisoes.md` (14/10). Prompt `docs/prompts/P5-entrada-como-pensada.md`: P5.1 máscara de segredos em `postJev` (Regra 7); P5.2 M0 com conversa inteira, 10 s, incerteza → pergunta; P5.3 M2 vira aviso ao usuário; P5.4 conferência Macrobrief × Spec em `approveSpecAndStart` com interruptor `conferencia_entrada: ativo`.
+**Fica para P5b:** skills elicitador/analista no chat e T7 (faltam as ferramentas no chat).
+**Próximo passo:** Antigravity roda P5 → auditar.
+
+---
+
 ## 14/10/2026 (39) — Auditoria do I1 (inventário): aceito com ressalvas, conclusões corrigidas aqui
 
 **Commits:** `7de28df` (script `scripts/diag-inventario-trilha.ts`, lê só a cópia do banco) e `5ead748` (relatório). Escopo conferido: só os 2 arquivos novos; reflog limpo; nada existente alterado.
