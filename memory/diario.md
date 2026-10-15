@@ -1,3 +1,12 @@
+## 15/10/2026 (42) — Auditoria do P5: aceito com ressalva grave na máscara (P5.5)
+
+**Conferido:** commits `76da16f`, `6e6e267`, `7505dd3`, `5b2f7aa`, relatório `7afc4a3`; reflog limpo; escopo = T-B + 3 linhas autorizadas do teste 10.1; eu rodei tsc 0 e vitest 119 arquivos / 772 testes verdes. Código confere com o prompt: máscara em `postJev` (`jev.ts:89-112`), `timeoutMs` opcional, M0 com conversa inteira e `aConfirmar`, M2 vira aviso (`route.ts:~820`), conferência na aprovação antes de `SPEC_APROVADA` em sombra.
+**Ressalva grave (Regra 7):** sondei `maskSecretsForJev` com segredos falsos: só pega chave com prefixo conhecido (`sk-`, `ghp_`…). **Vaza:** (1) atribuição dentro de JSON — todo `state` vai ao Jev como `JSON.stringify`, as aspas viram `\"` e a regra de atribuição não casa; (2) `NOME_KEY=valor` sem aspas (forma comum no chat); (3) chave do Asaas (`$aact_…`), justamente a do Gateway. O teste (a) passou porque usou `state` cru, não JSON — falha do meu prompt, que não exigiu o caso real.
+**Correção:** P5.5 (`docs/prompts/P5.5-mascara-json-asaas.md`): `maskSecretsForJev` mascara cada texto dentro do JSON, pega atribuição sem aspas com alta entropia e prefixo `$aact_`; só dentro da máscara do Jev (a guarda de código fica como está).
+**Próximo passo:** Antigravity roda P5.5 → auditar com a mesma sonda → J2b.
+
+---
+
 ## 14/10/2026 (41) — P5: parada correta no P5.4; conferência entra em sombra
 
 **Feito pelo Antigravity:** P5.1 `76da16f` (máscara de segredo em `postJev`), P5.2 `6e6e267` (M0 com conversa inteira, 10 s, incerteza → pergunta), P5.3 `7505dd3` (M2 vira aviso). Auditoria completa no fim do pacote.
