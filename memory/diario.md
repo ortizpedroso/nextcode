@@ -1,3 +1,13 @@
+## 15/10/2026 (45) — Auditoria do P5.5: quase; falta 1 ajuste (P5.5b)
+
+**Conferido:** `c8bd775` + relatório `56bdf2e`; reflog limpo; escopo = 3 arquivos permitidos; eu rodei tsc 0 e vitest 120 arquivos / 779 testes verdes.
+**Sonda do auditor (8 casos, chaves falsas):** ok em atribuição dentro de JSON, `NOME: valor`, `NOME=valor`, Asaas cru e em JSON, `process.env.X` e JSON limpo não mexidos (texto idêntico). **1 vazamento:** JSON com `mensagem: "use <valor>"` e `resumoSpec: "ASAAS_API_KEY=<valor>"` — o valor é reconhecido no 2º campo, mas o 1º já tinha sido processado. Real: o fan-out do chat (`route.ts:298`) manda mensagem e Spec juntas.
+**Ressalvas menores:** função `isJevPlaceholderValue` não pedida (necessária para o caso (f), declarada no texto de Desvios, mas a 1ª linha diz "Nenhum desvio"); T-A não parou embora o HEAD fosse `976c5c2` (meu commit só de diário, feito enquanto ele rodava — erro de sincronia meu, sem efeito no código).
+**Correção:** P5.5b (duas passadas: coleta tudo, depois esconde). Status atualizado na linha P5.5 da §5.0 (sem lista nova).
+**Próximo passo:** P5.5b → auditar com a mesma sonda → fechar P5.5; depois F1 (cota) e B0.
+
+---
+
 ## 15/10/2026 (44) — Cronograma único (§5.0), proposta ao fundador
 
 **Pedido do fundador:** parar de criar lista nova a cada revisão; um objetivo só; mudança de direção com critério e documentada; visão de ponta a ponta; onde o Jev brilha; cronograma definitivo e checklist.
