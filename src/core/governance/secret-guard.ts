@@ -390,7 +390,6 @@ function collectJevSecretValues(text: string, out: Set<string>): void {
 }
 
 function maskPlainForJev(text: string, found: Set<string>): string {
-  collectJevSecretValues(text, found);
   let masked = text;
   const sortedValues = Array.from(found).sort((a, b) => b.length - a.length);
   for (const valor of sortedValues) {
@@ -410,34 +409,57 @@ export function maskSecretsForJev(text: string): { text: string; count: number }
   try {
     const parsed = JSON.parse(text);
     if (parsed !== null && typeof parsed === "object") {
-      function walk(node: unknown): unknown {
+      function collectStrings(node: unknown): void {
+        if (typeof node === "string") {
+          collectJevSecretValues(node, found);
+          return;
+        }
+        if (Array.isArray(node)) {
+          for (const item of node) {
+            collectStrings(item);
+          }
+          return;
+        }
+        if (node !== null && typeof node === "object") {
+          for (const v of Object.values(node as Record<string, unknown>)) {
+            collectStrings(v);
+          }
+        }
+      }
+
+      collectStrings(parsed);
+      if (found.size === 0) {
+        return { text, count: 0 };
+      }
+
+      function maskNode(node: unknown): unknown {
         if (typeof node === "string") {
           return maskPlainForJev(node, found);
         }
         if (Array.isArray(node)) {
-          return node.map(walk);
+          return node.map(maskNode);
         }
         if (node !== null && typeof node === "object") {
           const obj = node as Record<string, unknown>;
           const out: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(obj)) {
-            out[k] = walk(v);
+            out[k] = maskNode(v);
           }
           return out;
         }
         return node;
       }
 
-      const result = walk(parsed);
-      if (found.size === 0) {
-        return { text, count: 0 };
-      }
+      const result = maskNode(parsed);
       return { text: JSON.stringify(result), count: found.size };
     }
   } catch {
     // Não é JSON ou falhou no parse
   }
 
-  const masked = maskPlainForJev(text, found);
-  return { text: found.size === 0 ? text : masked, count: found.size };
+  collectJevSecretValues(text, found);
+  if (found.size === 0) {
+    return { text, count: 0 };
+  }
+  return { text: maskPlainForJev(text, found), count: found.size };
 }
