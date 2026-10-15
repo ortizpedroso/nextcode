@@ -295,7 +295,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 |---|---|---|---|---|
 | **E0 — Base segura** | P0, P1, P2, P2b, P3, R1, S1, C1, D1, J1, J2, I1 | fundação, bench, modelos, correções da fase sem auditor, nenhuma parada silenciosa, inventário | ✅ | §3.2b, §9; suíte 119/772 verde (15/10) |
 | E0 | P5.1–P5.4 | máscara antes do Jev; M0 com conversa inteira e incerteza → pergunta; M2 aviso; conferência na aprovação (sombra) | ✅ | `76da16f` `6e6e267` `7505dd3` `5b2f7aa` (auditado 15/10) |
-| E0 | **P5.5** | máscara cobre JSON, `NOME=valor` sem aspas e chave Asaas | 🔄 `c8bd775` auditado 15/10: 7 de 8 casos da sonda ok; 1 vazamento (segredo reconhecido num campo do JSON fica exposto em outro campo) → ajuste P5.5b (`docs/prompts/P5.5b-mascara-duas-passadas.md`) | porta: sonda do auditor com chave falsa → nenhum vazamento |
+| E0 | **P5.5 + P5.5b** | máscara cobre JSON, `NOME=valor` sem aspas, chave Asaas e segredo repetido entre campos | ✅ | `c8bd775`, `cde4b47` (auditados 15/10): sonda do auditor 8/8 sem vazamento; tsc 0; vitest 121/782 verde |
 | E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ⬜ bloqueio externo | porta: 1 chamada paga de executor e de avaliador responde |
 | E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ⬜ | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
 | **E1 — Fim do fluxo que se conserta** | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |

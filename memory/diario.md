@@ -1,3 +1,12 @@
+## 15/10/2026 (46) — Auditoria do P5.5b: aceito; linha P5.5 da §5.0 fechada
+
+**Conferido:** `cde4b47` + relatório `d7a95a3`; reflog limpo; escopo = 3 arquivos permitidos; diff só em `maskPlainForJev`/`maskSecretsForJev`; eu rodei tsc 0 e vitest 121 arquivos / 782 testes verdes.
+**Sonda do auditor (mesmos 8 casos):** 8/8 ok — inclusive o segredo repetido entre campos do JSON; `process.env.X` e JSON limpo saem idênticos.
+**Status na §5.0:** P5.5 ✅. Etapa E0 agora depende só de F1 (cota do provedor pago — fundador) e B0 (bench P1–P4).
+**Próximo passo:** fundador resolve F1 e aprova a §5.0; então prompt do B0.
+
+---
+
 ## 15/10/2026 (45) — Auditoria do P5.5: quase; falta 1 ajuste (P5.5b)
 
 **Conferido:** `c8bd775` + relatório `56bdf2e`; reflog limpo; escopo = 3 arquivos permitidos; eu rodei tsc 0 e vitest 120 arquivos / 779 testes verdes.
