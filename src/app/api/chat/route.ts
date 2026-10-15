@@ -578,8 +578,22 @@ export async function POST(request: NextRequest) {
     let funnelBrief: string | undefined;
     if (isSpecDraftingPhase && !isQuestionWithoutPhaseChange) {
       try {
+        const userMessages = await prisma.message.findMany({
+          where: { sessionId: activeSessionId, role: "user" },
+          orderBy: { createdAt: "asc" },
+          select: { content: true },
+        });
+        const userContents = userMessages.map((m) => m.content);
+        if (
+          userContents.length === 0 ||
+          userContents[userContents.length - 1] !== targetPrompt
+        ) {
+          userContents.push(targetPrompt);
+        }
+        const fullUserConversation = userContents.join("\n---\n");
+
         const funnel = await runUniversalIntakeFunnel({
-          prompt: targetPrompt,
+          prompt: fullUserConversation,
           sessionId: activeSessionId,
         });
         funnelBrief = formatIntakeFunnelBrief(funnel);

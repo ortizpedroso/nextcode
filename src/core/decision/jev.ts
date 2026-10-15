@@ -84,7 +84,8 @@ async function postJev(
   key: string,
   signal?: AbortSignal,
   purpose?: string,
-  sessionId?: string | null
+  sessionId?: string | null,
+  timeoutMs?: number
 ): Promise<Response> {
   let effectiveBody = body;
   if (
@@ -110,7 +111,7 @@ async function postJev(
 
   let lastRes!: Response;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const timeout = AbortSignal.timeout(jevTimeoutMs());
+    const timeout = AbortSignal.timeout(timeoutMs ?? jevTimeoutMs());
     const res = await safeFetch(jevUrl(), {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
@@ -284,6 +285,7 @@ export async function askJevBatch(params: {
   signal?: AbortSignal;
   maxStateChars?: number;
   useCache?: boolean;
+  timeoutMs?: number;
 }): Promise<Record<string, JevBatchAnswer> | null> {
   const key = await readJevKey();
   if (!key) return null;
@@ -331,7 +333,8 @@ export async function askJevBatch(params: {
       key,
       params.signal,
       params.purpose,
-      params.sessionId
+      params.sessionId,
+      params.timeoutMs
     );
 
     if (res.status === 422) {

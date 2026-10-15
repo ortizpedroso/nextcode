@@ -14,6 +14,7 @@ export interface IntakeFunnelResult {
   notificationChannels: string;
   hasStrictBusinessRules: boolean;
   source: "jev" | "fallback";
+  aConfirmar: string[];
 }
 
 /**
@@ -27,7 +28,7 @@ export async function runUniversalIntakeFunnel(params: {
   prompt: string;
   sessionId?: string | null;
 }): Promise<IntakeFunnelResult> {
-  const promptText = params.prompt.slice(0, 8000);
+  const promptText = params.prompt.slice(0, 16000);
 
   const questions: Record<string, JevQuestionSpec> = {
     app_kind: {
@@ -125,6 +126,7 @@ export async function runUniversalIntakeFunnel(params: {
     state: JSON.stringify({ prompt: promptText }),
     questions,
     sessionId: params.sessionId,
+    timeoutMs: 10000,
   });
 
   if (batch) {
@@ -141,6 +143,21 @@ export async function runUniversalIntakeFunnel(params: {
     const notificationChannels = (batch.notification_channels?.type === "choice" ? batch.notification_channels.choice : "none");
     const hasStrictBusinessRules = (batch.has_strict_business_rules?.type === "noul" ? batch.has_strict_business_rules.noul >= 0.6 : true);
 
+    const aConfirmar: string[] = [];
+    for (const [qId, qSpec] of Object.entries(questions)) {
+      const ans = batch[qId];
+      if (!ans) continue;
+      if (qSpec.type === "noul" && ans.type === "noul") {
+        if (ans.noul > 0.25 && ans.noul < 0.75) {
+          aConfirmar.push(qId);
+        }
+      } else if (qSpec.type === "choice" && ans.type === "choice") {
+        if (typeof ans.confidence === "number" && ans.confidence < 0.6) {
+          aConfirmar.push(qId);
+        }
+      }
+    }
+
     return {
       appKind,
       userModel,
@@ -155,6 +172,7 @@ export async function runUniversalIntakeFunnel(params: {
       notificationChannels,
       hasStrictBusinessRules,
       source: "jev",
+      aConfirmar,
     };
   }
 
@@ -165,6 +183,16 @@ export async function runUniversalIntakeFunnel(params: {
   const hasMail = /email|e-mail/i.test(lower);
   const hasWl = /whitelabel|white-label|personaliz/i.test(lower);
   const hasApi = /api|integra[çc][aã]o via api/i.test(lower);
+
+  const fallbackAConfirmar = [
+    "has_database",
+    "has_auth",
+    "has_financial_payments",
+    "has_external_comms",
+    "has_public_api",
+    "has_whitelabel",
+    "has_strict_business_rules",
+  ];
 
   return {
     appKind: "web_fullstack",
@@ -180,6 +208,7 @@ export async function runUniversalIntakeFunnel(params: {
     notificationChannels: hasWpp && hasMail ? "whatsapp_and_email" : hasWpp ? "whatsapp_only" : hasMail ? "email_only" : "none",
     hasStrictBusinessRules: true,
     source: "fallback",
+    aConfirmar: fallbackAConfirmar,
   };
 }
 
@@ -190,13 +219,57 @@ export async function runUniversalIntakeFunnel(params: {
 export function formatIntakeFunnelBrief(funnel: IntakeFunnelResult): string {
   const lines: string[] = [
     "📋 [DIRETRIZES TÉCNICAS E DE NEGÓCIO IDENTIFICADAS PELO JEV — INCLUSÃO OBRIGATÓRIA NA SPEC]:",
-    `- Arquitetura do Software: ${funnel.appKind.replace(/_/g, " ").toUpperCase()}`,
-    `- Modelo de Acesso: ${funnel.userModel.replace(/_/g, " ").toUpperCase()}`,
-    `- Banco de Dados: ${funnel.hasDatabase ? "OBRIGATÓRIO (modelar schema Prisma e entidades relacionais)" : "Não requerido"}`,
-    `- Autenticação: ${funnel.hasAuth ? "OBRIGATÓRIA (modelar rotas de login/sessão e proteção de dashboard)" : "Opcional/Pública"}`,
   ];
 
-  if (funnel.hasFinancialPayments) {
+  if (funnel.source === "fallback") {
+    lines.push("- Estimativa por palavras-chave (o Jev não respondeu).");
+  }
+
+  const aConf = new Set(funnel.aConfirmar ?? []);
+  if (aConf.size > 0) {
+    lines.push(
+      "- ATENÇÃO: os itens abaixo marcados [A CONFIRMAR] não são requisito; viram pergunta objetiva na seção 7 (Dúvidas em aberto) da Spec."
+    );
+  }
+
+  // 1. Arquitetura do Software (app_kind)
+  if (aConf.has("app_kind")) {
+    lines.push("- Arquitetura do Software: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)");
+  } else {
+    lines.push(`- Arquitetura do Software: ${funnel.appKind.replace(/_/g, " ").toUpperCase()}`);
+  }
+
+  // 2. Modelo de Acesso (user_model)
+  if (aConf.has("user_model")) {
+    lines.push("- Modelo de Acesso: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)");
+  } else {
+    lines.push(`- Modelo de Acesso: ${funnel.userModel.replace(/_/g, " ").toUpperCase()}`);
+  }
+
+  // 3. Banco de Dados (has_database)
+  if (aConf.has("has_database")) {
+    lines.push("- Banco de Dados: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)");
+  } else {
+    lines.push(
+      `- Banco de Dados: ${funnel.hasDatabase ? "OBRIGATÓRIO (modelar schema Prisma e entidades relacionais)" : "Não requerido"}`
+    );
+  }
+
+  // 4. Autenticação (has_auth)
+  if (aConf.has("has_auth")) {
+    lines.push("- Autenticação: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)");
+  } else {
+    lines.push(
+      `- Autenticação: ${funnel.hasAuth ? "OBRIGATÓRIA (modelar rotas de login/sessão e proteção de dashboard)" : "Opcional/Pública"}`
+    );
+  }
+
+  // 5. Módulo Financeiro/Cobrança (has_financial_payments)
+  if (aConf.has("has_financial_payments")) {
+    lines.push(
+      "- Módulo Financeiro/Cobrança: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)"
+    );
+  } else if (funnel.hasFinancialPayments) {
     lines.push(
       "- Módulo Financeiro/Cobrança: MANDATÓRIO (modelar integração Asaas/Gateway, rotas de cobrança, checkout e webhooks)"
     );
@@ -207,19 +280,34 @@ export function formatIntakeFunnelBrief(funnel: IntakeFunnelResult): string {
     }
   }
 
-  if (funnel.hasWhitelabel) {
+  // 6. Customização Whitelabel (has_whitelabel)
+  if (aConf.has("has_whitelabel")) {
+    lines.push(
+      "- Customização Whitelabel: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)"
+    );
+  } else if (funnel.hasWhitelabel) {
     lines.push(
       "- Customização Whitelabel: MANDATÓRIA (modelar entidade WhitelabelConfig com logo, cores primária/secundária e marca por lojista para aplicação no checkout público)"
     );
   }
 
-  if (funnel.hasExternalComms) {
+  // 7. Canais de Notificação de Comprovante (has_external_comms / notification_channels)
+  if (aConf.has("has_external_comms") || aConf.has("notification_channels")) {
+    lines.push(
+      "- Canais de Notificação de Comprovante: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)"
+    );
+  } else if (funnel.hasExternalComms) {
     lines.push(
       `- Canais de Notificação de Comprovante: MANDATÓRIO (${funnel.notificationChannels.replace(/_/g, " ").toUpperCase()}) (modelar serviço de envio de comprovantes por e-mail e/ou WhatsApp com tratamento de falhas)`
     );
   }
 
-  if (funnel.hasPublicApi) {
+  // 8. API Pública para Terceiros (has_public_api)
+  if (aConf.has("has_public_api")) {
+    lines.push(
+      "- API Pública para Terceiros: [A CONFIRMAR] (o Jev não tem certeza — perguntar ao usuário)"
+    );
+  } else if (funnel.hasPublicApi) {
     lines.push(
       "- API Pública para Terceiros: MANDATÓRIA (modelar endpoints v1 protegidos por API Key para lojas e plataformas externas criarem cobranças)"
     );
