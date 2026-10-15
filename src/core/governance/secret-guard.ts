@@ -346,3 +346,26 @@ export async function redactSecretsInChatWithJev(params: {
     candidatos,
   };
 }
+
+/**
+ * Mascara segredos antes do envio ao Jev (Regra 7 de segurança).
+ * Troca todas as ocorrências de cada valor de segredo identificado pela descrição de describeSecretShape.
+ */
+export function maskSecretsForJev(text: string): { text: string; count: number } {
+  const candidates = findSecretCandidatesInText("jev_state", text);
+  let masked = text;
+  const uniqueSecrets = new Set<string>();
+  for (const c of candidates) {
+    if (c.valorSegredo) {
+      uniqueSecrets.add(c.valorSegredo);
+    }
+  }
+  for (const valor of uniqueSecrets) {
+    const shape = describeSecretShape(valor);
+    masked = masked.split(valor).join(shape);
+  }
+  return {
+    text: masked,
+    count: uniqueSecrets.size,
+  };
+}

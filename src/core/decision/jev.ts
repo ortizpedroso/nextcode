@@ -14,6 +14,7 @@ import { readSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { globalJevCache } from "@/core/decision/jev-cache";
+import { maskSecretsForJev } from "@/core/governance/secret-guard";
 
 export const JEV_MODEL = "jev-1.13.0"; // versão fixa (arquitetura: nunca jev-latest)
 export const JEV_INPUT_PRICE_PER_MILLION_USD = 0.042; // US$ 0,042 por 1M tokens de entrada (saída grátis)
@@ -85,13 +86,35 @@ async function postJev(
   purpose?: string,
   sessionId?: string | null
 ): Promise<Response> {
+  let effectiveBody = body;
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "state" in body &&
+    typeof (body as { state?: unknown }).state === "string"
+  ) {
+    const rawState = (body as { state: string }).state;
+    const masked = maskSecretsForJev(rawState);
+    if (masked.count > 0) {
+      effectiveBody = {
+        ...(body as Record<string, unknown>),
+        state: masked.text,
+      };
+      TelemetryLogger.log({
+        sessionId: sessionId ?? undefined,
+        action: "JEV_STATE_MASKED",
+        details: { purpose, count: masked.count },
+      });
+    }
+  }
+
   let lastRes!: Response;
   for (let attempt = 1; attempt <= 3; attempt++) {
     const timeout = AbortSignal.timeout(jevTimeoutMs());
     const res = await safeFetch(jevUrl(), {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(effectiveBody),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     lastRes = res;
