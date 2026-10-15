@@ -1,3 +1,12 @@
+## 14/10/2026 (41) — P5: parada correta no P5.4; conferência entra em sombra
+
+**Feito pelo Antigravity:** P5.1 `76da16f` (máscara de segredo em `postJev`), P5.2 `6e6e267` (M0 com conversa inteira, 10 s, incerteza → pergunta), P5.3 `7505dd3` (M2 vira aviso). Auditoria completa no fim do pacote.
+**Parada no P5.4 (correta, item 6):** com `conferencia_entrada: ativo`, 9 arquivos / 32 testes quebram: 8 usam Spec sem frontmatter (formato antigo) que o `approveSpecAndStart` aceita hoje mas a conferência reprova ("Frontmatter YAML da Spec inválido ou ausente"); 1 é o `toEqual` de `jevExecucao` (`tests/harness/orchestration-policy-and-skills.test.ts:47`). Código do P5.4 conferido: posição certa (antes de `// 3. Aplica SPEC_APROVADA`).
+**Decisão do auditor:** `conferencia_entrada: sombra` (mesmo padrão da `auditoria_entrega`). Motivo: Spec no formato antigo (ex.: Gateway, `docs/specs/gatway-system-spec.md`) seria recusada em produção — ligar em `ativo` agora quebraria o que funciona. Em sombra a trilha registra `CONFERENCIA_ENTRADA` em toda aprovação; passa a `ativo` depois de medir com Specs reais (passo a medir junto com J3/J4). Autorizado só: YAML `sombra` e acrescentar `conferenciaEntrada: "sombra"` no `toEqual` da linha 47 (nenhum outro teste alterado).
+**Próximo passo:** Antigravity conclui P5.4 + relatório → auditoria do P5.
+
+---
+
 ## 14/10/2026 (40) — P5 registrado e prompt escrito
 
 **Registro antes de implantar:** referência §5.5 (parágrafo P5), `memory/decisoes.md` (14/10). Prompt `docs/prompts/P5-entrada-como-pensada.md`: P5.1 máscara de segredos em `postJev` (Regra 7); P5.2 M0 com conversa inteira, 10 s, incerteza → pergunta; P5.3 M2 vira aviso ao usuário; P5.4 conferência Macrobrief × Spec em `approveSpecAndStart` com interruptor `conferencia_entrada: ativo`.
