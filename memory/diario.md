@@ -1,3 +1,13 @@
+## 15/10/2026 (47) — Testes pedidos pelo fundador: sondas, B0 e Spec DeepSeek × Claude (nada de código alterado)
+
+**Fundador:** "primeiro vamos fazer os testes… testar se o Claude é mais poderoso… não mexa em nada, agora somente testes"; os dois provedores têm crédito.
+**Resultado:** F1 ✅ (sondas 200); **B0 ✅** (P1–P4 ENTREGUE 100%, `2026-10-15-1927`) — porta da E0 cumprida. Spec: números em `medicoes.md` 15/10. Achado novo: o teto de 8.192 tokens do chat corta a Spec do Gateway em todos os modelos. Opus foi o único a acertar a regra de taxas do fundador (10/10 valores), a US$ 0,63 por Spec contra US$ 0,049 do DeepSeek.
+**Confirmado no código e na trilha:** hoje o elicitador (chat, tier `heavy`) e o executor usam `deepseek-v4-pro` (309 chamadas `freellmapi/deepseek-v4-pro` + 31 `deepseek` direto na trilha); o avaliador é Nemotron (22) → DeepSeek (2); Claude nunca foi usado. Testes feitos por scripts no scratchpad (fora do repositório); só os relatórios do bench entram.
+**Não testado:** Claude como executor — exige mudar `modelo_pago_forte` ou criar variante no bench (mexer no código/config) → pede autorização do fundador.
+**Próximo passo:** fundador decide (Claude no elicitador? teto de tokens? teste do executor com Claude?) e aprova a §5.0.
+
+---
+
 ## 15/10/2026 (46) — Auditoria do P5.5b: aceito; linha P5.5 da §5.0 fechada
 
 **Conferido:** `cde4b47` + relatório `d7a95a3`; reflog limpo; escopo = 3 arquivos permitidos; diff só em `maskPlainForJev`/`maskSecretsForJev`; eu rodei tsc 0 e vitest 121 arquivos / 782 testes verdes.

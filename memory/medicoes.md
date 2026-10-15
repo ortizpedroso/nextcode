@@ -130,3 +130,23 @@ por erro **do auditor** na base. Corrigido; execução do auditor: P4 padrão �
 **Leitura:** (1) teto de novo: 100% de aceite em tudo — o NextCode acerta login com segurança (hash, token, 401 igual, logout). (2) Executor
 **mais caro com Jev** nas 3 repetições pareadas (+0,014 · +0,010 · +0,009), mas as faixas se sobrepõem (n=3) → indício, não prova, de que a
 escolha de modelo do Jev não economiza. (3) Nemotron poupa ~US$ 0,03 de avaliador por execução; custa ~100 s a mais.
+
+## 15/10 — Sondas, B0 e Spec DeepSeek × Claude (auditor; nenhum código alterado)
+**Sondas (8 tokens):** FreeLLMAPI `deepseek-v4-pro` 200 (3,5 s, `custom/`), `deepseek-flash` 200; Anthropic direto `claude-sonnet-4-5-20250929`, `claude-opus-5-5`, `claude-sonnet-5-5` 200. O 429 de 13/10 passou.
+**B0 — bench P1–P4, padrão, 1 rep (`docs/relatorios/bench/2026-10-15-1927.md`):** todas ENTREGUE, aceite 100%: P1 10/10 US$ 0,0258 277 s · P2 13/13 US$ 0,1242 975 s (tela ok) · P3 12/12 US$ 0,0598 431 s · P4 12/12 US$ 0,0273 304 s. tsc 0 em todas; avaliador Nemotron (P2 também DeepSeek). 1ª entrega de ponta a ponta desde 09/10.
+**Spec com a mesma conversa e o mesmo pipeline do chat (peneira M0 + prompt do chat + guarda + auto-cura + M2 + conferência):**
+
+| pedido | teto | modelo | Spec válida | REQ | correções automáticas | M2 clareza (0–3) | custo US$ | tempo |
+|---|---|---|---|---|---|---|---|---|
+| Gateway (3 msgs reais) | 8192 (o de produção) | DeepSeek v4-pro | 1 de 2 (a válida com 0 REQ; a outra entrou em repetição) | 0 | — | 0,05 | 0,036 | 53–60 s |
+| Gateway | 8192 | Claude Sonnet 5.5 | 0 de 2 (6.210 dos 8.192 tokens gastos raciocinando; texto cortado) | — | — | — | 0,089 | 57 s |
+| Gateway | 8192 | Claude Opus 5.5 | 0 de 2 (cortado) | — | — | — | 0,178 | 72–75 s |
+| Gateway | 32000 | DeepSeek v4-pro | sim | 18 | 4 | 1,73 | 0,049 | 73 s |
+| Gateway | 32000 | Claude Sonnet 5.5 | sim (bateu o teto de 32k) | 71 | 57 | 1,43 | 0,327 | 199 s |
+| Gateway | 32000 | Claude Opus 5.5 | sim | 41 | 0 | 1,45 | 0,627 | 244 s |
+| Login (1 msg) | 8192 | DeepSeek v4-pro | 2 de 2 (rep 1 com 0 REQ, bateu o teto) | 0 · 8 | 1 · 0 | 2,33 · 2,30 | 0,034 · 0,027 | 48–63 s |
+| Login | 8192 | Claude Sonnet 5.5 | 2 de 2 | 14 · 16 | 1 · 1 | 2,60 · 2,57 | 0,062 · 0,067 | 35–40 s |
+| Login | 8192 | Claude Opus 5.5 | 2 de 2 | 17 · 15 | 0 · 0 | 2,84 · 2,70 | 0,151 · 0,135 | 51–58 s |
+
+**Regra de negócio explícita do fundador (taxas Asaas +1 ponto percentual e +R$ 0,49; antecipação sem mudança), Specs do Gateway com teto 32k:** Opus 10/10 valores calculados certos (3,99%+R$0,98; 4,49%; 4,99%; 5,29%; débito 2,89%+R$0,84; voucher 4,59%; Pix/boleto R$2,48; antecipação mantida); Sonnet escreveu a regra ("+1 ponto percentual e +R$ 0,49") sem a tabela; **DeepSeek só "markup", sem os números da regra**. Os 13 itens pedidos na conversa (whitelabel, painel, inadimplentes, API, link, checkout, comprovante, WhatsApp, chaves Asaas, financeiro dono×cliente, split, taxa, antecipação): Opus 13/13, DeepSeek 13/13 por palavra-chave, Sonnet 12/13.
+**Leitura:** (1) o teto de 8.192 tokens do chat (`route.ts:~695`) corta a Spec do Gateway em **todos** os modelos — defeito do NextCode, não do modelo; (2) M2 não separa os modelos no Gateway (1,4–1,7 para todos) e a conferência reprova todas com 1–2 problemas → M2 e conferência ainda não servem de régua para escolher modelo; (3) Opus foi o único a transformar a regra do fundador em valores certos, a 12,8× o custo do DeepSeek (US$ 0,63 × 0,049 por Spec — custo de uma vez por projeto); (4) n pequeno (1–2 por célula): indício forte no Gateway, não prova estatística.
