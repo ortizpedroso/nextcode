@@ -347,25 +347,97 @@ export async function redactSecretsInChatWithJev(params: {
   };
 }
 
+const JEV_ASAAS_KEY_RE = /\$aact_[A-Za-z0-9_$:=+\/\-]{16,}/g;
+const JEV_UNQUOTED_ASSIGNMENT_RE =
+  /\b[A-Za-z0-9_]*(?:key|secret|token|password|senha|apikey)[A-Za-z0-9_]*\s*[:=]\s*([^\s"'`,;]{16,})/gi;
+
+function isJevPlaceholderValue(value: string, surroundingLine: string): boolean {
+  if (isPlaceholderValue(value, surroundingLine)) return true;
+  if (/your[-_]?(?:api[-_]?)?(?:key|secret|token)/i.test(value)) return true;
+  return false;
+}
+
+function collectJevSecretValues(text: string, out: Set<string>): void {
+  const candidates = findSecretCandidatesInText("jev_state", text);
+  for (const c of candidates) {
+    if (c.valorSegredo) {
+      out.add(c.valorSegredo);
+    }
+  }
+
+  const asaasMatches = text.match(new RegExp(JEV_ASAAS_KEY_RE.source, "g"));
+  if (asaasMatches) {
+    for (const m of asaasMatches) {
+      out.add(m);
+    }
+  }
+
+  const unquotedRe = new RegExp(JEV_UNQUOTED_ASSIGNMENT_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = unquotedRe.exec(text)) !== null) {
+    const valor = m[1];
+    if (valor) {
+      const idx = m.index;
+      const lineStart = text.lastIndexOf("\n", idx) + 1;
+      let lineEnd = text.indexOf("\n", idx);
+      if (lineEnd === -1) lineEnd = text.length;
+      const surroundingLine = text.slice(lineStart, lineEnd);
+      if (isHighEntropySecretLiteral(valor) && !isJevPlaceholderValue(valor, surroundingLine)) {
+        out.add(valor);
+      }
+    }
+  }
+}
+
+function maskPlainForJev(text: string, found: Set<string>): string {
+  collectJevSecretValues(text, found);
+  let masked = text;
+  const sortedValues = Array.from(found).sort((a, b) => b.length - a.length);
+  for (const valor of sortedValues) {
+    const shape = describeSecretShape(valor);
+    masked = masked.split(valor).join(shape);
+  }
+  return masked;
+}
+
 /**
  * Mascara segredos antes do envio ao Jev (Regra 7 de segurança).
  * Troca todas as ocorrências de cada valor de segredo identificado pela descrição de describeSecretShape.
  */
 export function maskSecretsForJev(text: string): { text: string; count: number } {
-  const candidates = findSecretCandidatesInText("jev_state", text);
-  let masked = text;
-  const uniqueSecrets = new Set<string>();
-  for (const c of candidates) {
-    if (c.valorSegredo) {
-      uniqueSecrets.add(c.valorSegredo);
+  const found = new Set<string>();
+
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed !== null && typeof parsed === "object") {
+      function walk(node: unknown): unknown {
+        if (typeof node === "string") {
+          return maskPlainForJev(node, found);
+        }
+        if (Array.isArray(node)) {
+          return node.map(walk);
+        }
+        if (node !== null && typeof node === "object") {
+          const obj = node as Record<string, unknown>;
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(obj)) {
+            out[k] = walk(v);
+          }
+          return out;
+        }
+        return node;
+      }
+
+      const result = walk(parsed);
+      if (found.size === 0) {
+        return { text, count: 0 };
+      }
+      return { text: JSON.stringify(result), count: found.size };
     }
+  } catch {
+    // Não é JSON ou falhou no parse
   }
-  for (const valor of uniqueSecrets) {
-    const shape = describeSecretShape(valor);
-    masked = masked.split(valor).join(shape);
-  }
-  return {
-    text: masked,
-    count: uniqueSecrets.size,
-  };
+
+  const masked = maskPlainForJev(text, found);
+  return { text: found.size === 0 ? text : masked, count: found.size };
 }
