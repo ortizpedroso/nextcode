@@ -1,3 +1,11 @@
+## 15/10/2026 (44) — Cronograma único (§5.0), proposta ao fundador
+
+**Pedido do fundador:** parar de criar lista nova a cada revisão; um objetivo só; mudança de direção com critério e documentada; visão de ponta a ponta; onde o Jev brilha; cronograma definitivo e checklist.
+**Feito:** referência §5.0 "Cronograma único de implantação" — etapas E0–E6, cada linha com o código de origem (P*, J*, O*, T), status e porta (critério medível); regras de controle de mudança; registro "Mudanças do cronograma" com 4 mudanças propostas (B0, J2.7 com J2b, Gate 1 antes de P6, P5b dividido), cada uma com motivo e evidência. Nada de código alterado.
+**Aguarda:** aprovação do fundador da §5.0 e das 4 mudanças; cota do provedor (F1) para o B0.
+
+---
+
 ## 15/10/2026 (43) — Relatório de situação ao fundador (feito × falta) e recomendação B0
 
 **Achado central:** a última entrega de ponta a ponta provada é de 09/10 (bench P1–P4 100% de aceite, 12/12 no P3/P4). Desde 12/10 todas as rodadas do bench falharam: `2026-10-12-2116` P3 BLOQUEADA 0/12; `2026-10-13-0552` P3 PAUSADA 0/12 (FreeLLMAPI 429). Desde então: 67 commits, só testes unitários (suíte 772 verdes), nenhuma prova real.

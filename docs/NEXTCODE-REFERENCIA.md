@@ -272,6 +272,57 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 
 ## 5. Plano de ação v2 — "Jev máximo" (📝 proposta de 08/10/2026, aguarda aprovação)
 
+### 5.0 Cronograma único de implantação (📝 proposta de 15/10, aguarda aprovação do fundador)
+
+**Por que esta seção existe.** Até 15/10 a ordem do trabalho estava espalhada em §5.3 (P0–P10), §5.5 (Plano J), no diário e em listas novas a cada revisão, sem ligação entre si — causa de retrabalho (ex.: J2.3 levou a entrega reprovada para `BLOQUEADA` sem reusar o reparo `359e06b`; I1 refez o mapa do que existia). **A partir da aprovação, esta é a única lista de ordem.** §5.3, §5.5 e §4.4 continuam como detalhe e histórico, e **todo item aqui usa o mesmo código que já tinha lá** (P*, J*, O*, T).
+
+**Regras de controle de mudança (obrigatórias):**
+1. Nenhum item novo, troca de ordem ou corte entra sem uma linha em "Mudanças do cronograma" (fim desta seção): data, o que muda, motivo, **evidência** (número, relatório ou `arquivo:linha`) e aprovação do fundador.
+2. Uma etapa só começa quando a **porta** da anterior estiver cumprida, com a prova anotada aqui.
+3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
+4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
+
+**Fluxo de ponta a ponta (o que precisa existir para o NextCode funcionar):**
+pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + **conferência** Spec × plano (T8) → **planejamento** (Microbriefs por cluster) → **execução** em quarentena → **avaliação** cega por REQ (2 lentes) → **entrega** (T10) ou **reparo** → **medição** (bench) → **Gateway** (projeto real).
+
+**Onde o Jev brilha (documentação oficial, §4.1–4.3, + o que já medimos):**
+- **Brilha em pergunta estreita sobre um dado apontado:** verificação de citação/evidência por REQ (R16), guardrail (R17), classificação com confiança (R2/R7), achar o trecho certo num arquivo grande (R12/R13), roteamento por dificuldade (página *use-case map*: "model routing", "universal verification", "harness engineering"). **Medido:** perguntas por REQ separam certo de errado — requisitos 0,92 × 0,06 (J1, `medicoes.md` 13/10); a evidência pegou citação errada do executor no P1 real (0,81 × 0,94).
+- **Falha em pergunta larga e vaga:** "o projeto tem stub?", "o projeto é seguro?" não separam (0,45 × 0,46 e 0,38 × 0,37, J1). Regra: no NextCode o Jev só recebe pergunta atômica sobre um campo nomeado.
+- **Não provado:** economia na escolha de modelo (executor +US$ 0,009 a 0,014 com Jev no P3, n=3; P1 dentro do ruído — `medicoes.md` 09/10). Fica em medição no J4; não se amplia antes.
+- **Não usa:** gerar texto/código, contar, datas, única defesa contra injeção (§4.5).
+
+| Etapa | Item (código de origem) | O quê | Status | Prova / porta |
+|---|---|---|---|---|
+| **E0 — Base segura** | P0, P1, P2, P2b, P3, R1, S1, C1, D1, J1, J2, I1 | fundação, bench, modelos, correções da fase sem auditor, nenhuma parada silenciosa, inventário | ✅ | §3.2b, §9; suíte 119/772 verde (15/10) |
+| E0 | P5.1–P5.4 | máscara antes do Jev; M0 com conversa inteira e incerteza → pergunta; M2 aviso; conferência na aprovação (sombra) | ✅ | `76da16f` `6e6e267` `7505dd3` `5b2f7aa` (auditado 15/10) |
+| E0 | **P5.5** | máscara cobre JSON, `NOME=valor` sem aspas e chave Asaas | 🔄 Antigravity | porta: sonda do auditor com chave falsa → nenhum vazamento |
+| E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ⬜ bloqueio externo | porta: 1 chamada paga de executor e de avaliador responde |
+| E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ⬜ | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
+| **E1 — Fim do fluxo que se conserta** | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
+| E1 | **J3** (§5.5) | perguntas da auditoria final atômicas (1 por REQ; stub e segurança por arquivo, sentido certo), medidas em 4 controles | ⬜ | porta: P1 correto aprovado 5/5; cada controle reprovado pela pergunta do seu defeito |
+| E1 | **J4** (§5.5) | auditoria final volta a `ativo`; remedição com Jev × sem Jev (P1–P3, 3×) | ⬜ | porta: nenhum falso negativo; custo e qualidade com × sem Jev registrados em `medicoes.md` |
+| **E2 — Entrada completa** | P5.4 → `ativo` | conferência Spec × plano passa a bloquear | ⬜ | porta: ≥ 5 aprovações reais com `CONFERENCIA_ENTRADA` e 0 reprovação indevida |
+| E2 | **J11** (§4.4) | cada REQ rastreado ao que o usuário pediu (nenhum inventado) — verificação de citação | ⬜ | porta: controle com REQ inventado reprovado; Spec correta aprovada |
+| E2 | **J7, J8, J9** (§4.4; P5b) | perfil leigo/engenheiro; lacunas obrigatórias (base: M0); tipo/stack | 🌓 J8/J9 parciais (M0) | porta: Specs do P1–P4 e do Gateway sem lacuna obrigatória faltando |
+| E2 | **P8 + O1/O4** (§5.3) | pesquisa oficial T7 (J12, J13) e só então a skill `elicitador` conduz o chat (ela exige `fetch_official_docs_t7`) | ⬜ | porta: pergunta real com fonte oficial citada; nenhuma pesquisa sem T7 |
+| **E3 — Projeto real** | **P10 Gate 1** (§5.3) | Spec do Gateway reescrita pelo chat (formato novo) e 1º Gate entregue | ⬜ | porta: build + aceite escrito pelo auditor. **Serve também de régua difícil** (P1–P4 dão 100% em tudo: efeito teto, não medem ganho) |
+| **E4 — Execução assertiva (guiada pelas falhas do Gate 1)** | **P6** (J18, J19, J20) | contexto certo por linha/re-ranking; skill certa; injeção em arquivo lido | ⬜ | porta: no Gate seguinte, aprovação na 1ª sobe ou tokens por REQ caem, sem piorar o outro |
+| E4 | **J23 → ativo** | evidência por REQ deixa de ser sombra | ⬜ | porta: divergências da trilha conferidas pelo auditor; 0 bloqueio indevido |
+| E4 | **O3, J15, J16** | skill `analista` faz os Microbriefs (hoje `spec-decomposer.ts`, por código) | ⬜ | porta: divisão do Gate igual ou melhor que a do código no bench |
+| **E5 — Autoteste** | **T** (§5.5) | testes escritos do Microbrief sem ver o código; avaliador cego aos testes | ⬜ | depende das decisões §6 itens 6–7; porta: P1 ref passa, P4 pega os 3 bugs |
+| **E6 — Operação e demais Gates** | **P7** (O6, O7) | supervisor periódico (vigia do J2.6 já cobre parte); interface só observa | ⬜ | porta: worker morto detectado; aprovar → 1 DAG |
+| E6 | §3.2 segurança de infra | HTTPS local, `npm audit`/Trivy no CI, OmniRoute com versão fixa | ⬜ | porta: CI verde com as checagens |
+| E6 | **P9** (J26, R10) | aprendizado com a trilha | ⬜ | porta: só com ≥ 3 Gates entregues (dados suficientes) |
+| E6 | **P10 Gates 2…n** | Gateway completo | ⬜ | porta: cada Gate com build + aceite |
+
+**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`).
+
+**Mudanças do cronograma** (data · mudança · motivo · evidência · aprovação):
+1. 15/10 · **B0** criado antes do J2b · J2b tem de ser "medido no bench" (§5.5) e nenhuma rodada entrega desde 12/10 · `docs/relatorios/bench/2026-10-12-2116.md` (P3 BLOQUEADA 0/12), `2026-10-13-0552.md` (P3 PAUSADA 0/12) · aguarda
+2. 15/10 · **J2.7 junto com o J2b** · os dois mexem em `phase-machine.ts`; separados, um desfaz o outro · `docs/prompts/J2.7-teste-estrutural-completo.md` · aguarda
+3. 15/10 · **P10 Gate 1 antes de P6** · P1–P4 têm efeito teto (100% em todas as variantes) e não medem ganho do P6 · `medicoes.md` 09/10 · aguarda
+4. 15/10 · **P5b dividido** (J7/J8/J9/J11 na E2; skill `elicitador` só com P8) · a skill exige uma ferramenta que o chat não tem; sem ela o modelo inventa pesquisa · `skills/elicitador/SKILL.md` (`fetch_official_docs_t7`) · aguarda
+
 ### 5.1 Diretrizes do fundador (08/10) que guiam o plano
 
 1. **Usar tudo o que o Jev oferece** onde ele é bom: **orquestração e decisão**.
