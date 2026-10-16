@@ -103,7 +103,32 @@ Testes: `tests/intake/aprovacao-sem-projeto.test.ts`.
 
 **Verificação final:** `npx tsc --noEmit` → 0; `npx vitest run` → 124 arquivos, 804 testes verdes.
 
-**Prova R1 (`git diff --stat ba9f111..HEAD`):** ver commit de fechamento.
+**Prova R1 (`git diff --stat 9d8cba8..bc65639`, commits desta tarefa após T-A):**
+
+```
+ docs/relatorios/B1c-PJ1.md                       | 110 +++
+ docs/relatorios/bench/2026-10-16-1822.md         |  74 +++
+ docs/relatorios/bench/2026-10-16-1822.yaml       | 399 ++++++++++++
+ memory/medicoes.md                               |  12 +
+ scripts/bench.ts                                 |  37 +-
+ src/app/api/chat/route.ts                        |  35 +
+ src/app/api/projects/[id]/route.ts               |  5 +-
+ src/app/api/projects/route.ts                    |  34 +
+ src/app/api/sessions/[id]/route.ts               |  25 +
+ src/app/page.tsx                                 |  7 +-
+ src/components/layout/sidebar.tsx                |  46 +-
+ src/components/projects/project-actions-menu.tsx |  35 +-
+ src/core/llm/evaluator-models.ts                 |  83 ++-
+ tests/api/projects-delete.test.ts                |  29 +-
+ tests/api/projects-open-existing.test.ts         |  93 +++
+ tests/bench/bench-relatorio.test.ts              | 120 +++-
+ tests/intake/aprovacao-sem-projeto.test.ts       | 140 +++++
+ tests/llm/evaluator-freellmapi.test.ts           |  87 +++
+ tests/orchestrator/execution-trigger.test.ts     |  13 +
+ 19 files changed, 1332 insertions(+), 48 deletions(-)
+```
+
+*(Entre T-A e o 1º commit B1c houve `391e553` e `9d8cba8` em docs proibidos ao agente — fora desta tarefa.)*
 
 **Próximo passo sugerido:** B1b (reordenar `EVALUATOR_CHAIN` em produção) após auditoria deste relatório.
 
