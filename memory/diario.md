@@ -1,3 +1,13 @@
+## 16/10/2026 (82) — Spec revisada do teste real (2 rodadas de correção): falta 1 item que bloqueia
+
+**Trilha:** 2 correções do fundador → 2 chamadas Opus (US$ 0,472 e 0,480; 129 s e 127 s); Spec total do teste US$ 1,40; 38.315 caracteres; 43 REQ; `CONFERENCIA_T8A_OK` nas 3 versões; M2 clareza 2,01 → 1,79. 0 segredo.
+**Atendido:** data 2026-10-16; só PIX/boleto em enums, validação, telas e API (CARTAO rejeitado com 422); cartão próxima versão pela infraestrutura do Asaas, sem dado de cartão no servidor; REQ-043 limite de requisições com números e 429 + cabeçalhos; webhook fora do limite (certo); 4 dúvidas viraram DECISÃO; "PENDÊNCIA DE DOCUMENTAÇÃO" — sem pesquisa, não inventou (certo).
+**🔴 Não atendido (pedido explícito, 2×):** `.env.example` continua fora de `arquivos_afetados` e do módulo `fundacao` → REQ-003 sem etapa que possa gravá-lo → reprovação garantida e risco de BLOQUEADA na fundação. Prova forte para a conferência mecânica (o Opus ignorou instrução explícita e a T8a aprovou 3×).
+**Menores:** linha do WhatsApp duplicada em `stack`; "antiga DÚVIDA 1" rotulada errado (era sobre WhatsApp).
+**Próximo passo:** 1 correção curta só do `.env.example`, conferir, aprovar.
+
+---
+
 ## 16/10/2026 (81) — Diagnóstico: como evitar os erros da Spec; pesquisa T7 existe mas não está ligada
 
 **Fundador:** vai responder cada ponto e passar o teste; quer evitar os erros ("o Opus deveria corrigir"); acha que a pesquisa em fontes oficiais já estava implementada. Pediu só diagnóstico, nada alterado.
