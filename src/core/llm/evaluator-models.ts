@@ -44,6 +44,58 @@ export function resetEvaluatorState(): void {
   activeClaudeModel = null;
 }
 
+type AnthropicMessageJson = {
+  content?: { type: string; text?: string }[];
+  stop_reason?: string;
+  usage?: { input_tokens?: number; output_tokens?: number };
+};
+
+async function parseAnthropicDirectMessageResponse(
+  antRes: Response,
+  anthropicModel: string,
+  executorFamily: EvaluatorProvider,
+  failures: string[]
+): Promise<EvaluatorCallResult | null> {
+  if (!antRes.ok) {
+    const errJson = (await antRes.json().catch(() => ({}))) as {
+      error?: { type?: string; message?: string };
+    };
+    const errType = errJson?.error?.type ?? "?";
+    const errMsg = String(errJson?.error?.message ?? "").slice(0, 200);
+    failures.push(`claude/direct: HTTP ${antRes.status} ${errType}: ${errMsg}`);
+    return null;
+  }
+
+  const antJson = (await antRes.json().catch(() => ({}))) as AnthropicMessageJson;
+  const blocks = antJson.content ?? [];
+  const blockTypes = blocks.map((b) => b.type);
+  const text = blocks
+    .filter((b) => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("");
+
+  if (text.trim()) {
+    return {
+      content: text,
+      provider: "claude",
+      model: anthropicModel,
+      independent: executorFamily !== "claude",
+      failures,
+      usage: antJson.usage
+        ? {
+            input_tokens: antJson.usage.input_tokens,
+            output_tokens: antJson.usage.output_tokens,
+          }
+        : null,
+    };
+  }
+
+  failures.push(
+    `claude/direct: sem texto (stop_reason=${antJson.stop_reason ?? "?"}; blocos=${blockTypes.join(",") || "nenhum"})`
+  );
+  return null;
+}
+
 export interface StrongEvaluatorOptions {
   timeoutMs?: number;
   executorFamily?: EvaluatorProvider;
@@ -220,29 +272,14 @@ export async function dispatchStrongEvaluator(
           }
         }
 
-        if (antRes.ok) {
-          const antJson = (await antRes.json().catch(() => ({}))) as {
-            content?: { type: string; text?: string }[];
-            usage?: { input_tokens?: number; output_tokens?: number };
-          };
-          const text = antJson.content?.[0]?.text ?? "";
-          if (text.trim()) {
-            return {
-              content: text,
-              provider: "claude",
-              model: antJson.content ? anthropicModel : "claude-direct",
-              independent: executorFamily !== "claude",
-              failures,
-              usage: antJson.usage
-                ? {
-                    input_tokens: antJson.usage.input_tokens,
-                    output_tokens: antJson.usage.output_tokens,
-                  }
-                : null,
-            };
-          }
-        } else {
-          failures.push(`claude/direct: HTTP ${antRes.status}`);
+        const directResult = await parseAnthropicDirectMessageResponse(
+          antRes,
+          anthropicModel,
+          executorFamily,
+          failures
+        );
+        if (directResult) {
+          return directResult;
         }
       }
     } catch (errDirect) {

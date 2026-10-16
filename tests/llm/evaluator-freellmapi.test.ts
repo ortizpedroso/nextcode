@@ -294,5 +294,92 @@ describe("P3.1 — Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek �
     expect(modelsUsed).toContain("claude-sonnet-4-5-20250929");
     expect(modelsUsed).toContain("claude-3-5-sonnet-latest");
   });
+
+  it("B1c.1a: bloco thinking antes de text → content concatena só text", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.includes("localhost:3100")) {
+        return new Response('{"error":{"message":"gateway offline"}}', { status: 502 });
+      }
+      if (u.includes("api.anthropic.com")) {
+        return new Response(
+          JSON.stringify({
+            content: [
+              { type: "thinking", thinking: "..." },
+              { type: "text", text: "VEREDITO" },
+            ],
+            stop_reason: "end_turn",
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      directClaudeKey: "sk-ant-test-key",
+      chain: [{ provider: "claude", model: "claude-opus-5-5", routedPrefixes: ["anthropic/"] }],
+    });
+
+    expect(res.content).toBe("VEREDITO");
+    expect(res.provider).toBe("claude");
+  });
+
+  it("B1c.1b: 200 só com bloco não-texto → content null e failure sem texto", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("localhost:3100")) {
+        return new Response('{"error":{"message":"gateway offline"}}', { status: 502 });
+      }
+      if (u.includes("api.anthropic.com")) {
+        return new Response(
+          JSON.stringify({
+            content: [{ type: "thinking", thinking: "sem text block" }],
+            stop_reason: "end_turn",
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      directClaudeKey: "sk-ant-test-key",
+      chain: [{ provider: "claude", model: "claude-opus-5-5", routedPrefixes: ["anthropic/"] }],
+    });
+
+    expect(res.content).toBeNull();
+    expect(res.failures.some((f) => f.includes("claude/direct: sem texto"))).toBe(true);
+  });
+
+  it("B1c.1c: HTTP 400 com corpo de erro → failure HTTP 400 e mensagem", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("localhost:3100")) {
+        return new Response('{"error":{"message":"gateway offline"}}', { status: 502 });
+      }
+      if (u.includes("api.anthropic.com")) {
+        return new Response(
+          JSON.stringify({
+            error: { type: "invalid_request_error", message: "model not allowed for this key" },
+          }),
+          { status: 400 }
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const res = await dispatchStrongEvaluator([{ role: "user", content: "avalie" }], {
+      loader,
+      directClaudeKey: "sk-ant-test-key",
+      chain: [{ provider: "claude", model: "claude-opus-5-5", routedPrefixes: ["anthropic/"] }],
+    });
+
+    expect(res.content).toBeNull();
+    expect(res.failures.some((f) => f.includes("claude/direct: HTTP 400"))).toBe(true);
+    expect(res.failures.some((f) => f.includes("model not allowed"))).toBe(true);
+  });
 });
 
