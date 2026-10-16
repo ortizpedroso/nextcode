@@ -1,3 +1,10 @@
+## 16/10/2026 (65) — Relatório de status: implementado vs pendente
+
+**Emitido:** `docs/relatorios/STATUS-implementacao-2026-10-16.md` (HEAD `7c564a3`) — E1 parcial fechada até Fase 8 + P5c.4; falta B1 → J2b → J3 → J4. Fundador fará auditoria desta vez por conta própria.
+**Próximo passo implementação:** 「aprovado Fase 9」 → B1.
+
+---
+
 ## 16/10/2026 (64) — Relatório consolidado de auditoria E1 Fases 1–8 (obrigatório)
 
 **Feito:** `docs/relatorios/AUDITORIA-E1-FASES-1-8-implementacao.md` — tudo implementado neste bloco (commits, arquivos, testes 792/792, smoke `c0377632`, desvios, checklist §8.5, pendências B1). Regra permanente: fim de fase → AUDITORIA + §8.4 em `CLAUDE.md` e referência §8.1.
