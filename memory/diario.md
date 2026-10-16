@@ -1,3 +1,12 @@
+## 16/10/2026 (71) — "Fechar projeto" definido; PJ1 registrado (mudança 11)
+
+**Fundador:** fechar = sai da área de trabalho do NextCode, continua na máquina.
+**Achado extra:** `POST /api/projects` não procura projeto existente pela pasta → reabrir pela mesma pasta hoje criaria duplicata e o histórico ficaria no registro escondido.
+**Registrado:** §5.0 linha **PJ1** (depois do B1, antes do B1b) + mudança 11; `decisoes.md`. Desenho: Fechar substitui Arquivar (reusa `isArchived`, sem migração); lista "Projetos fechados" + Reabrir; abrir a mesma pasta reabre; Apagar pergunta sobre a pasta; sessão sem projeto só executa vinculada.
+**Próximo passo:** relatório do B1 → auditoria → prompt PJ1.
+
+---
+
 ## 16/10/2026 (70) — Pedido do fundador: "fechar projeto" e sessões sem projeto vinculáveis depois — análise de como é hoje
 
 **Pedido:** incluir no próximo prompt (depois do relatório do B1): fechar projeto (além de apagar) e usar sessões sem projeto, vinculando depois.
