@@ -16,3 +16,16 @@ Script temporário: `%TEMP%\b1c0-sonda-opus.ts` (chave via `Setting.claudeKey` /
 **Conclusão:** causa confirmada — o 1º bloco **não** é `text` (`thinking` antes de `text`); ler só `content[0].text` devolve vazio.
 
 ---
+
+## PASSO B1c.1 — Ramo Claude direto
+
+**Commit:** `3890924` — `fix(avaliador): ramo Claude direto le blocos de texto e registra falha (B1c.1)`
+
+**Verificação:**
+
+- `npx tsc --noEmit` → 0 erros
+- `npx vitest run` → 124 arquivos, 804 testes, todos verdes (~259 s)
+
+**Desvios:** nenhum. **Não feito:** B1c.2+.
+
+---

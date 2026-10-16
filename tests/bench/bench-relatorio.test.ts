@@ -32,6 +32,8 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         jev: 0.001,
         total: 0.041,
       },
+      avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
       avaliadorServedBy: ["ollama/nemotron-3-ultra"],
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
@@ -61,6 +63,8 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         jev: 0.001,
         total: 0.048,
       },
+      avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
       avaliadorServedBy: ["ollama/nemotron-3-ultra"],
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
@@ -90,6 +94,8 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         jev: 0,
         total: 0.025,
       },
+      avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
       avaliadorServedBy: ["ollama/nemotron-3-ultra"],
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
@@ -113,7 +119,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         uiCheck: "ausente",
         aceite: { aprovados: 10, total: 10, reprovadosIds: [] },
         custo: { executor: 0.02, avaliador: 0.05, jev: 0, total: 0.07 },
-        avaliadorServedBy: ["claude-opus-5-5"],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: ["claude-opus-5-5"],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 2,
@@ -190,7 +198,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
           jev: 0,
           total: 0.02,
         },
-        avaliadorServedBy: [],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: [],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
@@ -219,7 +229,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
           jev: 0,
           total: 0.02,
         },
-        avaliadorServedBy: [],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: [],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
@@ -259,7 +271,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
           jev: 0,
           total: 0.015,
         },
-        avaliadorServedBy: [],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: [],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
@@ -300,7 +314,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
           jev: 0,
           total: 0.02,
         },
-        avaliadorServedBy: [],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: [],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
@@ -328,7 +344,9 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
           jev: 0,
           total: 0.02,
         },
-        avaliadorServedBy: [],
+        avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
+      avaliadorServedBy: [],
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
@@ -359,6 +377,8 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
       uiCheck: "ausente",
       aceite: { aprovados: 10, total: 10, reprovadosIds: [] },
       custo: { executor: 0.035, avaliador: 0.015, jev: 0.001, total: 0.051 },
+      avaliadorIndisponivel: 0,
+      avaliacoesPorProvedor: {},
       avaliadorServedBy: ["nemotron"],
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
@@ -399,6 +419,94 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
 
     expect(Number(somaExec.toFixed(4))).toBe(metricaComEtapas.custo.executor);
     expect(Number(somaEval.toFixed(4))).toBe(metricaComEtapas.custo.avaliador);
+  });
+
+  it("B1c.2a: execução com avaliadorIndisponivel > 0 marcada INVÁLIDA e fora da média", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p1",
+        variante: "avaliador-claude",
+        repeticao: 1,
+        faseFinal: "BLOQUEADA",
+        tempoSeg: 50,
+        etapas: 1,
+        aprovadasNa1a: 0,
+        tentativasTotais: 3,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: { aprovados: 1, total: 10, reprovadosIds: [] },
+        custo: { executor: 0.1, avaliador: 0, jev: 0, total: 0.1 },
+        avaliadorIndisponivel: 5,
+        avaliacoesPorProvedor: { "nenhum-pago": 5 },
+        avaliadorServedBy: [],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 1,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
+      },
+      {
+        projeto: "p1",
+        variante: "avaliador-claude",
+        repeticao: 2,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 120,
+        etapas: 3,
+        aprovadasNa1a: 3,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: { aprovados: 10, total: 10, reprovadosIds: [] },
+        custo: { executor: 0.02, avaliador: 0.05, jev: 0, total: 0.07 },
+        avaliadorIndisponivel: 0,
+        avaliacoesPorProvedor: { claude: 3 },
+        avaliadorServedBy: ["claude-opus-5-5"],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 2,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
+      },
+    ];
+
+    const md = formatarRelatorioMarkdown(mock, calcularMedias(mock), "2026-10-16-test");
+    expect(md).toContain("(INVÁLIDA: rota)");
+    expect(md).toContain("excluída(s) das médias");
+
+    const medias = calcularMedias(mock);
+    expect(medias).toHaveLength(1);
+    expect(medias[0].execucoes).toBe(1);
+    expect(medias[0].faseFinalEntreguePct).toBe(100);
+  });
+
+  it("B1c.2b: execução sem indisponibilidade permanece inalterada na média", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p2",
+        variante: "padrao",
+        repeticao: 1,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 100,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: { aprovados: 13, total: 13, reprovadosIds: [] },
+        custo: { executor: 0.05, avaliador: 0.01, jev: 0, total: 0.06 },
+        avaliadorIndisponivel: 0,
+        avaliacoesPorProvedor: { nvidia: 2 },
+        avaliadorServedBy: ["ollama/nemotron-3-ultra"],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 2,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
+      },
+    ];
+
+    const medias = calcularMedias(mock);
+    expect(medias).toHaveLength(1);
+    expect(medias[0].execucoes).toBe(1);
+    const md = formatarRelatorioMarkdown(mock, medias, "2026-10-16-test");
+    expect(md).not.toContain("(INVÁLIDA: rota)");
   });
 });
 

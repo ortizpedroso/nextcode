@@ -69,6 +69,8 @@ export interface MetricasExecucao {
   /** Teto de custo da sessão (bench B1). */
   tetoEfetivoUsd: number;
   avaliadorServedBy: string[];
+  avaliadorIndisponivel: number;
+  avaliacoesPorProvedor: Record<string, number>;
   timeoutsAvaliador: number;
   divergenciasEvidencia: number;
   jevChamadas: number;
@@ -94,8 +96,9 @@ export interface MediasVariante {
 }
 
 export function calcularMedias(metricas: MetricasExecucao[]): MediasVariante[] {
+  const metricasValidas = metricas.filter((m) => (m.avaliadorIndisponivel ?? 0) === 0);
   const grupos = new Map<string, MetricasExecucao[]>();
-  for (const m of metricas) {
+  for (const m of metricasValidas) {
     const key = `${m.projeto}::${m.variante}`;
     const list = grupos.get(key) || [];
     list.push(m);
@@ -160,19 +163,27 @@ export function formatarRelatorioMarkdown(
   linhas.push("## Tabela de Execuções");
   linhas.push("");
   linhas.push(
-    "| Projeto | Variante | Rep | Teto (US$) | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
+    "| Projeto | Variante | Rep | Teto (US$) | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Aval. indisp. | Aval. por provedor | Avaliador Models |"
   );
   linhas.push(
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   );
 
   for (const m of metricas) {
-    const faseDisplay = m.faseFinal === "ENTREGUE" ? "ENTREGUE" : `⚠️ ${m.faseFinal}`;
+    let faseDisplay = m.faseFinal === "ENTREGUE" ? "ENTREGUE" : `⚠️ ${m.faseFinal}`;
+    if ((m.avaliadorIndisponivel ?? 0) > 0) {
+      faseDisplay = `${faseDisplay} (INVÁLIDA: rota)`;
+    }
     const tscDisplay = m.tscProjeto === 0 ? "0 (ok)" : `erro (${m.tscProjeto})`;
     const aceiteDisplay = `${m.aceite.aprovados}/${m.aceite.total}`;
     const reprovadosDisplay = m.aceite.reprovadosIds.length > 0 ? m.aceite.reprovadosIds.join(", ") : "—";
     const custosDet = `${m.custo.executor.toFixed(4)} / ${m.custo.avaliador.toFixed(4)} / ${m.custo.jev.toFixed(4)}`;
     const modelsStr = Array.from(new Set(m.avaliadorServedBy)).join(", ") || "-";
+    const indispDisplay = m.avaliadorIndisponivel ?? 0;
+    const porProvDisplay =
+      Object.entries(m.avaliacoesPorProvedor ?? {})
+        .map(([k, v]) => `${k}:${v}`)
+        .join(", ") || "—";
 
     const tetoDisplay = (m.tetoEfetivoUsd ?? BENCH_TETO_PROJETO_USD).toFixed(2);
     linhas.push(
@@ -180,7 +191,15 @@ export function formatarRelatorioMarkdown(
         1
       )} | ${m.etapas} | ${m.aprovadasNa1a} | ${m.tentativasTotais} | ${tscDisplay} | ${m.uiCheck} | ${aceiteDisplay} | ${reprovadosDisplay} | ${m.custo.total.toFixed(
         4
-      )} | ${custosDet} | ${m.jevChamadas} | ${modelsStr} |`
+      )} | ${custosDet} | ${m.jevChamadas} | ${indispDisplay} | ${porProvDisplay} | ${modelsStr} |`
+    );
+  }
+
+  const execucoesExcluidasMedias = metricas.filter((m) => (m.avaliadorIndisponivel ?? 0) > 0).length;
+  if (execucoesExcluidasMedias > 0) {
+    linhas.push("");
+    linhas.push(
+      `*${execucoesExcluidasMedias} execução(ões) excluída(s) das médias por Projeto × Variante por falha de rota do avaliador (Aval. indisp. > 0).*`
     );
   }
 
@@ -552,11 +571,15 @@ async function rodarUmaExecucao(
 
   // Avaliador models e timeouts
   const evalLogs = logs.filter((l) => l.action === "EVALUATOR_MODEL");
+  const avaliadorIndisponivel = logs.filter((l) => l.action === "EVALUATOR_UNAVAILABLE").length;
   const avaliadorServedBy: string[] = [];
+  const avaliacoesPorProvedor: Record<string, number> = {};
   let timeoutsAvaliador = 0;
   for (const el of evalLogs) {
     try {
       const parsed = JSON.parse(el.details || "{}");
+      const prov = String(parsed.provider ?? "desconhecido");
+      avaliacoesPorProvedor[prov] = (avaliacoesPorProvedor[prov] ?? 0) + 1;
       if (parsed.model) avaliadorServedBy.push(parsed.model);
       const fails: string[] = parsed.failures || [];
       for (const f of fails) {
@@ -729,6 +752,8 @@ async function rodarUmaExecucao(
       total: totalCustoUsd,
     },
     avaliadorServedBy,
+    avaliadorIndisponivel,
+    avaliacoesPorProvedor,
     timeoutsAvaliador,
     divergenciasEvidencia,
     jevChamadas,
@@ -873,6 +898,8 @@ async function main() {
               total: custoDb,
             },
             avaliadorServedBy: [],
+            avaliadorIndisponivel: 0,
+            avaliacoesPorProvedor: {},
             timeoutsAvaliador: 0,
             divergenciasEvidencia: 0,
             jevChamadas: 0,
