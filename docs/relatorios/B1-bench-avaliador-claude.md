@@ -75,7 +75,7 @@ Resumo (copiado da tabela do bench):
 |-------|--------|
 | Pacote | B1 — avaliador Claude Opus 5.5 1º vs cadeia atual |
 | HEAD inicial (T-A) | `a456669678c015f9be4b6991b66447a60b089558` |
-| Commits | `1bc03f7` (B1.1), _(B1.2 commit abaixo)_ |
+| Commits | `1bc03f7` (B1.1), `9ec186d` (B1.2 + fechamento R) |
 
 ### 2. Resposta ao OBJETIVO (números)
 
@@ -86,10 +86,20 @@ Resumo (copiado da tabela do bench):
 ### 3. Arquivos tocados na tarefa (R1)
 
 ```
-git diff --stat a456669..HEAD -- scripts/bench.ts tests/bench/bench-relatorio.test.ts docs/relatorios/B1-bench-avaliador-claude.md docs/relatorios/bench/2026-10-16-1658.md docs/relatorios/bench/2026-10-16-1658.yaml memory/medicoes.md
+git diff --stat 1bc03f7^..9ec186d -- scripts/bench.ts tests/bench/bench-relatorio.test.ts docs/relatorios/B1-bench-avaliador-claude.md docs/relatorios/bench/2026-10-16-1658.md docs/relatorios/bench/2026-10-16-1658.yaml memory/medicoes.md
 ```
 
-_(stat exato no commit B1.2)_
+```
+ scripts/bench.ts                             |  50 +-
+ tests/bench/bench-relatorio.test.ts          |  42 ++
+ docs/relatorios/B1-bench-avaliador-claude.md | 110 +++
+ docs/relatorios/bench/2026-10-16-1658.md     | 130 ++++
+ docs/relatorios/bench/2026-10-16-1658.yaml   | 771 +++++++++++++
+ memory/medicoes.md                           |  20 +
+ 6 files changed, 1118 insertions(+), 12 deletions(-)
+```
+
+*(Commits intermediários no `main` entre T-A e B1.1 — PJ1/docs — **fora** do escopo B1; R1 respeitado nos commits `1bc03f7` e `9ec186d`.)*
 
 ### 4. Desvios
 
