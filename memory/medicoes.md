@@ -175,4 +175,16 @@ Rodada: `docs/relatorios/bench/2026-10-16-1658.md` · teto bench US$ 3,00/sessã
 
 Relatório completo: `docs/relatorios/B1-bench-avaliador-claude.md`.
 
+## 16/10 — B1c bench: avaliador-claude após fix ramo Anthropic direto
+Rodada: `docs/relatorios/bench/2026-10-16-1822.md` · variante `avaliador-claude` · 1 rep · P1–P4 · custo acumulado US$ 0,7804.
+
+| Projeto | Fase | Aceite | Custo total | Exec / Eval / Jev | Aval. indisp. | Aval. por provedor (trilha) |
+|---|---|---|---:|---|---:|---|
+| P1 | ENTREGUE | 10/10 | 0,1590 | 0,0302 / 0,1283 / 0,0004 | 0 | claude:2 |
+| P2 | ENTREGUE | 13/13 | 0,3131 | 0,0875 / 0,2249 / 0,0006 | 0 | claude:3 |
+| P3 | ENTREGUE | 12/12 | 0,1949 | 0,0649 / 0,1295 / 0,0005 | 0 | claude:2 |
+| P4 | ENTREGUE | 12/12 | 0,1134 | 0,0478 / 0,0654 / 0,0002 | 0 | claude:1 |
+
+**Porta B1c:** 4/4 válidas (sem INVÁLIDA: rota); `EVALUATOR_MODEL` com `provider: claude` e modelo `claude-opus-5-5` nas etapas avaliadas. Baseline `padrao` do B1 (4/4, US$ 0,19) inalterado.
+
 **Auditoria do B1 (Claude, 16/10, trilha das cópias `nc-bench-p*-avaliador-claude-1/dev-copy.db`): a variante `avaliador-claude` NÃO mede o Opus.** Das 47 chamadas de avaliação, só 3 tiveram veredito do Opus (P1 1, P2 2, P3 0, P4 0); as outras deram `nenhum-pago` (FreeLLMAPI 404 para o Opus e o ramo Anthropic direto voltou sem texto e sem registrar falha; 1× `claude/direct: HTTP 400`). Os 4 BLOQUEADA vieram de "auditor LLM não respondeu um veredito válido" (`EVALUATOR_UNAVAILABLE` 5–7 por projeto, `auditMethod: heuristic_fallback`), não de reprovação do Opus. O aceite baixo (1/10, 10/13, 0/12, 9/12) é de projeto parado no meio. Conclusão "Opus muda materialmente o resultado" = inválida. `padrao` (4/4, US$ 0,19) vale. Observação: no `padrao` P2 a etapa de tela foi avaliada por `custom/deepseek-v4-pro` (mesma família do executor; Nemotron falhou) — T-N.
