@@ -1,3 +1,13 @@
+## 16/10/2026 (50) — Fundador: foco no NextCode, sem Spec do Gateway nos testes; pergunta sobre o Jev e o elicitador
+
+**Fundador:** "não mexa em spec de nada, o foco aqui é o projeto nextcode, a conversa deve ter segredos"; perguntou se o Jev avalia a Spec e devolve ao elicitador pedindo mais detalhe; pediu situação do cronograma.
+**Feito:** decisão registrada (`decisoes.md` 16/10). Conferi localmente as 3 mensagens do Gateway com `maskSecretsForJev`: 0 segredos detectados (nada enviado). Nos testes de 15/10 elas já tinham ido a DeepSeek e Anthropic — informado ao fundador.
+**Resposta sobre o Jev (código lido):** antes da Spec, M0 (`universal-funnel.ts`) manda diretrizes ao elicitador (`route.ts:605`, `:617`); depois, M2 (`route.ts:852-860`) só mostra aviso ao usuário — **não volta ao elicitador**; conferência (P5.4) em sombra. Não existe hoje o laço "Jev aponta lacuna → elicitador detalha". Proposta: mudança 7 (laço por lacuna atômica dentro do J8, E2), aguarda o fundador.
+**Onde paramos:** P5c.3 com o Antigravity (prompt `9202bba`). **Próximo passo:** auditar P5c.3 com pedido sintético → fechar P5c → B1 → J2b+J2.7.
+**Pendências do fundador:** mudança 7 (laço Jev → elicitador); filtro de segredos na entrada do chat (Regra 7); M1/M4 mortos; `verificacao_evidencia`; autoteste (§6 itens 6–7); teto de custo.
+
+---
+
 ## 15/10/2026 (49) — Auditoria do P5c: código certo; achado o corte de 300 s → P5c.3 (streaming)
 
 **Conferido:** `95f6c23` + `ba893ce` + relatório `a94af36`; reflog limpo; escopo = 4 arquivos permitidos; diff do `route.ts` igual ao prompt; fora da fase de Spec nada muda; eu rodei tsc 0 e vitest 122 arquivos / 788 testes verdes.
