@@ -1,3 +1,11 @@
+## 16/10/2026 (64) — Relatório consolidado de auditoria E1 Fases 1–8 (obrigatório)
+
+**Feito:** `docs/relatorios/AUDITORIA-E1-FASES-1-8-implementacao.md` — tudo implementado neste bloco (commits, arquivos, testes 792/792, smoke `c0377632`, desvios, checklist §8.5, pendências B1). Regra permanente: fim de fase → AUDITORIA + §8.4 em `CLAUDE.md` e referência §8.1.
+**Para auditoria:** ler **só** o consolidado §10 (índice) ou o documento inteiro; veredito no topo deste diário.
+**Próximo passo:** auditoria → 「aprovado Fase 9」 → B1.
+
+---
+
 ## 16/10/2026 (63) — P5c.4 UX: "Gerando Spec…" no chat (mudança 9)
 
 **Feito:** enquanto `/api/chat` bloqueia na fase Spec (`!specApproved`), a UI mostra o pedido do usuário na hora e um balão **Gerando Spec…** (aviso para não reenviar); após aprovação da Spec, texto genérico "Processando resposta…". `tsc` 0; `vitest` 792/792. **Relatório:** `docs/relatorios/P5c.4-indicador-spec-chat.md`.

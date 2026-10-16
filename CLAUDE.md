@@ -9,7 +9,7 @@
 
 ## Regras do fundador (obrigatórias)
 1. **Fonte única:** `docs/NEXTCODE-REFERENCIA.md`. Melhoria aprovada entra nela **antes** de ser executada.
-2. **Tudo documentado:** cada sessão registra em `memory/diario.md` o que foi feito, onde parou e o próximo passo.
+2. **Tudo documentado:** cada sessão registra em `memory/diario.md` o que foi feito, onde parou e o próximo passo. **Ao terminar uma fase de implementação (§5.0.1):** relatório consolidado de auditoria em `docs/relatorios/AUDITORIA-<escopo>.md` + relatórios §8.4 dos pacotes — **obrigatório, não negociável** (ver referência §8.1).
 3. **Não alucinar:** só citar arquivo/função que existe (`git grep`); "funciona" só com a saída real colada.
 4. **Documento único:** `docs/NEXTCODE-REFERENCIA.md` (plano e estado) com o **registro de evolução em §9**. Documento antigo só é apagado com aprovação do fundador e **depois** de resumido em §9 com o hash para recuperar (`git show <hash>:<caminho>`). Antigravity não cria plano/log paralelo (trava T-O).
 5. Um passo por vez; commit por passo com `tsc` e `vitest` **daquele commit**.

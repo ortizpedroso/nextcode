@@ -26,7 +26,7 @@ Fonte narrativa: `memory/diario.md` entrada **61**. Checklist marcado em `FASE8-
 
 - Linha **P5c** → ✅ (prova acima).
 - **B1** desbloqueado; status ⬜ até rodada bench.
-- **P5c.4 / mudança 9** (indicador "Gerando Spec…") — proposta, **aguarda OK** do fundador (recomendado antes do B1 para evitar reenvio).
+- **P5c.4 / mudança 9** ✅ — `ed803ff`; relatório `P5c.4-indicador-spec-chat.md`.
 
 ---
 

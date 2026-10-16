@@ -595,12 +595,13 @@ Documentos apagados em D1 (13/10) e planos paralelos absorvidos (16/10): ver §9
 
 ## 8. Protocolo com o Antigravity (prompts travados + relatórios)
 
-### 8.1 Ciclo de cada pacote
+### 8.1 Ciclo de cada pacote e de cada fase
 
 1. Claude escreve o prompt em `docs/prompts/<pacote>.md` **depois** de o pacote estar aprovado e documentado aqui.
-2. Fundador entrega o prompt ao Antigravity.
-3. Antigravity executa e grava o relatório em `docs/relatorios/<pacote>.md` (formato §8.4) **no último commit do pacote**.
-4. Claude audita (§8.5) e registra o veredito no diário e na §3 deste documento. Só então começa o próximo pacote.
+2. Fundador entrega o prompt ao Antigravity **ou** executa na sessão Cursor — mesmo protocolo de relatório.
+3. Quem implementa grava relatório §8.4 em `docs/relatorios/<pacote>.md` **no último commit do pacote** (quando houver código).
+4. **Ao fechar uma fase §5.0.1 (ou bloco equivalente):** relatório consolidado **obrigatório** `docs/relatorios/AUDITORIA-<escopo>.md` (commits, diff, testes, prova real, checklist §8.5, pendências) — **não negociável**; entrada no `memory/diario.md` com link. Exemplo: `AUDITORIA-E1-FASES-1-8-implementacao.md`.
+5. IA auditora aplica §8.5 e registra veredito no diário. Só então o fundador emite 「aprovado Fase N」 para a fase seguinte.
 
 ### 8.2 Travas fixas (vão no topo de todo prompt, sem alteração)
 
