@@ -20,6 +20,8 @@ import {
 } from "@/core/orchestrator/execution-trigger";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { callElicitadorClaude } from "@/core/llm/elicitador-claude";
+import { recordLlmCost } from "@/core/llm/cost";
 import {
   decideSpecReviewMessageIntent,
   decideSpecClarity,
@@ -686,14 +688,35 @@ export async function POST(request: NextRequest) {
     let aiResponseContent = "";
     let effectiveTier: string = modelOverride || intent.tier || "fast";
 
+    // P5c (fundador, 15/10 — medicoes.md): na Spec, Claude Opus direto é o 1º modelo do elicitador; o gateway
+    // fica de reserva. Uma falha do Claude desliga a tentativa nas chamadas seguintes deste mesmo pedido.
+    const SPEC_GATEWAY_MAX_TOKENS = 32000;
+    const elicitadorClaudeKey = isSpecDraftingPhase ? readSecret(setting?.claudeKey) : "";
+    let elicitadorClaudeFalhou = false;
+    const dispatchSpecWithClaude = async (messages: DispatchMessage[]): Promise<string | null> => {
+      if (!elicitadorClaudeKey || elicitadorClaudeFalhou) return null;
+      const res = await callElicitadorClaude({ messages, claudeKey: elicitadorClaudeKey });
+      if (!res.ok) {
+        elicitadorClaudeFalhou = true;
+        TelemetryLogger.log({ sessionId: activeSessionId, action: "ELICITADOR_CLAUDE", details: { ok: false, detalhe: res.detail } });
+        return null;
+      }
+      await recordLlmCost({ sessionId: activeSessionId, papel: "outro", provider: "anthropic", model: res.model, usage: res.usage });
+      TelemetryLogger.log({
+        sessionId: activeSessionId,
+        action: "ELICITADOR_CLAUDE",
+        details: { ok: true, modelo: res.model, ms: res.ms, stopReason: res.stopReason },
+      });
+      return res.text;
+    };
+
     try {
-      const dispatchRes = await smartRouter.dispatchWithFallback({
+      const claudeSpecText = isSpecDraftingPhase ? await dispatchSpecWithClaude(dispatchMessages) : null;
+      const dispatchRes = claudeSpecText !== null ? null : await smartRouter.dispatchWithFallback({
         messages: dispatchMessages,
-        // Spec: o fundador pediu para não economizar no Elicitador. Tier pesado = modelo forte
-        // pago (DeepSeek) quando configurado; o FreeLLMAPI gratuito é a reserva. Teto de 8192 tokens
-        // para acomodar raciocínio denso e specs ricas (10+ requisitos/módulos) sem truncamento.
         tier: isSpecDraftingPhase ? "heavy" : "fast",
-        ...(isSpecDraftingPhase ? { maxTokens: 8192 } : {}),
+        // Spec: Claude Opus direto vem antes (P5c); aqui é a reserva (gateway pago forte, depois o gratuito), com teto de 32.000 tokens.
+        ...(isSpecDraftingPhase ? { maxTokens: SPEC_GATEWAY_MAX_TOKENS } : {}),
         modelOverride,
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -704,51 +727,62 @@ export async function POST(request: NextRequest) {
         stream: false,
       });
 
-      effectiveTier = dispatchRes.tierTag;
+      if (claudeSpecText !== null) {
+        aiResponseContent = claudeSpecText;
+        effectiveTier = "anthropic";
+      } else if (dispatchRes) {
+        effectiveTier = dispatchRes.tierTag;
 
-      const resJson = await dispatchRes.response.json().catch(() => ({}));
-      if (resJson.choices?.[0]?.message?.content) {
-        aiResponseContent = resJson.choices[0].message.content;
-      } else if (resJson.choices?.[0]?.message?.reasoning_content) {
-        aiResponseContent = resJson.choices[0].message.reasoning_content;
-      } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-        aiResponseContent = resJson.candidates[0].content.parts[0].text;
-      } else if (typeof resJson.choices?.[0]?.text === "string" && resJson.choices[0].text) {
-        aiResponseContent = resJson.choices[0].text;
-      } else {
-        const errorDetail = resJson.error?.message ? ` (${resJson.error.message})` : "";
-        aiResponseContent = `A resposta do modelo foi retornada sem conteúdo legível${errorDetail}.`;
+        const resJson = await dispatchRes.response.json().catch(() => ({}));
+        if (resJson.choices?.[0]?.message?.content) {
+          aiResponseContent = resJson.choices[0].message.content;
+        } else if (resJson.choices?.[0]?.message?.reasoning_content) {
+          aiResponseContent = resJson.choices[0].message.reasoning_content;
+        } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+          aiResponseContent = resJson.candidates[0].content.parts[0].text;
+        } else if (typeof resJson.choices?.[0]?.text === "string" && resJson.choices[0].text) {
+          aiResponseContent = resJson.choices[0].text;
+        } else {
+          const errorDetail = resJson.error?.message ? ` (${resJson.error.message})` : "";
+          aiResponseContent = `A resposta do modelo foi retornada sem conteúdo legível${errorDetail}.`;
+        }
       }
 
       // Modelos com raciocínio às vezes não chegam ao documento (gastam a resposta "pensando").
       // Uma segunda tentativa, explícita, antes de desistir de gravar o rascunho.
       if (
         isSpecDraftingPhase &&
-        dispatchRes.providerUsed !== "none" &&
+        (claudeSpecText !== null || dispatchRes?.providerUsed !== "none") &&
         !parseSpecDocument(aiResponseContent)
       ) {
-        const retryRes = await smartRouter.dispatchWithFallback({
-          messages: [
-            ...dispatchMessages,
-            { role: "assistant", content: aiResponseContent.slice(0, 2000) },
-            {
-              role: "user",
-              content:
-                "A resposta acima não é a Spec. Responda AGORA somente com o documento da Spec, começando na primeira linha por --- e com valores reais (sem <placeholders>).",
-            },
-          ],
-          tier: isSpecDraftingPhase ? "heavy" : "fast",
-          maxTokens: 8192,
-          geminiKey: readSecret(setting?.geminiKey),
-          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-          omniRouteKey: readSecret(setting?.omniRouteKey),
-          stream: false,
-        });
-        const retryJson = await retryRes.response.json().catch(() => ({}));
-        const retryText: string = retryJson.choices?.[0]?.message?.content || "";
+        const retryMessages: DispatchMessage[] = [
+          ...dispatchMessages,
+          { role: "assistant", content: aiResponseContent.slice(0, 2000) },
+          {
+            role: "user",
+            content:
+              "A resposta acima não é a Spec. Responda AGORA somente com o documento da Spec, começando na primeira linha por --- e com valores reais (sem <placeholders>).",
+          },
+        ];
+        let retryText: string = (await dispatchSpecWithClaude(retryMessages)) ?? "";
+        let retryTier = "anthropic";
+        if (!retryText) {
+          const retryRes = await smartRouter.dispatchWithFallback({
+            messages: retryMessages,
+            tier: isSpecDraftingPhase ? "heavy" : "fast",
+            maxTokens: SPEC_GATEWAY_MAX_TOKENS,
+            geminiKey: readSecret(setting?.geminiKey),
+            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+            omniRouteKey: readSecret(setting?.omniRouteKey),
+            stream: false,
+          });
+          const retryJson = await retryRes.response.json().catch(() => ({}));
+          retryText = retryJson.choices?.[0]?.message?.content || "";
+          retryTier = retryRes.tierTag;
+        }
         if (parseSpecDocument(retryText)) {
           aiResponseContent = retryText;
-          effectiveTier = retryRes.tierTag;
+          effectiveTier = retryTier;
         }
       }
 
@@ -768,26 +802,30 @@ export async function POST(request: NextRequest) {
         let structureProblems =
           guardRes.isValidSpec && guardRes.finalSpec ? checkSpecStructure(parseSpecDocument(guardRes.finalSpec)!) : [];
         if (structureProblems.length > 0) {
-          const fixRes = await smartRouter.dispatchWithFallback({
-            messages: [
-              ...dispatchMessages,
-              { role: "assistant", content: guardRes.finalSpec!.slice(0, 12000) },
-              {
-                role: "user",
-                content:
-                  "A Spec acima tem problemas que impedem a implementação. Corrija TODOS e devolva a Spec completa:\n" +
-                  structureProblems.map((p) => `- ${p}`).join("\n"),
-              },
-            ],
-            tier: isSpecDraftingPhase ? "heavy" : "fast",
-            maxTokens: 8192,
-            geminiKey: readSecret(setting?.geminiKey),
-            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-            omniRouteKey: readSecret(setting?.omniRouteKey),
-            stream: false,
-          });
-          const fixJson = await fixRes.response.json().catch(() => ({}));
-          const fixText: string = fixJson.choices?.[0]?.message?.content || "";
+          const fixMessages: DispatchMessage[] = [
+            ...dispatchMessages,
+            { role: "assistant", content: guardRes.finalSpec!.slice(0, 60000) },
+            {
+              role: "user",
+              content:
+                "A Spec acima tem problemas que impedem a implementação. Corrija TODOS e devolva a Spec completa:\n" +
+                structureProblems.map((p) => `- ${p}`).join("\n"),
+            },
+          ];
+          let fixText: string = (await dispatchSpecWithClaude(fixMessages)) ?? "";
+          if (!fixText) {
+            const fixRes = await smartRouter.dispatchWithFallback({
+              messages: fixMessages,
+              tier: isSpecDraftingPhase ? "heavy" : "fast",
+              maxTokens: SPEC_GATEWAY_MAX_TOKENS,
+              geminiKey: readSecret(setting?.geminiKey),
+              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+              omniRouteKey: readSecret(setting?.omniRouteKey),
+              stream: false,
+            });
+            const fixJson = await fixRes.response.json().catch(() => ({}));
+            fixText = fixJson.choices?.[0]?.message?.content || "";
+          }
           const fixedGuard = applyCumulativeSpecGuard(sessionBefore?.canonicalSpec, fixText, targetPrompt);
           if (fixedGuard.isValidSpec && fixedGuard.finalSpec) {
             const fixedProblems = checkSpecStructure(parseSpecDocument(fixedGuard.finalSpec)!);
