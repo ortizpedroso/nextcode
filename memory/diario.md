@@ -1,3 +1,11 @@
+## 16/10/2026 (75) — Diagnóstico: skill de revisão final (Spec × entregue)
+
+**Fundador:** criar skill que, antes de entregar, confere a Spec com o que foi realmente entregue.
+**Hoje:** (1) T10 `verifyProjectDeliveryT10` (`node-executor.ts:250`) é mecânica — arquivos da Spec existem, cada REQ aprovado em alguma etapa, build; (2) auditoria final do Jev (`job-queue.ts` ≈330, `verifyProjectDeliveryWithJev`) em `sombra` (`auditoria_entrega`, YAML:166) até J3/J4. **Lacuna real:** ninguém lê o projeto inteiro contra a Spec inteira — cada avaliador vê só o Microbrief da etapa; erro de integração entre etapas passa.
+**Recomendação:** skill `avaliador-final` dentro do **J3** (não item novo à frente): LLM forte de outra família lê Spec + arquivos entregues, veredito por REQ com `arquivo:linha`; perguntas atômicas do Jev ficam como 2ª checagem barata; reprovação alimenta o J2b; medida nos 4 controles do J3. Depende do B1c (avaliador Claude funcionando). Aguarda OK.
+
+---
+
 ## 16/10/2026 (74) — Prompt B1c + PJ1; revisão das skills do executor; S3 marcado
 
 **Feito:** `docs/prompts/B1c-avaliador-claude-fix-e-PJ1.md` (sonda da causa; ramo Claude direto lê blocos `text` e registra falha; bench marca INVÁLIDA por rota e tira da média; rodada só `avaliador-claude`, teto acumulado US$ 4; PJ1.1–1.5: arquivados + Desarquivar, abrir mesma pasta reabre, Apagar com 2 opções e padrão = não apagar pasta, sessão sem projeto recusa com `SESSAO_SEM_PROJETO` nas rotas — sem mexer em `approveSpecAndStart` —, smoke). Regras R1 (nada fora), R2 (relatório por passo), R3 (conclusão só com trilha). §5.0: linhas **B1c** e **S3**.
