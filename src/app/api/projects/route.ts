@@ -64,6 +64,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const pathsEqual = (a: string, b: string) => {
+      const ra = path.resolve(a);
+      const rb = path.resolve(b);
+      return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+    };
+
+    const existingByPath = await prisma.project.findMany({
+      where: { path: { not: null } },
+    });
+    const reopenedProject = existingByPath.find(
+      (p) => p.path && targetPath && pathsEqual(p.path, targetPath)
+    );
+    if (reopenedProject) {
+      const project = await prisma.project.update({
+        where: { id: reopenedProject.id },
+        data: {
+          isArchived: false,
+          name: trimmedName,
+          ...(description !== undefined ? { description: description || null } : {}),
+          ...(isPinned !== undefined ? { isPinned: Boolean(isPinned) } : {}),
+        },
+        include: {
+          sessions: {
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        project,
+        reopened: true,
+      });
+    }
+
     // Cria a pasta física no sistema de arquivos se ela não existir
     if (!fs.existsSync(targetPath)) {
       fs.mkdirSync(targetPath, { recursive: true });
