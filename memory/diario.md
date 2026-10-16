@@ -1,3 +1,11 @@
+## 16/10/2026 (79) — Teste pesado sem teto; ACHADO: sessões apagadas do `dev.db` às 16:35
+
+**Fundador:** teste pesado sem teto de custo ("testar para saber as capacidades"); se der sinal, testa de forma real no NextCode. Registrado na linha B1b (travas de laço T6 continuam).
+**Achado (cópia `dev.db`+WAL, só leitura):** `Session` 0, `Message` 0, `TaskNode` 0, `Job` 0; `Project` 1 (`projetos`, caminho `C:\projetos\grateway\projetos`, arquivado, `updatedAt` 16/10 16:35); `TelemetryLog` 7.304 linhas intactas (última 06:55). WAL e a pasta `C:\projetos` com data 16:35 — antes do PJ1 (commits 17:55–18:06), com o Apagar antigo que também apaga a pasta do disco. A pasta `C:\projetos\grateway` não existe. A sessão `c0377632` (Spec da Fase 8) sumiu; trilha dela existe (aprovada: `MACROBRIEF_GENERATED`, `CONFERENCIA_T8A_OK`). Não sei quem apagou — perguntar ao fundador.
+**Próximo passo:** fundador responde sobre 16:35; PJ1.6; prompt B1b + teste pesado (regenerar Spec da Fase 8).
+
+---
+
 ## 16/10/2026 (78) — Mudança 13: avaliador por nível do Jev; teste pesado como porta do B1b
 
 **Fundador:** concorda com avaliador por nível; quer teste pesado com o Jev definindo o modelo e o sistema esperando a resposta; "Spec ruim + avaliador falhando = entrega ruim".
