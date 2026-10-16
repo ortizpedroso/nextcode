@@ -24,6 +24,7 @@ vi.mock("@/core/security/local-auth", () => ({
 }));
 
 const createdSessionIds: string[] = [];
+const createdProjectIds: string[] = [];
 
 async function createTestSession(
   data: {
@@ -31,12 +32,14 @@ async function createTestSession(
     canonicalSpec?: string | null;
     phase?: string;
     phaseContext?: string;
+    projectId?: string | null;
   } = {}
 ) {
   const session = await prisma.session.create({
     data: {
       title: data.title ?? "Sessão Teste Gatilho Único",
       canonicalSpec: data.canonicalSpec ?? null,
+      ...(data.projectId !== undefined ? { projectId: data.projectId } : {}),
       ...(data.phase ? { phase: data.phase } : {}),
       ...(data.phaseContext ? { phaseContext: data.phaseContext } : {}),
     },
@@ -74,6 +77,10 @@ describe("Gatilho Único, Fila Única por Sessão e Reserva Atômica (Passo 4a)"
   afterEach(async () => {
     await stopJobWorker();
     vi.restoreAllMocks();
+    if (createdProjectIds.length > 0) {
+      await prisma.project.deleteMany({ where: { id: { in: createdProjectIds } } });
+      createdProjectIds.length = 0;
+    }
     if (createdSessionIds.length > 0) {
       await prisma.job.deleteMany({ where: { sessionId: { in: createdSessionIds } } });
       await prisma.taskNode.deleteMany({ where: { sessionId: { in: createdSessionIds } } });
@@ -180,9 +187,15 @@ describe("Gatilho Único, Fila Única por Sessão e Reserva Atômica (Passo 4a)"
   });
 
   it('3. Aprovar sem canonicalSpec (via PATCH ou frase "aprovo" no chat) → { ok: false, reason: "SPEC_AUSENTE" }, specApproved continua false, fase não avança, zero nós, zero jobs', async () => {
+    const project = await prisma.project.create({
+      data: { name: "Proj Gatilho Spec Ausente", path: process.cwd() },
+    });
+    createdProjectIds.push(project.id);
+
     const session = await createTestSession({
       title: "Sessão Sem Spec",
       canonicalSpec: null,
+      projectId: project.id,
     });
 
     // 3a. Via PATCH /api/sessions/:id

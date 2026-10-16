@@ -92,6 +92,31 @@ export async function PATCH(
 
     let triggerResult: ApproveSpecResult | null = null;
     if (body.specApproved === true) {
+      const sessForExec = await prisma.session.findUnique({
+        where: { id },
+        include: { project: { select: { path: true } } },
+      });
+      if (!sessForExec?.projectId || !sessForExec.project?.path?.trim()) {
+        const currentSession = await prisma.session.findUnique({
+          where: { id },
+          include: {
+            project: {
+              select: { id: true, name: true, path: true },
+            },
+          },
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            success: false,
+            reason: "SESSAO_SEM_PROJETO",
+            error: "SESSAO_SEM_PROJETO",
+            session: currentSession,
+          },
+          { status: 400 }
+        );
+      }
+
       triggerResult = await approveSpecAndStart(
         id,
         body.canonicalSpec !== undefined ? String(body.canonicalSpec) : undefined

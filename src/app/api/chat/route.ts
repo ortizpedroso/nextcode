@@ -328,6 +328,41 @@ export async function POST(request: NextRequest) {
       fanOut.aprovacaoSpec.aprovadoParaFase2 || isExplicitSpecApproval(targetPrompt);
 
     if (isExplicitApproval) {
+      if (!sessionBefore?.projectId || !sessionBefore.project?.path?.trim()) {
+        const refusalText =
+          "⚠️ Para executar, vincule esta sessão a um projeto com pasta (menu da sessão → mover para projeto). A Spec continua salva.";
+        const assistantMessage = await prisma.message.create({
+          data: {
+            sessionId: activeSessionId,
+            role: "assistant",
+            content: refusalText,
+            tokens: 0,
+            tier: "fast",
+          },
+        });
+        const cleanMessages = await prisma.message.findMany({
+          where: {
+            sessionId: activeSessionId,
+            role: { in: ["user", "assistant"] },
+          },
+          orderBy: { createdAt: "asc" },
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            reason: "SESSAO_SEM_PROJETO",
+            success: false,
+            sessionId: activeSessionId,
+            phase: sessionBefore?.phase || "SPEC_REVISAO",
+            specApproved: false,
+            userMessage,
+            assistantMessage,
+            messages: cleanMessages,
+          },
+          { status: 200 }
+        );
+      }
+
       const approvalTriggerResult: ApproveSpecResult = await approveSpecAndStart(activeSessionId);
       if (!approvalTriggerResult.ok) {
         let refusalText = `⚠️ Aprovação recusada (${approvalTriggerResult.reason}).`;
