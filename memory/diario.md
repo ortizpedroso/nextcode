@@ -1,3 +1,12 @@
+## 15/10/2026 (48) — Fundador aprova §5.0 e as sugestões; P5c registrado e prompt escrito
+
+**Fundador:** "eu concordo com a sua sugestão, não perca o foco da nossa evolução e vamos continuar".
+**Registrado antes de implantar:** §5.0 aprovada; mudanças 1–4 aprovadas; novas mudanças 5 (**P5c** — Claude Opus no elicitador + teto da Spec, início da E1) e 6 (**B1** — executor Claude × DeepSeek no bench, avaliador Claude 1º). Decisão em `decisoes.md`.
+**Achados ao preparar o P5c (código lido):** o roteador do chat não tem caminho para a Anthropic (só o avaliador tem, `evaluator-models.ts:137+`) → P5c cria um caminho direto; o gateway espera no máximo 120 s (`gateways.ts:204-205`) e o Opus levou 244 s → prazo próprio de 540 s; a correção da Spec corta o texto em 12.000 caracteres (`route.ts:774`) e a Spec do Opus tem 47.598 → 60.000; o Opus usou 30.655 de 32.000 tokens → 48.000. **Regra 7:** a conversa do usuário vai crua ao modelo do chat (`route.ts:618-628`) — anotado em "Fora da ordem", aguarda o fundador.
+**Próximo passo:** Antigravity executa `docs/prompts/P5c-elicitador-opus-teto.md` → auditar (inclui gerar a Spec do Gateway pelo caminho novo) → B1.
+
+---
+
 ## 15/10/2026 (47) — Testes pedidos pelo fundador: sondas, B0 e Spec DeepSeek × Claude (nada de código alterado)
 
 **Fundador:** "primeiro vamos fazer os testes… testar se o Claude é mais poderoso… não mexa em nada, agora somente testes"; os dois provedores têm crédito.

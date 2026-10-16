@@ -272,7 +272,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 
 ## 5. Plano de ação v2 — "Jev máximo" (📝 proposta de 08/10/2026, aguarda aprovação)
 
-### 5.0 Cronograma único de implantação (📝 proposta de 15/10, aguarda aprovação do fundador)
+### 5.0 Cronograma único de implantação (✅ aprovado pelo fundador em 15/10)
 
 **Por que esta seção existe.** Até 15/10 a ordem do trabalho estava espalhada em §5.3 (P0–P10), §5.5 (Plano J), no diário e em listas novas a cada revisão, sem ligação entre si — causa de retrabalho (ex.: J2.3 levou a entrega reprovada para `BLOQUEADA` sem reusar o reparo `359e06b`; I1 refez o mapa do que existia). **A partir da aprovação, esta é a única lista de ordem.** §5.3, §5.5 e §4.4 continuam como detalhe e histórico, e **todo item aqui usa o mesmo código que já tinha lá** (P*, J*, O*, T).
 
@@ -298,7 +298,9 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E0 | **P5.5 + P5.5b** | máscara cobre JSON, `NOME=valor` sem aspas, chave Asaas e segredo repetido entre campos | ✅ | `c8bd775`, `cde4b47` (auditados 15/10): sonda do auditor 8/8 sem vazamento; tsc 0; vitest 121/782 verde |
 | E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ✅ | sondas 15/10: DeepSeek (FreeLLMAPI) e Claude Sonnet/Opus (Anthropic) respondem 200 (`medicoes.md` 15/10) |
 | E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ✅ 15/10: P1 10/10, P2 13/13, P3 12/12, P4 12/12, todas ENTREGUE (`docs/relatorios/bench/2026-10-15-1927.md`) | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
-| **E1 — Fim do fluxo que se conserta** | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
+| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) | Spec no chat: Claude Opus 5.5 direto (chave do Setting) como 1º modelo do elicitador, gateway atual (DeepSeek) como reserva; teto 48.000 tokens no Claude e 32.000 na reserva (hoje 8.192, `route.ts:696`); a correção da Spec passa a enviar até 60.000 caracteres (hoje 12.000, `route.ts:774`); custo gravado em `LLM_COST` | ⬜ prompt `docs/prompts/P5c-elicitador-opus-teto.md` | porta: Spec do Gateway pelo caminho do chat sem corte e com a regra de taxas do fundador (10/10 valores); custo na trilha |
+| E1 | **B1** (novo, mudança 6) | bench P1–P4 com executor Claude × DeepSeek e avaliador Claude como 1º pago | ⬜ | depende do P5c (rota direta à Anthropic) e de conferir se o FreeLLMAPI serve Claude (hoje o executor só aceita rota `custom/`, `politicas-orquestracao.yaml`); porta: aceite e custo das duas variantes em `medicoes.md` |
+| E1 | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
 | E1 | **J3** (§5.5) | perguntas da auditoria final atômicas (1 por REQ; stub e segurança por arquivo, sentido certo), medidas em 4 controles | ⬜ | porta: P1 correto aprovado 5/5; cada controle reprovado pela pergunta do seu defeito |
 | E1 | **J4** (§5.5) | auditoria final volta a `ativo`; remedição com Jev × sem Jev (P1–P3, 3×) | ⬜ | porta: nenhum falso negativo; custo e qualidade com × sem Jev registrados em `medicoes.md` |
 | **E2 — Entrada completa** | P5.4 → `ativo` | conferência Spec × plano passa a bloquear | ⬜ | porta: ≥ 5 aprovações reais com `CONFERENCIA_ENTRADA` e 0 reprovação indevida |
@@ -315,13 +317,15 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E6 | **P9** (J26, R10) | aprendizado com a trilha | ⬜ | porta: só com ≥ 3 Gates entregues (dados suficientes) |
 | E6 | **P10 Gates 2…n** | Gateway completo | ⬜ | porta: cada Gate com build + aceite |
 
-**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`).
+**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`). **Regra 7 (achado 15/10):** a conversa do usuário vai crua ao modelo do chat (`route.ts:618-628`); só a resposta passa pela guarda (`route.ts:889`) — se o usuário colar uma chave, ela sai da máquina; proposta: aplicar `maskSecretsForJev` às mensagens antes de enviar ao modelo.
 
 **Mudanças do cronograma** (data · mudança · motivo · evidência · aprovação):
-1. 15/10 · **B0** criado antes do J2b · J2b tem de ser "medido no bench" (§5.5) e nenhuma rodada entrega desde 12/10 · `docs/relatorios/bench/2026-10-12-2116.md` (P3 BLOQUEADA 0/12), `2026-10-13-0552.md` (P3 PAUSADA 0/12) · aguarda
-2. 15/10 · **J2.7 junto com o J2b** · os dois mexem em `phase-machine.ts`; separados, um desfaz o outro · `docs/prompts/J2.7-teste-estrutural-completo.md` · aguarda
-3. 15/10 · **P10 Gate 1 antes de P6** · P1–P4 têm efeito teto (100% em todas as variantes) e não medem ganho do P6 · `medicoes.md` 09/10 · aguarda
-4. 15/10 · **P5b dividido** (J7/J8/J9/J11 na E2; skill `elicitador` só com P8) · a skill exige uma ferramenta que o chat não tem; sem ela o modelo inventa pesquisa · `skills/elicitador/SKILL.md` (`fetch_official_docs_t7`) · aguarda
+1. 15/10 · **B0** criado antes do J2b · J2b tem de ser "medido no bench" (§5.5) e nenhuma rodada entrega desde 12/10 · `docs/relatorios/bench/2026-10-12-2116.md` (P3 BLOQUEADA 0/12), `2026-10-13-0552.md` (P3 PAUSADA 0/12) · aprovada 15/10
+2. 15/10 · **J2.7 junto com o J2b** · os dois mexem em `phase-machine.ts`; separados, um desfaz o outro · `docs/prompts/J2.7-teste-estrutural-completo.md` · aprovada 15/10
+3. 15/10 · **P10 Gate 1 antes de P6** · P1–P4 têm efeito teto (100% em todas as variantes) e não medem ganho do P6 · `medicoes.md` 09/10 · aprovada 15/10
+4. 15/10 · **P5b dividido** (J7/J8/J9/J11 na E2; skill `elicitador` só com P8) · a skill exige uma ferramenta que o chat não tem; sem ela o modelo inventa pesquisa · `skills/elicitador/SKILL.md` (`fetch_official_docs_t7`) · aprovada 15/10
+5. 15/10 · **P5c** (Claude Opus no elicitador + teto da Spec) entra no início da E1, antes do J2b · a Spec é a entrada de tudo e o Gateway (E3) não sai inteiro hoje · `medicoes.md` 15/10: teto de 8.192 corta a Spec do Gateway em todos os modelos; só o Opus acertou a regra de taxas (10/10 valores, US$ 0,63 × 0,049 por Spec); o Opus usou 30.655 de 32.000 tokens (96%) → teto 48.000 no Claude; a Spec do Opus tem 47.598 caracteres e a correção corta em 12.000 (`route.ts:774`) → 60.000 · aprovada 15/10 (fundador: "eu concordo com a sua sugestão")
+6. 15/10 · **B1** (executor Claude × DeepSeek no bench; avaliador Claude 1º) depois do P5c · executor Claude nunca foi medido; avaliador Nemotron é gratuito/de outra família só por acaso · `medicoes.md` 15/10 (trilha: 0 chamadas Claude) · aprovada 15/10
 
 ### 5.1 Diretrizes do fundador (08/10) que guiam o plano
 
