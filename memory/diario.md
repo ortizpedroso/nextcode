@@ -1,3 +1,12 @@
+## 16/10/2026 (78) — Mudança 13: avaliador por nível do Jev; teste pesado como porta do B1b
+
+**Fundador:** concorda com avaliador por nível; quer teste pesado com o Jev definindo o modelo e o sistema esperando a resposta; "Spec ruim + avaliador falhando = entrega ruim".
+**Diagnóstico:** concordo, com 1 ressalva: o avaliador confere contra a Spec — Spec errada passa até por avaliador perfeito; por isso Spec (Opus, 10/10) e conferência da Spec (M0/M2; J8/J11 na E2) são outra trava, e o `avaliador-final` (J3) fecha a ponta. O Jev já decide o nível no planejamento (`fontePlano: jev` no bench) → a escolha do avaliador lê essa decisão, sem chamada extra por etapa; sem resposta do Jev → Opus. Bench P1–P4 é fácil demais (efeito teto) → teste pesado = Spec sintética da Fase 8 (56 REQ, taxas) de ponta a ponta. Ainda não provado: que o nível do Jev acerta (`medicoes.md`: escolha de modelo do Jev não economizou no P1).
+**Registrado:** §5.0 B1b revisado, mudança 13, `decisoes.md`.
+**Próximo passo:** PJ1.6 (Cursor) → prompt B1b com teste pesado; fundador define o teto do teste.
+
+---
+
 ## 16/10/2026 (77) — Auditoria B1c + PJ1: B1c aceito; PJ1 aceito com 3 correções e smoke pendente
 
 **Conferido:** commits `3890924` `27e3635` `c4155a5` `5a292cf` `a373ed1` `5692e21` `880c1d0` `bc65639` `51a1910`; reflog limpo; escopo bate com o prompt (desvios declarados: `handleDeleteProject` no commit do PJ1.1; fixture em `execution-trigger.test.ts`). Eu rodei tsc 0 e vitest 124/124 arquivos, 804 testes.
