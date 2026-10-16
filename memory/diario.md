@@ -1,3 +1,11 @@
+## 16/10/2026 (67) — Respostas do fundador aplicadas; prompt B1 corrigido
+
+**Fundador:** mudança 9 (balão "Gerando Spec…") **ok**; Claude do executor = o que provamos (**Opus 5.5**); teto **US$ 3,00 só no bench** — **sim**. Registrado em `decisoes.md` e na referência (§5.0 linha B1; mudança 9 aprovada).
+**Prompt `docs/prompts/B1-bench-claude-executor.md` corrigido (a–e):** (a) B1.1 só mexe em `scripts/bench.ts` + teste — avaliador trocado pelas envs que `EVALUATOR_CHAIN` já lê; (b) `claude-opus-5-5`; (c) teto 3,00 via mecanismo existente `BUDGET_AUTHORIZED` (`budget-guard.ts:15-31`), sem tocar YAML nem guard; parada acumulada US$ 15; (d) Caminho B = PARE e 「aprovado B1.2」, descrito como rota no laço de ferramentas (`executor-tool-loop.ts:470`); (e) duas variantes: `executor-claude` e `avaliador-claude`. **Achado novo:** o prompt antigo punha o Claude avaliando o código do Claude — viola T4/T5 (`node-executor.ts:1044-1079` + `preferIndependentFirst`); nova trava T-N. FreeLLMAPI não tinha Claude em 08/10 (`medicoes.md`) → Caminho B é o mais provável.
+**Próximo passo:** fundador dá 「aprovado Fase 9」 → Antigravity roda B1.0 (sonda) e B1.1.
+
+---
+
 ## 16/10/2026 (66) — Auditoria do consolidado E1 Fases 1–8 (`ec82544`…`7c564a3`): aceito com ressalvas; prompt B1 precisa de correção antes do 「aprovado Fase 9」
 
 **Conferido:** 4 commits novos; reflog limpo; 1 só de código (`ed803ff`: `page.tsx` +20, `workspace.tsx` +30); nenhum segredo no diff; eu rodei tsc 0 e vitest 122 arquivos verdes no `7c564a3`. P5c ✅ agora com prova (sessão `c0377632`, conferida por mim na entrada 61). Skill sem `fetch_official_docs_t7`.
