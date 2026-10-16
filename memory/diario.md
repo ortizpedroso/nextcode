@@ -1,3 +1,11 @@
+## 16/10/2026 (74) — Prompt B1c + PJ1; revisão das skills do executor; S3 marcado
+
+**Feito:** `docs/prompts/B1c-avaliador-claude-fix-e-PJ1.md` (sonda da causa; ramo Claude direto lê blocos `text` e registra falha; bench marca INVÁLIDA por rota e tira da média; rodada só `avaliador-claude`, teto acumulado US$ 4; PJ1.1–1.5: arquivados + Desarquivar, abrir mesma pasta reabre, Apagar com 2 opções e padrão = não apagar pasta, sessão sem projeto recusa com `SESSAO_SEM_PROJETO` nas rotas — sem mexer em `approveSpecAndStart` —, smoke). Regras R1 (nada fora), R2 (relatório por passo), R3 (conclusão só com trilha). §5.0: linhas **B1c** e **S3**.
+**Skills do executor (4 arquivos, mesmo molde):** bem estruturadas (escopo T3, contratos, relatório P12, protocolo igual ao código). Falhas: (1) o validador P12 só aceita UM `caminho:linha` por REQ e a skill não diz — no B1 o P4 teve 11 `EXECUTOR_REPORT_INVALID` (ex.: "arquivo:4-6; outro:6-11", "31-52,54-111"); (2) "depois dos blocos de código" contradiz o laço de ferramentas (não há blocos; relatório vai no `finish`); (3) protocolo repetido 2× no prompt (skill + `buildExecutorToolProtocolPrompt`) — gasto e risco de divergir; (4) `permissoes.comandos: test` × `run_check` só `typecheck`; (5) frontend cita web-interface-guidelines/react-best-practices mas `node-executor.ts:902` não passa `includeLocalReferences` — referências não chegam; (6) sem regra para Microbrief impossível (marcar `nao_atendido` em vez de inventar). Vão para o S3.
+**Próximo passo:** fundador dá 「aprovado B1c」 → Cursor executa → auditoria → B1b → S3.
+
+---
+
 ## 16/10/2026 (73) — Auditoria do B1 (`1bc03f7`, `9ec186d`, `b4980f0`): execução no escopo, conclusão rejeitada
 
 **Conferido:** R1 respeitado (`git diff --stat`: só `scripts/bench.ts`, teste, relatórios, `medicoes.md`); reflog limpo; eu rodei tsc 0 e vitest 122/122 arquivos, 794 testes. Código do B1.1 confere com o prompt (envs, `BUDGET_AUTHORIZED` 2,5, coluna Teto).
