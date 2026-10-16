@@ -5,7 +5,7 @@
 > `PLAN-OMNIRHARDENING.md` (segurança), `LLM-GATEWAYS.md` (gateways) e `SPEC-TEMPLATE-NEXTCODE-V5.md`.
 > Os seis **não são apagados**: ficam como histórico e detalhe. Quando divergirem deste, **vale este**.
 >
-> Status conferido no código em 08/10/2026 (commit `c7fb624`): `tsc` 0 erros, 586 testes (80 arquivos).
+> Status conferido no código em 16/10/2026: `tsc` 0 erros, **792 testes** (122 arquivos). Plano de commits: [`PLANO-UNICO-NEXTCODE.md`](PLANO-UNICO-NEXTCODE.md).
 > Legenda: ✅ ligado no fluxo · 🌓 ligado em modo sombra (só registra) · ⚠️ código existe, ninguém chama ·
 > ❌ não existe · 📝 **proposta, aguarda aprovação do fundador**.
 
@@ -55,7 +55,7 @@ flowchart TD
   AP -->|aprovou| TRIG
   AP -->|não| CLS["classifyMessage<br/>regras → Jev (choice) → LLM"]
   CLS --> PH["applyPhaseEvent<br/>etapa1Ativa: false"]
-  PH --> PROMPT["prompt fixo em código<br/>buildSpecWriterSystemPrompt (spec-draft.ts)<br/>ou IntakeEngine.getGovernanceSystemPrompt<br/><b>skill elicitador NÃO é carregada</b>"]
+  PH --> PROMPT["Spec: buildElicitadorSpecSystemPrompt<br/>(skill elicitador + contrato YAML, spec-draft.ts)<br/>outras fases: IntakeEngine.getGovernanceSystemPrompt"]
   PROMPT --> LLM1["LLM via SmartRouter"] --> GUARD["guarda cumulativa da Spec<br/>+ checkSpecStructure (+ 1 reparo)"]
   GUARD --> SG1["guarda de segredos no chat (Jev)"] --> MSG[(mensagem salva)]
 
@@ -108,7 +108,7 @@ fila · teto de custo · trilha append-only · **interface só observa** (evento
 
 | # | Ponto | Hoje | Pensado | Plano |
 |---|---|---|---|---|
-| O1 | Voz do chat | prompt fixo em `spec-draft.ts`; skill `elicitador` não carregada | skill `elicitador` | D1 |
+| O1 | Voz do chat | Spec: skill `elicitador` via `buildElicitadorSpecSystemPrompt` (16/10); outras fases ainda usam governança fixa | skill `elicitador` em todas as fases de entrada | D1 |
 | O2 | Macrobrief + T8a | fases existem; `etapa1Ativa: false` em `session-phase.ts:119` pula as duas | usadas | D3 |
 | O3 | Analista | `spec-decomposer.ts` divide por código | skill `analista` (LLM) + T8b em código | D4 |
 | O4 | Pesquisa oficial T7 | `UniversalDocsFetcher` nunca é chamado | elicitador pesquisa com orçamento | D5 |
@@ -270,7 +270,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 
 ---
 
-## 5. Plano de ação v2 — "Jev máximo" (📝 proposta de 08/10/2026, aguarda aprovação)
+## 5. Plano de ação v2 — "Jev máximo" (§5.0 **aprovado** 15/10; detalhe histórico §5.1–5.5)
 
 ### 5.0 Cronograma único de implantação (✅ aprovado pelo fundador em 15/10)
 
@@ -298,7 +298,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E0 | **P5.5 + P5.5b** | máscara cobre JSON, `NOME=valor` sem aspas, chave Asaas e segredo repetido entre campos | ✅ | `c8bd775`, `cde4b47` (auditados 15/10): sonda do auditor 8/8 sem vazamento; tsc 0; vitest 121/782 verde |
 | E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ✅ | sondas 15/10: DeepSeek (FreeLLMAPI) e Claude Sonnet/Opus (Anthropic) respondem 200 (`medicoes.md` 15/10) |
 | E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ✅ 15/10: P1 10/10, P2 13/13, P3 12/12, P4 12/12, todas ENTREGUE (`docs/relatorios/bench/2026-10-15-1927.md`) | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
-| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) | Spec no chat: Claude Opus 5.5 direto (chave do Setting) como 1º modelo do elicitador, gateway atual (DeepSeek) como reserva; teto 48.000 tokens no Claude e 32.000 na reserva (hoje 8.192, `route.ts:696`); a correção da Spec passa a enviar até 60.000 caracteres (hoje 12.000, `route.ts:774`); custo gravado em `LLM_COST` | 🔄 `95f6c23` `ba893ce` auditados 15/10: Spec do Gateway pelo caminho novo com 46 REQ, 0 problema de estrutura, regra de taxas 10/10, US$ 0,73, 289 s; **1 de 2 tentativas falhou** (`fetch failed`: o `fetch` do Node desiste aos 300 s sem cabeçalhos) → ajuste P5c.3 por streaming (`docs/prompts/P5c.3-elicitador-claude-stream.md`) | porta: Spec do Gateway pelo caminho do chat sem corte e com a regra de taxas do fundador (10/10 valores); custo na trilha |
+| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) | Spec no chat: Claude Opus 5.5 direto (chave do Setting) como 1º modelo do elicitador, gateway atual (DeepSeek) como reserva; teto 48.000 tokens no Claude e 32.000 na reserva; correção da Spec até 60.000 caracteres; custo gravado em `LLM_COST` com papel **`elicitador`**; **P5c.3** streaming no Claude; **S2** skill elicitador no system prompt; **teto (b)** `conta_elicitador_no_teto: false` — Spec fora do US$ 0,50 de execução | 🔄 código 16/10 (Fases 2–6 pendentes de commit): P5c.3 + S2 + teto (b) + máscara user no dispatch; **vitest 792/792**; falta **Fase 8** smoke com pedido sintético longo (decisão 16/10: **não** usar Spec/conversa do Gateway nos testes) | porta: pedido sintético longo pelo chat — streaming ok, regra de taxas 10/10 se aplicável ao caso; execução **não** bloqueada só por custo da Spec |
 | E1 | **B1** (novo, mudança 6) | bench P1–P4 com executor Claude × DeepSeek e avaliador Claude como 1º pago | ⬜ | depende do P5c (rota direta à Anthropic) e de conferir se o FreeLLMAPI serve Claude (hoje o executor só aceita rota `custom/`, `politicas-orquestracao.yaml`); porta: aceite e custo das duas variantes em `medicoes.md` |
 | E1 | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
 | E1 | **J3** (§5.5) | perguntas da auditoria final atômicas (1 por REQ; stub e segurança por arquivo, sentido certo), medidas em 4 controles | ⬜ | porta: P1 correto aprovado 5/5; cada controle reprovado pela pergunta do seu defeito |
@@ -317,7 +317,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E6 | **P9** (J26, R10) | aprendizado com a trilha | ⬜ | porta: só com ≥ 3 Gates entregues (dados suficientes) |
 | E6 | **P10 Gates 2…n** | Gateway completo | ⬜ | porta: cada Gate com build + aceite |
 
-**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`). **Regra 7 (achado 15/10):** a conversa do usuário vai crua ao modelo do chat (`route.ts:618-628`); só a resposta passa pela guarda (`route.ts:889`) — se o usuário colar uma chave, ela sai da máquina; proposta: aplicar `maskSecretsForJev` às mensagens antes de enviar ao modelo.
+**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`). **Regra 7:** máscara no Jev (P5.1 ✅); máscara nas mensagens `user` ao LLM do chat (**P5-seg**, Fase 4 do plano único) — working tree 16/10.
 
 **Mudanças do cronograma** (data · mudança · motivo · evidência · aprovação):
 1. 15/10 · **B0** criado antes do J2b · J2b tem de ser "medido no bench" (§5.5) e nenhuma rodada entrega desde 12/10 · `docs/relatorios/bench/2026-10-12-2116.md` (P3 BLOQUEADA 0/12), `2026-10-13-0552.md` (P3 PAUSADA 0/12) · aprovada 15/10
