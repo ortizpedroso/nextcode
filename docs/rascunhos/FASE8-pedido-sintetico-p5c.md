@@ -38,10 +38,12 @@ Quero um sistema de **faturamento SaaS fictício** só para validar o harness �
 
 ## Checklist pós-geração (obrigatório para P5c ✅)
 
-- [ ] Resposta concluiu em &lt; 540 s sem erro `fetch failed` / timeout de cabeçalho.
-- [ ] Trilha: evento `ELICITADOR_CLAUDE` ok; `LLM_COST` com `papel: elicitador`.
-- [ ] Spec passa guarda cumulativa / estrutura (`REQ` numerados, frontmatter).
-- [ ] Spec repete os **10 totais** da tabela acima **corretamente**.
+- [x] Resposta concluiu em &lt; 540 s sem erro `fetch failed` / timeout de cabeçalho. **Prova:** sessão `c0377632`, 167 s (diário 61).
+- [x] Trilha: evento `ELICITADOR_CLAUDE` ok; `LLM_COST` com `papel: elicitador` (~US$ 0,43).
+- [x] Spec passa guarda cumulativa / estrutura (`REQ` numerados, frontmatter). **56 REQ**, `SPEC_REVISAO`.
+- [x] Spec repete os **10 totais** da tabela acima **corretamente** (0 valores errados antigos).
 - [ ] (Opcional V2) Aprovar Spec, iniciar execução: 1º lote **não** bloqueia só porque elicitador gastou &gt; US$ 0,50.
+
+**Nota UX (16/10):** reenvio duplicado (sessão `95f9f2e9` + `c0377632`) porque a UI não mostrou progresso — ver mudança 9 na referência §5.0.
 
 **Nota:** 「aprovado fase 8」 (16/10) autorizou o teste; **não** substitui este checklist (auditoria 58, Regra 3).

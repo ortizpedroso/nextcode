@@ -1,3 +1,27 @@
+## 16/10/2026 (62) — P5c ✅ e Fase 8 ✅ documentados; prompt B1 redigido
+
+**Feito:** §5.0 P5c ✅ (prova sessão `c0377632`); §5.0.1 Fase 8 ✅, Fase 9 🔄; checklist FASE8; mudança 9 proposta (UX elicitador); `HANDOFF-E1-P5c-F8-fechamento.md`; `docs/prompts/B1-bench-claude-executor.md` (rascunho §8, **não executar** sem 「aprovado Fase 9」).
+**Pendência fundador:** OK para **P5c.4** (indicador "Gerando Spec…") agora vs depois do B1.
+**Próximo passo:** 「aprovado Fase 9」 → Antigravity/Cursor executa B1 → bench Claude × DeepSeek + avaliador Claude 1º → `medicoes.md`.
+
+---
+
+## 16/10/2026 (61) — Smoke da Fase 8 rodado pelo fundador: porta do P5c cumprida
+
+**Fundador:** colou o pedido sintético; a tela "ficou inerte". **Trilha (cópia de `dev.db` + WAL):** rodou 2×. Sessão `95f9f2e9` (10:52:27 → 10:55:10, 163 s, US$ 0,418) — não existe mais na tabela `Session` (10 eventos órfãos; provável exclusão/recarga). Sessão `c0377632` (10:53:00 → 10:55:48): `ELICITADOR_CLAUDE` ok, `claude-opus-5-5`, 166.938 ms, `end_turn`; `LLM_COST` papel `elicitador` US$ 0,429; M2 Jev; `SPEC_PRONTA` → `SPEC_REVISAO`.
+**Spec (`c0377632`, 30.231 caracteres):** 56 REQ distintos; os 10 totais certos presentes (112,89 · 202,89 · 112,88 · 107,25 · 956,64 · 170,27 · 0,40 · 90,39); 0 ocorrências dos valores errados antigos; 0 Asaas/Stripe; "http" só em `src/lib/http.ts` (arquivo interno). Defeito menor: `data: 2025-10-16` (ano errado).
+**Achado de interface:** ~2min45s sem nenhum sinal de "processando" — o streaming é só servidor → Anthropic; a tela não recebe nada até o fim. Leva o usuário a reenviar (custo dobrado hoje: ~US$ 0,85).
+**Encerramento:** prova registrada na entrada 62 / §5.0.
+
+---
+
+## 16/10/2026 (60) — Auditoria do `d1a45f4`: aceito
+
+**Conferido:** 1 commit, só docs (5 arquivos); reflog limpo. Tabela da Fase 8 = valores da regra (10/10); P5c 🔄 na §5.0; Fase 8 ⬜ "bloqueado até prova na trilha" e B1 "após P5c ✅" na §5.0.1; `decisoes.md` registra "aprovado fase 8" como autorização.
+**Próximo passo:** smoke real da Fase 8 (fundador roda no chat ou autoriza o auditor, ~US$ 0,70) → conferir trilha → P5c ✅ → B1.
+
+---
+
 ## 16/10/2026 (59) — Correção auditoria 58: tabela Fase 8 + P5c volta 🔄
 
 **Feito:** `FASE8-pedido-sintetico-p5c.md` — 10 totais corrigidos; regra “1 linha de fatura por exemplo”; checklist sem ✅ falso. §5.0 P5c 🔄; §5.0.1 Fase 8 ⬜; `decisoes.md` e HANDOFF atualizados. Entrada 56 (`a4ea3e2`) superseded na referência.

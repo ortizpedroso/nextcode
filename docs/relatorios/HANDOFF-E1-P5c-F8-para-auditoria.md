@@ -3,7 +3,8 @@
 > **Para:** IA auditora / Antigravity (somente leitura + verificação; não implementar sem 「aprovado Fase N」 do fundador).  
 > **De:** sessão Cursor 16/10/2026.  
 > **HEAD alvo:** ver commit mais recente após correção auditoria 58 (tabela Fase 8 + P5c 🔄).  
-> **Atualização 16/10 (auditoria 58):** P5c **não** está ✅ — Fase 8 smoke **não rodou** (0 `ELICITADOR_CLAUDE`); tabela do pedido sintético corrigida. B1 bloqueado.  
+> **Atualização 16/10 (auditoria 58):** P5c **não** estava ✅ — Fase 8 smoke **não tinha rodado** (0 `ELICITADOR_CLAUDE`); tabela corrigida.  
+> **Atualização 16/10 (smoke fundador):** P5c ✅ e Fase 8 ✅ — sessão `c0377632`, diário 61; ver `HANDOFF-E1-P5c-F8-fechamento.md`. B1 desbloqueado (execução aguarda Fase 9).  
 > **Fonte de ordem:** `docs/NEXTCODE-REFERENCIA.md` §5.0 e §5.0.1.  
 > **Convenção:** ao fim de cada bloco de fases, gera-se um `docs/relatorios/HANDOFF-*.md` para o fundador repassar à auditoria.
 

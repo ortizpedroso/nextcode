@@ -298,8 +298,8 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E0 | **P5.5 + P5.5b** | máscara cobre JSON, `NOME=valor` sem aspas, chave Asaas e segredo repetido entre campos | ✅ | `c8bd775`, `cde4b47` (auditados 15/10): sonda do auditor 8/8 sem vazamento; tsc 0; vitest 121/782 verde |
 | E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ✅ | sondas 15/10: DeepSeek (FreeLLMAPI) e Claude Sonnet/Opus (Anthropic) respondem 200 (`medicoes.md` 15/10) |
 | E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ✅ 15/10: P1 10/10, P2 13/13, P3 12/12, P4 12/12, todas ENTREGUE (`docs/relatorios/bench/2026-10-15-1927.md`) | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
-| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) + **S2** (mudança 8) | Spec no chat: Claude Opus 5.5 direto; reserva DeepSeek; teto 48k/32k tokens; correção Spec até 60k chars; **`elicitador`** em `LLM_COST`; **P5c.3** streaming; **S2** skill no system prompt **sem T7** até P8; **teto (b)** elicitador fora do US$ 0,50 de execução | 🔄 código `de6d338`…`4283a68`, S2-lite `ade8160`; **Fase 8 smoke pendente** (trilha `ELICITADOR_CLAUDE` + checklist em `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`; tabela corrigida 16/10) | porta: smoke real no chat; 10 totais corretos; sem `fetch failed` |
-| E1 | **B1** (novo, mudança 6) | bench P1–P4 com executor Claude × DeepSeek e avaliador Claude como 1º pago | ⬜ | depende do P5c (rota direta à Anthropic) e de conferir se o FreeLLMAPI serve Claude (hoje o executor só aceita rota `custom/`, `politicas-orquestracao.yaml`); porta: aceite e custo das duas variantes em `medicoes.md` |
+| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) + **S2** (mudança 8) | Spec no chat: Claude Opus 5.5 direto; reserva DeepSeek; teto 48k/32k tokens; correção Spec até 60k chars; **`elicitador`** em `LLM_COST`; **P5c.3** streaming; **S2** skill no system prompt **sem T7** até P8; **teto (b)** elicitador fora do US$ 0,50 de execução | ✅ código `de6d338`…`4283a68`, S2-lite `ade8160`; **Fase 8 smoke** sessão `c0377632` (16/10): 167 s, `ELICITADOR_CLAUDE` ok, 56 REQ, 10/10 totais, `SPEC_REVISAO`; diário 61 | porta cumprida; defeito menor: `data: 2025-10-16` na Spec; UX ~3 min sem feedback (mudança 9 proposta) |
+| E1 | **B1** (novo, mudança 6) | bench P1–P4 com executor Claude × DeepSeek e avaliador Claude como 1º pago | ⬜ | **desbloqueado** após P5c ✅; conferir se FreeLLMAPI serve Claude no executor (`custom/`, `politicas-orquestracao.yaml`); porta: aceite e custo das duas variantes em `medicoes.md`; prompt: `docs/prompts/B1-bench-claude-executor.md` |
 | E1 | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
 | E1 | **J3** (§5.5) | perguntas da auditoria final atômicas (1 por REQ; stub e segurança por arquivo, sentido certo), medidas em 4 controles | ⬜ | porta: P1 correto aprovado 5/5; cada controle reprovado pela pergunta do seu defeito |
 | E1 | **J4** (§5.5) | auditoria final volta a `ativo`; remedição com Jev × sem Jev (P1–P3, 3×) | ⬜ | porta: nenhum falso negativo; custo e qualidade com × sem Jev registrados em `medicoes.md` |
@@ -317,7 +317,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E6 | **P9** (J26, R10) | aprendizado com a trilha | ⬜ | porta: só com ≥ 3 Gates entregues (dados suficientes) |
 | E6 | **P10 Gates 2…n** | Gateway completo | ⬜ | porta: cada Gate com build + aceite |
 
-**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`). **Regra 7:** máscara no Jev (P5.1 ✅); máscara nas mensagens `user` ao LLM do chat (**P5-seg** ✅ `962292b`).
+**Fora da ordem, aguardam decisão do fundador (não executar sem ela):** **P5c.4 / mudança 9** — feedback visual no chat durante elicitador Claude (~3 min mudo; ver mudança 9); remover código morto M1 (`decideSpecReviewMessageIntent`) e M4 (`decideSdeCascadeEscalation`) — remover é mexer, mesmo sendo morto; `verificacao_evidencia: ativo` no YAML com o código forçando sombra (`jev-execution-checks.ts:263-266`) — alinhar o YAML a `sombra` até a E4; §3.2 desatualizada (`McpServer.env` já cifrado no P0, `77b3adb`). **Regra 7:** máscara no Jev (P5.1 ✅); máscara nas mensagens `user` ao LLM do chat (**P5-seg** ✅ `962292b`).
 
 **Mudanças do cronograma** (data · mudança · motivo · evidência · aprovação):
 1. 15/10 · **B0** criado antes do J2b · J2b tem de ser "medido no bench" (§5.5) e nenhuma rodada entrega desde 12/10 · `docs/relatorios/bench/2026-10-12-2116.md` (P3 BLOQUEADA 0/12), `2026-10-13-0552.md` (P3 PAUSADA 0/12) · aprovada 15/10
@@ -328,6 +328,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 6. 15/10 · **B1** (executor Claude × DeepSeek no bench; avaliador Claude 1º) depois do P5c · executor Claude nunca foi medido; avaliador Nemotron é gratuito/de outra família só por acaso · `medicoes.md` 15/10 (trilha: 0 chamadas Claude) · aprovada 15/10
 7. 16/10 · **proposta:** laço Jev → elicitador dentro do J8 (E2): para cada lacuna obrigatória que a M0 achou e a Spec não cobriu, uma pergunta atômica ao Jev por item; item faltando volta ao elicitador com a lista exata, 1 rodada, depois aviso ao usuário · hoje a M2 só avisa o usuário (`route.ts:852-860`) e pergunta larga ("a Spec está clara?") não separa modelos (1,4–1,7 para todos, `medicoes.md` 15/10); pergunta estreita separa (0,92 × 0,06, J1) · aguarda
 8. 16/10 · **S2 parcial (mudança 8):** skill `elicitador` no system prompt da fase Spec **sem** `fetch_official_docs_t7` nem checagem T7 até **P8** (mantém mudança 4); auditoria 16/10: S2 sem T7 evita pesquisa inventada · `skills/elicitador/SKILL.md`, `1c3aeb6` + Fase 7b · aprovada 16/10 (fundador aceita recomendação pós-auditoria)
+9. 16/10 · **proposta P5c.4 / mudança 9:** indicador no chat **"Gerando Spec…"** enquanto `callElicitadorClaude` roda (streaming hoje só servidor→Anthropic; UI muda ~3 min → reenvio dobrou custo no smoke, ~US$ 0,85) · diário 61 · **aguarda OK do fundador** (recomendado antes do B1; não bloqueia B1)
 
 ### 5.0.1 Fases de commit — E1 parcial (16/10, fundador aprova cada fase)
 
@@ -340,8 +341,9 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | 5 | `4283a68` | P5c.3 streaming | ✅ |
 | 6–7 | `58cacd3`, `d6cf037` | relatório P5c.3 + diário 53 | ✅ |
 | **7b** | `ade8160`, `12445ba` | S2-lite skill; §5.0 mudança 8; §7.1; apagar planos paralelos; pedido Fase 8 | ✅ |
-| **8** | — | Smoke P5c no app (`FASE8-pedido-sintetico-p5c.md`, tabela corrigida) | ⬜ **bloqueado até prova na trilha** |
-| **9+** | — | **B1** → J2b+J2.7 → J3 → J4 (§5.0) | ⬜ após P5c ✅ |
+| **8** | — | Smoke P5c no app (`FASE8-pedido-sintetico-p5c.md`, tabela corrigida) | ✅ sessão `c0377632`, trilha diário 61 |
+| **9** | — | **B1** (prompt redigido; execução após 「aprovado Fase 9」) | 🔄 |
+| **10+** | — | J2b+J2.7 → J3 → J4 (§5.0) | ⬜ |
 
 Regra: após cada fase, relatório circunstanciado; commits da fase seguinte só com 「aprovado Fase N」.
 
@@ -583,6 +585,7 @@ Fora do J2 (anotado): sessões paradas em `MACROBRIEF`/`CONFERENCIA` (rodam na r
 | `specs/gatway-system-spec.md` | Spec do Gateway (formato antigo, sem `REQ`) |
 | `prompts/`, `relatorios/` | prompts ao Antigravity e relatórios/auditorias — são a prova dos números |
 | `rascunhos/FASE8-pedido-sintetico-p5c.md` | texto aprovável para smoke P5c (Fase 8); não é prompt Antigravity |
+| `prompts/B1-bench-claude-executor.md` | Fase 9 / B1 — bench Claude × DeepSeek (execução após 「aprovado Fase 9」) |
 
 **§7.1 Mapa rápido de `docs/` (198 arquivos):** ordem e estado → **§5.0**; execução por pacote → `prompts/` + `relatorios/`; prova numérica → `relatorios/bench/`; Jev offline → `terceiros/jev-docs/llms-full.txt`; catálogo Jev do projeto → `rascunhos/JEV-DECISOES.md`; governo da pasta → `relatorios/diagnostico-docs-2026-10-13.md`. Planos apagados no D1: §9.0.
 
@@ -711,3 +714,4 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 - **13/10** — D1: documentos antigos consolidados em §9 e apagados; §7 e provas corrigidas em D1b · `bc63e09, 98beb93, 0664efc` · prova: `docs/relatorios/D1-documento-unico.md`
 - **13/10** — J1: auditoria final do Jev medida — reprova código correto (polaridade invertida em 2 perguntas) e trava a sessão sem aviso; plano J (§5.5) aprovado · `ce3fb55, ce90d3d` · prova: `docs/relatorios/J1-diagnostico-entrega-jev.md`
 - **16/10** — E1 parcial: teto (b), S2, P5-seg, P5c.3 (`de6d338`…`4283a68`); Fase 7b S2-lite + mudança 8; planos paralelos absorvidos em §5.0.1 · prova: `vitest` 792/792, `docs/relatorios/P5c.3-elicitador-claude-stream.md`
+- **16/10** — **P5c ✅ / Fase 8 ✅:** smoke `FASE8-pedido-sintetico-p5c.md`, sessão `c0377632` (167 s, `ELICITADOR_CLAUDE`, 56 REQ, 10/10 totais, `SPEC_REVISAO`) · diário 61; reenvio duplicado por UI muda (mudança 9 proposta)
