@@ -6,6 +6,7 @@ import {
   type SpecRequirementItem,
   type SpecRoute,
 } from "@/core/intake/spec-format";
+import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
 
 export const CUMULATIVE_SPEC_INSTRUCTION =
   "devolva a Spec COMPLETA atualizada; mantenha todos os módulos, entidades, rotas e arquivos existentes, a menos que o usuário peça para remover; acrescente o que o usuário pediu";
@@ -91,6 +92,18 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
   }
 
   return baseLines.join("\n");
+}
+
+/** S2: skill elicitador + contrato YAML/canônico do harness (sem prompt genérico de governança). */
+export function buildElicitadorSpecSystemPrompt(funnelBrief?: string): string {
+  const skillBlock = buildSkillSystemPrompt(loadRoleSkill("elicitador"));
+  const formatBlock = buildSpecWriterSystemPrompt(funnelBrief);
+  return [
+    skillBlock,
+    "",
+    "--- FORMATO CANÔNICO DA SPEC (contrato do harness; obedeça junto com a skill elicitador) ---",
+    formatBlock,
+  ].join("\n");
 }
 
 export function buildCumulativeSpecSystemPrompt(currentSpecDraft: string): string {

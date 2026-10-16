@@ -42,7 +42,7 @@ import {
 } from "@/core/orchestrator/message-intent";
 import {
   applyCumulativeSpecGuard,
-  buildSpecWriterSystemPrompt,
+  buildElicitadorSpecSystemPrompt,
   buildCumulativeSpecSystemPrompt,
 } from "@/core/orchestrator/spec-draft";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
@@ -614,7 +614,7 @@ export async function POST(request: NextRequest) {
         `Responda apenas com explicação clara e objetiva. ` +
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : isSpecDraftingPhase
-        ? buildSpecWriterSystemPrompt(funnelBrief)
+        ? buildElicitadorSpecSystemPrompt(funnelBrief)
         : IntakeEngine.getGovernanceSystemPrompt();
 
     const dispatchMessages: DispatchMessage[] = [
