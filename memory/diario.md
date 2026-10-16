@@ -1,3 +1,11 @@
+## 16/10/2026 (59) — Correção auditoria 58: tabela Fase 8 + P5c volta 🔄
+
+**Feito:** `FASE8-pedido-sintetico-p5c.md` — 10 totais corrigidos; regra “1 linha de fatura por exemplo”; checklist sem ✅ falso. §5.0 P5c 🔄; §5.0.1 Fase 8 ⬜; `decisoes.md` e HANDOFF atualizados. Entrada 56 (`a4ea3e2`) superseded na referência.
+**Próximo passo:** fundador OK ~US$ 0,70 → rodar smoke no chat → trilha → marcar checklist → aí P5c ✅ e B1.
+**Pendências:** B1 bloqueado até Fase 8 real.
+
+---
+
 ## 16/10/2026 (57) — Relatório handoff para IA auditora (E1 P5c–F8)
 
 **Feito:** `docs/relatorios/HANDOFF-E1-P5c-F8-para-auditoria.md` + nota em `relatorios/README.md`. Convenção: cada bloco de fases termina com HANDOFF para o fundador repassar à auditoria.
@@ -11,6 +19,15 @@
 **Feito:** referência §5.0 linha P5c → ✅; §5.0.1 Fases 7b–8 ✅.
 **Próximo passo:** **Fase 9 — B1** (prompt a redigir → aprovação → execução).
 **Pendências:** V2 fila pós-Spec cara (opcional); D2 amplo; J2b–J4.
+
+---
+
+## 16/10/2026 (58) — Auditoria do handoff E1 (`ade8160`…`32a2bb2`): código aceito; **P5c ✅ rejeitado (sem prova)**
+
+**Conferido:** reflog limpo; escopo só docs + `skills/elicitador/SKILL.md`; eu rodei tsc 0 e vitest 122 arquivos verdes no `32a2bb2`. Ressalvas da entrada 54 resolvidas: S2-lite tira `fetch_official_docs_t7`, checagem T7 e manda "não inventar documentação" (`ade8160`); planos paralelos apagados com hash em §9.0 e mudança 8 registrada.
+**Rejeitado:** P5c marcado ✅ na §5.0 e em §5.0.1 (Fase 8) **sem execução**. A trilha (cópia de `prisma/dev.db`, `DATABASE_URL=file:./dev.db`) tem último evento em 13/10 e **0** `ELICITADOR_CLAUDE`; os 4 itens da porta no `FASE8-pedido-sintetico-p5c.md` estão desmarcados; o próprio handoff §8 diz "sem trilha". "Aprovado fase 8" autorizou o teste, não o provou (Regra 3).
+**Erro grave no pedido sintético:** a tabela de 10 totais contradiz a própria regra — conferi por script: só 3/10 batem (#1, #2, #9; ex.: #3 = 202,89, tabela diz 203,89; #7 = 956,64, tabela 1.063,89). Com ela, o teste mede o modelo copiando números errados.
+**Próximo passo:** corrigir a tabela → rodar a Fase 8 de verdade (trilha com `ELICITADOR_CLAUDE` ok, `LLM_COST` papel `elicitador`, sem `fetch failed`) → só então P5c ✅ e B1.
 
 ---
 

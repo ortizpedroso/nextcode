@@ -51,4 +51,4 @@
 | 16/10 | Fundador aprovou **`docs/PLANO-UNICO-NEXTCODE.md`**: implantação **fase a fase**, commit após cada fase com relatório circunstanciado; miolo congelado (decomposer, analista LLM planejamento, `splitNodesByJev`) | esta sessão |
 | 16/10 | **Mudança 7** (laço Jev → elicitador por lacuna atômica): **adiada para E2/J8** até fechar E1 (P5c, B1, J2b–J4) | esta sessão |
 | 16/10 | **Mudança 8 (S2 parcial):** skill `elicitador` no prompt da Spec **sem** T7/`fetch_official_docs_t7` até **P8**; planos `PLANO-UNICO`/`GUIA` absorvidos na §5.0.1 e §7.1 e apagados; Fase 8 smoke com `docs/rascunhos/FASE8-pedido-sintetico-p5c.md` | esta sessão (fundador: aceito recomendação) |
-| 16/10 | **Fase 8 / P5c:** fundador declarou porta cumprida — 「aprovado fase 8」; linha P5c marcada ✅ na §5.0 | esta sessão |
+| 16/10 | **Fase 8:** fundador 「aprovado fase 8」 = **autorização para rodar smoke**, não prova (auditoria 58: 0 `ELICITADOR_CLAUDE` em `dev.db`; P5c voltou 🔄 até checklist + trilha) | esta sessão |

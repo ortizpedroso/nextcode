@@ -298,7 +298,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | E0 | **P5.5 + P5.5b** | máscara cobre JSON, `NOME=valor` sem aspas, chave Asaas e segredo repetido entre campos | ✅ | `c8bd775`, `cde4b47` (auditados 15/10): sonda do auditor 8/8 sem vazamento; tsc 0; vitest 121/782 verde |
 | E0 | **F1 (fundador)** | cota do provedor pago (FreeLLMAPI 429 em 13/10) | ✅ | sondas 15/10: DeepSeek (FreeLLMAPI) e Claude Sonnet/Opus (Anthropic) respondem 200 (`medicoes.md` 15/10) |
 | E0 | **B0** (novo, mudança 1) | bench P1–P4, 1 repetição, sistema atual | ✅ 15/10: P1 10/10, P2 13/13, P3 12/12, P4 12/12, todas ENTREGUE (`docs/relatorios/bench/2026-10-15-1927.md`) | **porta da E1:** P1–P4 ENTREGUE com aceite igual a 09/10 (100%). Falhou → diagnóstico antes de qualquer item novo |
-| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) + **S2** (mudança 8) | Spec no chat: Claude Opus 5.5 direto; reserva DeepSeek; teto 48k/32k tokens; correção Spec até 60k chars; **`elicitador`** em `LLM_COST`; **P5c.3** streaming; **S2** skill no system prompt **sem T7** até P8; **teto (b)** elicitador fora do US$ 0,50 de execução | ✅ 16/10: código `de6d338`…`4283a68`, S2-lite `ade8160`, Fase 8 aprovada pelo fundador (pedido `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`) | porta: streaming + Spec válida + (V2 opcional) fila não bloqueia só por custo Spec |
+| **E1 — Fim do fluxo que se conserta** | **P5c** (novo, mudança 5) + **S2** (mudança 8) | Spec no chat: Claude Opus 5.5 direto; reserva DeepSeek; teto 48k/32k tokens; correção Spec até 60k chars; **`elicitador`** em `LLM_COST`; **P5c.3** streaming; **S2** skill no system prompt **sem T7** até P8; **teto (b)** elicitador fora do US$ 0,50 de execução | 🔄 código `de6d338`…`4283a68`, S2-lite `ade8160`; **Fase 8 smoke pendente** (trilha `ELICITADOR_CLAUDE` + checklist em `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`; tabela corrigida 16/10) | porta: smoke real no chat; 10 totais corretos; sem `fetch failed` |
 | E1 | **B1** (novo, mudança 6) | bench P1–P4 com executor Claude × DeepSeek e avaliador Claude como 1º pago | ⬜ | depende do P5c (rota direta à Anthropic) e de conferir se o FreeLLMAPI serve Claude (hoje o executor só aceita rota `custom/`, `politicas-orquestracao.yaml`); porta: aceite e custo das duas variantes em `medicoes.md` |
 | E1 | **J2b + J2.7** (§5.5) | entrega reprovada volta a `PLANEJAMENTO` com Microbrief de reparo (`19d5758`, `359e06b`), até 3 rodadas, depois `BLOQUEADA` + relatório; teste estrutural com as listas reais | ⬜ | porta: P4 com bug plantado → reparado e ENTREGUE, ou BLOQUEADA com relatório, em ≤ 3 rodadas |
 | E1 | **J3** (§5.5) | perguntas da auditoria final atômicas (1 por REQ; stub e segurança por arquivo, sentido certo), medidas em 4 controles | ⬜ | porta: P1 correto aprovado 5/5; cada controle reprovado pela pergunta do seu defeito |
@@ -340,8 +340,8 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 | 5 | `4283a68` | P5c.3 streaming | ✅ |
 | 6–7 | `58cacd3`, `d6cf037` | relatório P5c.3 + diário 53 | ✅ |
 | **7b** | `ade8160`, `12445ba` | S2-lite skill; §5.0 mudança 8; §7.1; apagar planos paralelos; pedido Fase 8 | ✅ |
-| **8** | — | Smoke P5c (pedido sintético); fundador **aprovou Fase 8** 16/10 | ✅ |
-| **9+** | — | **B1** → J2b+J2.7 → J3 → J4 (§5.0) | ⬜ próximo |
+| **8** | — | Smoke P5c no app (`FASE8-pedido-sintetico-p5c.md`, tabela corrigida) | ⬜ **bloqueado até prova na trilha** |
+| **9+** | — | **B1** → J2b+J2.7 → J3 → J4 (§5.0) | ⬜ após P5c ✅ |
 
 Regra: após cada fase, relatório circunstanciado; commits da fase seguinte só com 「aprovado Fase N」.
 

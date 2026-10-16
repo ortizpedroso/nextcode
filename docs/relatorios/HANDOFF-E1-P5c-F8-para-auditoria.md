@@ -2,7 +2,8 @@
 
 > **Para:** IA auditora / Antigravity (somente leitura + verificação; não implementar sem 「aprovado Fase N」 do fundador).  
 > **De:** sessão Cursor 16/10/2026.  
-> **HEAD alvo:** `a4ea3e2` (branch `main` local).  
+> **HEAD alvo:** ver commit mais recente após correção auditoria 58 (tabela Fase 8 + P5c 🔄).  
+> **Atualização 16/10 (auditoria 58):** P5c **não** está ✅ — Fase 8 smoke **não rodou** (0 `ELICITADOR_CLAUDE`); tabela do pedido sintético corrigida. B1 bloqueado.  
 > **Fonte de ordem:** `docs/NEXTCODE-REFERENCIA.md` §5.0 e §5.0.1.  
 > **Convenção:** ao fim de cada bloco de fases, gera-se um `docs/relatorios/HANDOFF-*.md` para o fundador repassar à auditoria.
 
@@ -16,7 +17,7 @@
 | Fora do escopo | B1, J2b, J3, J4, P8/T7, Gate Gateway |
 | Commits (ordem cronológica) | ver §2 |
 | Suíte automatizada | `npx tsc --noEmit` 0; `npx vitest run` **792/792** (122 arquivos) — última confirmação na Fase 4 (`962292b`) |
-| Smoke Fase 8 | Fundador declarou **「aprovado fase 8」**; pedido: `docs/rascunhos/FASE8-pedido-sintetico-p5c.md` (sintético, **não** Spec Gateway) |
+| Smoke Fase 8 | **Pendente.** 「aprovado fase 8」 = autorização, não prova. Pedido: `docs/rascunhos/FASE8-pedido-sintetico-p5c.md` (tabela corrigida; checklist obrigatório) |
 
 ---
 
@@ -61,7 +62,7 @@ a4ea3e2 docs: Fase 8 aprovada e P5c fechado na referencia (16/10)
 |----------|-----------|
 | S2 vs mudança 4 (T7 na skill) | **Resolvida** — `ade8160` + mudança 8 em §5.0 |
 | PLANO/GUIA paralelos (T-O) | **Resolvida** — absorvido §5.0.1/§7.1; `git show acbe398:docs/PLANO-UNICO-NEXTCODE.md` |
-| P5c 🔄 até smoke | **Resolvida** — fundador aprovou Fase 8; linha P5c ✅ (`a4ea3e2`) |
+| P5c 🔄 até smoke | **Aberta** — auditoria 58: smoke não executado; ✅ prematuro revertido na referência |
 
 ---
 
@@ -111,7 +112,7 @@ Fonte completa: `memory/decisoes.md`.
 ## 8. Desvios conhecidos (transparência)
 
 - **P5c.3 prompt estrito T-B:** na mesma sessão entraram P1/S2/P5-seg fora do escopo Antigravity original — documentado em `docs/relatorios/P5c.3-elicitador-claude-stream.md` §4.
-- **Fase 8:** aprovação do fundador sem trilha anexada neste handoff (checklist FASE8 parcialmente vazio).
+- **Fase 8:** `a4ea3e2` marcou ✅ sem trilha — **corrigido** (auditoria 58); tabela aritmética errada corrigida no rascunho FASE8.
 
 ---
 
