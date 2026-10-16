@@ -1,9 +1,10 @@
 /**
  * Elicitador Claude direto (P5c, decisão do fundador 15/10 — medicoes.md).
  *
- * Chamada direta à API da Anthropic para a fase de Spec:
  * Claude Opus 5.5 é o primeiro modelo do elicitador com teto expandido (48.000 tokens)
  * e prazo próprio (540 s). O gateway de LLM fica de reserva.
+ * P5c.3: resposta por streaming — o fetch do Node encerra se os cabeçalhos demoram >300 s
+ * sem stream; a Anthropic só envia cabeçalhos HTTP após o corpo completo em modo não-stream.
  */
 import type { UsageLike } from "@/core/llm/cost";
 import { safeFetch } from "@/core/security/safe-fetch";
@@ -15,6 +16,110 @@ export type ElicitadorClaudeResult =
   | { ok: true; text: string; model: string; usage: UsageLike | null; stopReason: string | null; ms: number }
   | { ok: false; detail: string };
 
+function mergeUsage(base: UsageLike | null, patch: UsageLike | null): UsageLike | null {
+  if (!patch) return base;
+  if (!base) return { ...patch };
+  return { ...base, ...patch };
+}
+
+function parseSseEvents(buffer: string): { events: Array<{ event?: string; data: string }>; rest: string } {
+  const normalized = buffer.replace(/\r\n/g, "\n");
+  const parts = normalized.split("\n\n");
+  const rest = parts.pop() ?? "";
+  const events: Array<{ event?: string; data: string }> = [];
+  for (const block of parts) {
+    if (!block.trim()) continue;
+    let eventName: string | undefined;
+    const dataLines: string[] = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) eventName = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (dataLines.length > 0) {
+      events.push({ event: eventName, data: dataLines.join("\n") });
+    }
+  }
+  return { events, rest };
+}
+
+async function readAnthropicMessageStream(
+  body: ReadableStream<Uint8Array>,
+  key: string
+): Promise<
+  | { ok: true; text: string; usage: UsageLike | null; stopReason: string | null }
+  | { ok: false; detail: string }
+> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  let usage: UsageLike | null = null;
+  let stopReason: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const { events, rest } = parseSseEvents(buffer);
+    buffer = rest;
+
+    for (const ev of events) {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(ev.data) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const type = parsed.type as string | undefined;
+      if (type === "error") {
+        const errObj = parsed.error as { message?: string } | undefined;
+        const msg = errObj?.message ?? "erro";
+        const detail = `stream ${msg}`.slice(0, 140);
+        const safeDetail = key ? detail.split(key).join("••••") : detail;
+        return { ok: false, detail: safeDetail };
+      }
+      if (type === "message_start") {
+        const message = parsed.message as { usage?: UsageLike } | undefined;
+        if (message?.usage) usage = mergeUsage(usage, message.usage);
+      }
+      if (type === "content_block_delta") {
+        const delta = parsed.delta as { type?: string; text?: string } | undefined;
+        if (delta?.type === "text_delta" && typeof delta.text === "string") {
+          text += delta.text;
+        }
+      }
+      if (type === "message_delta") {
+        const delta = parsed.delta as { stop_reason?: string } | undefined;
+        if (delta?.stop_reason) stopReason = delta.stop_reason;
+        const patch = parsed.usage as UsageLike | undefined;
+        if (patch) usage = mergeUsage(usage, patch);
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const { events } = parseSseEvents(`${buffer}\n\n`);
+    for (const ev of events) {
+      try {
+        const parsed = JSON.parse(ev.data) as Record<string, unknown>;
+        const type = parsed.type as string | undefined;
+        if (type === "content_block_delta") {
+          const delta = parsed.delta as { type?: string; text?: string } | undefined;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") text += delta.text;
+        }
+      } catch {
+        /* ignore trailing partial */
+      }
+    }
+  }
+
+  if (!text.trim()) {
+    return { ok: false, detail: "resposta sem texto" };
+  }
+  return { ok: true, text, usage, stopReason };
+}
+
 export async function callElicitadorClaude(opts: {
   messages: ReadonlyArray<{ role: string; content: string }>;
   claudeKey: string;
@@ -23,16 +128,13 @@ export async function callElicitadorClaude(opts: {
 }): Promise<ElicitadorClaudeResult> {
   const key = (opts.claudeKey || "").trim();
 
-  // 1. Chave vazia (após trim) ou começando com "••••" ou "****"
   if (!key || key.startsWith("••••") || key.startsWith("****")) {
     return { ok: false, detail: "sem chave Claude" };
   }
 
   try {
-    // 2. Modelo configurável via ambiente ou padrão claude-opus-5-5
     const model = process.env.ELICITADOR_CLAUDE_MODEL || "claude-opus-5-5";
 
-    // 3. system = conteúdos das mensagens com role === "system", unidos por "\n\n"
     const systemParts: string[] = [];
     const nonSystemMsgs: Array<{ role: string; content: string }> = [];
     for (const m of opts.messages) {
@@ -44,8 +146,6 @@ export async function callElicitadorClaude(opts: {
     }
     const system = systemParts.join("\n\n");
 
-    // 4. Demais mensagens: role === "assistant" fica assistant; qualquer outro vira user.
-    // Descarte assistant antes do primeiro user. Una mensagens seguidas do mesmo papel com "\n\n".
     const mapped = nonSystemMsgs.map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
       content: m.content,
@@ -77,10 +177,10 @@ export async function callElicitadorClaude(opts: {
       return { ok: false, detail: "sem mensagem do usuário" };
     }
 
-    // 5. Chamada via safeFetch
     const bodyObj: Record<string, unknown> = {
       model,
       max_tokens: opts.maxTokens ?? ELICITADOR_CLAUDE_MAX_TOKENS,
+      stream: true,
       messages: coalesced,
     };
     if (system) {
@@ -101,9 +201,7 @@ export async function callElicitadorClaude(opts: {
       body: JSON.stringify(bodyObj),
       timeoutMs,
     });
-    const ms = Date.now() - startMs;
 
-    // 6. Status diferente de 200
     if (res.status !== 200) {
       let errText = "";
       try {
@@ -119,7 +217,7 @@ export async function callElicitadorClaude(opts: {
         try {
           errText = await res.text();
         } catch {
-          // ignora
+          /* ignora */
         }
       }
       const rawDetail = errText ? `HTTP ${res.status} ${errText.trim()}` : `HTTP ${res.status}`;
@@ -127,29 +225,26 @@ export async function callElicitadorClaude(opts: {
       return { ok: false, detail: safeDetail.slice(0, 140) };
     }
 
-    // 7. text = junção dos blocos content com type === "text"
-    const json = await res.json();
-    const contentBlocks = Array.isArray(json?.content) ? json.content : [];
-    const textBlocks = contentBlocks
-      .filter((b: any) => b && b.type === "text" && typeof b.text === "string")
-      .map((b: any) => b.text);
-    const text = textBlocks.join("");
-
-    if (!text.trim()) {
-      return { ok: false, detail: "resposta sem texto" };
+    if (!res.body) {
+      return { ok: false, detail: "stream sem corpo" };
     }
 
-    // 8. Sucesso
+    const streamResult = await readAnthropicMessageStream(res.body, key);
+    const ms = Date.now() - startMs;
+
+    if (!streamResult.ok) {
+      return streamResult;
+    }
+
     return {
       ok: true,
-      text,
+      text: streamResult.text,
       model,
-      usage: json.usage ?? null,
-      stopReason: json.stop_reason ?? null,
+      usage: streamResult.usage,
+      stopReason: streamResult.stopReason,
       ms,
     };
   } catch (err) {
-    // 9. Qualquer exceção
     const errStr = String(err);
     const safeStr = key ? errStr.split(key).join("••••") : errStr;
     return { ok: false, detail: safeStr.slice(0, 140) };
