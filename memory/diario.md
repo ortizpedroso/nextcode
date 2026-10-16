@@ -1,3 +1,10 @@
+## 16/10/2026 (72) — "Fechar" descartado: Arquivar já faz isso
+
+**Fundador:** "deixe do jeito que está, eu não sabia da função dele". PJ1 revisado na §5.0 (mudança 11) e `decisoes.md`: Arquivar mantém nome e função; ficam só as correções — Desarquivar alcançável (lista "Arquivados"), abrir a mesma pasta sem duplicar, Apagar pergunta sobre a pasta, sessão sem projeto só executa vinculada.
+**Próximo passo:** relatório do B1 → auditoria → prompt PJ1.
+
+---
+
 ## 16/10/2026 (71) — "Fechar projeto" definido; PJ1 registrado (mudança 11)
 
 **Fundador:** fechar = sai da área de trabalho do NextCode, continua na máquina.
