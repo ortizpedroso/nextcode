@@ -1,3 +1,12 @@
+## 16/10/2026 (70) — Pedido do fundador: "fechar projeto" e sessões sem projeto vinculáveis depois — análise de como é hoje
+
+**Pedido:** incluir no próximo prompt (depois do relatório do B1): fechar projeto (além de apagar) e usar sessões sem projeto, vinculando depois.
+**Como é hoje (código):** (1) **apagar** (`src/app/api/projects/[id]/route.ts` DELETE) apaga sessões/mensagens/tarefas **e a pasta física do projeto no disco** (`fs.rmSync` + `rd /s /q`), com trava só para raiz/NextCode/pasta-pai; (2) **arquivar** já existe (`isArchived`, menu "Arquivar"), mas a tela busca `/api/projects` sem `includeArchived` e a barra filtra `!isArchived` (`sidebar.tsx:81`) → projeto arquivado some e o "Desarquivar" fica inalcançável; (3) **sessão sem projeto** já existe ("+ Nova Sessão Ad-hoc", `projectId: null`) e **vincular depois** também (`PATCH /api/sessions/[id]` com `projectId`; menu da sessão; `page.tsx:290`); (4) **risco:** sessão sem projeto que aprova a Spec executa e grava arquivos em `process.cwd()` = pasta do próprio NextCode (`node-executor.ts:1038`, `:722`, `:880`); não achei trava que impeça (`approveSpecAndStart` não exige projeto).
+**Não existe:** estado "fechado" (encerrado, sem nova execução, histórico e pasta preservados, reabrível).
+**Próximo passo:** fundador confirma o significado de "fechar" → registrar na §5.0 → item no próximo prompt (após auditoria do B1).
+
+---
+
 ## 16/10/2026 (69) — Mudança 10 registrada; prompt B1 reduzido (avaliador Claude)
 
 **Fundador:** "concordo" com o diagnóstico 68; pediu que todo prompt exija **relatório do que foi feito** e **nada fora do prompt**.
