@@ -1,3 +1,13 @@
+## 16/10/2026 (66) — Auditoria do consolidado E1 Fases 1–8 (`ec82544`…`7c564a3`): aceito com ressalvas; prompt B1 precisa de correção antes do 「aprovado Fase 9」
+
+**Conferido:** 4 commits novos; reflog limpo; 1 só de código (`ed803ff`: `page.tsx` +20, `workspace.tsx` +30); nenhum segredo no diff; eu rodei tsc 0 e vitest 122 arquivos verdes no `7c564a3`. P5c ✅ agora com prova (sessão `c0377632`, conferida por mim na entrada 61). Skill sem `fetch_official_docs_t7`.
+**Ressalvas da implementação:** (1) P5c.4 é só indicador: a resposta continua presa a uma chamada única — recarregar/trocar de sessão durante a Spec ainda "perde" a resposta na tela (o `sessionId` só existe depois); (2) indicador escolhe "Gerando Spec… (Claude Opus)" por `!isSpecApproved`, então também aparece em dúvidas/conversa fora da redação da Spec; (3) mudança 9 entrou como "proposta, aguarda OK" em `decisoes.md` mas foi implementada com "fundador: continuar" — confirmar com o fundador; (4) smoke manual do balão (item 10 do checklist) não foi feito por mim.
+**Prompt B1 (`docs/prompts/B1-bench-claude-executor.md`) — 5 problemas:** (a) B1.1 manda mexer em `evaluator-models.ts` mas o PODE ALTERAR lista só `scripts/bench.ts` e o teste (contradição → T-J para o Antigravity); (b) modelo `claude-sonnet-4-5-20250929` (geração antiga; `cost.ts:28-30` já tem Sonnet 5 e Opus 5.5) — decidir qual Claude o executor mede; (c) teto US$ 0,50 conta executor+avaliador: B0 P2 gastou 0,096 no executor DeepSeek; Claude Opus custa ~5× na saída (`cost.ts:21` × `:30`) → P2 pode bater o teto e virar BLOQUEADA, medindo o teto e não o modelo — o prompt não diz como o bench trata o teto; (d) Caminho B "PARE… (fundador já aprovou; segue na mesma tarefa)" se contradiz; o executor usa laço com ferramentas, que não é "espelhar o elicitador" (sem ferramentas) — subestimado; (e) a variante troca executor **e** avaliador juntos: não dá para atribuir aceite/custo a um ou outro.
+**Status `8240fde` (entrada 65, outro agente):** inventário confere com a auditoria, mas lista B1 como pronto para 「aprovado Fase 9」 sem as correções (a–e) abaixo — vale este veredito.
+**Próximo passo:** corrigir o prompt B1 (a–e) → fundador dá 「aprovado Fase 9」.
+
+---
+
 ## 16/10/2026 (65) — Relatório de status: implementado vs pendente
 
 **Emitido:** `docs/relatorios/STATUS-implementacao-2026-10-16.md` (HEAD `7c564a3`) — E1 parcial fechada até Fase 8 + P5c.4; falta B1 → J2b → J3 → J4. Fundador fará auditoria desta vez por conta própria.
