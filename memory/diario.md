@@ -1,3 +1,20 @@
+## 16/10/2026 (54) — Auditoria das Fases 0–7 (`f0bcc43`…`d6cf037`): aceito com ressalvas
+
+**Conferido:** escopo 15 arquivos; reflog sem reset/amend/rebase; `tsc` 0 em cada commit isolado (worktree); suíte no HEAD 122/792 verde (rodei eu). No worktree, 103 falhas idênticas em todos os commits = falta `.env` (não versionado), não código.
+**Código ok:** teto (b) (`budget-guard.ts` usa `execucaoUsd + outroUsd`; teste novo cobre); P5c.3 por SSE (prazo total segue em `AbortSignal.timeout`); máscara nas mensagens `user` do dispatch.
+**Ressalvas:** (1) **S2 contradiz a mudança 4 aprovada em 15/10** ("skill `elicitador` só com P8"): `skills/elicitador/SKILL.md` declara `fetch_official_docs_t7` e "consulta documentação oficial", que o chat não tem → risco de pesquisa inventada; não há linha nova em "Mudanças do cronograma". (2) `PLANO-UNICO-NEXTCODE.md` e `GUIA-UNICO-SEGUIR.md` são plano paralelo (Regra 4 / T-O), embora o fundador tenha aprovado o plano.
+**Próximo passo:** fundador decide S2 (reverter ou tirar a promessa de ferramenta) e se os 2 documentos entram na §5.0; depois Fase 8 com pedido sintético.
+
+---
+
+## 16/10/2026 (55) — Fase 7b: S2-lite, mudança 8, docs na referência, pedido Fase 8
+
+**Feito:** `skills/elicitador/SKILL.md` sem T7/`fetch_official_docs_t7` até P8; §5.0 mudança 8 + §5.0.1 + §7.1; `PLANO-UNICO`/`GUIA` apagados (§9.0); `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`; `decisoes.md` mudança 8.
+**Próximo passo:** fundador aprova texto Fase 8 e roda smoke no chat → 「aprovado Fase 8」 se porta OK.
+**Pendências:** V2 opcional; B1; J2b+J2.7; D2 amplo §3/§4.
+
+---
+
 ## 16/10/2026 (53) — Plano único Fases 0–6 executadas (fundador aprovou)
 
 **Feito:** `docs/PLANO-UNICO-NEXTCODE.md` + `GUIA-UNICO-SEGUIR.md`; decisões 16/10 em `decisoes.md` (`f0bcc43`, `acbe398`). Código: teto (b) `de6d338`, S2 `1c3aeb6`, P5-seg `962292b`, P5c.3 `4283a68`; relatório `docs/relatorios/P5c.3-elicitador-claude-stream.md`. `tsc` 0; `vitest run` 792/792 na Fase 4.
