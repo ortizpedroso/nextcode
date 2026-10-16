@@ -1,3 +1,13 @@
+## 16/10/2026 (80) — Teste real: auditoria da Spec "Gateway_Multi" (sessão `934939fc`) — boa, não aprovar ainda
+
+**Fundador:** apagou ele mesmo os projetos às 16:35. Colou pedido próprio (995 caracteres, sem segredo) no projeto `Gateway_Multi` (`C:\projetos\gateway_multi`).
+**Trilha (cópia `dev.db`+WAL):** Opus 5.5, 169 s, `end_turn`, US$ 0,444 (21.401 tokens de saída, 5.505 de raciocínio); Spec 35.348 caracteres, 42 REQ, 58 arquivos, 13 módulos, 10 entidades; fase `SPEC_REVISAO` (não aprovada); `CONFERENCIA_T8A_OK`; 0 segredo. Jev M0: web_fullstack 0,93, multi_tenant_saas 1,0, complexidade 2,96/3; M2: clareza 1,99/3, "sem contradições" com confiança 0,08.
+**Cobertura do pedido:** 100% (Asaas transparente, whitelabel, dashboard, relatórios pagos/pendentes/inadimplentes, API para lojas, produto/serviço, link, checkout, repasse direto, comprovante por e-mail/WhatsApp com pelo menos um contato). Acréscimo justificado: CPF/CNPJ do pagador (Asaas exige).
+**Achados:** (1) 🔴 REQ-003 exige `.env.example`, que não está em `arquivos_afetados` → nenhuma etapa pode gravá-lo (T3) → REQ falha certo; (2) 🔴 CARTAO está nos enums e métodos, mas nenhum REQ diz como pagar com cartão e a nota fala em PCI → executor vai inventar; (3) limitação de requisições só "recomendada" → não vira código num gateway de pagamento; (4) data `2025-06-01` (erro conhecido do ano); (5) 4 dúvidas abertas (WhatsApp, remuneração da plataforma, domínio próprio, parcelamento/recorrência/equipe); (6) fatos do Asaas não conferidos em doc oficial (T7/P8 desligado): subconta ATIVA na hora (Asaas pode exigir aprovação de documentos), id do evento do webhook.
+**Próximo passo:** fundador decide cartão e dúvidas → manda correção no chat → auditor confere a Spec revisada → aprovar.
+
+---
+
 ## 16/10/2026 (79) — Teste pesado sem teto; ACHADO: sessões apagadas do `dev.db` às 16:35
 
 **Fundador:** teste pesado sem teto de custo ("testar para saber as capacidades"); se der sinal, testa de forma real no NextCode. Registrado na linha B1b (travas de laço T6 continuam).
