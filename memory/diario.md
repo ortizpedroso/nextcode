@@ -1,3 +1,14 @@
+## 16/10/2026 (84) — Spec v3 idêntica à v2: o NextCode removeu `.env.example` (não foi o Opus); PJ1.7 e SM1 registrados
+
+**Trilha:** 4ª chamada Opus (US$ 0,466; 116 s; 18.005 tokens de saída) → Spec **byte a byte igual** à anterior (38.315 caracteres). Spec do teste: US$ 1,86 em 4 versões.
+**Causa (código):** `autoHealSpecDocument` (`chat/route.ts:886`) filtra `arquivos_afetados` e módulos com `isConcreteFilePath` (`spec-auto-heal.ts:13-19`, desde `156d01b`, 11/10), que rejeita nome começando com ponto → `.env.example` removido calado; `fixesApplied` não é registrado nem mostrado; a mensagem gravada é a versão "curada". **Corrijo a entrada 82:** "o Opus ignorou a ordem" estava errado — não dá para saber, e o mais provável é que ele obedeceu e o NextCode apagou.
+**Cartão:** a Spec mantém "PENDÊNCIA DE DOCUMENTAÇÃO" sobre o mecanismo do cartão no Asaas — correto sem pesquisa (P8 não ligado); é da próxima versão, não bloqueia esta entrega.
+**Jev:** não pesquisa (é modelo de decisão); papéis certos: guarda da pesquisa (M5 já existe), conferir item a item se cada correção pedida foi aplicada (com a mudança 7), e M2 (que já desconfiou: clareza 1,78).
+**Registrado:** §5.0 PJ1.7 (UI), SM1 (proposta), acréscimo na mudança 7 (correção por trecho + Jev conferindo); `decisoes.md`.
+**Para o teste seguir:** contorno — REQ-003 documenta as variáveis numa seção do `README.md` (passa no filtro).
+
+---
+
 ## 16/10/2026 (83) — "Mando um comando e ele duplica": diagnóstico
 
 **Trilha da sessão `934939fc`:** 3 mensagens do fundador = 3 `ELICITADOR_CLAUDE` = 3 cobranças Opus; 1 linha `Message` por envio → **não há chamada duplicada**.
