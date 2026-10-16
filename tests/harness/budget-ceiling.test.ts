@@ -70,4 +70,28 @@ describe("Teto de custo por projeto (US$ 0,50)", () => {
     expect(s.phase).toBe("EXECUCAO");
     expect(await enforceBudgetBeforeBatch(id)).toBe(true);
   });
+
+  it("custo da Spec (papel elicitador) não conta para o teto; execução segue", async () => {
+    const id = await sessionInExecution();
+    await recordLlmCost({
+      sessionId: id,
+      papel: "elicitador",
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      usage: { input_tokens: 1_000_000, output_tokens: 500_000 },
+    });
+    const b = await getSessionBudget(id);
+    expect(b.spentUsd).toBe(0);
+    expect(await enforceBudgetBeforeBatch(id)).toBe(true);
+
+    await recordLlmCost({
+      sessionId: id,
+      papel: "executor",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      usage: { prompt_tokens: 0, completion_tokens: 50_000 },
+    });
+    expect((await getSessionBudget(id)).spentUsd).toBeGreaterThan(0);
+    expect(await enforceBudgetBeforeBatch(id)).toBe(true);
+  });
 });

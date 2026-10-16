@@ -149,6 +149,8 @@ orcamento:
   alerta_custo_usd: 0.40
   alerta_percentual_teto: 80
   acao_ao_atingir_teto: "pausar_orquestracao_e_exigir_autorizacao_humana"
+  # Spec/elicitador (Claude Opus) grava LLM_COST mas não consome o teto da DAG (fundador 16/10).
+  conta_elicitador_no_teto: false
 
 execucao_paralela:
   paralelismo_maximo: 3

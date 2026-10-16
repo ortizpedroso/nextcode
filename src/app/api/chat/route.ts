@@ -701,7 +701,13 @@ export async function POST(request: NextRequest) {
         TelemetryLogger.log({ sessionId: activeSessionId, action: "ELICITADOR_CLAUDE", details: { ok: false, detalhe: res.detail } });
         return null;
       }
-      await recordLlmCost({ sessionId: activeSessionId, papel: "outro", provider: "anthropic", model: res.model, usage: res.usage });
+      await recordLlmCost({
+        sessionId: activeSessionId,
+        papel: "elicitador",
+        provider: "anthropic",
+        model: res.model,
+        usage: res.usage,
+      });
       TelemetryLogger.log({
         sessionId: activeSessionId,
         action: "ELICITADOR_CLAUDE",

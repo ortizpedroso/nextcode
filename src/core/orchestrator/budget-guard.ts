@@ -40,10 +40,20 @@ export interface BudgetState {
   breakdown?: SessionCostBreakdown;
 }
 
+function spentUsdForBudgetCeiling(
+  breakdown: Awaited<ReturnType<typeof sessionCostBreakdown>>,
+  policy: OrchestrationPolicy
+): number {
+  if (policy.orcamento.contaElicitadorNoTeto) {
+    return breakdown.totalUsd;
+  }
+  return breakdown.execucaoUsd + breakdown.outroUsd;
+}
+
 export async function getSessionBudget(sessionId: string, policy?: OrchestrationPolicy): Promise<BudgetState> {
   const p = policy ?? loadOrchestrationPolicy();
   const [breakdown, extra] = await Promise.all([sessionCostBreakdown(sessionId), authorizedExtraUsd(sessionId)]);
-  const spentUsd = breakdown.totalUsd;
+  const spentUsd = spentUsdForBudgetCeiling(breakdown, p);
   const limitUsd = p.orcamento.tetoCustoPorProjetoUsd + extra;
   const alertUsd = limitUsd * (p.orcamento.alertaPercentualTeto / 100);
   const status = spentUsd >= limitUsd ? "teto" : spentUsd >= alertUsd ? "alerta" : "ok";

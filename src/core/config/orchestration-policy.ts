@@ -97,6 +97,8 @@ export interface OrchestrationPolicy {
     alertaCustoUsd: number;
     alertaPercentualTeto: number;
     acaoAoAtingirTeto: string;
+    /** false = custo da Spec/elicitador entra na trilha mas não conta para o teto da execução (decisão fundador 16/10). */
+    contaElicitadorNoTeto: boolean;
   };
   execucaoParalela: {
     paralelismoMaximo: number;
@@ -283,6 +285,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     alertaCustoUsd: 0.4,
     alertaPercentualTeto: 80,
     acaoAoAtingirTeto: "pausar_orquestracao_e_exigir_autorizacao_humana",
+    contaElicitadorNoTeto: false,
   },
   execucaoParalela: {
     paralelismoMaximo: 3,
@@ -486,6 +489,11 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
     raw,
     "alerta_percentual_teto",
     policy.orcamento.alertaPercentualTeto
+  );
+  policy.orcamento.contaElicitadorNoTeto = extractScalarBoolean(
+    raw,
+    "conta_elicitador_no_teto",
+    policy.orcamento.contaElicitadorNoTeto
   );
 
   policy.execucaoParalela.paralelismoMaximo = extractScalarNumber(

@@ -60,7 +60,7 @@ export const LLM_COST_ACTION = "LLM_COST";
 export async function recordLlmCost(params: {
   sessionId?: string | null;
   nodeId?: string;
-  papel: "executor" | "avaliador" | "jev" | "outro";
+  papel: "executor" | "avaliador" | "jev" | "elicitador" | "outro";
   provider: string;
   model: string;
   usage: UsageLike | null | undefined;
@@ -107,9 +107,12 @@ export async function sessionCostUsd(sessionId: string): Promise<number> {
 
 export interface SessionCostBreakdown {
   totalUsd: number;
+  /** Soma executor + avaliador + jev (usada pelo teto de execução quando Spec fica fora). */
+  execucaoUsd: number;
   executorUsd: number;
   avaliadorUsd: number;
   jevUsd: number;
+  elicitadorUsd: number;
   outroUsd: number;
   tokensInput: number;
   tokensOutput: number;
@@ -131,6 +134,7 @@ export async function sessionCostBreakdown(sessionId: string): Promise<SessionCo
   let executorUsd = 0;
   let avaliadorUsd = 0;
   let jevUsd = 0;
+  let elicitadorUsd = 0;
   let outroUsd = 0;
   let tokensInput = 0;
   let tokensOutput = 0;
@@ -146,6 +150,7 @@ export async function sessionCostBreakdown(sessionId: string): Promise<SessionCo
         if (papel === "executor") executorUsd += usd;
         else if (papel === "avaliador") avaliadorUsd += usd;
         else if (papel === "jev") jevUsd += usd;
+        else if (papel === "elicitador") elicitadorUsd += usd;
         else outroUsd += usd;
 
         if (p.nodeId && typeof p.nodeId === "string") {
@@ -164,11 +169,15 @@ export async function sessionCostBreakdown(sessionId: string): Promise<SessionCo
     }
   }
 
+  const execucaoUsd = executorUsd + avaliadorUsd + jevUsd;
+
   return {
     totalUsd,
+    execucaoUsd,
     executorUsd,
     avaliadorUsd,
     jevUsd,
+    elicitadorUsd,
     outroUsd,
     tokensInput,
     tokensOutput,
