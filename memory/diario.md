@@ -1,3 +1,12 @@
+## 16/10/2026 (85) — PJ1.7 corrigido (mensagem duplicada); SM1 aprovado
+
+**Fundador:** aprova o SM1; vai colar o contorno do README; pediu ao Claude corrigir a mensagem duplicada.
+**Feito:** `src/app/page.tsx` — `setOptimisticChat(null)` logo depois de `setMessages(incomingMessages)`, com comentário. tsc 0; vitest 124 arquivos, 804 testes. Referência: SM1 aprovado, PJ1.7 ✅.
+**Observado de novo:** o vitest recriou `.nextcode/` na raiz (bug do teste do PJ1.4, correção PJ1.6a com o Cursor) — apaguei.
+**Próximo passo:** conferir a Spec com o contorno do README → aprovar → execução; depois PJ1.6, B1b + SM1.
+
+---
+
 ## 16/10/2026 (84) — Spec v3 idêntica à v2: o NextCode removeu `.env.example` (não foi o Opus); PJ1.7 e SM1 registrados
 
 **Trilha:** 4ª chamada Opus (US$ 0,466; 116 s; 18.005 tokens de saída) → Spec **byte a byte igual** à anterior (38.315 caracteres). Spec do teste: US$ 1,86 em 4 versões.

@@ -61,3 +61,4 @@
 | 16/10 | **Mudança 12:** skill `avaliador-final` (Spec inteira × entregue) dentro do **J3**. Claude: modelo = Opus 5.5 de partida, Sonnet 5.5 medido nos 4 controles (fica o mais barato que passar), Jev como 2ª checagem atômica (não juiz único) | diário 76 |
 | 16/10 | **Mudança 13:** avaliador por nível que o Jev decide (pesado → Opus; rápido/médio → Nemotron; Jev sem resposta → Opus). Fundador quer **teste pesado** com o Jev definindo o modelo; Claude propõe a Spec sintética da Fase 8 (56 REQ) de ponta a ponta como porta do B1b | diário 78 |
 | 16/10 | Fundador concorda: **PJ1.7** (mensagem duplicada na tela, junto com PJ1.6) e **correção da Spec por trecho** (com a mudança 7, E2). **SM1** (conferência mecânica: arquivo com ponto, REQ citando arquivo fora da lista, data) registrado como proposta | diário 84 |
+| 16/10 | **SM1 aprovado** (fundador: "aprovo o SM1"). Fundador pediu ao Claude corrigir a mensagem duplicada (PJ1.7) diretamente | diário 85 |

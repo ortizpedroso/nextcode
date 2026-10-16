@@ -397,6 +397,9 @@ export default function DashboardOrchestrator() {
           }
         }
         setMessages(incomingMessages);
+        // A resposta já traz a mensagem do usuário: tira o balão otimista agora, não só no finally
+        // (que espera fetchProjects/fetchAdhocSessions e mostrava a mensagem 2× nesse intervalo).
+        setOptimisticChat(null);
         if (chatData.tokensSaved) {
           setTokensSaved((prev) => prev + chatData.tokensSaved);
         }
