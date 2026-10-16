@@ -1,3 +1,12 @@
+## 16/10/2026 (56) — Fase 8 aprovada pelo fundador; P5c fechado na §5.0
+
+**Fundador:** 「aprovado fase 8」 — porta P5c declarada cumprida (pedido sintético `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`, sem Gateway).
+**Feito:** referência §5.0 linha P5c → ✅; §5.0.1 Fases 7b–8 ✅.
+**Próximo passo:** **Fase 9 — B1** (prompt a redigir → aprovação → execução).
+**Pendências:** V2 fila pós-Spec cara (opcional); D2 amplo; J2b–J4.
+
+---
+
 ## 16/10/2026 (54) — Auditoria das Fases 0–7 (`f0bcc43`…`d6cf037`): aceito com ressalvas
 
 **Conferido:** escopo 15 arquivos; reflog sem reset/amend/rebase; `tsc` 0 em cada commit isolado (worktree); suíte no HEAD 122/792 verde (rodei eu). No worktree, 103 falhas idênticas em todos os commits = falta `.env` (não versionado), não código.

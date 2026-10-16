@@ -36,7 +36,8 @@ Quero um sistema de **faturamento SaaS fictício** só para validar o harness �
 
 ## Checklist pós-geração (fundador ou auditor)
 
-- [ ] Resposta concluiu em &lt; 540 s sem erro `fetch failed` / timeout de cabeçalho.
+- [x] **Fase 8 aprovada pelo fundador** (16/10) — 「aprovado fase 8」.
+- [ ] Resposta concluiu em &lt; 540 s sem erro `fetch failed` / timeout de cabeçalho *(registrar na trilha se quiser prova numérica)*.
 - [ ] Trilha: evento `ELICITADOR_CLAUDE` ok; `LLM_COST` com `papel: elicitador`.
 - [ ] Spec passa guarda cumulativa / estrutura (`REQ` numerados, frontmatter).
 - [ ] (Opcional V2) Aprovar Spec, iniciar execução: 1º lote **não** bloqueia só porque elicitador gastou &gt; US$ 0,50.
