@@ -1,8 +1,15 @@
+## 16/10/2026 (63) — P5c.4 UX: "Gerando Spec…" no chat (mudança 9)
+
+**Feito:** enquanto `/api/chat` bloqueia na fase Spec (`!specApproved`), a UI mostra o pedido do usuário na hora e um balão **Gerando Spec…** (aviso para não reenviar); após aprovação da Spec, texto genérico "Processando resposta…". `tsc` 0; `vitest` 792/792.
+**Próximo passo:** smoke rápido no chat (1 pedido curto) para validar visual; depois 「aprovado Fase 9」 → B1.
+
+---
+
 ## 16/10/2026 (62) — P5c ✅ e Fase 8 ✅ documentados; prompt B1 redigido
 
 **Feito:** §5.0 P5c ✅ (prova sessão `c0377632`); §5.0.1 Fase 8 ✅, Fase 9 🔄; checklist FASE8; mudança 9 proposta (UX elicitador); `HANDOFF-E1-P5c-F8-fechamento.md`; `docs/prompts/B1-bench-claude-executor.md` (rascunho §8, **não executar** sem 「aprovado Fase 9」).
-**Pendência fundador:** OK para **P5c.4** (indicador "Gerando Spec…") agora vs depois do B1.
-**Próximo passo:** 「aprovado Fase 9」 → Antigravity/Cursor executa B1 → bench Claude × DeepSeek + avaliador Claude 1º → `medicoes.md`.
+**P5c.4:** ver entrada 63.
+**Próximo passo:** 「aprovado Fase 9」 → B1.
 
 ---
 

@@ -31,6 +31,10 @@ export default function DashboardOrchestrator() {
   const [tasks, setTasks] = useState<TaskNode[]>([]);
   const [budget, setBudget] = useState<SessionBudget | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
+  /** Enquanto /api/chat bloqueia (~minutos na Spec), mostra o pedido e o indicador antes da resposta. */
+  const [optimisticChat, setOptimisticChat] = useState<{ userPrompt: string; kind: "spec" | "reply" } | null>(
+    null
+  );
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
   const [inspectTaskId, setInspectTaskId] = useState<string | null>(null);
 
@@ -357,6 +361,7 @@ export default function DashboardOrchestrator() {
     abortControllerRef.current = controller;
 
     setLoading(true);
+    setOptimisticChat({ userPrompt: prompt, kind: isSpecApproved ? "reply" : "spec" });
     setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..." ${attachments ? `(${attachments.length} imagem/ns)` : ""}`]);
 
     try {
@@ -434,9 +439,21 @@ export default function DashboardOrchestrator() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
         setLoading(false);
+        setOptimisticChat(null);
       }
     }
   };
+
+  const displayMessages: SessionMessage[] = optimisticChat
+    ? [
+        ...messages,
+        {
+          id: "__optimistic_user__",
+          role: "user",
+          content: optimisticChat.userPrompt,
+        },
+      ]
+    : messages;
 
   // Telemetria "graphify": instala a skill + roda o pipeline (extração AST, sem LLM) no projeto
   // ativo, acionado pelo botão inline anexado à resposta do chat quando o classificador julgou
@@ -734,10 +751,11 @@ export default function DashboardOrchestrator() {
         activeSessionTitle={activeSessionTitle}
         activeProjectName={activeProjectName}
         tasks={tasks}
-        messages={messages}
+        messages={displayMessages}
         consoleLogs={consoleLogs}
         tokensSaved={tokensSaved}
         loading={loading}
+        chatLoadingKind={optimisticChat?.kind ?? null}
         executingNodeId={executingNodeId}
         settingsForm={settingsForm}
         customProviders={customProviders}

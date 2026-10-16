@@ -67,6 +67,8 @@ interface WorkspaceProps {
   consoleLogs: string[];
   tokensSaved: number;
   loading: boolean;
+  /** Indicador no thread enquanto /api/chat aguarda (Spec Opus pode levar minutos). */
+  chatLoadingKind?: "spec" | "reply" | null;
   executingNodeId: string | null;
   settingsForm: SettingsFormState;
   customProviders: CustomProviderItem[];
@@ -123,6 +125,7 @@ export function Workspace({
   consoleLogs,
   tokensSaved,
   loading,
+  chatLoadingKind = null,
   executingNodeId,
   settingsForm,
   customProviders,
@@ -224,7 +227,7 @@ export function Workspace({
       scrollToBottom("auto");
     }, 100);
     return () => clearTimeout(timer);
-  }, [messages.length, loading, activeSessionId]);
+  }, [messages.length, loading, chatLoadingKind, activeSessionId]);
 
   // MutationObserver para garantir scroll automatico continuo durante o streaming do assistente
   useEffect(() => {
@@ -504,6 +507,31 @@ export function Workspace({
                         </div>
                       </div>
                     ))}
+                    {loading && chatLoadingKind && (
+                      <div className="flex gap-3 text-xs leading-relaxed max-w-3xl">
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          NC
+                        </div>
+                        <div className="p-4 rounded-2xl border shadow-sm bg-slate-50 dark:bg-slate-950 border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin text-[#0066cc] shrink-0" />
+                          <span>
+                            {chatLoadingKind === "spec" ? (
+                              <>
+                                <strong className="font-semibold text-slate-900 dark:text-slate-100">
+                                  Gerando Spec…
+                                </strong>
+                                <span className="text-slate-500 dark:text-slate-400">
+                                  {" "}
+                                  (Claude Opus; pode levar alguns minutos — não reenvie o pedido.)
+                                </span>
+                              </>
+                            ) : (
+                              "Processando resposta…"
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div ref={messagesEndRef} />
                   </>
                 )}
