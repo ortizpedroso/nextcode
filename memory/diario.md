@@ -1,3 +1,12 @@
+## 16/10/2026 (83) — "Mando um comando e ele duplica": diagnóstico
+
+**Trilha da sessão `934939fc`:** 3 mensagens do fundador = 3 `ELICITADOR_CLAUDE` = 3 cobranças Opus; 1 linha `Message` por envio → **não há chamada duplicada**.
+**Duplicação visual (bug real, P5c.4 `ed803ff`):** `page.tsx` — ao chegar a resposta, `setMessages` (≈397) já traz a mensagem do usuário, mas o balão otimista só sai no `finally` (≈443), depois de `await fetchProjects()` e `fetchAdhocSessions()` → a mensagem aparece 2× por um instante. Não gasta token. Correção: `setOptimisticChat(null)` junto com `setMessages`.
+**Gasto real que parece duplicação:** cada correção reescreve a Spec inteira — correção de 1 linha custou 18.779 tokens de saída (US$ 0,48) e reenvia ~26 mil de entrada (conversa + Spec anterior). Correção certa = só o trecho que muda (patch) aplicado pelo código; estimativa ~10× mais barato. Vai junto da mudança 7 (Opus corrige a partir de lista).
+**Próximo passo:** fundador OK → registrar na §5.0 (UI no PJ1.6; correção por trecho na E2 com a mudança 7). Nada alterado.
+
+---
+
 ## 16/10/2026 (82) — Spec revisada do teste real (2 rodadas de correção): falta 1 item que bloqueia
 
 **Trilha:** 2 correções do fundador → 2 chamadas Opus (US$ 0,472 e 0,480; 129 s e 127 s); Spec total do teste US$ 1,40; 38.315 caracteres; 43 REQ; `CONFERENCIA_T8A_OK` nas 3 versões; M2 clareza 2,01 → 1,79. 0 segredo.
