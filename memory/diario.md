@@ -1,3 +1,14 @@
+## 15/10/2026 (49) — Auditoria do P5c: código certo; achado o corte de 300 s → P5c.3 (streaming)
+
+**Conferido:** `95f6c23` + `ba893ce` + relatório `a94af36`; reflog limpo; escopo = 4 arquivos permitidos; diff do `route.ts` igual ao prompt; fora da fase de Spec nada muda; eu rodei tsc 0 e vitest 122 arquivos / 788 testes verdes.
+**Teste real (caminho novo, Spec do Gateway):** 1ª tentativa `fetch failed`; 2ª ok em 289 s — 46 REQ, 0 problema de estrutura, regra de taxas 10/10, US$ 0,73 (`medicoes.md`).
+**Causa provada:** o `fetch` do Node desiste aos 300 s se os cabeçalhos não chegam (`UND_ERR_HEADERS_TIMEOUT`); sem streaming a Anthropic só responde no fim. O prazo de 540 s do meu prompt não valia — **erro meu no P5c**, não do Antigravity. No chat isso faria a Spec cair no DeepSeek depois de 5 min perdidos.
+**Ressalva menor:** "Desvios: nenhum", mas o código troca a chave por `••••` no `detail` (não pedido; serve à trava T-G). Sem efeito ruim.
+**Correção:** P5c.3 (`docs/prompts/P5c.3-elicitador-claude-stream.md`), só em `elicitador-claude.ts` e no teste dele.
+**Próximo passo:** P5c.3 → auditar com a Spec do Gateway de novo → fechar P5c → B1.
+
+---
+
 ## 15/10/2026 (48) — Fundador aprova §5.0 e as sugestões; P5c registrado e prompt escrito
 
 **Fundador:** "eu concordo com a sua sugestão, não perca o foco da nossa evolução e vamos continuar".
