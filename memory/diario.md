@@ -1,3 +1,11 @@
+## 16/10/2026 (68) — Diagnóstico: Spec Opus · executor DeepSeek · avaliador Claude → Nemotron → grátis; Jev × FreeLLMAPI
+
+**Fundador propôs:** Spec Claude Opus; executor DeepSeek; avaliador Claude → Nemotron → grátis em ordem decrescente; FreeLLMAPI salta entre modelos sem parar; pergunta quem sabe quais são os mais fortes (Jev ou FreeLLMAPI); executor e avaliador de famílias diferentes.
+**Diagnóstico (Claude):** desenho certo e quase todo já existe (cadeia `EVALUATOR_CHAIN`, checagem por `routedPrefixes`, `preferIndependentFirst`). Ajustes: (1) DeepSeek sai da cadeia do avaliador (mesma família do executor); (2) força = medição (bench/`medicoes.md`), não Jev nem FreeLLMAPI — FreeLLMAPI sabe quem **está de pé**, o Jev decide **qual nível** cada tarefa precisa, a lista ordenada vem do bench; (3) FreeLLMAPI não conhece família — o filtro é do harness (risco: `deepseek-v4-flash` grátis via `electronhub`); (4) cauda grátis no avaliador contraria `somente_pago: true` (08/10) — só grátis **medido**, e grátis nunca aprova sozinho; sem nenhum → PAUSADA; (5) B1 encolhe: tira `executor-claude` (e o B1.2), fica `padrao` × `avaliador-claude`. Nada alterado; aguarda OK.
+**Próximo passo:** OK do fundador → registrar na §5.0 e ajustar o prompt B1.
+
+---
+
 ## 16/10/2026 (67) — Respostas do fundador aplicadas; prompt B1 corrigido
 
 **Fundador:** mudança 9 (balão "Gerando Spec…") **ok**; Claude do executor = o que provamos (**Opus 5.5**); teto **US$ 3,00 só no bench** — **sim**. Registrado em `decisoes.md` e na referência (§5.0 linha B1; mudança 9 aprovada).
