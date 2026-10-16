@@ -17,6 +17,7 @@ import {
   ChevronRight,
   UserCheck,
   Sparkles,
+  Archive,
 } from "lucide-react";
 import { ProjectActionsMenu, ProjectData } from "@/components/projects/project-actions-menu";
 import { SessionActionsMenu } from "@/components/projects/session-actions-menu";
@@ -43,7 +44,7 @@ interface SidebarProps {
   onSelectSession: (sessionId: string) => void;
   onCreateProject: (data: ProjectFormData) => Promise<void>;
   onUpdateProject: (id: string, data: Partial<ProjectData>) => Promise<void>;
-  onDeleteProject: (projectId: string) => Promise<void>;
+  onDeleteProject: (projectId: string, apagarPasta?: boolean) => Promise<void>;
   onDeleteSession: (sessionId: string) => Promise<void>;
   onCreateSession: (projectId?: string | null) => Promise<void>;
   onSaveSettings: (updated: SettingsFormState) => Promise<void>;
@@ -77,8 +78,10 @@ export function Sidebar({
   const [editingProject, setEditingProject] = useState<ProjectFormData | null>(null);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [archivedSectionOpen, setArchivedSectionOpen] = useState(false);
 
   const activeProjects = projects.filter((p) => !p.isArchived);
+  const archivedProjects = projects.filter((p) => p.isArchived);
 
   const toggleExpand = (projectId: string) => {
     setExpandedProjects((prev) => ({
@@ -260,7 +263,7 @@ export function Sidebar({
                         onTogglePin={(p) => onUpdateProject(p.id, { isPinned: !p.isPinned })}
                         onEdit={handleOpenEditModal}
                         onToggleArchive={(p) => onUpdateProject(p.id, { isArchived: !p.isArchived })}
-                        onDelete={(p) => onDeleteProject(p.id)}
+                        onDelete={(p, apagarPasta) => onDeleteProject(p.id, apagarPasta)}
                       />
                     </div>
                   </div>
@@ -311,6 +314,45 @@ export function Sidebar({
             })
           )}
         </div>
+
+        {archivedProjects.length > 0 && (
+          <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/60 space-y-1">
+            <button
+              type="button"
+              onClick={() => setArchivedSectionOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider hover:text-slate-500"
+            >
+              <span>Arquivados ({archivedProjects.length})</span>
+              {archivedSectionOpen ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+            </button>
+            {archivedSectionOpen &&
+              archivedProjects.map((proj) => (
+                <div
+                  key={proj.id}
+                  className={`group w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-all text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-900 ${
+                    activeProjectId === proj.id ? "bg-slate-200/60 dark:bg-slate-900 font-semibold" : ""
+                  }`}
+                  onClick={() => onSelectProject(proj.id)}
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <Archive className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span className="truncate text-[11px]">{proj.name}</span>
+                  </div>
+                  <ProjectActionsMenu
+                    project={proj}
+                    onTogglePin={(p) => onUpdateProject(p.id, { isPinned: !p.isPinned })}
+                    onEdit={handleOpenEditModal}
+                    onToggleArchive={(p) => onUpdateProject(p.id, { isArchived: !p.isArchived })}
+                    onDelete={(p, apagarPasta) => onDeleteProject(p.id, apagarPasta)}
+                  />
+                </div>
+              ))}
+          </div>
+        )}
 
         {/* Sessões Ad-hoc Sem Projeto */}
         {adhocSessions.length > 0 && (

@@ -84,7 +84,7 @@ export default function DashboardOrchestrator() {
 
   const fetchProjects = async () => {
     try {
-      const res = await authFetch("/api/projects");
+      const res = await authFetch("/api/projects?includeArchived=true");
       if (!res.ok) return;
       const data = await res.json();
       if (data.projects) {
@@ -243,9 +243,10 @@ export default function DashboardOrchestrator() {
     }
   };
 
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = async (projectId: string, apagarPasta = false) => {
     try {
-      const res = await authFetch(`/api/projects/${projectId}`, {
+      const qs = apagarPasta ? "?apagarPasta=true" : "";
+      const res = await authFetch(`/api/projects/${projectId}${qs}`, {
         method: "DELETE",
       });
       if (res.ok) {
