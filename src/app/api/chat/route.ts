@@ -45,6 +45,7 @@ import {
   buildElicitadorSpecSystemPrompt,
   buildCumulativeSpecSystemPrompt,
 } from "@/core/orchestrator/spec-draft";
+import { maskSecretsForJev } from "@/core/governance/secret-guard";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { redactSecretsInChatWithJev } from "@/core/governance/secret-guard";
 import type { Phase } from "@/core/orchestrator/phase-machine";
@@ -627,7 +628,9 @@ export async function POST(request: NextRequest) {
             },
           ]
         : []),
-      ...headroomRes.messages,
+      ...headroomRes.messages.map((m) =>
+        m.role === "user" ? { ...m, content: maskSecretsForJev(m.content).text } : m
+      ),
     ];
 
     let projectContextInjected = false;
