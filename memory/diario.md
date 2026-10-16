@@ -1,3 +1,12 @@
+## 16/10/2026 (81) — Diagnóstico: como evitar os erros da Spec; pesquisa T7 existe mas não está ligada
+
+**Fundador:** vai responder cada ponto e passar o teste; quer evitar os erros ("o Opus deveria corrigir"); acha que a pesquisa em fontes oficiais já estava implementada. Pediu só diagnóstico, nada alterado.
+**Erros da Spec, 2 tipos:** (a) **mecânicos** — arquivo citado em REQ fora de `arquivos_afetados` (`.env.example`), data errada — o código pega sem LLM: a conferência T8a (`route.ts:945`, deu OK) não confere arquivos citados nos critérios; a data vem do modelo (`spec-draft.ts:42` pede `<AAAA-MM-DD>`), o harness pode carimbar; (b) **de conteúdo** — cartão sem regra, limite de requisições só "recomendado", 4 dúvidas escritas na Spec em vez de perguntadas. O Opus corrigir = **mudança 7** (laço Jev→elicitador por lacuna, adiada para E2/J8): o M2 já desconfiou (clareza 1,99; sem contradições confiança 0,08) mas hoje só avisa (`route.ts:852-860`). Revisão do Opus por ele mesmo sem lista do que procurar repete os mesmos pontos cegos.
+**Pesquisa T7:** o componente existe — `UniversalDocsFetcher.fetchOfficialDocsWithGovernance` (DuckDuckGo, nota de autoridade da URL, orçamento 3 buscas/5 páginas/8.000 caracteres, guarda do Jev M5 `decideExternalDocsSafetyT7` contra fonte não oficial e prompt injection, bloqueia se o Jev falhar) — mas **nenhuma rota de produção chama**: só testes (`tests/harness/end-to-end-harness-plan.test.ts:743`, `tests/intake/universal-docs-fetcher.test.ts`). Ligar = **P8** (E2), com a skill `elicitador` usando `fetch_official_docs_t7`.
+**Recomendação:** (1) conferência mecânica + data carimbada: pequeno, entra junto com o B1b; (2) mudança 7 e P8 continuam na E2, na ordem. Aguarda OK; nada alterado.
+
+---
+
 ## 16/10/2026 (80) — Teste real: auditoria da Spec "Gateway_Multi" (sessão `934939fc`) — boa, não aprovar ainda
 
 **Fundador:** apagou ele mesmo os projetos às 16:35. Colou pedido próprio (995 caracteres, sem segredo) no projeto `Gateway_Multi` (`C:\projetos\gateway_multi`).
