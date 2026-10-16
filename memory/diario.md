@@ -1,3 +1,13 @@
+## 16/10/2026 (77) — Auditoria B1c + PJ1: B1c aceito; PJ1 aceito com 3 correções e smoke pendente
+
+**Conferido:** commits `3890924` `27e3635` `c4155a5` `5a292cf` `a373ed1` `5692e21` `880c1d0` `bc65639` `51a1910`; reflog limpo; escopo bate com o prompt (desvios declarados: `handleDeleteProject` no commit do PJ1.1; fixture em `execution-trigger.test.ts`). Eu rodei tsc 0 e vitest 124/124 arquivos, 804 testes.
+**B1c ✅:** sonda confirmou blocos `thinking` antes de `text`; fix lê todos os `text` e registra falha com motivo. Bench 1822: 4/4 ENTREGUE, 47/47 aceite, 100% das avaliações pelo Opus, 0 indisponível, US$ 0,78 (avaliador 0,55). Igual ao `padrao` (US$ 0,19) → efeito teto: o bench não separa avaliadores em qualidade; só o J3 (defeitos plantados) separa.
+**PJ1 — 3 achados:** (1) `tests/intake/aprovacao-sem-projeto.test.ts` usa `path: process.cwd()` e aprova → cada `vitest` grava `.nextcode/MEMORY.md` no repo (reproduzi; apaguei o gerado); (2) reabrir sobrescreve nome/descrição/fixado (prompt pedia só desarquivar); (3) reabrir não acha a pasta quando o nome não bate com ela — falha do **meu** prompt (busca depois do acréscimo do `slugName`). PJ1.5 não feito.
+**Feito:** prompt `docs/prompts/PJ1-correcao-e-smoke.md`; §5.0: B1c ✅, PJ1 🔄; `medicoes.md`.
+**Decisão pendente do fundador (B1b):** Opus 1º custa ~4× sem ganho medido no bench; recomendação: Jev escolhe por nível — Opus nas etapas `pesado`, Nemotron nas `rapido/medio` — até o J3 medir a diferença real.
+
+---
+
 ## 16/10/2026 (76) — Mudança 12 registrada: `avaliador-final` no J3; quem verifica
 
 **Fundador:** "concordo"; perguntou qual modelo verifica (Sonnet, Opus ou Jev com questionário).
