@@ -1,3 +1,10 @@
+## 16/10/2026 (57) — Relatório handoff para IA auditora (E1 P5c–F8)
+
+**Feito:** `docs/relatorios/HANDOFF-E1-P5c-F8-para-auditoria.md` + nota em `relatorios/README.md`. Convenção: cada bloco de fases termina com HANDOFF para o fundador repassar à auditoria.
+**Próximo passo:** auditora executa §5 do HANDOFF → veredito no diário → fundador autoriza Fase 9 (B1).
+
+---
+
 ## 16/10/2026 (56) — Fase 8 aprovada pelo fundador; P5c fechado na §5.0
 
 **Fundador:** 「aprovado fase 8」 — porta P5c declarada cumprida (pedido sintético `docs/rascunhos/FASE8-pedido-sintetico-p5c.md`, sem Gateway).
