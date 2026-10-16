@@ -1,3 +1,13 @@
+## 16/10/2026 (86) — `.nextcode/` na raiz: causa corrigida (não só apagada)
+
+**Fundador:** "não deve apagar, ela não deve ser criada" — achar a causa e corrigir.
+**Causa:** `tests/intake/aprovacao-sem-projeto.test.ts` (PJ1.4, `5692e21`) criava o projeto com `path: process.cwd()` e aprovava a Spec → `approveSpecAndStart` chama `consolidateMemoryFromSpec` (`execution-trigger.ts:326-336`) → grava `.nextcode/MEMORY.md` na pasta do projeto = raiz do NextCode, a cada `vitest`. (O outro teste com `process.cwd()`, `execution-trigger.test.ts:191`, não aprova — `SPEC_AUSENTE` — e não grava.)
+**Correção:** o teste usa pasta `fs.mkdtempSync(os.tmpdir()/nc-pj1-*)`, apagada no `afterAll`. Prova: vitest 124 arquivos / 804 testes verdes; tsc 0; depois da suíte `.nextcode` **não existe** e `git status` limpo. Prompt PJ1.6: passo 6a marcado como feito.
+**Lição:** apagar sintoma não é corrigir — registrar a causa e provar que não volta.
+**Próximo passo:** Spec do teste real (contorno README) → aprovar; Cursor roda PJ1.6 (6b + smoke).
+
+---
+
 ## 16/10/2026 (85) — PJ1.7 corrigido (mensagem duplicada); SM1 aprovado
 
 **Fundador:** aprova o SM1; vai colar o contorno do README; pediu ao Claude corrigir a mensagem duplicada.

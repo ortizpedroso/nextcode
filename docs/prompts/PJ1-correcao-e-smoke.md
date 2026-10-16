@@ -9,7 +9,7 @@
 
 ## OBJETIVO
 A auditoria do PJ1 (diário 77) achou:
-1. **Teste suja o repositório:** `tests/intake/aprovacao-sem-projeto.test.ts` (≈98–102) cria projeto com `path: process.cwd()` e aprova a Spec → a execução grava `.nextcode/MEMORY.md` na pasta do próprio NextCode a cada `npx vitest run` (reproduzido pelo auditor). É o mesmo risco que o PJ1.4 fecha na tela.
+1. ~~**Teste suja o repositório:**~~ (corrigido pelo auditor, diário 86) `tests/intake/aprovacao-sem-projeto.test.ts` (≈98–102) cria projeto com `path: process.cwd()` e aprova a Spec → a execução grava `.nextcode/MEMORY.md` na pasta do próprio NextCode a cada `npx vitest run` (reproduzido pelo auditor). É o mesmo risco que o PJ1.4 fecha na tela.
 2. **Reabrir renomeia o projeto:** o PJ1.2 (`src/app/api/projects/route.ts` ≈80–90), ao reabrir, sobrescreve `name`, `description` e `isPinned`. O prompt pedia só `isArchived: false`.
 3. **Reabrir falha quando o nome difere da pasta:** a busca por projeto existente roda **depois** do bloco que acrescenta a subpasta `slugName` ao caminho escolhido (≈55–64). Abrir `C:\projetos\gateway` com nome "Gateway Pagamentos" vira `C:\projetos\gateway\gateway-pagamentos` → não acha o projeto → duplica.
 4. **PJ1.5 (smoke na tela)** não foi feito.
@@ -29,11 +29,7 @@ A auditoria do PJ1 (diário 77) achou:
 
 ---
 
-## PASSO PJ1.6a — Teste em pasta temporária
-**PODE ALTERAR:** `tests/intake/aprovacao-sem-projeto.test.ts`.
-O projeto do teste usa uma pasta criada com `fs.mkdtempSync(path.join(os.tmpdir(), "nc-pj1-"))` e removida no `afterEach`/`afterAll` (`fs.rmSync(..., { recursive: true, force: true })`). Nenhuma referência a `process.cwd()` como pasta de projeto.
-**Prova no relatório:** apagar `.nextcode/` se existir, rodar `npx vitest run`, e colar `git status --short` mostrando que `.nextcode/` **não** reaparece.
-Commit: `test(pj1): projeto do teste em pasta temporaria (PJ1.6a)`.
+## PASSO PJ1.6a — JÁ FEITO pelo auditor (commit do diário 86): `tests/intake/aprovacao-sem-projeto.test.ts` usa pasta em `os.tmpdir()`; o vitest não cria mais `.nextcode/`. **Não altere este arquivo.** Só confira no relatório: `npx vitest run` e `git status --short` sem `.nextcode/`.
 
 ## PASSO PJ1.6b — Reabrir: só desarquiva e acha a pasta escolhida
 **PODE ALTERAR:** `src/app/api/projects/route.ts`, `tests/api/projects-open-existing.test.ts`.

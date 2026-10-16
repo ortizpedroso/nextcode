@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, afterAll } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import prisma from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import { POST as postChat } from "@/app/api/chat/route";
@@ -30,6 +33,13 @@ requisitos:
 describe("PJ1.4 — sessão sem projeto não executa até vincular", () => {
   const createdSessionIds: string[] = [];
   const createdProjectIds: string[] = [];
+  // Pasta do projeto do teste fora do repositório: aprovar a Spec grava `.nextcode/MEMORY.md`
+  // na pasta do projeto, e com process.cwd() isso sujava a raiz do NextCode a cada vitest.
+  const projectDirs: string[] = [];
+
+  afterAll(() => {
+    for (const dir of projectDirs) fs.rmSync(dir, { recursive: true, force: true });
+  });
 
   afterEach(async () => {
     vi.clearAllMocks();
@@ -98,7 +108,11 @@ describe("PJ1.4 — sessão sem projeto não executa até vincular", () => {
     const project = await prisma.project.create({
       data: {
         name: "Proj PJ1 Exec",
-        path: process.cwd(),
+        path: (() => {
+          const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nc-pj1-"));
+          projectDirs.push(dir);
+          return dir;
+        })(),
       },
     });
     createdProjectIds.push(project.id);
