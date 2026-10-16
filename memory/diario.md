@@ -1,3 +1,11 @@
+## 16/10/2026 (76) — Mudança 12 registrada: `avaliador-final` no J3; quem verifica
+
+**Fundador:** "concordo"; perguntou qual modelo verifica (Sonnet, Opus ou Jev com questionário).
+**Diagnóstico:** Opus 5.5 de partida (lê código; outra família do executor; único 10/10 na regra de taxas); Sonnet 5.5 medido nos mesmos 4 controles do J3 — se passar, fica (metade do preço); Jev = 2ª checagem atômica por REQ (barato; pergunta estreita separa, larga não), nunca juiz único. Regra: reprova se o LLM reprovar; Jev reprovando com confiança alta onde o LLM aprovou → reabre a etapa (não aprova calado). Registrado na linha J3 da §5.0, mudança 12, `decisoes.md`.
+**Próximo passo:** aguardar relatório B1c+PJ1.
+
+---
+
 ## 16/10/2026 (75) — Diagnóstico: skill de revisão final (Spec × entregue)
 
 **Fundador:** criar skill que, antes de entregar, confere a Spec com o que foi realmente entregue.
