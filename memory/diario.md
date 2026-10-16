@@ -1,3 +1,11 @@
+## 16/10/2026 (69) — Mudança 10 registrada; prompt B1 reduzido (avaliador Claude)
+
+**Fundador:** "concordo" com o diagnóstico 68; pediu que todo prompt exija **relatório do que foi feito** e **nada fora do prompt**.
+**Feito:** referência §5.0 — linha B1 reduzida (`padrao` × `avaliador-claude`), linha nova **B1b** (cadeia Claude → Nemotron → grátis medidos em produção, depois do B1), mudança 10; `decisoes.md`; prompt `docs/prompts/B1-bench-claude-executor.md` reescrito: sem `executor-claude` e sem tocar `src/`; regras R1 (nada fora do PODE ALTERAR; dúvida → PARE e relatório) e R2 (seção no relatório `docs/relatorios/B1-bench-avaliador-claude.md` a cada passo, com `git show --stat`, tsc e vitest reais, e `git diff --stat` final para provar R1); parada acumulada US$ 10.
+**Próximo passo:** 「aprovado Fase 9」 → Cursor roda B1.0 → B1.1 → B1.2 → B1.R; auditoria.
+
+---
+
 ## 16/10/2026 (68) — Diagnóstico: Spec Opus · executor DeepSeek · avaliador Claude → Nemotron → grátis; Jev × FreeLLMAPI
 
 **Fundador propôs:** Spec Claude Opus; executor DeepSeek; avaliador Claude → Nemotron → grátis em ordem decrescente; FreeLLMAPI salta entre modelos sem parar; pergunta quem sabe quais são os mais fortes (Jev ou FreeLLMAPI); executor e avaliador de famílias diferentes.
