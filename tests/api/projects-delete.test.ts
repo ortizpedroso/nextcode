@@ -25,7 +25,32 @@ describe("API /api/projects/[id] — DELETE (Exclusão Resiliente de Projetos)",
     }
   });
 
-  it("deve excluir com sucesso projeto, sessões vinculadas, mensagens e pasta física", async () => {
+  it("sem apagarPasta → registro removido e pasta física permanece", async () => {
+    const proj = await prisma.project.create({
+      data: {
+        name: "Projeto Só Registro",
+        path: tmpFolder,
+      },
+    });
+
+    fs.writeFileSync(path.join(tmpFolder, "README.md"), "# Teste");
+
+    const req = new NextRequest(`http://localhost:3000/api/projects/${proj.id}`, {
+      method: "DELETE",
+    });
+
+    const res = await DELETE(req, { params: Promise.resolve({ id: proj.id }) });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.physicalDeleted).toBe(false);
+
+    const dbProj = await prisma.project.findUnique({ where: { id: proj.id } });
+    expect(dbProj).toBeNull();
+    expect(fs.existsSync(tmpFolder)).toBe(true);
+  });
+
+  it("apagarPasta=true → exclui projeto, sessões vinculadas, mensagens e pasta física", async () => {
     // 1. Cria projeto de teste no SQLite
     const proj = await prisma.project.create({
       data: {
@@ -54,7 +79,7 @@ describe("API /api/projects/[id] — DELETE (Exclusão Resiliente de Projetos)",
     fs.writeFileSync(path.join(tmpFolder, "README.md"), "# Teste");
 
     // 3. Executa DELETE na rota da API
-    const req = new NextRequest(`http://localhost:3000/api/projects/${proj.id}`, {
+    const req = new NextRequest(`http://localhost:3000/api/projects/${proj.id}?apagarPasta=true`, {
       method: "DELETE",
     });
 

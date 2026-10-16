@@ -69,6 +69,9 @@ export async function DELETE(
       return NextResponse.json({ error: "Projeto não encontrado." }, { status: 404 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const apagarPasta = searchParams.get("apagarPasta") === "true";
+
     // 2. Limpeza mecânica em cascata de dependências do SQLite (Mensagens, Tarefas e Sessões)
     const sessionIds = project.sessions.map((s) => s.id);
     if (sessionIds.length > 0) {
@@ -87,7 +90,7 @@ export async function DELETE(
     let physicalDeleted = false;
     let physicalWarning: string | null = null;
 
-    if (project.path) {
+    if (apagarPasta && project.path) {
       try {
         const resolvedPath = path.resolve(project.path);
         const cwd = process.cwd();

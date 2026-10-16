@@ -17,7 +17,7 @@ interface ProjectActionsMenuProps {
   onTogglePin: (project: ProjectData) => void;
   onEdit: (project: ProjectData) => void;
   onToggleArchive: (project: ProjectData) => void;
-  onDelete: (project: ProjectData) => void;
+  onDelete: (project: ProjectData, apagarPasta: boolean) => void;
 }
 
 export function ProjectActionsMenu({
@@ -139,25 +139,42 @@ export function ProjectActionsMenu({
               Excluir Projeto
             </h3>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Tem certeza que deseja apagar o projeto <strong>"{project.name}"</strong>? Esta ação removerá o registro do banco de dados e <strong>excluirá fisicamente a pasta no disco ({project.path || "caminho local"})</strong>.
+              Como deseja remover o projeto <strong>&quot;{project.name}&quot;</strong>?
             </p>
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  onDelete(project, false);
+                }}
+                className="w-full text-left px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+              >
+                Remover só do NextCode (a pasta fica no computador)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  onDelete(project, true);
+                }}
+                className="w-full text-left px-3 py-2 text-xs rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/50 text-rose-700 dark:text-rose-300"
+              >
+                Remover e apagar a pasta do computador
+                {project.path ? (
+                  <span className="block mt-1 font-mono text-[10px] text-rose-600/90 dark:text-rose-400/90 break-all">
+                    {project.path}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+            <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
               >
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                  onDelete(project);
-                }}
-                className="px-4 py-1.5 text-xs bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-lg shadow-sm"
-              >
-                Sim, Apagar
               </button>
             </div>
           </div>
