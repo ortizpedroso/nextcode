@@ -1,3 +1,13 @@
+## 16/10/2026 (87) — Spec com contorno README: o fundador tinha razão, 1 mensagem = 2 chamadas; `.env.example` ressuscitou
+
+**Trilha (`934939fc`, msg 19:33:58):** 2 `ELICITADOR_CLAUDE` para 1 mensagem — US$ 0,474 (26 mil de entrada) + US$ 0,542 (44 mil de entrada) = US$ 1,02. Sessão inteira: US$ 2,88. Spec 38.754 caracteres, 44 REQ, `CONFERENCIA_T8A_OK`, M2 clareza 1,70, 0 segredo.
+**Causa da 2ª chamada:** `checkSpecStructure` achou problema → `chat/route.ts:848-880` pede correção ao Opus de novo, sem registro próprio e sem aviso. **Corrijo a entrada 83:** "não há chamada duplicada" valia para as mensagens anteriores; nesta houve.
+**Resultado:** README entrou certo (REQ-004 + arquivos + módulo). Mas a guarda cumulativa (`spec-draft.ts:128`, regex de remoção linha 14) não entende "troque… em vez de" → reinjetou o REQ do `.env.example` como **REQ-001** e renumerou os 44 REQ. O REQ-001 continua impossível (arquivo fora da lista; o auto-heal o apaga).
+**Registrado:** SM1 itens (d) guarda cumulativa e (e) chamada escondida.
+**Para o teste:** 1 correção com a palavra "remova" (passa na regex) antes de aprovar.
+
+---
+
 ## 16/10/2026 (86) — `.nextcode/` na raiz: causa corrigida (não só apagada)
 
 **Fundador:** "não deve apagar, ela não deve ser criada" — achar a causa e corrigir.
