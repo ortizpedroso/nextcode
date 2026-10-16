@@ -1,3 +1,26 @@
+## 16/10/2026 (53) — Plano único Fases 0–6 executadas (fundador aprovou)
+
+**Feito:** `docs/PLANO-UNICO-NEXTCODE.md` + `GUIA-UNICO-SEGUIR.md`; decisões 16/10 em `decisoes.md` (`f0bcc43`, `acbe398`). Código: teto (b) `de6d338`, S2 `1c3aeb6`, P5-seg `962292b`, P5c.3 `4283a68`; relatório `docs/relatorios/P5c.3-elicitador-claude-stream.md`. `tsc` 0; `vitest run` 792/792 na Fase 4.
+**Próximo passo:** **Fase 8** — smoke pedido sintético longo (sem Gateway); depois B1 → J2b+J2.7 → J3 → J4.
+**Pendências:** porta P5c; D2 amplo (§3/§4 status); prompts J2b/B1/J3/J4.
+
+---
+
+## 16/10/2026 (52) — Fundador pede de novo a análise de `docs/` (feito × falta); só leitura
+
+**Feito:** análise consolidada a partir da entrada 51, com reconferência no código: teto de custo confirmado (`budget-guard.ts:46` usa `breakdown.totalUsd`, que inclui a Spec gravada em `route.ts:704`; teto `0.50` em `config/politicas-orquestracao.yaml:148`); P5c.3 ainda não executado (HEAD `64c0f91`, `elicitador-claude.ts` sem streaming); `etapa1Ativa: true` só em `intake-engine.ts`; `ARQUITETURA` com `skills/elicitor`/`analyst`/`blind-auditor` (linhas 40, 137, 160, 179). Nada alterado além deste diário.
+**Próximo passo:** fundador decide teto de custo, régua difícil sem Gateway e limpeza D2; depois P5c.3.
+
+---
+
+## 16/10/2026 (51) — Auditoria da pasta `docs/` (só leitura; nada de código ou referência alterado)
+
+**Fundador:** "revise todo o código da pasta docs, faça uma auditoria aprofundada e me diga o que faz sentido para a evolução".
+**Achados com prova:** (1) **teto de custo × Spec com Claude:** `route.ts:704` grava o custo da Spec em `LLM_COST` da sessão; `sessionCostUsd` (`cost.ts:93`) soma tudo sem filtrar papel; teto `0.50` (`config/politicas-orquestracao.yaml:148`); Spec Opus custa US$ 0,63–0,73 → pelo código, a 1ª verificação do lote (`session-queue.ts:162`) bloqueia antes de executar (não rodado de ponta a ponta). (2) Porta do P5c e E3 na §5.0 ainda usam a Spec do Gateway, contra a decisão de 16/10. (3) Reserva `docs/rascunhos/politicas-orquestracao.yaml` parada em `4153633` (06/10), sem as chaves do R1/P5/J2 — usada em silêncio se `config/` faltar (`orchestration-policy.ts:346`). (4) Referência com status velhos: cabeçalho 586 testes (hoje 122 arquivos/788), §3.1 bench ❌, §3.2 `McpServer.env` ❌ (já cifrado), §4.2 R3 score ❌ (usado em `jev-decisions.ts:146`) e R22 ❌ (`jev.ts:123`), §5 "aguarda aprovação", §6 itens 1/1b já decididos, §2.1 de 08/10. (5) Três catálogos do Jev (§4.4 J1–J27, §5.2b 14 usos, `JEV-DECISOES.md` 1–7+M0). (6) `ARQUITETURA` cita `skills/elicitor`, `analyst`, `blind-auditor` (reais: `elicitador`, `analista`, `avaliador-*`). (7) Spec do Gateway: 0 padrões de chave achados.
+**Próximo passo:** fundador decide as propostas (teto, régua difícil sem Gateway, limpeza D2 da referência); P5c.3 segue como estava.
+
+---
+
 ## 16/10/2026 (50) — Fundador: foco no NextCode, sem Spec do Gateway nos testes; pergunta sobre o Jev e o elicitador
 
 **Fundador:** "não mexa em spec de nada, o foco aqui é o projeto nextcode, a conversa deve ter segredos"; perguntou se o Jev avalia a Spec e devolve ao elicitador pedindo mais detalhe; pediu situação do cronograma.
