@@ -154,3 +154,23 @@ escolha de modelo do Jev não economiza. (3) Nemotron poupa ~US$ 0,03 de avaliad
 ## 15/10 — Auditoria do P5c: Spec do Gateway pelo caminho novo (Claude Opus direto)
 Mesma conversa (3 msgs reais do Gateway), mesmo prompt do chat, `callElicitadorClaude` do `95f6c23`, teto 48.000. **Tentativa 1:** `TypeError: fetch failed` (tempo não medido). **Tentativa 2:** ok em 289 s, `end_turn`, 35.898 tokens de saída (11.401 de raciocínio), 52.431 caracteres, **46 REQ, 0 problema de estrutura** (nenhuma correção necessária), US$ 0,73. Regra de taxas do fundador: **10/10 valores certos** de novo (3,99%+R$0,98; 4,49%; 4,99%; 5,29%; débito 2,89%+R$0,84; voucher 4,59%; Pix/boleto R$2,48; antecipação mantida) + exemplo calculado (R$100 crédito à vista → líquido R$95,03).
 **Prova da causa da falha:** servidor local que demora 310 s para responder; `fetch` do Node 24 com `AbortSignal.timeout(540000)` → `TypeError: fetch failed` aos 305 s (`UND_ERR_HEADERS_TIMEOUT`). A 2ª tentativa passou a 11 s do limite. Correção: streaming (P5c.3).
+
+## 16/10 — B1 bench: avaliador `claude-opus-5-5` 1º × cadeia atual (Nemotron → …)
+Rodada: `docs/relatorios/bench/2026-10-16-1658.md` · teto bench US$ 3,00/sessão · executor DeepSeek inalterado · 1 rep · P1–P4.
+
+| Projeto | Variante | Fase | Aceite | Custo total | Avaliador (trilha) | Tempo (s) |
+|---|---|---|---:|---:|---|---:|
+| P1 | padrao | ENTREGUE | 10/10 | 0,0220 | Nemotron | 209,5 |
+| P1 | avaliador-claude | BLOQUEADA | 1/10 | 0,1731 | claude-opus-5-5 (eval ~0,049) | 424,2 |
+| P2 | padrao | ENTREGUE | 13/13 | 0,0660 | Nemotron (+1 DeepSeek) | 498,6 |
+| P2 | avaliador-claude | BLOQUEADA | 10/13 | 0,3177 | claude-opus-5-5 (~0,10 eval) | 601,5 |
+| P3 | padrao | ENTREGUE | 12/12 | 0,0611 | Nemotron | 373,4 |
+| P3 | avaliador-claude | BLOQUEADA | 0/12 | 0,1127 | (sem eval pago na trilha agregada) | 351,6 |
+| P4 | padrao | ENTREGUE | 12/12 | 0,0375 | Nemotron | 153,7 |
+| P4 | avaliador-claude | BLOQUEADA | 9/12 | 0,1737 | — | 466,6 |
+
+**Soma custos:** padrao US$ 0,1866 · avaliador-claude US$ 0,7772 · **delta +US$ 0,5906** na variante Opus (avaliador pago onde rodou).
+
+**Resposta à pergunta do B1:** sim, aceite e fase final mudam — **padrao 4/4 ENTREGUE 100%** vs **avaliador-claude 0/4 ENTREGUE (4× BLOQUEADA)** e aceite agregado muito menor (P3 0/12). Opus reprova mais (mais retentativas, sessões bloqueadas por 3 tentativas). Custo avaliador sobe onde há chamadas Opus (ex. P1 +~US$ 0,049 eval vs ~0 no Nemotron gratuito).
+
+Relatório completo: `docs/relatorios/B1-bench-avaliador-claude.md`.
