@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  BENCH_TETO_PROJETO_USD,
+  BENCH_VARIANTES_PADRAO,
   calcularMedias,
   formatarRelatorioMarkdown,
   type MetricasExecucao,
@@ -34,6 +36,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
       jevChamadas: 3,
+      tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
     },
     {
       projeto: "p1",
@@ -62,6 +65,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
       jevChamadas: 3,
+      tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
     },
     {
       projeto: "p1",
@@ -90,8 +94,40 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
       jevChamadas: 0,
+      tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
     },
   ];
+
+  it("B1.1: relatório inclui linha avaliador-claude", () => {
+    const mock: MetricasExecucao[] = [
+      {
+        projeto: "p1",
+        variante: "avaliador-claude",
+        repeticao: 1,
+        faseFinal: "ENTREGUE",
+        tempoSeg: 100,
+        etapas: 2,
+        aprovadasNa1a: 2,
+        tentativasTotais: 0,
+        tscProjeto: 0,
+        uiCheck: "ausente",
+        aceite: { aprovados: 10, total: 10, reprovadosIds: [] },
+        custo: { executor: 0.02, avaliador: 0.05, jev: 0, total: 0.07 },
+        avaliadorServedBy: ["claude-opus-5-5"],
+        timeoutsAvaliador: 0,
+        divergenciasEvidencia: 0,
+        jevChamadas: 2,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
+      },
+    ];
+    const md = formatarRelatorioMarkdown(mock, calcularMedias(mock), "2026-10-16-1500");
+    expect(md).toContain("avaliador-claude");
+    expect(md).toContain("| 3.00 |");
+  });
+
+  it("B1.1: variantes padrão do bench sem --variantes", () => {
+    expect(BENCH_VARIANTES_PADRAO).toEqual(["padrao", "sem-jev", "avaliador-deepseek"]);
+  });
 
   it("médias por projeto × variante", () => {
     const medias = calcularMedias(mockExecucoes);
@@ -158,6 +194,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       },
       {
         projeto: "p3",
@@ -186,6 +223,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       },
     ];
 
@@ -226,6 +264,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         divergenciasEvidencia: 0,
         jevChamadas: 0,
         erroBench: "subprocess crash",
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       },
     ];
 
@@ -265,6 +304,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       },
       {
         projeto: "p4",
@@ -292,6 +332,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
         timeoutsAvaliador: 0,
         divergenciasEvidencia: 0,
         jevChamadas: 0,
+        tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       },
     ];
 
@@ -322,6 +363,7 @@ describe("P2.2 — Agregação e Relatório do Benchmark", () => {
       timeoutsAvaliador: 0,
       divergenciasEvidencia: 0,
       jevChamadas: 2,
+      tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
       etapasDetalhe: [
         {
           nodeId: "node-1",

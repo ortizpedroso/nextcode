@@ -6,7 +6,12 @@ import { execSync, spawnSync } from "child_process";
 import { P3_SPEC, P4_SPEC } from "../bench/specs/p3-p4";
 
 export type ProjetoBench = "p1" | "p2" | "p3" | "p4";
-export type VarianteBench = "padrao" | "sem-jev" | "avaliador-deepseek";
+export type VarianteBench = "padrao" | "sem-jev" | "avaliador-deepseek" | "avaliador-claude";
+
+/** Teto efetivo por sessão no bench B1: 0,50 (YAML) + 2,50 autorizado na trilha. */
+export const BENCH_TETO_PROJETO_USD = 3.0;
+
+export const BENCH_VARIANTES_PADRAO: VarianteBench[] = ["padrao", "sem-jev", "avaliador-deepseek"];
 
 export const PROJETOS_VALIDOS: ProjetoBench[] = ["p1", "p2", "p3", "p4"];
 export const TOTAL_TESTES_POR_PROJETO: Record<ProjetoBench, number> = {
@@ -61,6 +66,8 @@ export interface MetricasExecucao {
     jev: number;
     total: number;
   };
+  /** Teto de custo da sessão (bench B1). */
+  tetoEfetivoUsd: number;
   avaliadorServedBy: string[];
   timeoutsAvaliador: number;
   divergenciasEvidencia: number;
@@ -153,10 +160,10 @@ export function formatarRelatorioMarkdown(
   linhas.push("## Tabela de Execuções");
   linhas.push("");
   linhas.push(
-    "| Projeto | Variante | Rep | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
+    "| Projeto | Variante | Rep | Teto (US$) | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) | Exec / Eval / Jev | Jev Calls | Avaliador Models |"
   );
   linhas.push(
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
   );
 
   for (const m of metricas) {
@@ -167,8 +174,9 @@ export function formatarRelatorioMarkdown(
     const custosDet = `${m.custo.executor.toFixed(4)} / ${m.custo.avaliador.toFixed(4)} / ${m.custo.jev.toFixed(4)}`;
     const modelsStr = Array.from(new Set(m.avaliadorServedBy)).join(", ") || "-";
 
+    const tetoDisplay = (m.tetoEfetivoUsd ?? BENCH_TETO_PROJETO_USD).toFixed(2);
     linhas.push(
-      `| ${m.projeto.toUpperCase()} | ${m.variante} | ${m.repeticao} | ${faseDisplay} | ${m.tempoSeg.toFixed(
+      `| ${m.projeto.toUpperCase()} | ${m.variante} | ${m.repeticao} | ${tetoDisplay} | ${faseDisplay} | ${m.tempoSeg.toFixed(
         1
       )} | ${m.etapas} | ${m.aprovadasNa1a} | ${m.tentativasTotais} | ${tscDisplay} | ${m.uiCheck} | ${aceiteDisplay} | ${reprovadosDisplay} | ${m.custo.total.toFixed(
         4
@@ -276,6 +284,11 @@ async function rodarUmaExecucao(
 
   if (variante === "avaliador-deepseek") {
     process.env.EVALUATOR_NEMOTRON_MODEL = "bench-desligado";
+  }
+  if (variante === "avaliador-claude") {
+    process.env.EVALUATOR_NEMOTRON_MODEL = "bench-desligado";
+    process.env.EVALUATOR_DEEPSEEK_MODEL = "bench-desligado";
+    process.env.EVALUATOR_CLAUDE_MODEL = "claude-opus-5-5";
   }
 
   // Carregar .env do projeto se existir
@@ -474,6 +487,15 @@ async function rodarUmaExecucao(
       title: `Bench ${projeto.toUpperCase()} ${variante} ${repeticao}`,
       projectId: project.id,
       canonicalSpec: targetSpec,
+    },
+  });
+
+  const { BUDGET_AUTHORIZED_ACTION } = await import("@/core/orchestrator/budget-guard");
+  await prisma.telemetryLog.create({
+    data: {
+      sessionId: session.id,
+      action: BUDGET_AUTHORIZED_ACTION,
+      details: JSON.stringify({ acrescimoUsd: 2.5, motivo: "bench B1 (fundador 16/10)" }),
     },
   });
 
@@ -711,6 +733,7 @@ async function rodarUmaExecucao(
     divergenciasEvidencia,
     jevChamadas,
     etapasDetalhe,
+    tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
   };
 }
 
@@ -761,7 +784,7 @@ async function main() {
 
   // Leitura de parâmetros gerais
   let projetos: ProjetoBench[] = ["p1", "p2"];
-  let variantes: VarianteBench[] = ["padrao", "sem-jev", "avaliador-deepseek"];
+  let variantes: VarianteBench[] = [...BENCH_VARIANTES_PADRAO];
   let repeticoes = 1;
 
   for (let i = 0; i < args.length; i++) {
@@ -854,6 +877,7 @@ async function main() {
             divergenciasEvidencia: 0,
             jevChamadas: 0,
             erroBench: ultimas20Stderr,
+            tetoEfetivoUsd: BENCH_TETO_PROJETO_USD,
           };
 
           metricas.push(metricaErro);
@@ -871,19 +895,21 @@ async function main() {
         console.log(`Fim da iteração: Fase=${metrica.faseFinal}, Custo=US$ ${metrica.custo.total.toFixed(4)}, Aceite=${metrica.aceite.aprovados}/${metrica.aceite.total}`);
         console.log(`Custo Acumulado Bench: US$ ${custoAcumulado.toFixed(4)}`);
 
-        // Travas T-J
-        if (metrica.custo.total > 0.50) {
-          console.error(`[TRAVA T-J] Custo de uma execução excedeu US$ 0,50: US$ ${metrica.custo.total.toFixed(4)}`);
+        // Travas T-J (B1: teto US$ 3,00/execução; US$ 10,00 rodada)
+        if (metrica.custo.total > BENCH_TETO_PROJETO_USD) {
+          console.error(
+            `[TRAVA T-J] Custo de uma execução excedeu US$ ${BENCH_TETO_PROJETO_USD.toFixed(2)}: US$ ${metrica.custo.total.toFixed(4)}`
+          );
           break;
         }
-        if (custoAcumulado > 2.00) {
-          console.error(`[TRAVA T-J] Custo acumulado do benchmark excedeu US$ 2,00: US$ ${custoAcumulado.toFixed(4)}`);
+        if (custoAcumulado > 10.0) {
+          console.error(`[TRAVA T-J] Custo acumulado do benchmark excedeu US$ 10,00: US$ ${custoAcumulado.toFixed(4)}`);
           break;
         }
       }
-      if (custoAcumulado > 2.00) break;
+      if (custoAcumulado > 10.0) break;
     }
-    if (custoAcumulado > 2.00) break;
+    if (custoAcumulado > 10.0) break;
   }
 
   const medias = calcularMedias(metricas);
