@@ -1,3 +1,11 @@
+## 17/10/2026 (121) — A3.1b aceito; desligar memória aprovado
+
+**Conferido:** `1b659c4` + `28e476e` dentro do R1; sonda do auditor: caso1 `null`, caso2 `false`, caso3 `null` (os 3 falsos positivos sumiram). Ressalvas menores: `GENERIC_FILE_NAMES` não exportada (prompt pedia); risco residual — motivo de código errado que cite por extenso o arquivo consumidor fora do escopo ainda vira `plan_error`; coberto pela ação em `sombra` + replay do A3.3.
+**Fundador:** "pode desligar" (memória do projeto) → mudança 20 aprovada; auditor executa depois do A3.
+**Próximo passo:** A3.2 liberado.
+
+---
+
 ## 17/10/2026 (120) — Memória do projeto: recomendação desligar agora
 
 **Fundador:** "se ela está errada mude ou tire… me diga o que é melhor para o projeto nesse momento".
