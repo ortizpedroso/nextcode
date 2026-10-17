@@ -1,3 +1,14 @@
+## 16/10/2026 (93) — Teste real BLOQUEADO na etapa 3: erro de planejamento (decompositor), não do executor nem do avaliador
+
+**Relatório T6 colado pelo fundador:** etapa 3 (middleware, asaas, validacao, cobrancas) reprovada 3/3: "REQ-009,013,015,016 implementados… REQ-032 e REQ-040 exigem arquivos fora do escopo". Jev diagnosticou `evaluator_error` 85–87%.
+**Trilha (payload dos nós):** etapa 3 recebeu REQ-032 (rota `api/v1/links`) e REQ-040 (`tests/cobrancas.test.ts`); etapas 7–12 (backend) receberam **as mesmas 17 REQ cada**; 13–16 (tela) **as mesmas 9 cada**; 29 REQ em mais de uma etapa.
+**Causa:** `assignReqsForGroup` (`spec-decomposer.ts:122-148`) atribui o REQ se o texto cita qualquer arquivo do grupo, inclusive só o nome final (`route.ts`/`page.tsx`). REQ-032 cita `src/lib/validacao.ts` ("mesmas regras de"); REQ-040 cita `src/lib/cobrancas.ts`. O executor fez o que podia (4 REQ certos); o avaliador reprovou certo segundo o Microbrief; o Jev acertou que não era culpa do código. Era impossível passar.
+**Custo do teste até aqui:** executor US$ 1,24; avaliador 0 (Nemotron); Jev ~0,001; Spec US$ 4,38.
+**Registrado:** §5.0 linha **PL1** (proposta, antes do B1b; mexe no miolo congelado → precisa OK).
+**Próximo passo:** OK do fundador → prompt PL1 (Cursor) → replanejar a mesma Spec (sem pagar a Spec de novo).
+
+---
+
 ## 16/10/2026 (92) — Teste real: "todos os provedores indisponíveis" (20:59:50) — meia verdade
 
 **Trilha:** etapa 3 (middleware, asaas, validacao) — última resposta do DeepSeek 20:57:49 → `SEM_LLM` 20:59:50 (2 min 01 s depois) → `LLM_VOLTOU` 20:59:53 → etapa 3 recomeçou, tentativas 0/3.
