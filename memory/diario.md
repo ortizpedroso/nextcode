@@ -1,3 +1,11 @@
+## 17/10/2026 (111) — Mudanças 17 e 18 aprovadas; proposta 19 (testes de aceite no Microbrief)
+
+**Fundador:** aprovou as ressalvas do avaliador-final cego (17) e o porteiro mecânico (18). Perguntou se o Microbrief pode definir testes dinâmicos por projeto.
+**Análise do auditor (mudança 19, aguarda):** sim, mas quem escreve é o analista (não o executor), como dados com formato fixo; depende do contrato fixado (A1/A2) — sem contrato, teste antes do código é chute; pasta de teste travada para o executor; grupo visível + escondido; teste do teste contra implementação vazia; REQ não testável fica para o avaliador; teste que contradiz a Spec → `plan_error`; sem rede/segredo. Fica no E5, depois de A1/A2 — não adianta agora.
+**Próximo passo:** fundador decide a 19; A3 com o Cursor.
+
+---
+
 ## 17/10/2026 (110) — Mudança 16 registrada; prompt do A3; propostas 17 (avaliador-final cego) e 18 (porteiro mecânico)
 
 **Fundador:** "concordo" com a ordem do uso do Jev → mudança 16 + linha A3 na §5.0; prompt `docs/prompts/A3-falha-roteada-ao-dono.md` (causa `plan_error`, pré-checagem mecânica de escopo, estado ≤ 8 mil, ação por causa em `sombra`, replay com a trilha real como porta).

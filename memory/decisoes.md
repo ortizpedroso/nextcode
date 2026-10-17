@@ -70,3 +70,6 @@
 
 ## 17/10 — Uso do Jev corrigido (mudança 16)
 Fundador: "concordo". Ordem: A3 (falha ao dono) → P8 pesquisador com Jev filtrando → formato garantido → M3 no padrão LiteLLM → SDE no avaliador → Jev fora de juiz final. Jev Router do OpenRouter não usar (regra 7). Detalhe: `docs/relatorios/AUDITORIA-JEV.md`.
+
+## 17/10 — avaliador-final cego (17) e porteiro mecânico (18)
+Fundador: "concordo com as ressalvas e com o porteiro mecânico". J3: cego (sem relatório do executor nem vereditos anteriores) e fechado (sem internet/MCP), com as provas mecânicas; defeito de código → analista (Microbrief de correção); defeito da Spec → elicitador/fundador; outra família do executor. Porteiro: tsc, testes, ESLint, stub/TODO por regex, citações arquivo:linha, escopo, segredo, dependência nova — dentro do laço do executor, antes do avaliador; não substitui avaliador nem E5.
