@@ -1,3 +1,12 @@
+## 16/10/2026 (100) — Método das skills: perfil do provedor primeiro; teste pesado
+
+**Fundador:** observar primeiro como o provedor se comporta — a skill segue o padrão dele; testes pesados, "teste leve não mostra a realidade".
+**Registrado:** S3 na §5.0 — passo 0 = perfil do provedor (doc oficial + trilha) por papel; testes de porte real (Spec do teste real, 43 REQ), 2 rodadas.
+**Comportamento já medido (trilha 15–16/10):** Opus 5.5 (elicitador) — blocos `thinking` antes do `text`, reescreve a Spec inteira a cada correção (~19 mil tokens, US$ 0,47), 2–4 min; DeepSeek v4 pro (executor, FreeLLMAPI) — resposta longa estoura 120 s, relatório com vários `arquivo:linha` (3–11 recusas por etapa); Nemotron 3 ultra (avaliador, gratuito) — ~15–25 s, reprovação que o Jev classificou como erro do avaliador (0,85–0,98); analista — nunca rodou (sem dado).
+**Próximo passo:** ler a documentação oficial de cada provedor (sem custo) → perfil por papel → OK do fundador para o custo dos testes pesados.
+
+---
+
 ## 16/10/2026 (99) — Decisão: refinar as nossas skills; superpowers só como base de estudo
 
 **Fundador:** "era só uma ideia, não mistures o superpowers; vamos melhorar e refinar as nossas skill; podemos utilizar como base o superpowers".
