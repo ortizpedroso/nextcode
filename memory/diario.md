@@ -1,3 +1,11 @@
+## 17/10/2026 (122) — A3.2 auditado: vazamento do modo sombra no relatório de incidente
+
+**Conferido:** `8526e18` — 8 arquivos; desvio `tests/harness/orchestration-policy-and-skills.test.ts` aceito (expectativa de política ganha a chave nova; sem isso o teste quebra). tsc 0; 101/101 nos testes afetados (auditor). `updatedAttempts` e flags certos; `ativo` só nos testes; YAML `sombra`.
+**Defeito:** `failureRouteDono` é preenchido em qualquer modo (`node-executor.ts` ≈1656) e vai ao `generateIncidentReport` → em `sombra` a mensagem do chat ganha "**Dono:**" — sombra mudou o que o usuário vê. Correção A3.2b: só em `ativo`; teste: incidente em `sombra` byte a byte igual ao de antes. Relatório do A3.2 tem alteração não commitada no disco.
+**Próximo passo:** A3.2b.
+
+---
+
 ## 17/10/2026 (121) — A3.1b aceito; desligar memória aprovado
 
 **Conferido:** `1b659c4` + `28e476e` dentro do R1; sonda do auditor: caso1 `null`, caso2 `false`, caso3 `null` (os 3 falsos positivos sumiram). Ressalvas menores: `GENERIC_FILE_NAMES` não exportada (prompt pedia); risco residual — motivo de código errado que cite por extenso o arquivo consumidor fora do escopo ainda vira `plan_error`; coberto pela ação em `sombra` + replay do A3.3.
