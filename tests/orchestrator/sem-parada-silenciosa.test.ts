@@ -90,6 +90,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "CONFERENCIA_FALHOU", culpa: "macrobrief" },
   { type: "CONFERENCIA_FALHOU", culpa: "spec" },
   { type: "PLANO_PRONTO" },
+  { type: "PLANO_REPROVADO" },
   { type: "SEM_PENDENCIAS" },
   { type: "SEM_LLM" },
   { type: "LLM_VOLTOU" },

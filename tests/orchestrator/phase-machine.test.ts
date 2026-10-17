@@ -675,6 +675,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'CONFERENCIA_OK' },
       { type: 'CONFERENCIA_FALHOU', culpa: 'macrobrief' },
       { type: 'PLANO_PRONTO' },
+      { type: 'PLANO_REPROVADO' },
       { type: 'SEM_PENDENCIAS' },
       { type: 'SEM_LLM' },
       { type: 'LLM_VOLTOU' },

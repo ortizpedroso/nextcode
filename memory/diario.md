@@ -1,3 +1,10 @@
+## 17/10/2026 (137) — A2.1 implementado (execução autônoma)
+
+**Feito:** plano conferido por código antes de criar etapas (`plan-scope-check.ts`), plano impossível → BLOQUEADA com aviso "Dono: analista"; heurística põe cada REQ em 1 etapa. Spec real: de 29 REQ repetidos + 186 pares fora do escopo (T8b dizia "válido") para **6 erros, bloqueado sem gastar**; P1–P4 válidos. tsc 0; vitest 126/840. Decisões D1–D6 em `DECISOES-AUTONOMAS-E1.md`; auditoria em `AUDITORIA-E1-autonoma.md`.
+**Próximo passo:** A2.2 (analista DeepSeek planeja).
+
+---
+
 ## 17/10/2026 (136) — Mudança 23: execução autônoma da E1 (Claude implementa, Cursor audita)
 
 **Fundador:** avaliador Claude (não pode ser da mesma família); checklist de tudo; Claude implementa e decide pelo fundador; 2 relatórios (decisões + auditoria do Cursor); seguir automático até o fim.

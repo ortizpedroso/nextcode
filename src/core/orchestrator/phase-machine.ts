@@ -43,6 +43,7 @@ export type PhaseEvent =
   | { type: 'CONFERENCIA_OK' }
   | { type: 'CONFERENCIA_FALHOU'; culpa: ConferenceCulprit }
   | { type: 'PLANO_PRONTO' }
+  | { type: 'PLANO_REPROVADO' }
   | { type: 'SEM_PENDENCIAS' }
   | { type: 'SEM_LLM' }
   | { type: 'LLM_VOLTOU' }
@@ -394,7 +395,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   PLANEJAMENTO: {
-    allowedEvents: ['PLANO_PRONTO', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['PLANO_PRONTO', 'PLANO_REPROVADO', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
@@ -405,6 +406,14 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos' }],
+        };
+      }
+      // A2.1: plano reprovado na T8b não executa; desbloquear volta à revisão da Spec (replanejar).
+      if (event.type === 'PLANO_REPROVADO') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)' }],
         };
       }
       if (event.type === 'PLANO_PRONTO') {

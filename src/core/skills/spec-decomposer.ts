@@ -11,6 +11,7 @@ import {
 import type { ClusterKind } from "../config/orchestration-policy";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import { loadRoleSkill, buildSkillSystemPrompt } from "./skill-runtime";
+import { GENERIC_FILE_NAMES } from "../decision/jev-execution-checks";
 
 export interface DecompositionResult {
   goal: string;
@@ -119,6 +120,23 @@ export class SpecDecomposerSkill {
       });
     }
 
+    const groupsInOrder: string[][] = [...foundationGroups, ...restClusterGroups.map((g) => g.files)];
+    const reqCitesFile = (text: string, file: string): boolean => {
+      if (text.includes(file)) return true;
+      const base = file.split("/").pop() || "";
+      return Boolean(base) && !GENERIC_FILE_NAMES.has(base) && text.includes(base);
+    };
+    const reqOwnerGroup = new Map<string, number>();
+    for (const r of declaredReqs) {
+      const text = `${r.titulo} ${r.criterio}`;
+      for (let g = groupsInOrder.length - 1; g >= 0; g--) {
+        if (groupsInOrder[g].some((f) => reqCitesFile(text, f))) {
+          reqOwnerGroup.set(r.id, g);
+          break;
+        }
+      }
+    }
+
     const assignReqsForGroup = (
       groupFiles: string[],
       groupIndexZeroBased: number
@@ -130,14 +148,11 @@ export class SpecDecomposerSkill {
           criterios: { [reqId]: [`Implementar integralmente ${shortList(groupFiles)} conforme a Spec.`] },
         };
       }
-      const matched = declaredReqs.filter((r) => {
-        const fullText = `${r.titulo} ${r.criterio}`;
-        return groupFiles.some((gf) => fullText.includes(gf) || fullText.includes(gf.split("/").pop() || ""));
-      });
-      const chosen =
-        matched.length > 0
-          ? matched
-          : [declaredReqs[groupIndexZeroBased % declaredReqs.length]];
+      // A2.1: cada REQ fica em UMA etapa — a última (na ordem da DAG) que tem um arquivo citado por ele,
+      // para os outros arquivos citados estarem em etapas anteriores (dependências). REQ sem arquivo
+      // citado vai para a última etapa (garantia de cobertura abaixo). Antes o REQ entrava em toda
+      // etapa cujo nome final de arquivo aparecia no texto (`route.ts`), e todas falhavam (teste `934939fc`).
+      const chosen = declaredReqs.filter((r) => reqOwnerGroup.get(r.id) === groupIndexZeroBased);
       const criterios: Record<string, string[]> = {};
       for (const c of chosen) {
         criterios[c.id] = [`${c.titulo}: ${c.criterio}`];

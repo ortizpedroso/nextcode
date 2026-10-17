@@ -14,6 +14,10 @@ import {
 } from "@/core/decision/jev-decisions";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { splitNodesByJev } from "@/core/orchestrator/node-split";
+import { validateFinalPlan } from "@/core/orchestrator/plan-scope-check";
+
+/** Mesmo teto de arquivos por etapa do decompositor (`FILES_PER_NODE`, spec-decomposer.ts). */
+const PLAN_MAX_FILES_PER_STAGE = 4;
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 import { consolidateMemoryFromSpec } from "@/core/memory/project-memory";
@@ -408,6 +412,38 @@ export async function approveSpecAndStart(
         });
       }
       const decomposedNodes = splitRes.nodes;
+
+      // A2.1: T8b inteira sobre o plano final (depois da divisão). Plano impossível não vira etapa:
+      // a sessão fica BLOQUEADA com o relatório (dono: analista), sem gastar executor nem avaliador.
+      const reqsDaSpec = parsedSpec?.requisitos ?? [];
+      if (reqsDaSpec.length > 0) {
+        const textoPorReq = Object.fromEntries(reqsDaSpec.map((r) => [r.id, `${r.titulo} ${r.criterio}`]));
+        const planCheck = validateFinalPlan(
+          decomposedNodes,
+          reqsDaSpec.map((r) => r.id),
+          textoPorReq,
+          PLAN_MAX_FILES_PER_STAGE
+        );
+        TelemetryLogger.log({
+          sessionId,
+          action: planCheck.valid ? "PLANO_T8B_OK" : "PLANO_REPROVADO",
+          details: { etapas: decomposedNodes.length, erros: planCheck.errors.length, amostra: planCheck.errors.slice(0, 20) },
+        });
+        if (!planCheck.valid) {
+          const detalhe =
+            "**Dono:** analista (erro do plano).\n\n" +
+            `O plano tem ${planCheck.errors.length} problema(s); nenhuma etapa foi criada e nada foi gasto em execução:\n` +
+            planCheck.errors.slice(0, 15).map((e) => "- " + e).join("\n") +
+            (planCheck.errors.length > 15 ? `\n- … e mais ${planCheck.errors.length - 15}` : "");
+          const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+          return {
+            ok: true,
+            alreadyStarted: false,
+            phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
+            tasks: [],
+          };
+        }
+      }
       const planFor = (id: string) => jevPlan.get(id) ?? jevPlan.get(id.replace(/-p\d+$/, ""));
 
       // Garante IDs únicos por versão para não colidir se duas versões forem aprovadas no mesmo ms
