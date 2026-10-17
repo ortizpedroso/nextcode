@@ -1,3 +1,11 @@
+## 17/10/2026 (108) — Sonda de repasse + diagnóstico do uso do Jev e das skills
+
+**Feito:** sonda (≈US$0,001): JSON e ferramenta passam pelo FreeLLMAPI (DeepSeek e Nemotron); desligar raciocínio não passa; DeepSeek recusa `tool_choice: required` com raciocínio. **Achado grave:** uma chamada foi para `router9` (revenda) — fundador precisa desligar router9 além do electronhub. Trilha do Jev no teste real lida: diagnóstico de falha rotulou erro de plano como `evaluator_error` (falta a categoria; só `ambiguous_spec` age).
+**Diagnóstico entregue ao fundador:** skill = contrato do papel (igual para qualquer modelo); perfil do provedor = adaptador no harness (tabela fixa por modelo, não decisão do Jev); formato por ferramenta/JSON nativo; Jev só onde há escolha entre opções com evidência (intenção, roteamento de falha ao dono, escalar ou não), fora de juiz final e de previsão de modelo. Contra novos provedores pagos agora (falha medida é de plano/protocolo, não de modelo).
+**Próximo passo:** fundador decide o diagnóstico; se aprovado, entra na §5.0 como mudança de protocolo + correção do diagnóstico do Jev (A3), antes de reescrever skills.
+
+---
+
 ## 17/10/2026 (107) — Perfil dos provedores pela documentação oficial (passo 0 das skills)
 
 **Feito:** lidas as docs oficiais (DeepSeek JSON/raciocínio/ferramentas; Anthropic boas práticas + Opus 5; model card do Nemotron 3 Super) e comparadas com o que o código envia. Relatório: `docs/relatorios/PERFIL-PROVEDORES.md`. Sem custo, nada alterado.

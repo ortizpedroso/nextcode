@@ -54,3 +54,15 @@ Nenhum caminho usa: controle de raciocínio, `response_format` JSON, ferramentas
 
 - **4a. Sonda de repasse (≈ US$ 0):** 1 chamada curta por provedor com `response_format`, `tools` e controle de raciocínio, para saber o que o FreeLLMAPI deixa passar. Sem isso, qualquer plano de protocolo é suposição.
 - **4b.** Com o resultado, entra na §5.0 uma mudança de protocolo (formato garantido por papel) **antes** da reescrita das skills; depois os testes pesados (2 rodadas, com custo e OK).
+
+## 5. Sonda de repasse — resultado (17/10, custo ≈ US$ 0,001)
+Script fora do repo (`scratchpad/passthrough-probe.ts`, `probe2.ts`); pedido sintético ("soma(a,b){return a-b} está correta?"); chave não impressa.
+
+| Modelo pedido | Servido por | JSON (`response_format`) | Ferramenta (`tools`) | Desligar raciocínio |
+|---|---|---|---|---|
+| `deepseek-v4-pro` | `custom/deepseek-v4-pro` | ✅ passa, JSON válido | ✅ com `tool_choice: "auto"`; ❌ `"required"` → 400 "Thinking mode…" (DeepSeek, não o FreeLLMAPI) | ❌ `thinking: disabled` ignorado (raciocínio 109 tokens) |
+| `nemotron-3-super-120b` | `openrouter/nvidia/…:free` (não `nvidia/`) | ✅ passa | ✅ `tool_calls` com `"required"` | ❌ `enable_thinking: false` ignorado (608 tokens de raciocínio) |
+
+**Achado grave:** numa chamada, com o `custom/` em espera de cota, o FreeLLMAPI tentou **`router9/deepseek/deepseek-v4-pro`** (revenda) — o pedido chegou ao Router9 (respondeu 429). Fere a mudança 15: além do electronhub, o **router9** precisa ser desligado no painel, e o filtro de prefixo precisa valer em todo o harness.
+
+**Leitura:** formato garantido é viável hoje nos dois caminhos do FreeLLMAPI (JSON e ferramenta) e no Claude direto (nativo). Raciocínio não se desliga pelo FreeLLMAPI — custo pequeno, não bloqueia. Ferramenta obrigatória na DeepSeek só com `"auto"` + conferência do harness.
