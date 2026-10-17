@@ -1,3 +1,11 @@
+## 16/10/2026 (96) — Auditoria das 12 skills: `docs/relatorios/AUDITORIA-SKILLS.md`
+
+**Método:** código no HEAD + carga real de cada skill por `loadRoleSkill` (script no scratchpad) + trilha do teste real e do bench. skill-creator usada como método (casos de teste + assertivas), não como executor (ela roda o Claude; as skills do NextCode rodam em DeepSeek/Nemotron/Opus).
+**Veredito:** as skills não governam o NextCode. Só executor-* e avaliador-* chegam ao modelo; analista nunca planejou (5 s); project-memory nunca carregada (e o papel `memoria` vira `executor`); `checagens`/`entrada`/`saida` decorativos em todas; avaliador recebe "só JSON de uma linha" + skill com veredito em markdown (contradição → descarte → `EVALUATOR_UNAVAILABLE`); `induzido_pelo_plano` não é lido por código (era o caso da etapa 3); executor-frontend sem referências; elicitador não exige REQ com 1 arquivo dono. Memória cortada calada (66 → 41 linhas).
+**Próximo passo:** fundador decide a recomendação §6 (reescrever na ordem do fluxo com casos de teste antes de ligar = bloco A).
+
+---
+
 ## 16/10/2026 (95) — PARÊNTESE: auditoria profunda de todas as skills — ONDE PARAMOS NA IMPLANTAÇÃO
 
 **Fundador:** abrir parêntese; revisar a fundo todas as skills (fazem o que dizem? bem construídas? acionadas no momento certo? travas e ordem funcionando?), usando a skill-creator; "seja brutal e não se perca na implementação".
