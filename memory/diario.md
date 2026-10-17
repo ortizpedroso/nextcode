@@ -1,3 +1,12 @@
+## 16/10/2026 (98) — find-skills instalada (comando do fundador)
+
+**Fundador:** `npx skills add https://github.com/vercel-labs/skills --skill find-skills`. Rodado. Instalou **no projeto** (não global): `.agents/skills/find-skills/SKILL.md` (141 linhas, lida inteira: só ensina a usar `npx skills find/add`, nada executa sozinho; avaliação de segurança do instalador: Gen "Safe", Socket 0 alertas, Snyk "Med Risk"), atalho `.claude/skills/find-skills` → `.agents/...`, e `skills-lock.json`. Os 3 ficaram **sem commit**.
+**Separação:** é skill do agente de desenvolvimento (Claude Code/Cursor), não papel do NextCode — não vai para `skills/` (as do harness).
+**Regra mantida:** o passo 6 da skill ("instalar com `-g -y`, sem confirmação") não vale aqui — instalação nova só com OK do fundador.
+**Pendente:** fundador decide commitar (Cursor/Antigravity passam a ver) ou ignorar no git; a skill aparece na lista a partir da próxima sessão.
+
+---
+
 ## 16/10/2026 (97) — find-skills: diagnóstico e referências baixadas para estudo
 
 **Fundador:** conhecer a `find-skills` (busca a skill certa), estudar as melhores e montar as nossas; pode baixar as do Claude.
