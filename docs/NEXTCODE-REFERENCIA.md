@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma da E1 pelo Claude (mudança 23), auditoria pelo Cursor. Item atual: **AV1.5**. Erro num passo vira sub-passo do mesmo item (ex.: A2.1b), nunca item novo.
+**▶ AGORA (atualizar a cada passo):** execução autônoma da E1 pelo Claude (mudança 23), auditoria pelo Cursor. Item atual: **PJ1.6b**. Erro num passo vira sub-passo do mesmo item (ex.: A2.1b), nunca item novo.
 
 **Checklist da execução autônoma (mudança 23) — ordem fixa, cada linha = 1 commit com tsc + vitest:**
 - [x] **A2.1** T8b confere arquivo citado no critério × escopo da etapa (ou de etapa da qual depende) e **bloqueia** o plano na aprovação (BLOQUEADA + relatório "dono: analista")
@@ -292,7 +292,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **AV1.2** avaliador não aprova o que não leu inteiro (arquivo cortado → reprova com motivo)
 - [x] **AV1.3** saída do avaliador com problemas por severidade; evidência `arquivo:linha` do avaliador conferida; skills dos avaliadores reescritas para bater com o código (sem ferramentas, Lente 2 = conferência mecânica)
 - [x] **AV1.4** porteiro: `tsc` do projeto antes do avaliador (falha de tipo reprova sem gastar avaliador)
-- [ ] **AV1.5** controles com defeito plantado no avaliador real (Sonnet) — porta: cada defeito reprovado pelo motivo certo; código correto aprovado
+- [x] **AV1.5** controles com defeito plantado no avaliador real (Sonnet) — porta: cada defeito reprovado pelo motivo certo; código correto aprovado
 - [ ] **PJ1.6b** reabrir projeto só desarquiva e acha a pasta escolhida
 - [ ] **M20** desligar gravação e injeção da memória do projeto
 - [ ] **SM1** conferência mecânica da Spec (a)–(e)

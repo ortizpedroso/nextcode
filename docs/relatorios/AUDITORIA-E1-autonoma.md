@@ -123,3 +123,25 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 856 passed (856)`.
 
 **Auditor conferir:** o projeto fica igual ao de antes depois do porteiro (rollback); promoção real roda o tsc de novo; tempo extra por etapa = 1 tsc.
+
+---
+
+## AV1.5 — Controles com defeito plantado no avaliador real (Claude Sonnet 5.5)
+
+**Script:** `scripts/controles-avaliador-av15.ts [repetições]` (cadeia de produção; chave lida de cópia do `dev.db`; nada gravado). Etapa de 1 arquivo (`src/app/api/tarefas/route.ts`), REQ-001 (POST 201/400) e REQ-002 (GET 200), skill `avaliador-backend`.
+
+| caso | defeito plantado | esperado | rodada final | quem pegou | REQ / divergência |
+|---|---|---|---|---|---|
+| 1 correto | — | APPROVED | APPROVED ✅ | Sonnet | 001 implementado, 002 implementado |
+| 2 POST devolve 200 | status errado | REJECTED | REJECTED ✅ | Sonnet | 001 parcial · `divergencia_otimista` |
+| 3 POST é stub (501, TODO) | não implementado | REJECTED | REJECTED ✅ | Sonnet | 001 ausente · `alucinacao_grave` |
+| 4 arquivo de 52.912 caracteres, bug no fim | status errado no fim | REJECTED | REJECTED ✅ | Sonnet (leu até o fim) | 001 parcial |
+| 5 arquivo de 150.873 caracteres | acima do limite | REJECTED | REJECTED ✅ | mecânico (`limite_tamanho`, AV1.2) | — |
+| 6 sem validar título + relatório diz "atendido" | validação faltando + mentira | REJECTED | REJECTED ✅ | Sonnet + Lente 2 | 001 parcial · `divergencia_otimista` |
+| 7 código correto, executor cita `:999` | evidência inventada | REJECTED | REJECTED ✅ | Lente 2 mecânica | 001 implementado · `alucinacao_grave` |
+
+**Rodadas:** 1ª (2 repetições): 14/14, mas o caso 4 tinha 59 mil+ caracteres e caiu no limite (não testou leitura do fim) — corrigido para 52.912; 2ª: 7/7, caso 5 reprovado por erro de sintaxe do próprio controle (corte no meio de função) — corrigido; 3ª (final): **7/7, cada um pelo motivo certo**. Custo: US$ 0,1005 + 0,1065 + 0,1070 = **US$ 0,314** (≈ US$ 0,01 por avaliação do Sonnet).
+
+**Porta do AV1:** defeito plantado reprovado pelo motivo certo ✅; código correto aprovado ✅; 0 avaliação por mesma família ✅ (cadeia só Claude, executor DeepSeek); 0 aprovação só por gratuito ✅ (sem gratuito na cadeia). Bench P1–P4 sem regressão: **não rodado** (bench completo executa projetos inteiros; fica para o teste pesado, último item do checklist).
+
+**Auditor conferir:** rodar `npx tsx scripts/controles-avaliador-av15.ts 2` (≈ US$ 0,13); o caso 1 tem de aprovar e os 6 outros reprovar.

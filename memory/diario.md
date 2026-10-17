@@ -1,3 +1,10 @@
+## 17/10/2026 (144) — AV1.5: avaliador real passa nos 7 controles com defeito plantado
+
+**Feito:** `scripts/controles-avaliador-av15.ts`; Sonnet 5.5 7/7 pelo motivo certo (correto aprovado; status errado, stub, bug no fim de arquivo grande, validação faltando reprovados; limite e evidência inventada pegos pela parte mecânica). US$ 0,31 nas 3 rodadas. Medições em `medicoes.md`.
+**Próximo passo:** PJ1.6b.
+
+---
+
 ## 17/10/2026 (143) — AV1.4: porteiro (tsc + ESLint) antes do avaliador
 
 **Feito:** portão empírico em modo "só conferir" antes do avaliador; código que não compila é reprovado sem gastar avaliador; promoção real reaplica o retrato e confere de novo. tsc 0; vitest 129/856. Decisões D28–D30.

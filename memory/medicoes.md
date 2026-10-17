@@ -197,3 +197,8 @@ Sonda (15 candidatos): 200 — `deepseek-v4-pro` via **`custom/`** (pago, chave 
 
 ## 17/10 — Sonda de repasse do FreeLLMAPI (auditor; custo ≈ US$ 0,001)
 `deepseek-v4-pro` (custom/): JSON ✅ · tools ✅ com `auto`, ❌ `required` (400 thinking) · `thinking: disabled` ignorado. `nemotron-3-super-120b` → servido por `openrouter/…:free`: JSON ✅ · tools ✅ · `enable_thinking:false` ignorado. Uma tentativa caiu em `router9/deepseek/deepseek-v4-pro` (revenda, 429). Jev no teste real `934939fc`: 30 decisões (7 intenção, 7 M0, 7 M2, 6 evidência, 3 diagnóstico de falha); diagnóstico deu `evaluator_error` 0,85–0,98 nas 3 vezes da etapa 3 (causa real: plano) — não há categoria "erro de plano" em `FAILURE_CAUSE_CRITERIA`. Detalhe: `docs/relatorios/PERFIL-PROVEDORES.md` §5.
+
+## 17/10 — Execução autônoma da E1 (A2.3, AV1.1, AV1.5)
+- **Analista DeepSeek, Spec real `934939fc` (43 REQ, 58 arquivos, 38.624 caracteres):** 16 mil tokens → 3× `length` sem JSON (US$ 0,21); 32 mil + prazo 120 s → 3× corte; 32 mil + 300 s → aprovado na rodada 1, 152 s, 15.063 in / 24.819 out, **US$ 0,099**, 35 etapas, 0 REQ repetido, T8b válida.
+- **Sonda avaliador:** `claude-sonnet-5-5` e `claude-opus-5-5` respondem pela Anthropic (US$ 0,00013 / 0,00026 por "ok").
+- **Controles do avaliador (Sonnet 5.5, 7 casos com defeito plantado):** 7/7 pelo motivo certo na rodada final; casos LLM 14/14 na rodada dupla; ≈ US$ 0,01 por avaliação; arquivo de 52.912 caracteres lido até o fim.
