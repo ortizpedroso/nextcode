@@ -1,3 +1,12 @@
+## 16/10/2026 (97) — find-skills: diagnóstico e referências baixadas para estudo
+
+**Fundador:** conhecer a `find-skills` (busca a skill certa), estudar as melhores e montar as nossas; pode baixar as do Claude.
+**Feito:** `find-skills` não está instalada nesta sessão (é a `vercel-labs/skills@find-skills`, 3,9 mi instalações; usa `npx skills find`). Rodei a busca direto pelo `npx skills find` (registro skills.sh) para os papéis do NextCode. Baixei para estudo, em pasta isolada no scratchpad (nada executado, nada no repo): `mattpocock/skills` (MIT: code-review, to-spec, research, grill-with-docs) e `juxt/allium` (MIT: elicit). Locais (plugin já instalado): `obra/superpowers` (writing-plans, subagent-driven-development, requesting-code-review, writing-skills) — **é a origem que as skills do NextCode já citam** (commit `8ca22dba`).
+**Diagnóstico:** o problema não é falta de boa referência — as nossas já vieram do superpowers; elas perderam justamente as partes que fazem o original funcionar: (1) writing-plans: cada tarefa declara `Create/Modify/Test` com caminho exato e `Consumes/Produces` (o contrato que faltou no teste real); (2) writing-skills: testar a skill antes (RED sem skill → GREEN com skill → fechar brechas) — nenhuma das nossas foi testada assim; (3) code-review do mattpocock: 2 eixos separados (Spec × Padrões) e falhar cedo com entrada ruim; (4) allium/elicit: portão de completude antes de entregar, uma pergunta por vez, "Por quê?"/"poderia ser diferente?" para separar produto de implementação; (5) research: só fonte primária, cada afirmação com a fonte. Copiar o texto não resolve: no NextCode o código monta o prompt e lê a saída — a skill tem de bater com o código (AUDITORIA-SKILLS §2).
+**Próximo passo:** fundador decide; se OK, reescrever as nossas 1 por vez com esses padrões + teste RED/GREEN no caminho real do NextCode.
+
+---
+
 ## 16/10/2026 (96) — Auditoria das 12 skills: `docs/relatorios/AUDITORIA-SKILLS.md`
 
 **Método:** código no HEAD + carga real de cada skill por `loadRoleSkill` (script no scratchpad) + trilha do teste real e do bench. skill-creator usada como método (casos de teste + assertivas), não como executor (ela roda o Claude; as skills do NextCode rodam em DeepSeek/Nemotron/Opus).
