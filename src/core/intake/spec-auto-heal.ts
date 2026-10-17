@@ -15,7 +15,19 @@ export function isConcreteFilePath(path: string): boolean {
   if (!clean || clean.endsWith("/")) return false;
   const segments = clean.split("/");
   const lastSegment = segments[segments.length - 1];
-  return lastSegment.includes(".") && !lastSegment.startsWith(".");
+  if (!lastSegment.includes(".")) return false;
+  // SM1 (a): arquivo com ponto no início vale se tiver extensão (".env.example", ".eslintrc.json").
+  // Antes era descartado calado — teste real `934939fc`: `.env.example` pedido 2× e removido 3×.
+  if (lastSegment.startsWith(".")) return lastSegment.indexOf(".", 1) > 0;
+  return true;
+}
+
+/** SM1 (c): data da Spec é carimbada pelo NextCode (dia local), não escrita pelo modelo. */
+export function specDateToday(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -154,11 +166,17 @@ export function autoHealSpecDocument(rawOrParsed: string | ParsedSpec): {
     fixesApplied.push("Preenchido objetivo executivo a partir do escopo dos módulos.");
   }
 
-  // 5. Renderiza a Spec canônica corrigida
+  // 5. SM1 (c): data carimbada pelo harness (teste real 16/10: o modelo escreveu 2025-10-16)
+  const hoje = specDateToday();
+  if (spec.data && spec.data.trim() !== hoje) {
+    fixesApplied.push(`Data da Spec corrigida para ${hoje} (o modelo escreveu "${spec.data.trim()}").`);
+  }
+
+  // 6. Renderiza a Spec canônica corrigida
   const frontmatterInput: SpecFrontmatterInput = {
     titulo: spec.titulo || "Projeto NextCode",
     status: "aguardando_aprovacao",
-    data: spec.data || new Date().toISOString().split("T")[0],
+    data: specDateToday(),
     objetivo: healedObjetivo,
     stack: spec.stack.length > 0 ? spec.stack : ["Next.js (App Router)", "TypeScript", "Tailwind CSS"],
     modulos: healedModulos,

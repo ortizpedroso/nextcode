@@ -1,3 +1,10 @@
+## 17/10/2026 (148) — SM1: conferência mecânica da Spec
+
+**Feito:** `.env.example` preservado; REQ citando arquivo fora da lista vira problema; data carimbada; troca/remoção reconhecidas; 2ª chamada, correções e reinjeções registradas e avisadas no chat. tsc 0; vitest 130/863. Decisões D35–D39.
+**Próximo passo:** fechar os 2 relatórios e o prompt de auditoria do Cursor.
+
+---
+
 ## 17/10/2026 (147) — AV1.4b: porteiro só com pasta de projeto (D30 revista)
 
 **Achado:** sem projeto, o porteiro promovia no repositório do NextCode e rodava o tsc dele (teste estourou 15 s). **Feito:** porteiro exige pasta de projeto. tsc 0; vitest 129/858.

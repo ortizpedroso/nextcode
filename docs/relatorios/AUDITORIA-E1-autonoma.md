@@ -170,3 +170,18 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Achado (durante o SM1):** `tests/decision/jev-failure-diagnosis.test.ts` estourou 15 s — sem projeto, `targetProjectRoot` = `process.cwd()` e o porteiro promovia arquivos no repositório do NextCode e rodava o tsc dele.
 **Mudou:** `src/core/orchestrator/node-executor.ts` — condição do porteiro passa a exigir `taskDb.session.project?.path`. Testes: `av14-porteiro.test.ts` usa projeto em `os.tmpdir()` (portão simulado); `secret-guard.test.ts` volta a esperar 1 chamada do portão (sem projeto, sem porteiro).
 **Verificação (estado do commit, sem o SM1):** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`.
+
+---
+
+## SM1 — Conferência mecânica da Spec (a)–(e)
+
+**Mudou:**
+- `src/core/intake/spec-auto-heal.ts`: `isConcreteFilePath` aceita dotfile com extensão (a); `specDateToday` e data sempre carimbada, com correção registrada (c).
+- `src/core/intake/spec-check.ts`: `checkSpecStructure` reprova REQ que cita arquivo fora de `arquivos_afetados` (b); `citedFilePaths` (mesma regex de `extractFilePathsFromCriteriaText`, copiada para evitar import circular intake → decision → governance → templates → intake).
+- `src/core/orchestrator/spec-draft.ts`: `REMOVAL_INTENT_REGEX` exportada e ampliada (d).
+- `src/app/api/chat/route.ts`: `SPEC_FIX_CALL` + aviso 🔧 na mensagem (e); `SPEC_AUTO_HEAL` + lista 🛠️ das correções; `SPEC_REINJECTION`.
+- Testes: `tests/intake/sm1-conferencia-spec.test.ts` (novo, 5).
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 130 passed (130)`, `Tests 863 passed (863)` (rodado com SM1 + AV1.4b, que é o estado deste commit).
+**Não testado:** a rota do chat com Spec real (exige chamada ao Opus); as mudanças nela são só trilha e texto do aviso.
+**Auditor conferir:** porta do SM1 — Spec com `.env.example` preservada ✅ (teste a); REQ citando arquivo fora da lista reprovado na conferência ✅ (teste b); data = dia real ✅ (teste c).

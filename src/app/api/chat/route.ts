@@ -845,6 +845,7 @@ export async function POST(request: NextRequest) {
         // Uma correção pedida à IA com a lista exata dos problemas antes de mostrar a Spec.
         let structureProblems =
           guardRes.isValidSpec && guardRes.finalSpec ? checkSpecStructure(parseSpecDocument(guardRes.finalSpec)!) : [];
+        let specFixNotice = "";
         if (structureProblems.length > 0) {
           const fixMessages: DispatchMessage[] = [
             ...dispatchMessages,
@@ -871,13 +872,30 @@ export async function POST(request: NextRequest) {
             fixText = fixJson.choices?.[0]?.message?.content || "";
           }
           const fixedGuard = applyCumulativeSpecGuard(sessionBefore?.canonicalSpec, fixText, targetPrompt);
+          const problemasAntes = structureProblems;
+          let adotada = false;
           if (fixedGuard.isValidSpec && fixedGuard.finalSpec) {
             const fixedProblems = checkSpecStructure(parseSpecDocument(fixedGuard.finalSpec)!);
             if (fixedProblems.length < structureProblems.length) {
               guardRes = fixedGuard;
               structureProblems = fixedProblems;
+              adotada = true;
             }
           }
+          // SM1 (e): a 2ª chamada ao modelo deixa de ser escondida — trilha própria e aviso ao usuário
+          // (teste real 16/10: 1 mensagem = 2 chamadas ao Opus, US$ 1,02, sem registro nem aviso).
+          TelemetryLogger.log({
+            sessionId: activeSessionId,
+            action: "SPEC_FIX_CALL",
+            details: {
+              problemasAntes: problemasAntes.slice(0, 20),
+              problemasDepois: structureProblems.slice(0, 20),
+              adotada,
+            },
+          });
+          specFixNotice =
+            `\n\n🔧 A conferência da Spec achou ${problemasAntes.length} problema(s) e pedi uma correção ao modelo (2ª chamada)` +
+            (adotada ? `; ficaram ${structureProblems.length}.` : "; a correção não melhorou e mantive a versão anterior.");
         }
         if (guardRes.isValidSpec && guardRes.finalSpec) {
           // Auto-Cura Mecânica Determinística + Quality Gate do Jev (M2):
@@ -889,7 +907,27 @@ export async function POST(request: NextRequest) {
               guardRes.reinjectedCount > 0
                 ? `\n\nMantive ${guardRes.reinjectedCount} itens da versão anterior que não apareceram na nova.`
                 : "";
-            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}`;
+            // SM1 (a)/(d): correção automática e reinjeção nunca caladas — trilha e mensagem.
+            if (healed.fixesApplied.length > 0) {
+              TelemetryLogger.log({
+                sessionId: activeSessionId,
+                action: "SPEC_AUTO_HEAL",
+                details: { correcoes: healed.fixesApplied.slice(0, 30) },
+              });
+            }
+            if (guardRes.reinjectedCount > 0) {
+              TelemetryLogger.log({
+                sessionId: activeSessionId,
+                action: "SPEC_REINJECTION",
+                details: { itens: guardRes.reinjectedCount },
+              });
+            }
+            const healNotice =
+              healed.fixesApplied.length > 0
+                ? `\n\n🛠️ Correções automáticas do NextCode (${healed.fixesApplied.length}):\n` +
+                  healed.fixesApplied.slice(0, 10).map((f) => `- ${f}`).join("\n")
+                : "";
+            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}`;
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)

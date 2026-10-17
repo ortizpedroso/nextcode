@@ -11,7 +11,10 @@ import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runti
 export const CUMULATIVE_SPEC_INSTRUCTION =
   "devolva a Spec COMPLETA atualizada; mantenha todos os módulos, entidades, rotas e arquivos existentes, a menos que o usuário peça para remover; acrescente o que o usuário pediu";
 
-const REMOVAL_INTENT_REGEX = /remover|tirar|excluir|sem o|n[aã]o quero/i;
+// SM1 (d): remoção E troca. Antes só "remover|tirar|excluir|sem o|não quero": "Remova o REQ-001" (diário 88)
+// e "troque X por Y" / "em vez de" reinjetavam o item antigo e renumeravam os REQ (teste real 16/10).
+export const REMOVAL_INTENT_REGEX =
+  /remov|tir(ar|e|a)\b|exclu|sem o\b|sem a\b|n[aã]o quero|troc|troq|substitu|em vez d|no lugar d|ao inv[eé]s d/i;
 
 export interface CumulativeSpecGuardResult {
   isValidSpec: boolean;

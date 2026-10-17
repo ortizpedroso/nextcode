@@ -106,5 +106,35 @@ export function checkSpecStructure(spec: ParsedSpec): string[] {
     }
   }
 
+  // SM1 (b) / T8a: arquivo citado por um REQ tem de estar em arquivos_afetados — senão nenhuma etapa
+  // o escreve e o REQ fica impossível (teste real: REQ-002 exigia `vitest.config.ts`, fora da lista).
+  for (const req of spec.requisitos ?? []) {
+    for (const cited of citedFilePaths(`${req.titulo} ${req.criterio}`)) {
+      const known = Array.from(files).some((f) => {
+        const nf = f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+        return nf === cited || nf.endsWith(`/${cited}`) || cited.endsWith(`/${nf}`);
+      });
+      if (!known) {
+        problems.push(
+          `O requisito "${req.id}" cita o arquivo "${cited}", que não está em arquivos_afetados: acrescente-o (e a um módulo) ou tire a citação.`
+        );
+      }
+    }
+  }
+
   return problems;
+}
+
+/**
+ * Caminhos de arquivo citados num texto — mesma regra de `extractFilePathsFromCriteriaText`
+ * (`jev-execution-checks.ts`), repetida aqui para não criar import circular com o intake.
+ */
+const CITED_FILE_RE = /(?:[A-Za-z0-9_$@.-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
+export function citedFilePaths(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of (text || "").matchAll(CITED_FILE_RE)) {
+    const p = m[0].replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+    if (p) found.add(p);
+  }
+  return Array.from(found);
 }
