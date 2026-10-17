@@ -1,3 +1,11 @@
+## 16/10/2026 (101) — Mudança 14: cascata de modelos por papel (Jev + FreeLLMAPI)
+
+**Fundador:** "o Jev e o FreeLLMAPI vão montando uma cascata do melhor para o pior, vendo quem pode fazer o quê" (confirma: o papel delegado é a escolha/troca de modelo, não o analista).
+**Registrado:** §5.0 mudança 14; `decisoes.md`. Ponto de atenção: o Jev não vê qualidade sozinho — a cascata se alimenta de medição (testes pesados + trilha: aprovado/reprovado, diagnóstico do Jev, tempo, custo).
+**Próximo passo:** ler a documentação oficial (Anthropic, DeepSeek, NVIDIA) → perfil do provedor por papel.
+
+---
+
 ## 16/10/2026 (100) — Método das skills: perfil do provedor primeiro; teste pesado
 
 **Fundador:** observar primeiro como o provedor se comporta — a skill segue o padrão dele; testes pesados, "teste leve não mostra a realidade".
