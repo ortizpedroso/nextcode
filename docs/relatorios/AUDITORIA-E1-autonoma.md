@@ -154,3 +154,11 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Testes:** `tests/api/projects-open-existing.test.ts` +2 — (a) reabrir com nome/descrição/fixado diferentes mantém os antigos; (b) pasta `…/gateway` aberta com nome "Gateway Pagamentos" → mesmo `id`, `reopened: true`, sem criar `…/gateway/gateway-pagamentos`.
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`.
 **Não feito:** smoke PJ1.5 na tela (D33).
+
+---
+
+## M20 — Memória do projeto desligada
+
+**Mudou:** `src/core/orchestrator/execution-trigger.ts` — sem `consolidateMemoryFromSpec` na aprovação (e sem o import); `src/core/project/project-context.ts` — o snapshot não lê `.nextcode/MEMORY.md` e `formatProjectContext` não injeta a seção. `src/core/memory/project-memory.ts` intacto.
+**Testes:** `tests/memory/project-memory.test.ts` — 2 testes invertidos (snapshot não lê / contexto não inclui, com o arquivo ainda no disco; aprovar não grava).
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`. Na 1ª rodada da suíte, 1 falha em `end-to-end-harness-plan.test.ts` › "Item 1 (Fila nunca para)"; isolado passou 2/2 (3,9 s) e a suíte seguinte passou inteira → instável sob carga, sem relação com a M20 (registrar como dívida).

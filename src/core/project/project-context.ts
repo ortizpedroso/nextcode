@@ -165,13 +165,11 @@ export function buildProjectSnapshot(project: {
     }
   }
 
-  // Memória Persistente de Longo Prazo do Projeto (.nextcode/MEMORY.md)
-  let memoryContent: string | undefined;
-  const memoryFile = path.join(normalized, ".nextcode", "MEMORY.md");
-  const memRaw = safeReadFile(memoryFile, 6_000);
-  if (memRaw && memRaw.trim()) {
-    memoryContent = memRaw.trim();
-  }
+  // Mudança 20 (fundador 17/10: "pode desligar"): a memória do projeto (.nextcode/MEMORY.md) NÃO entra
+  // mais nos prompts. O arquivo era cópia truncada da Spec, sobrescrita a cada aprovação, com 3 frases
+  // fixas rotuladas como "Regras do Fundador" (diário 119). O módulo `project-memory.ts` fica para o
+  // conserto depois do Gate 1 (E3); o arquivo do usuário não é apagado.
+  const memoryContent: string | undefined = undefined;
 
   // Árvore de arquivos
   const counter: { files: number; lines: string[] } = { files: 0, lines: [] };
@@ -203,9 +201,6 @@ export function formatProjectContext(snapshot: ProjectSnapshot): string {
   if (snapshot.description) parts.push(`Descrição cadastrada: ${snapshot.description}`);
   parts.push(`Arquivos mapeados na estrutura: ${snapshot.totalFilesScanned}${snapshot.truncated ? " (lista truncada)" : ""}`);
 
-  if (snapshot.memoryContent) {
-    parts.push(`\n--- MEMÓRIA PERSISTENTE DO PROJETO (.nextcode/MEMORY.md) ---\n${snapshot.memoryContent}`);
-  }
   if (snapshot.manifestName && snapshot.manifestContent) {
     parts.push(`\n--- ${snapshot.manifestName} ---\n${snapshot.manifestContent}`);
   }

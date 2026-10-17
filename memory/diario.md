@@ -1,3 +1,10 @@
+## 17/10/2026 (146) — M20: memória do projeto desligada
+
+**Feito:** aprovação não grava `.nextcode/MEMORY.md`; prompts não injetam; módulo mantido. tsc 0; vitest 129/858 (1 instabilidade no "Fila nunca para" na 1ª rodada, passou isolado e na 2ª).
+**Próximo passo:** SM1.
+
+---
+
 ## 17/10/2026 (145) — PJ1.6b: reabrir só desarquiva e acha a pasta escolhida
 
 **Feito:** rota POST de projetos corrigida; +2 testes. tsc 0; vitest 129/858. Smoke na tela pendente (D33).

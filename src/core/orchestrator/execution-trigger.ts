@@ -20,7 +20,6 @@ import { validateFinalPlan } from "@/core/orchestrator/plan-scope-check";
 const PLAN_MAX_FILES_PER_STAGE = 4;
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
-import { consolidateMemoryFromSpec } from "@/core/memory/project-memory";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 
 export type ApproveSpecResult =
@@ -327,22 +326,8 @@ export async function approveSpecAndStart(
       },
     });
 
-    // 4b.3b: Consolidação da Memória de Longo Prazo do Projeto (.nextcode/MEMORY.md)
-    try {
-      const parsedForMemory = parseSpecDocument(effectiveSpec);
-      const projectPath = session.project?.path;
-      const projectName = session.project?.name ?? "Projeto";
-      if (projectPath && parsedForMemory) {
-        consolidateMemoryFromSpec({
-          projectPath,
-          projectName,
-          spec: parsedForMemory,
-          sessionId,
-        });
-      }
-    } catch {
-      // Falha de escrita de memória em disco é tratada de forma fail-open (nunca aborta o pipeline)
-    }
+    // 4b.3b: memória do projeto (.nextcode/MEMORY.md) DESLIGADA — mudança 20 (fundador 17/10). Não grava
+    // mais a cópia da Spec a cada aprovação; `consolidateMemoryFromSpec` fica para o conserto após o Gate 1.
 
     // 4b.4: Nós pendentes da versão anterior viram status "superseded" e nunca mais executam.
     // Os completed ficam intocados como histórico.

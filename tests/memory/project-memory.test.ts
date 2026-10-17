@@ -163,7 +163,7 @@ Visão geral do sistema.
   });
 
   describe("Injeção Automática no Contexto do Chat (<project_context>)", () => {
-    it("deve carregar .nextcode/MEMORY.md no buildProjectSnapshot e incluir no formatProjectContext", () => {
+    it("M20: com .nextcode/MEMORY.md no disco, o snapshot NÃO lê e o contexto do prompt NÃO inclui a memória", () => {
       // 1. Cria um package.json simulado para o projeto
       fs.writeFileSync(
         path.join(tempDir, "package.json"),
@@ -190,20 +190,15 @@ Visão geral do sistema.
       });
 
       expect(snapshot).not.toBeNull();
-      expect(snapshot?.memoryContent).not.toBeNull();
-      expect(snapshot?.memoryContent).toContain("Sem libs externas pesadas");
-      expect(snapshot?.memoryContent).toContain("Tabelas User e Session");
+      expect(snapshot?.memoryContent).toBeUndefined();
 
-      // 4. Formata o contexto final que vai no prompt LLM
+      // 4. O contexto que vai no prompt não traz a memória (mudança 20: desligada até o conserto pós-Gate 1)
       const contextPrompt = formatProjectContext(snapshot!);
       expect(contextPrompt).toContain("<project_context>");
-      expect(contextPrompt).toContain("--- MEMÓRIA PERSISTENTE DO PROJETO (.nextcode/MEMORY.md) ---");
-      expect(contextPrompt).toContain("Sem libs externas pesadas");
-      expect(contextPrompt).toContain("Nunca mutar estado React diretamente");
-
-      // 5. Teste de orçamento de tokens: a memória não pode exceder 350 tokens (~1400 caracteres)
-      const tamMemoriaChars = (snapshot?.memoryContent || "").length;
-      expect(tamMemoriaChars).toBeLessThan(2000);
+      expect(contextPrompt).not.toContain("MEMÓRIA PERSISTENTE DO PROJETO");
+      expect(contextPrompt).not.toContain("Sem libs externas pesadas");
+      // O arquivo do usuário continua no disco (não é apagado)
+      expect(readProjectMemory(tempDir)).toContain("Sem libs externas pesadas");
     });
   });
 
@@ -233,7 +228,7 @@ Visão geral do sistema.
   });
 
   describe("Integração E2E com Aprovação de Spec (approveSpecAndStart)", () => {
-    it("deve atualizar .nextcode/MEMORY.md automaticamente quando uma spec for aprovada", async () => {
+    it("M20: aprovar a Spec NÃO grava .nextcode/MEMORY.md", async () => {
       // Importa o prisma e o gatilho de execução
       const prismaModule = await import("@/lib/prisma");
       const prisma = prismaModule.default;
@@ -287,13 +282,8 @@ Descrição completa.`;
       const resultado = await approveSpecAndStart(session.id, validSpec);
       expect(resultado.ok).toBe(true);
 
-      // 4. Verifica se a memória foi gravada em disco no diretório do projeto
-      const memoriaGravada = readProjectMemory(tempDir);
-      expect(memoriaGravada).not.toBeNull();
-      expect(memoriaGravada).toContain("# Memória do Projeto: Projeto E2E Memory");
-      expect(memoriaGravada).toContain("Modulo de Vendas");
-      expect(memoriaGravada).toContain("Rota '/pedidos'");
-      expect(memoriaGravada).toContain("Requisito REQ-V1: Criar pedido com itens");
+      // 4. Mudança 20: nada é gravado na pasta do projeto
+      expect(readProjectMemory(tempDir)).toBeNull();
 
       // Cleanup do banco
       await prisma.taskNode.deleteMany({ where: { sessionId: session.id } });
