@@ -1,3 +1,13 @@
+## 17/10/2026 (135) — Recomendação única: papéis, skills e ordem da E1 até o fim
+
+**Fundador:** "me diz você e justifica… unicidade e seguir o plano até o fim… você se perde quando acontece um erro"; propôs Claude elicitador e pesquisa, analista DeepSeek, executor DeepSeek, avaliador DeepSeek; skills extremamente bem escritas; avaliador quebrado.
+**Recomendação (aguarda 1 OK):** papéis — elicitador Opus (medido 10/10); pesquisador Claude (só no P8, E2); analista **DeepSeek aceito** (o A2.1 confere o plano por código, então o erro do analista é pego sem LLM; mais barato); executor DeepSeek (B0); avaliador **não DeepSeek** — mesma família do executor repete os pontos cegos dele (decisão 06/10, mudança 10; trilha: 2 aprovações DeepSeek×DeepSeek aceitas); avaliador = **Claude Sonnet 5.5** (metade do Opus, `cost.ts:28-30`), Opus só se o Sonnet falhar nos controles do AV1; Nemotron só reserva que não aprova sozinho. Skills: cada uma reescrita **dentro** do item que mexe no papel (analista no A2, avaliadores no AV1), testada com o código que a usa — o S3 deixa de ser passo solto.
+**Ordem única da E1 (até a porta):** A2.1 → A2.2 → A2.3 → AV1 → PJ1.6 → mudança 20 → SM1 → teste pesado (= porta da E1) → J2b/J3/J4 → E2. A3 em sombra até o teste pesado.
+**Contra me perder:** linha "AGORA" no topo da §5.0 com o item atual e o próximo; erro de um passo vira sub-passo do mesmo item (A2.1b), nunca item novo nem desvio.
+**Próximo passo:** com o OK → registrar na §5.0 (mudança 23) → prompt A2.1.
+
+---
+
 ## 17/10/2026 (134) — A2.0 auditado e aceito; desenho do A2.1–A2.3 proposto
 
 **Conferido:** `b2576ce` — 1 commit, 2 arquivos novos (LF), nada existente alterado, reflog sem amend; script lê cópia em `%TEMP%`, sem escrita nem LLM; `prisma/dev.db` mtime igual. Auditor rodou o script: Spec 38.624 caracteres, 43 REQ, 58 arquivos; plano gravado = heurística (`numbersMatch: true`): 16 etapas, **29 REQ em mais de 1 etapa, 186 pares REQ×arquivo fora do escopo**, e mesmo assim `t8bCheck.valid: true`, 0 erros. Linhas citadas conferidas (`execution-trigger.ts:425` cria `TaskNode` sem olhar `t8bCheck`; `tier: heavy` → `deepseek-v4-pro`, YAML 87-90). tsc/vitest do relatório (125/832) = o que o auditor rodou no 133, só scripts/docs mudaram.
