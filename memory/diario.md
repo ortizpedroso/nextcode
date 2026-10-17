@@ -1,3 +1,11 @@
+## 17/10/2026 (107) — Perfil dos provedores pela documentação oficial (passo 0 das skills)
+
+**Feito:** lidas as docs oficiais (DeepSeek JSON/raciocínio/ferramentas; Anthropic boas práticas + Opus 5; model card do Nemotron 3 Super) e comparadas com o que o código envia. Relatório: `docs/relatorios/PERFIL-PROVEDORES.md`. Sem custo, nada alterado.
+**Achados:** (1) `gateways.ts` só envia model/messages/stream/max_tokens — nenhum formato garantido, embora DeepSeek e Claude ofereçam (JSON/ferramenta strict/saída estruturada); as falhas medidas de formato (P12 inválido, EVALUATOR_UNAVAILABLE) são de protocolo, não só de texto; (2) português não está nos idiomas oficiais do Nemotron — pesa contra analista/avaliador Nemotron; (3) Opus 5 amplia escopo e já se autoverifica — skill do elicitador deve limitar escopo e dizer quando perguntar; (4) avaliador Claude com padrão antigo `claude-sonnet-4-5-20250929`; (5) lateral: `chat/route.ts:783-784` mostra `reasoning_content` como resposta.
+**Próximo passo:** fundador decide a sonda de repasse (≈US$0) — saber se o FreeLLMAPI repassa response_format/tools/raciocínio — antes de propor mudança de protocolo na §5.0.
+
+---
+
 ## 16/10/2026 (106) — Mudança 15: sem revenda; oficial pago + gratuito no fim
 
 **Fundador:** "sem revenda, só oficial pago e gratuito no fim" — mesma posição que recomendei (entrada 105); conferido antes de registrar.
