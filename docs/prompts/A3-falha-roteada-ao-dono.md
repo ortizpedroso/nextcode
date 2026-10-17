@@ -11,6 +11,7 @@ Você vai implementar o item **A3** do cronograma (`docs/NEXTCODE-REFERENCIA.md`
   5. `tests/decision/a3-failure-routing.test.ts` (novo)
   6. `scripts/replay-failure-diagnosis.ts` (novo)
   7. `docs/relatorios/A3-falha-roteada-ao-dono.md` (novo)
+  8. `src/core/governance/incident-reporter.ts` — **somente no A3.2** (liberado pelo auditor após o A3.0, 17/10): campo opcional `dono?: string` em `IncidentReportOptions` e **uma** linha `**Dono:** <dono>` no relatório quando o campo vier preenchido; sem campo, a saída fica idêntica à de hoje
 
   Não mexa em `spec-decomposer.ts`, skills, elicitador, avaliador, UI, Prisma, nem em outro trecho de `node-executor.ts`. Não renomeie, não reformate, não "melhore" código vizinho. Se achar que precisa mexer em algo fora desta lista, **pare e escreva no relatório** o que e por quê; não mexa.
 - **R2 — relatório a cada passo** em `docs/relatorios/A3-falha-roteada-ao-dono.md`: o que mudou (`arquivo:linha`), hash do commit, saída real de `npx tsc --noEmit` e as últimas linhas de `npx vitest run` com os totais. Nada de "funciona" sem saída colada.

@@ -1,3 +1,10 @@
+## 17/10/2026 (115) — A3.0 auditado e aceito
+
+**Conferido:** commit `8135733` só com o relatório; linhas citadas batem (`filesScopeArr` 1037, `newAttempts` 1260, `evaluatorOutage` 1472-1475, `blocked` 1536/1617, `updatedAttempts` 1709-1714, `generateIncidentReport` `incident-reporter.ts:153`). Item 3 correto: não reaproveitar `evaluatorOutageFreeRetry`; flag própria na regra de `updatedAttempts`. Item 4: Cursor parou certo (arquivo fora do R1) → auditor libera `incident-reporter.ts` só no A3.2, campo opcional `dono`. Pendência: 1 rodada 802/804 sem os nomes dos testes intermitentes.
+**Próximo passo:** A3.1 liberado.
+
+---
+
 ## 17/10/2026 (114) — Pesquisador: análise da `deep-research` e do tópico `perplexity-super-skill`
 
 **Feito (só leitura):** `docs/relatorios/PESQUISADOR-REFERENCIAS.md`. Veredito: nenhuma serve como está; copiar o método da `deep-research` (sub-perguntas, notas fatos/inferências/lacunas, nunca inventar, teto) sobre o `UniversalDocsFetcher` existente. `get-zeked/*`: coletâneas genéricas, valor baixo. 4 repositórios do tópico com sinais de isca (contas geradas 13–14/10, tags infladas, pasta opaca) — não clonar.
