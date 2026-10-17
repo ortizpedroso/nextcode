@@ -686,3 +686,38 @@ efb3b04 HEAD@{7}: commit (amend): fix(a3): dono no incidente so em ativo (A3.2b)
 ```
 
 ---
+
+## A3.5 — Ressalvas finais
+
+### O que mudou
+
+| Arquivo | Mudança |
+|---------|---------|
+| `src/core/decision/jev-execution-checks.ts:417-441` | Resposta Jev `plan_error` → trilha `JEV_FAILURE_DIAGNOSIS` com `available: true`, `descartado: "plan_error"`, `confianca`; demais inválidos → `available: false` (igual antes) |
+| `tests/decision/a3-failure-routing.test.ts:226` | Título do teste **f)** → 5 opções (sem `plan_error`) |
+| `tests/decision/a3-failure-routing.test.ts:751-820` | +2 testes A3.3b: trilha `descartado` vs `available:false` |
+
+### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  832 passed (832)
+   Start at  16:40:28
+   Duration  238.97s
+```
+
+### Desvios
+
+Nenhum.
+
+### O que não foi feito
+
+A3.5 auditado no diário — aguardando auditoria.
+
+---

@@ -223,7 +223,7 @@ describe("A3.1 — plan_error mecânico e estado curto do diagnóstico", () => {
     });
   });
 
-  it("f) as 6 opções de causa chegam ao Jev no criteria", async () => {
+  it("f) as 5 opções de causa (sem plan_error) chegam ao Jev no criteria", async () => {
     vi.mocked(jevMod.askJevBatch).mockImplementation(async (args) => {
       const q = args.questions.failure_cause;
       expect(Object.keys(q.criteria).sort()).toEqual(Object.keys(JEV_FAILURE_CAUSE_CRITERIA).sort());
@@ -745,5 +745,76 @@ describe("A3.3b — plan_error só mecânico no Jev", () => {
     });
 
     expect(diag).toBeNull();
+  });
+
+  it("Jev responde plan_error → trilha com descartado, não available:false", async () => {
+    const telemetrySpy = vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+
+    vi.mocked(jevMod.askJevBatch).mockResolvedValue({
+      failure_cause: {
+        type: "choice",
+        choice: "plan_error",
+        confidence: 0.95,
+        probabilities: { plan_error: 0.95 },
+      },
+    } as any);
+
+    const diag = await diagnoseStageFailureWithJev({
+      nodeId: "node-a3-5-descartado",
+      etapa: { titulo: "T", cluster: "core", reqs_cobertos: ["REQ-001"] },
+      arquivosEscopo: ["src/lib/soma.ts"],
+      criteriosPorReq: { "REQ-001": "src/lib/soma.ts exporta soma" },
+      motivoRejeicao: "REQ-001: falta o arquivo src/lib/outro.ts",
+      tentativa: 1,
+      historicoMotivos: [],
+      modo: "ativo",
+    });
+
+    expect(diag).toBeNull();
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "JEV_FAILURE_DIAGNOSIS",
+        details: expect.objectContaining({
+          nodeId: "node-a3-5-descartado",
+          available: true,
+          descartado: "plan_error",
+          confianca: 0.95,
+        }),
+      })
+    );
+    const failureLogs = telemetrySpy.mock.calls.filter((c) => c[0].action === "JEV_FAILURE_DIAGNOSIS");
+    expect(failureLogs.some((c) => c[0].details?.available === false)).toBe(false);
+  });
+
+  it("Jev sem resposta → trilha available:false sem descartado", async () => {
+    const telemetrySpy = vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+
+    vi.mocked(jevMod.askJevBatch).mockResolvedValue(null);
+
+    const diag = await diagnoseStageFailureWithJev({
+      nodeId: "node-a3-5-indisponivel",
+      etapa: { titulo: "T", cluster: "core", reqs_cobertos: ["REQ-001"] },
+      arquivosEscopo: ["src/lib/soma.ts"],
+      criteriosPorReq: { "REQ-001": "src/lib/soma.ts exporta soma" },
+      motivoRejeicao: "REQ-001: lógica errada",
+      tentativa: 1,
+      historicoMotivos: [],
+      modo: "ativo",
+    });
+
+    expect(diag).toBeNull();
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "JEV_FAILURE_DIAGNOSIS",
+        details: {
+          nodeId: "node-a3-5-indisponivel",
+          tentativa: 1,
+          modo: "ativo",
+          available: false,
+        },
+      })
+    );
+    const failureLogs = telemetrySpy.mock.calls.filter((c) => c[0].action === "JEV_FAILURE_DIAGNOSIS");
+    expect(failureLogs.every((c) => !("descartado" in (c[0].details ?? {})))).toBe(true);
   });
 });

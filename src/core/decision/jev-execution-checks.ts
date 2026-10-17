@@ -415,6 +415,21 @@ export async function diagnoseStageFailureWithJev(params: {
 
   const ans = answers?.failure_cause;
   if (!ans || ans.type !== "choice" || !(ans.choice in JEV_FAILURE_CAUSE_CRITERIA)) {
+    if (ans && ans.type === "choice" && ans.choice === "plan_error") {
+      TelemetryLogger.log({
+        sessionId: params.sessionId ?? undefined,
+        action: "JEV_FAILURE_DIAGNOSIS",
+        details: {
+          nodeId: params.nodeId,
+          tentativa: params.tentativa,
+          modo: params.modo,
+          available: true,
+          descartado: "plan_error",
+          confianca: ans.confidence,
+        },
+      });
+      return null;
+    }
     TelemetryLogger.log({
       sessionId: params.sessionId ?? undefined,
       action: "JEV_FAILURE_DIAGNOSIS",
