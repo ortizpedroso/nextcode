@@ -77,18 +77,30 @@ export function pathInStageScope(arquivosEscopo: string[], arquivo: string): boo
     const normScope = normalizeScopePath(scopeEntry);
     if (normScope === normFile) return true;
     if (normFile.endsWith(`/${normScope}`) || normScope.endsWith(`/${normFile}`)) return true;
-    if (normFile.endsWith(normScope) || normScope.endsWith(normFile)) return true;
   }
   return false;
 }
 
-function motivoCitaReqOuArquivo(motivoRejeicao: string, reqId: string, arquivo: string): boolean {
+const GENERIC_FILE_NAMES = new Set([
+  "route.ts",
+  "route.js",
+  "page.tsx",
+  "page.jsx",
+  "layout.tsx",
+  "index.ts",
+  "index.tsx",
+  "index.js",
+  "loading.tsx",
+  "error.tsx",
+  "middleware.ts",
+]);
+
+export function motivoCitaArquivo(motivoRejeicao: string, arquivo: string): boolean {
   const motivo = motivoRejeicao || "";
-  if (motivo.includes(reqId)) return true;
   const norm = normalizeScopePath(arquivo);
   if (motivo.includes(arquivo) || motivo.includes(norm)) return true;
   const base = norm.split("/").pop();
-  if (base && motivo.includes(base)) return true;
+  if (base && !GENERIC_FILE_NAMES.has(base) && motivo.includes(base)) return true;
   return false;
 }
 
@@ -109,7 +121,7 @@ export function detectPlanErrorMechanically(params: {
     const paths = extractFilePathsFromCriteriaText(criterio);
     for (const arquivo of paths) {
       if (!pathInStageScope(params.arquivosEscopo, arquivo)) {
-        if (motivoCitaReqOuArquivo(params.motivoRejeicao, reqId, arquivo)) {
+        if (motivoCitaArquivo(params.motivoRejeicao, arquivo)) {
           foraDoEscopo.push({ req: reqId, arquivo });
         }
       }

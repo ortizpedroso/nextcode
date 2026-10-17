@@ -157,6 +157,45 @@ Nenhum. `incident-reporter.ts` não alterado (A3.2).
 
 ### O que não foi feito
 
-A3.2 em diante.
+A3.2 em diante (A3.1 **não aprovado** até A3.1b).
+
+---
+
+## PASSO A3.1b — Pré-checagem: motivo deve citar o arquivo fora do escopo
+
+**Motivo:** auditor reprovou A3.1 — falso positivo quando só o REQ aparecia no motivo; `pathInStageScope` tratava `page.tsx` como equivalente a `homepage.tsx`.
+
+### Diff resumido
+
+- `motivoCitaReqOuArquivo` → **`motivoCitaArquivo(motivo, arquivo)`**: sem REQ; caminho normalizado no motivo **ou** basename não genérico (`GENERIC_FILE_NAMES`).
+- **`pathInStageScope`:** removida a 3ª condição (`endsWith` sem `/`); permanecem igualdade e sufixo com `/`.
+- Testes **7–10** em `a3-failure-routing.test.ts` (total **10** testes no arquivo).
+
+### `npx tsc --noEmit`
+
+```
+(exit 0 — sem saída)
+```
+
+### `npx vitest run` (últimas linhas)
+
+```
+ Test Files  125 passed (125)
+      Tests  814 passed (814)
+   Start at  09:16:30
+   Duration  271.06s (transform 6.43s, setup 2.69s, collect 35.02s, tests 161.37s, environment 45ms, prepare 26.75s)
+```
+
+### Commit
+
+_(preencher após `git commit`)_
+
+### Desvios
+
+Nenhum.
+
+### O que não foi feito
+
+A3.2 — aguardando OK do fundador.
 
 ---

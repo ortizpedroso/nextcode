@@ -3,6 +3,7 @@ import {
   detectPlanErrorMechanically,
   diagnoseStageFailureWithJev,
   FAILURE_CAUSE_CRITERIA,
+  pathInStageScope,
 } from "@/core/decision/jev-execution-checks";
 import * as jevMod from "@/core/decision/jev";
 
@@ -205,5 +206,64 @@ describe("A3.1 — plan_error mecânico e estado curto do diagnóstico", () => {
       historicoMotivos: [],
       modo: "ativo",
     });
+  });
+
+  it("7) critério cita route.ts fora do escopo mas motivo só src/lib/soma.ts → null (Jev)", async () => {
+    const mecanica = detectPlanErrorMechanically({
+      arquivosEscopo: ["src/lib/soma.ts"],
+      criteriosPorReq: {
+        "REQ-001":
+          "src/lib/soma.ts exporta soma(a,b) que retorna a+b, usada por src/app/api/soma/route.ts",
+      },
+      reqsCobertos: ["REQ-001"],
+      motivoRejeicao: "REQ-001: soma retorna a-b em src/lib/soma.ts:3",
+    });
+    expect(mecanica).toBeNull();
+  });
+
+  it("8) pathInStageScope page.tsx × homepage.tsx → false", () => {
+    expect(pathInStageScope(["page.tsx"], "src/app/homepage.tsx")).toBe(false);
+  });
+
+  it("9) motivo cita só route.ts genérico → null", () => {
+    const mecanica = detectPlanErrorMechanically({
+      arquivosEscopo: ["src/app/api/cobrancas/route.ts"],
+      criteriosPorReq: {
+        "REQ-010": "src/app/api/links/route.ts responde 201",
+      },
+      reqsCobertos: ["REQ-010"],
+      motivoRejeicao: "REQ-010: route.ts devolve 500",
+    });
+    expect(mecanica).toBeNull();
+  });
+
+  it("10) casos reais etapa 3 e etapa 1 continuam plan_error mecânico", async () => {
+    const escopo3 = [
+      "src/lib/foo.ts",
+      "src/lib/bar.ts",
+      "src/app/page.tsx",
+      "tests/foo.test.ts",
+    ];
+    expect(
+      detectPlanErrorMechanically({
+        arquivosEscopo: escopo3,
+        criteriosPorReq: {
+          "REQ-032": "Implementar src/app/api/v1/links/route.ts conforme contrato REST.",
+        },
+        reqsCobertos: ["REQ-032"],
+        motivoRejeicao: "REQ-032: arquivo src/app/api/v1/links/route.ts ausente do escopo da etapa.",
+      })?.causa
+    ).toBe("plan_error");
+
+    expect(
+      detectPlanErrorMechanically({
+        arquivosEscopo: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"],
+        criteriosPorReq: {
+          "REQ-002": "Configurar vitest.config.ts para rodar testes de unidade.",
+        },
+        reqsCobertos: ["REQ-002"],
+        motivoRejeicao: "REQ-002: vitest.config.ts não está no files_scope desta etapa.",
+      })?.causa
+    ).toBe("plan_error");
   });
 });
