@@ -1,3 +1,11 @@
+## 16/10/2026 (88) — Correção "Remova o REQ-001": Spec idêntica de novo — erro meu na palavra
+
+**Trilha (msg 19:53:37):** 2 chamadas Opus (US$ 0,473 + 0,541 = 1,01); Spec byte a byte igual à anterior; REQ-001 do `.env.example` continua. Sessão: US$ 3,90.
+**Causa:** a regex de remoção (`spec-draft.ts:14`) é `remover|tirar|excluir|sem o|não quero` — **"remova" não casa com "remover"**. Eu escrevi o contorno sem conferir a regex letra a letra → a guarda reinjetou o REQ, a estrutura acusou problema e houve a 2ª chamada escondida. US$ 1,01 perdidos por erro meu.
+**Próximo passo:** correção com "excluir" (casa na regex); conferido antes de enviar.
+
+---
+
 ## 16/10/2026 (87) — Spec com contorno README: o fundador tinha razão, 1 mensagem = 2 chamadas; `.env.example` ressuscitou
 
 **Trilha (`934939fc`, msg 19:33:58):** 2 `ELICITADOR_CLAUDE` para 1 mensagem — US$ 0,474 (26 mil de entrada) + US$ 0,542 (44 mil de entrada) = US$ 1,02. Sessão inteira: US$ 2,88. Spec 38.754 caracteres, 44 REQ, `CONFERENCIA_T8A_OK`, M2 clareza 1,70, 0 segredo.
