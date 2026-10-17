@@ -1,3 +1,11 @@
+## 17/10/2026 (114) — Pesquisador: análise da `deep-research` e do tópico `perplexity-super-skill`
+
+**Feito (só leitura):** `docs/relatorios/PESQUISADOR-REFERENCIAS.md`. Veredito: nenhuma serve como está; copiar o método da `deep-research` (sub-perguntas, notas fatos/inferências/lacunas, nunca inventar, teto) sobre o `UniversalDocsFetcher` existente. `get-zeked/*`: coletâneas genéricas, valor baixo. 4 repositórios do tópico com sinais de isca (contas geradas 13–14/10, tags infladas, pasta opaca) — não clonar.
+**Desenho proposto do P8 (aguarda):** gatilho por lacuna (Jev) → consulta mascarada → busca oficial com orçamento → Jev filtra injeção e relevância → modelo barato faz notas com trecho literal → conferência mecânica da citação → Opus recebe só as notas.
+**Em paralelo:** A3 com o Cursor (relatório A3.0 aguardado).
+
+---
+
 ## 17/10/2026 (113) — Mudança 19 aprovada; prompt A3 fechado (cirúrgico) — início da implementação
 
 **Fundador:** "concordo com a 19"; "antes de continuar o estudo vamos implementar o que já temos… seja cirúrgico".
