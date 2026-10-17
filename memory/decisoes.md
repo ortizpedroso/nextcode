@@ -67,3 +67,6 @@
 | 16/10 | **Mudança 14 REABERTA:** registrada como aprovada sem análise (erro do auditor); fundador exige crítica antes de registrar. Em discussão — diário 102 | diário 102 |
 | 16/10 | **Mudança 14 decidida após análise:** cascata **fixa por teste** (2–3 modelos por papel, no YAML, pulo só por queda/cota/tempo, piso de qualidade → PAUSADA, reordenar só com evidência e OK) — fundador: "concordo com a cascata fixa por teste" | diário 103 |
 | 16/10 | **Mudança 15:** sem revenda (`electronhub` e similares); só oficial pago + gratuito no fim da cascata. Filtro de prefixo por papel em todo o NextCode (hoje só papéis críticos filtram); recomendado desligar o `electronhub` no FreeLLMAPI. Trilha: 1 envio já foi para revenda (12/10) | diário 106 |
+
+## 17/10 — Uso do Jev corrigido (mudança 16)
+Fundador: "concordo". Ordem: A3 (falha ao dono) → P8 pesquisador com Jev filtrando → formato garantido → M3 no padrão LiteLLM → SDE no avaliador → Jev fora de juiz final. Jev Router do OpenRouter não usar (regra 7). Detalhe: `docs/relatorios/AUDITORIA-JEV.md`.

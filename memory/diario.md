@@ -1,3 +1,13 @@
+## 17/10/2026 (110) — Mudança 16 registrada; prompt do A3; propostas 17 (avaliador-final cego) e 18 (porteiro mecânico)
+
+**Fundador:** "concordo" com a ordem do uso do Jev → mudança 16 + linha A3 na §5.0; prompt `docs/prompts/A3-falha-roteada-ao-dono.md` (causa `plan_error`, pré-checagem mecânica de escopo, estado ≤ 8 mil, ação por causa em `sombra`, replay com a trilha real como porta).
+**Proposta do fundador (17):** avaliador-final cego e fechado, encaminha ao analista. Auditor concorda com ressalvas: defeito da Spec vai ao elicitador/fundador, não ao analista; cego = sem opinião de quem fez, mas com as provas mecânicas; outra família. Aguarda decisão.
+**Pergunta do fundador (autotestes):** o que o auditor roda à mão vira o **porteiro mecânico** (18): tsc, testes, ESLint, stub/TODO por regex, citações `arquivo:linha` conferidas, escopo, segredo, dependência nova. Já existem tsc, T2, secret-guard, ESLint (`terminal-execution-engine.ts:120`); faltam `run_check test`, stub por regex, conferência de citação, dependência. Aguarda decisão.
+**Foco macro mantido:** A3 é a correção pontual do teste real; o bloco A segue (A1 → A2 → A3 → P8 → B1b → J3 → J4).
+**Próximo passo:** fundador cola o prompt A3 no Cursor; auditor confere relatório passo a passo.
+
+---
+
 ## 17/10/2026 (109) — Auditoria do uso do Jev (docs oficiais + internet)
 
 **Feito:** docs locais do Jev + índice atual (17/10) + Jev Router (OpenRouter), JEV Auto Router e benchmark (LiteLLM). Relatório: `docs/relatorios/AUDITORIA-JEV.md`. Nada alterado.
