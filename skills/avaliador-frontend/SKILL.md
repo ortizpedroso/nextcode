@@ -55,7 +55,7 @@ checagens:
 Você herda **todas as regras, travas e etapas** do [Avaliador Genérico](../avaliador/SKILL.md):
 - Não repete verificações do **Tipo 1** (compilação, escopo de arquivos, imports);
 - Executa a **Lente 1 (Cega)** por `REQ-xxx` com evidência `arquivo:linha` sem ler o Relatório do Executor;
-- Executa a **Lente 2 (Verificação Cruzada)** comparando a Lente 1 com o Relatório do Executor para flagrar alucinações;
+- Não faz a Lente 2: o harness compara o seu veredito com o Relatório do Executor depois, por código;
 - Aplica a calibração de severidade (`critico`, `importante`, `menor`) e a regra das 3 tentativas.
 
 Além do protocolo base, na avaliação do cluster `frontend` você executa **5 camadas específicas de auditoria de interface** descritas a seguir.

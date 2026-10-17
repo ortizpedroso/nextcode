@@ -74,6 +74,13 @@ export interface ValidationType2Result {
   divergenceDetected?: boolean;
 }
 
+export interface BlindAuditProblem {
+  severidade: "critico" | "importante" | "menor";
+  req?: string;
+  arquivoLinha: string;
+  descricao: string;
+}
+
 export interface BlindAuditVerdict {
   implemented: boolean;
   missingRequirements: string[];
@@ -81,6 +88,24 @@ export interface BlindAuditVerdict {
   rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
   ressalvas?: string[];
   reqVerdicts?: ReqBlindVerdictItem[];
+  problemas?: BlindAuditProblem[];
+}
+
+/**
+ * `arquivo:linha` ou `arquivo:linha-linha` que existe num dos arquivos mostrados (mesma regra que a
+ * Lente 2 aplica à evidência do executor).
+ */
+export function fileLineRefExists(ref: string, codeContentMap: Record<string, string>): boolean {
+  // Aceita texto em volta ("src/a.ts:10 implementa x"); exige arquivo e linha reais.
+  const m = String(ref || "").match(/([A-Za-z0-9_.\/@\[\]()-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?/);
+  if (!m) return false;
+  const norm = normalizeScopePath(m[1]);
+  const content = Object.entries(codeContentMap).find(([k]) => normalizeScopePath(k) === norm)?.[1];
+  if (content === undefined) return false;
+  const start = Number(m[2]);
+  const end = m[3] ? Number(m[3]) : start;
+  const total = content.split(/\r?\n/).length;
+  return start >= 1 && end >= start && end <= total;
 }
 
 export interface ValidateType2Options {
@@ -583,11 +608,12 @@ export class DualLensAuditor {
           "EXCLUSIVAMENTE na lógica real do código (nunca em nomes de arquivo, comentários ou alegações), se os " +
           "requisitos do Brief foram de fato implementados." +
           reqsInstruction +
-          " Responda SOMENTE com um JSON de uma linha, sem " +
-          'markdown e sem texto extra, no formato exato: {"implemented":true|false,"missingRequirements":' +
-          '["..."],"justification":"motivo em até 40 palavras"' +
+          " Responda SOMENTE com um JSON, sem markdown e sem texto extra, no formato exato: " +
+          '{"implemented":true|false,"missingRequirements":["..."],"justification":"motivo em até 40 palavras"' +
           (reqsInstruction ? ',"reqVerdicts":[...]' : "") +
-          "}." +
+          ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
+          "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
+          "Problema critico reprova; 3 ou mais importantes reprovam; 1 ou 2 importantes aprovam com ressalva; menor não muda o veredito." +
           skillBlock,
       },
       {
@@ -625,29 +651,66 @@ export class DualLensAuditor {
         ? parsed.ressalvas.map((s: unknown) => String(s))
         : undefined;
 
+      // AV1.3: problemas por severidade (a revisão de engenharia da skill, antes descartada pelo formato).
+      const problemas: BlindAuditProblem[] = Array.isArray(parsed.problemas)
+        ? parsed.problemas
+            .filter((p: any) => p && ["critico", "importante", "menor"].includes(p.severidade))
+            .map((p: any) => ({
+              severidade: p.severidade,
+              req: p.req ? String(p.req) : undefined,
+              arquivoLinha: String(p.arquivoLinha || ""),
+              descricao: String(p.descricao || "").slice(0, 400),
+            }))
+        : [];
+
+      // AV1.3: a evidência do avaliador é conferida como a do executor — "implementado" e todo problema
+      // têm de citar arquivo:linha desta etapa que existe. Citação inventada → resposta descartada
+      // (o auditor pergunta de novo; persistindo, a etapa NÃO é aprovada).
+      for (const rv of reqVerdicts ?? []) {
+        if (rv.status === "implementado" && !fileLineRefExists(rv.evidencia, codeContentMap)) return null;
+      }
+      for (const p of problemas) {
+        if (p.severidade !== "menor" && !fileLineRefExists(p.arquivoLinha, codeContentMap)) return null;
+      }
+
+      const criticos = problemas.filter((p) => p.severidade === "critico");
+      const importantes = problemas.filter((p) => p.severidade === "importante");
+
       // Se houver reqVerdicts explícitos e algum estiver parcial ou ausente, implemented é false (P12)
       const hasIncompleteReq = reqVerdicts ? reqVerdicts.some((r) => r.status !== "implementado") : false;
-      const effectiveImplemented = hasIncompleteReq ? false : Boolean(parsed.implemented);
+      const effectiveImplemented =
+        hasIncompleteReq || criticos.length > 0 || importantes.length >= 3 ? false : Boolean(parsed.implemented);
+
+      const ressalvasFinais = [
+        ...(ressalvas ?? []),
+        ...importantes.map((p) => `${p.arquivoLinha}: ${p.descricao}`),
+      ];
 
       const rawVerdict: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO" = !effectiveImplemented
         ? "REPROVADO"
         : parsed.rawVerdict === "APROVADO_COM_RESSALVA" ||
             parsed.veredito_final === "APROVADO_COM_RESSALVA" ||
-            (ressalvas && ressalvas.length > 0)
+            ressalvasFinais.length > 0
           ? "APROVADO_COM_RESSALVA"
           : "APROVADO";
+
+      const missing = Array.isArray(parsed.missingRequirements)
+        ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
+        : [];
+      const bloqueantes = [...criticos, ...(importantes.length >= 3 ? importantes : [])].map(
+        (p) => `[${p.severidade}] ${p.arquivoLinha}: ${p.descricao}`
+      );
 
       return {
         skillUsed: skillName,
         verdict: {
           implemented: effectiveImplemented,
-          missingRequirements: Array.isArray(parsed.missingRequirements)
-            ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
-            : [],
+          missingRequirements: [...missing, ...bloqueantes],
           justification: String(parsed.justification || "").slice(0, 300),
           rawVerdict,
-          ressalvas,
+          ressalvas: ressalvasFinais.length > 0 ? ressalvasFinais : undefined,
           reqVerdicts,
+          problemas,
         },
       };
     } catch {

@@ -38,4 +38,4 @@ checagens:
 Você herda integralmente as regras de [skills/avaliador/SKILL.md](../avaliador/SKILL.md) e foca nas garantias adicionais do cluster `core`:
 1. **Aderência exata aos contratos exportados:** Nomes de funções, interfaces, tipos de retorno e imutabilidade dos dados devem bater 100% com o `Macrobrief` e o `Microbrief`, pois os clusters `backend`, `frontend` e `integration` dependem diretamente destes exports.
 2. **Pureza e isolamento:** Funções de domínio e stores não devem acoplar dependências de UI nem expor referências mutáveis internas sem controle.
-3. **Evidência `arquivo:linha` obrigatória** para cada `REQ-xxx` na Lente 1 e cruzamento rigoroso contra o Relatório do Executor na Lente 2.
+3. **Evidência `arquivo:linha` obrigatória** (que existe no código mostrado) para cada `REQ-xxx` na Lente 1; o cruzamento com o Relatório do Executor (Lente 2) é feito pelo harness.

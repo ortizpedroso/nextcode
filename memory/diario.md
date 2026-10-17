@@ -1,3 +1,10 @@
+## 17/10/2026 (142) — AV1.3: avaliador com problemas por severidade e evidência conferida
+
+**Feito:** `problemas` (critico/importante/menor) decidem o veredito; citação do avaliador conferida (inventada → descartada); skill `avaliador` reescrita para dizer só o que o código faz. tsc 0; vitest 128/854. Decisões D24–D27.
+**Próximo passo:** AV1.4 (tsc do projeto antes do avaliador).
+
+---
+
 ## 17/10/2026 (141) — AV1.2: avaliador não aprova arquivo cortado
 
 **Feito:** arquivo inteiro ao avaliador; acima de 60 mil/200 mil caracteres a etapa é reprovada sem LLM, com motivo. tsc 0; vitest 127/847. Decisão D23.

@@ -95,3 +95,16 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Testes:** `tests/governance/blind-audit-full-code.test.ts` — o teste que exigia o aviso de corte foi substituído por 2 (arquivo acima do limite → reprovado sem chamar o LLM; soma acima do total → reprovado).
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 847 passed (847)`.
 **Auditor conferir:** `method: limite_tamanho` não é tratado como avaliador fora (`evaluatorOutage` só olha `heuristic_fallback`), então gasta tentativa — correto, o executor tem de dividir o arquivo.
+
+---
+
+## AV1.3 — Problemas por severidade, evidência do avaliador conferida, skills alinhadas
+
+**Mudou:**
+- `src/core/governance/dual-lens-auditor.ts`: `BlindAuditProblem`, `fileLineRefExists` (exportada); `runBlindLens` pede `problemas` e aplica D24/D25; os críticos (e os importantes quando ≥ 3) entram em `missingRequirements` → motivo de rejeição para o executor; importantes viram `ressalvas`.
+- `skills/avaliador/SKILL.md` reescrita (D26); `skills/avaliador-core/SKILL.md` (1 linha) e `skills/avaliador-frontend/SKILL.md` (1 linha): Lente 2 é do harness.
+- Testes: `tests/governance/av13-problemas-evidencia.test.ts` (novo, 7); `tests/harness/end-to-end-harness-plan.test.ts`: o avaliador falso passa a citar a linha 1 do 1º arquivo gerado (antes `arquivo:1`, que não existe — a conferência nova recusou, como deve).
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 128 passed (128)`, `Tests 854 passed (854)`.
+
+**Auditor conferir:** citação inventada → `null` → 2ª chamada → sem resposta válida, `heuristic_fallback` (avaliador fora, não aprova); problema `menor` sem linha não descarta a resposta.

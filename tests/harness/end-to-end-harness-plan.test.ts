@@ -20,7 +20,10 @@ import { measureJevSelectorComparison } from "@/core/decision/jev-decisions";
 function reqsVerdictsFromPrompt(sys: string): { id: string; status: "implementado"; evidencia: string }[] {
   const m = sys.match(/julgue CADA requisito \(([^)]*)\)/);
   const ids = m ? m[1].split(",").map((x) => x.trim()).filter(Boolean) : [];
-  return ids.map((id) => ({ id, status: "implementado", evidencia: "arquivo:1" }));
+  // AV1.3: a evidência do avaliador é conferida — o falso cita a linha 1 do 1º arquivo mostrado.
+  const gerados = sys.split("[ARQUIVOS GERADOS]").pop() ?? "";
+  const file = gerados.match(/^--- (.+?) ---$/m)?.[1] ?? "arquivo";
+  return ids.map((id) => ({ id, status: "implementado", evidencia: `${file}:1` }));
 }
 
 const createdSessionIds: string[] = [];
