@@ -1,3 +1,11 @@
+## 17/10/2026 (125) — A3.3b auditado e aceito (com ressalvas menores)
+
+**Conferido:** `a2508ed` — 1 commit, 4 arquivos (código, teste, script, relatório); reflog sem amend; `prisma/dev.db` intacto (mtime 16/10 21:22). Auditor rodou: `tsc` exit 0; `vitest` **125/830** verde; replay 2× → reais 4/4 `plan_error` mecânico, controles **5/5** (ctrl-2 agora `evaluator_error` 0,75), ordem invertida estável nos 5; custo Jev US$ 0,00012. Script usa o `buildFailureDiagnosisStateJson` original (desvio do A3.3 corrigido).
+**Ressalvas (não bloqueiam):** (1) Jev respondendo `plan_error` cai no mesmo log `available: false` de "Jev fora" — a trilha não distingue; (2) título do teste f) ainda diz "6 opções"; (3) A3.3b foi executado antes de a aprovação constar na referência/diário (regra 1) — registrado agora na linha A3 da §5.0.
+**Próximo passo:** A3.4 — aguarda OK do fundador.
+
+---
+
 ## 17/10/2026 (124) — A3.3 auditado: porta não passou (ctrl-2)
 
 **Conferido:** `1f226ef` — 1 commit, 2 arquivos permitidos, reflog sem amend; `prisma/dev.db` intacto (mtime 16/10); cópia em `%TEMP%/nc-a3-replay-failure-diagnosis`; `TelemetryLogger.log` trocado por no-op em memória. Reais 4/4 `plan_error` mecânico ✅. Controles 4/5: **ctrl-2** ("falta o arquivo src/lib/outro.ts", critério não cita) → Jev `plan_error` 0,5; com ordem invertida → `evaluator_error`. Jev em cara-ou-coroa nessa pergunta (indireção: cruzar motivo × `reqs_com_arquivos`, falha conhecida 1.13). Custo Jev US$ 0,00013.
