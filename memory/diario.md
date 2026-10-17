@@ -1,3 +1,11 @@
+## 16/10/2026 (105) — Catálogo do FreeLLMAPI: 263 modelos, 136 com chave; sonda de 15
+
+**Feito:** `/v1/models` lido com a config do NextCode (cópia do banco; chave não impressa); sonda de rota em 15 candidatos (8 tokens, custo ~0). Números em `medicoes.md` 16/10 (noite).
+**Achados críticos:** (1) só 1 rota paga oficial: `deepseek-v4-pro` via `custom/`; (2) GPT-5.6/GPT-4.1/MiniMax/DeepSeek-flash saem por `electronhub` (revenda não oficial) — o que mandamos para lá sai da máquina para terceiro desconhecido (regra 7) e não há garantia de modelo/estabilidade; (3) Claude listado mas 404 no roteador — Claude só direto na Anthropic; (4) gratuitos (ollama, openrouter `:free`, groq) respondem rápido, mas 4 de 15 estavam em cota (429) agora; (5) "disponível" no catálogo não quer dizer usável.
+**Próximo passo:** fundador decide quais rotas são aceitáveis por papel (oficial × revenda × gratuito) antes de montar as cascatas por teste.
+
+---
+
 ## 16/10/2026 (104) — "O Jev faz a análise e chama o modelo": análise crítica
 
 **Fundador:** o Jev analisa a tarefa e chama o modelo.
