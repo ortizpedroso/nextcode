@@ -1,3 +1,11 @@
+## 17/10/2026 (116) — Dúvidas do fundador: modelos Claude por tarefa; expectativa de economia
+
+**Respondido:** uma chave Anthropic serve Haiku/Sonnet/Opus — o modelo é escolhido por chamada (já é assim: elicitador `claude-opus-5-5`, avaliador Claude padrão `claude-sonnet-4-5-20250929`). Qual modelo por papel = bench (mudança 14), não suposição. Mesma família entre si: vale a regra executor×avaliador (executor DeepSeek).
+**Economia (estimativa, não medição):** Spec do teste real US$ 4,38 ≈ 1 geração + ~8 reescritas inteiras (~US$ 0,47–0,54 cada; 19 mil tokens de saída + 26–44 mil de entrada). Correção por trecho (mudança 7) + **cache de prompt da Anthropic** (não usado: `git grep cache_control` = 0; entrada em cache US$ 0,20 × 4,00 por milhão no `cost.ts`) → ~US$ 0,05–0,08 por correção → Spec ~US$ 1,0 (−75%). Execução: sem número honesto até replanejar a mesma Spec depois do A2; o ganho é parar tentativas impossíveis (4 no teste real) e mandar falha ao dono.
+**Proposta nova (aguarda):** cache de prompt no elicitador junto com a correção por trecho.
+
+---
+
 ## 17/10/2026 (115) — A3.0 auditado e aceito
 
 **Conferido:** commit `8135733` só com o relatório; linhas citadas batem (`filesScopeArr` 1037, `newAttempts` 1260, `evaluatorOutage` 1472-1475, `blocked` 1536/1617, `updatedAttempts` 1709-1714, `generateIncidentReport` `incident-reporter.ts:153`). Item 3 correto: não reaproveitar `evaluatorOutageFreeRetry`; flag própria na regra de `updatedAttempts`. Item 4: Cursor parou certo (arquivo fora do R1) → auditor libera `incident-reporter.ts` só no A3.2, campo opcional `dono`. Pendência: 1 rodada 802/804 sem os nomes dos testes intermitentes.
