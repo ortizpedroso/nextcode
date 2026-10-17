@@ -5,7 +5,7 @@ Você vai fazer **só o passo A2.0 (inventário, sem código)** do item **A2** d
 **Hash de partida:** o commit de auditoria do A3.5. Pré-condição: `git log -1 --format=%s` começa com `docs(diario): A3.5 auditado`. Se o A3.5 ainda não foi auditado → PARE.
 
 ## Travas (obrigatórias)
-- **T-A:** além da pré-condição acima, `git status --short` só pode ter estas linhas, que **não são suas** (não toque, não adicione, não apague): ` M .claude/.headroom_wrap_marker.json`, ` M .serena/project.yml`, `?? .agents/`, `?? .claude/skills/`, `?? skills-lock.json`. Qualquer outra diferença → PARE e relate.
+- **T-A:** além da pré-condição acima, `git status --short` só pode ter estas linhas, que **não são suas** (não toque, não adicione, não apague): ` M .claude/.headroom_wrap_marker.json`, ` M .serena/project.yml`. Qualquer outra diferença → PARE e relate.
 - **R1 / T-B — nada fora do prompt.** PODE CRIAR, e nenhum outro:
   1. `docs/relatorios/A2-analista-planeja.md` (novo)
   2. `scripts/inventario-plano-a2.ts` (novo, só leitura)
@@ -45,7 +45,7 @@ Você vai fazer **só o passo A2.0 (inventário, sem código)** do item **A2** d
 Commit: `docs(relatorio): A2.0 inventario do planejamento` + linha T-K. **Pare.**
 
 ## Ao terminar (resposta ao fundador)
-Cole: hash; `git show --stat HEAD`; `git reflog -3`; `git status --short` (só as 5 linhas da T-A); mtime de `prisma/dev.db` antes/depois. **Pare** e aguarde a auditoria.
+Cole: hash; `git show --stat HEAD`; `git reflog -3`; `git status --short` (só as 2 linhas da T-A); mtime de `prisma/dev.db` antes/depois. **Pare** e aguarde a auditoria.
 
 ## Porta do A2.0 (o auditor confere)
 - 1 commit, 2 arquivos novos, nenhum arquivo existente alterado, sem amend.

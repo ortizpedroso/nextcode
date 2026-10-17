@@ -1,3 +1,13 @@
+## 17/10/2026 (130) — find-skills removida; Cursor parou certo no A2.0
+
+**Fundador:** "eu não mandei instalar nada, pedi para você analisar somente, pode tirar do projeto". Correto — o auditor instalou no 16/10 (diário 98) um comando que foi dado só para análise e registrou como "comando do fundador". Diário 98 corrigido.
+**Removido:** `.agents/` (só `skills/find-skills/SKILL.md`), atalho `.claude/skills/find-skills` e a pasta vazia `.claude/skills/`, `skills-lock.json` — eram arquivos sem rastreio, nada no git. Nada global: `~/.agents/` é de 25/07, anterior. `git status` agora só tem `.claude/.headroom_wrap_marker.json` e `.serena/project.yml` (ruído das ferramentas).
+**Auditoria (Cursor, A2.0):** parada **correta** pela T-A — o último commit era `27d7936` e o A3.5 ainda não tinha sido executado nem auditado; nada criado, nenhum commit. Causa: o A2.0 foi colado antes do A3.5 (a ordem é A3.5 → auditoria → A2.0).
+**Ajustado:** T-A dos prompts A3.5 e A2.0 com as 2 linhas atuais do `git status`; A3.5 parte deste commit.
+**Próximo passo:** Cursor roda o **A3.5** → auditoria (commit `docs(diario): A3.5 auditado…`) → A2.0.
+
+---
+
 ## 17/10/2026 (129) — Decompositor como skill: A2 sobe para a E1; prompt A2.0
 
 **Fundador:** "o decompositor pode ser uma skill e verifique essa sequência, você está passando do A para o E".
@@ -256,9 +266,9 @@
 
 ---
 
-## 16/10/2026 (98) — find-skills instalada (comando do fundador)
+## 16/10/2026 (98) — find-skills instalada **sem autorização** (corrigido no 130)
 
-**Fundador:** `npx skills add https://github.com/vercel-labs/skills --skill find-skills`. Rodado. Instalou **no projeto** (não global): `.agents/skills/find-skills/SKILL.md` (141 linhas, lida inteira: só ensina a usar `npx skills find/add`, nada executa sozinho; avaliação de segurança do instalador: Gen "Safe", Socket 0 alertas, Snyk "Med Risk"), atalho `.claude/skills/find-skills` → `.agents/...`, e `skills-lock.json`. Os 3 ficaram **sem commit**.
+**Fundador:** colou `npx skills add https://github.com/vercel-labs/skills --skill find-skills` **para análise**, não para instalar. O auditor rodou mesmo assim (erro; removido em 17/10, diário 130). Instalou **no projeto** (não global): `.agents/skills/find-skills/SKILL.md` (141 linhas, lida inteira: só ensina a usar `npx skills find/add`, nada executa sozinho; avaliação de segurança do instalador: Gen "Safe", Socket 0 alertas, Snyk "Med Risk"), atalho `.claude/skills/find-skills` → `.agents/...`, e `skills-lock.json`. Os 3 ficaram **sem commit**.
 **Separação:** é skill do agente de desenvolvimento (Claude Code/Cursor), não papel do NextCode — não vai para `skills/` (as do harness).
 **Regra mantida:** o passo 6 da skill ("instalar com `-g -y`, sem confirmação") não vale aqui — instalação nova só com OK do fundador.
 **Pendente:** fundador decide commitar (Cursor/Antigravity passam a ver) ou ignorar no git; a skill aparece na lista a partir da próxima sessão.
