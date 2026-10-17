@@ -1,3 +1,11 @@
+## 16/10/2026 (90) — Spec do teste real pronta: liberada para aprovar
+
+**Trilha (msg 20:33:04, "Excluir o requisito REQ-001…"):** 1 chamada Opus (US$ 0,480; 122 s) — sem 2ª chamada escondida. Comparação semântica com a versão anterior: só o REQ do `.env.example` saiu; os outros 43 REQ, frontmatter e corpo idênticos; REQ-001…043 em sequência; `.env.example` 0 ocorrências; README no REQ-003; `CONFERENCIA_T8A_OK`; 0 segredo. M2 clareza 1,75 (aviso do Jev na mensagem — consultivo). Spec total do teste: US$ 4,38 em 7 chamadas.
+**Atenção antes de executar:** teto do uso normal é US$ 0,50 por projeto (execução + outros; elicitador fora) → para 43 REQ/59 arquivos o teto será atingido cedo e a sessão vai a BLOQUEADA; fundador decidiu "sem teto" para o teste → usar "Autorizar mais verba" no painel quando aparecer. Avaliador = cadeia atual (B1b não implementado).
+**Próximo passo:** fundador aprova; auditor acompanha pela trilha.
+
+---
+
 ## 16/10/2026 (89) — Mensagem duplicada de novo: minha 1ª correção estava incompleta
 
 **Fundador:** "minha mensagem duplicou novamente… você disse que tinha corrigido".
