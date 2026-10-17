@@ -1,3 +1,16 @@
+## 16/10/2026 (95) — PARÊNTESE: auditoria profunda de todas as skills — ONDE PARAMOS NA IMPLANTAÇÃO
+
+**Fundador:** abrir parêntese; revisar a fundo todas as skills (fazem o que dizem? bem construídas? acionadas no momento certo? travas e ordem funcionando?), usando a skill-creator; "seja brutal e não se perca na implementação".
+**Onde paramos (retomar daqui ao fechar o parêntese):**
+- Teste real `934939fc` (Gateway_Multi, `C:\projetos\gateway_multi`): **BLOQUEADA** na etapa 3 por erro do planejamento (diário 93). Não clicar em "Desbloquear": falharia igual. Spec aprovada guardada na sessão (US$ 4,38); executor US$ 1,24 gastos.
+- Proposta macro **aguardando OK** (diário 94): A1 contrato na Spec (+SM1) → A2 analista real (+PL1) → A3 falha roteada ao dono (J2b) → P8 pesquisador → B1b → J3 → J4.
+- Com o Cursor: PJ1.6 (6b reabrir pasta + smoke PJ1.5; 6a já feito por mim).
+- Aprovados e não implementados: SM1, B1b (mudança 13), mudança 12 (avaliador-final no J3).
+- Pendentes de OK: PL1 (absorvido no A2), paralelismo do core, timeout×queda (diário 92).
+**Escopo do parêntese:** as 12 skills em `skills/` — para cada uma: o que promete (frontmatter + texto) × onde e quando o código carrega × o que o código realmente aplica (ferramentas, permissões, checagens, passos) × prova na trilha (teste real + bench). Resultado em `docs/relatorios/AUDITORIA-SKILLS.md`. Nada de código alterado nesta fase.
+
+---
+
 ## 16/10/2026 (94) — Diagnóstico macro: o elo Spec → plano não tem contrato; o analista nunca planejou
 
 **Fundador:** pensar macro, sem remendos; melhorar elicitador e analista; implementar o pesquisador.
