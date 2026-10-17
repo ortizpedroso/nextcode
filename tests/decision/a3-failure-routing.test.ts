@@ -9,7 +9,15 @@ import {
   pathInStageScope,
   type JevFailureCause,
 } from "@/core/decision/jev-execution-checks";
+import prisma from "@/lib/prisma";
+import { writeSecret } from "@/core/security/crypto";
+import { SmartRouter, type DispatchMessage, type DispatchResult } from "@/core/router/smart-router";
+import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, type FailureAttemptRecord } from "@/core/governance/incident-reporter";
+import * as policyMod from "@/core/config/orchestration-policy";
+import { executeTaskNode, setExecutorModeForTests } from "@/core/orchestrator/node-executor";
 import * as jevMod from "@/core/decision/jev";
 
 const BASELINE_ATTEMPT: FailureAttemptRecord = {
@@ -431,5 +439,248 @@ O código passou nas auditorias isoladas, mas quebra o build do projeto mesclado
       baselineWouldIncrementAttempt: true,
     });
     expect(route?.emitWouldAct).toBe(true);
+  });
+});
+
+describe("A3.2b — dono no incidente só em roteamento ativo", () => {
+  const prevJevUrl = process.env.JEV_API_URL;
+  const prevMasterKey = process.env.NEXTCODE_MASTER_KEY;
+
+  const AMBIGUOUS_JEV_RESPONSE = {
+    model: "jev-1.13.0",
+    answers: {
+      failure_cause: {
+        type: "choice",
+        choice: "ambiguous_spec",
+        confidence: 0.91,
+        probabilities: {
+          wrong_code: 0.02,
+          environment: 0.02,
+          ambiguous_spec: 0.91,
+          plan_error: 0.02,
+          evaluator_error: 0.02,
+          incomplete_output: 0.01,
+        },
+      },
+    },
+  };
+
+  function makeBlockedAmbiguousTask() {
+    return {
+      id: "node-a3-2b",
+      sessionId: "sess-a3-2b",
+      specVersion: 1,
+      title: "Etapa ambígua",
+      role: "executor-core",
+      cluster: "core",
+      status: "pending",
+      attempts: 2,
+      maxAttempts: 4,
+      dependencies: "[]",
+      filesScope: JSON.stringify(["src/lib/calc.ts"]),
+      payload: JSON.stringify({
+        goal: "# Spec\nREQ-001: critério contraditório",
+        nodeFiles: ["src/lib/calc.ts"],
+        cluster: "core",
+        reqsCobertos: ["REQ-001"],
+      }),
+      result: null,
+      failureHistory: JSON.stringify([
+        {
+          attemptNumber: 1,
+          rejectionReason: "REQ-001 falhou na tentativa 1",
+          filesScope: ["src/lib/calc.ts"],
+          timestamp: "2026-10-01T00:00:00.000Z",
+        },
+        {
+          attemptNumber: 2,
+          rejectionReason: "REQ-001 falhou na tentativa 2",
+          filesScope: ["src/lib/calc.ts"],
+          timestamp: "2026-10-02T00:00:00.000Z",
+        },
+      ]),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      session: {
+        id: "sess-a3-2b",
+        canonicalSpec: "# Spec\nREQ-001: critério contraditório",
+        project: null,
+      },
+    };
+  }
+
+  function mockExecutionHarness(task: ReturnType<typeof makeBlockedAmbiguousTask>) {
+    vi.spyOn(prisma.taskNode, "updateMany").mockResolvedValue({ count: 1 } as any);
+    vi.spyOn(prisma.taskNode, "findMany").mockResolvedValue([] as any);
+    vi.spyOn(prisma.message, "findFirst").mockResolvedValue(null as any);
+    const createdChatMessages: { content: string }[] = [];
+    vi.spyOn(prisma.message, "create").mockImplementation((async (args: { data: { content: string } }) => {
+      createdChatMessages.push(args.data);
+      return { id: "msg-a3-2b", ...args.data };
+    }) as any);
+    vi.spyOn(prisma.setting, "findUnique").mockResolvedValue({
+      id: "default",
+      typesafeKey: writeSecret("ts-test-key"),
+    } as any);
+    vi.spyOn(prisma.taskNode, "update").mockImplementation((async (args: any) => {
+      return { ...task, ...args.data };
+    }) as any);
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      return {
+        response: new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: "```typescript\n// file: src/lib/calc.ts\nexport const sum = (a: number, b: number) => a - b;\n```",
+                },
+              },
+            ],
+          })
+        ),
+        providerUsed: "freellmapi",
+        badge: "",
+        tierTag: "freellmapi",
+        modelUsed: "mock-model",
+      } satisfies DispatchResult;
+    });
+
+    vi.spyOn(DualLensAuditor, "validateType2").mockResolvedValue({
+      verdict: "REJECTED",
+      rawVerdict: "REPROVADO",
+      method: "blind_llm",
+      rejectionReason: "REQ-002 contraditório: pede taxa de 2% e isenção ao mesmo tempo",
+      reqVerdicts: [{ id: "REQ-001", status: "ausente", evidencia: "-" }],
+    } as any);
+
+    return { createdChatMessages };
+  }
+
+  function incidentBodyFromChat(chatContent: string): string {
+    const marker = "especificação ambígua (Jev)";
+    const idx = chatContent.indexOf(marker);
+    expect(idx).toBeGreaterThan(-1);
+    return chatContent.slice(chatContent.indexOf("\n\n", idx) + 2);
+  }
+
+  beforeEach(() => {
+    process.env.NEXTCODE_MASTER_KEY =
+      process.env.NEXTCODE_MASTER_KEY || Buffer.alloc(32, 21).toString("base64");
+    process.env.JEV_API_URL = "http://localhost:9999/v1/systemone";
+    setExecutorModeForTests("chamada_unica");
+    vi.spyOn(SkillMiner, "analyzeAndPropose").mockResolvedValue([] as any);
+    vi.spyOn(SkillMiner, "detectRecurringBugs").mockResolvedValue([] as any);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    setExecutorModeForTests(null);
+    vi.useRealTimers();
+    if (prevJevUrl === undefined) delete process.env.JEV_API_URL;
+    else process.env.JEV_API_URL = prevJevUrl;
+    if (prevMasterKey === undefined) delete process.env.NEXTCODE_MASTER_KEY;
+    else process.env.NEXTCODE_MASTER_KEY = prevMasterKey;
+    vi.restoreAllMocks();
+  });
+
+  it("3ª tentativa + ambiguous_spec bloqueada: sombra — relatório sem Dono, trilha FAILURE_ROUTE_WOULD_ACT", async () => {
+    const telemetrySpy = vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    const defaultPolicy = policyMod.loadOrchestrationPolicy();
+    vi.spyOn(policyMod, "loadOrchestrationPolicy").mockReturnValue({
+      ...defaultPolicy,
+      jevExecucao: {
+        ...defaultPolicy.jevExecucao,
+        bloqueioSpecAmbigua: "ativo",
+        roteamentoFalha: "sombra",
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(AMBIGUOUS_JEV_RESPONSE), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const task = makeBlockedAmbiguousTask();
+    const { createdChatMessages } = mockExecutionHarness(task);
+    const res = await executeTaskNode(task);
+
+    expect(res.finalStatus).toBe("blocked");
+    expect(createdChatMessages).toHaveLength(1);
+
+    const incidentInChat = incidentBodyFromChat(createdChatMessages[0].content);
+    expect(incidentInChat).not.toContain("**Dono:**");
+
+    const history: FailureAttemptRecord[] = JSON.parse(
+      JSON.stringify([
+        ...(JSON.parse(task.failureHistory!) as FailureAttemptRecord[]),
+        {
+          attemptNumber: 3,
+          rejectionReason: "REQ-002 contraditório: pede taxa de 2% e isenção ao mesmo tempo",
+          filesScope: ["src/lib/calc.ts"],
+          timestamp: "2026-10-03T12:00:00.000Z",
+          diagnostico: {
+            causa: "ambiguous_spec",
+            confianca: 0.91,
+            probabilidades: { ambiguous_spec: 0.91 },
+          },
+        },
+      ])
+    );
+    const preA3Report = IncidentReporter.generateIncidentReport(
+      task.id,
+      task.title,
+      task.cluster,
+      history,
+      {
+        maxAttempts: task.maxAttempts,
+        unblockHint:
+          'Ajuste a Spec Canônica para eliminar a ambiguidade apontada no diagnóstico Jev e depois clique em "Desbloquear / Re-tentar Etapa" no painel da DAG.',
+      }
+    );
+    expect(incidentInChat).toBe(preA3Report);
+
+    expect(telemetrySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "FAILURE_ROUTE_WOULD_ACT",
+        details: expect.objectContaining({
+          nodeId: task.id,
+          tentativa: 3,
+          causa: "ambiguous_spec",
+          dono: "elicitador / fundador",
+        }),
+      })
+    );
+  });
+
+  it("3ª tentativa + ambiguous_spec bloqueada: ativo — relatório com Dono elicitador / fundador", async () => {
+    vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
+    const defaultPolicy = policyMod.loadOrchestrationPolicy();
+    vi.spyOn(policyMod, "loadOrchestrationPolicy").mockReturnValue({
+      ...defaultPolicy,
+      jevExecucao: {
+        ...defaultPolicy.jevExecucao,
+        bloqueioSpecAmbigua: "ativo",
+        roteamentoFalha: "ativo",
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(AMBIGUOUS_JEV_RESPONSE), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    const task = makeBlockedAmbiguousTask();
+    const { createdChatMessages } = mockExecutionHarness(task);
+    await executeTaskNode(task);
+
+    expect(createdChatMessages).toHaveLength(1);
+    const incidentInChat = incidentBodyFromChat(createdChatMessages[0].content);
+    expect(incidentInChat).toContain("**Dono:** elicitador / fundador");
   });
 });

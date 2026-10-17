@@ -243,6 +243,82 @@ Produção: YAML e defaults em **`sombra`** — fluxo igual ao anterior; só tri
 
 ### Commit
 
-_(preencher após `git commit`)_
+**`8526e18`** — `feat(a3): falha roteada ao dono em sombra (A3.2)`
+
+```
+ config/politicas-orquestracao.yaml                 |   1 +
+ docs/relatorios/A3-falha-roteada-ao-dono.md        |  40 ++++++
+ src/core/config/orchestration-policy.ts            |  11 ++
+ src/core/decision/jev-execution-checks.ts          | 119 +++++++++++++++++-
+ src/core/governance/incident-reporter.ts           |   4 +-
+ src/core/orchestrator/node-executor.ts             |  77 +++++++++++-
+ tests/decision/a3-failure-routing.test.ts          | 166 +++++++++++++++++++++++++
+ tests/harness/orchestration-policy-and-skills.test.ts |   3 +
+ 8 files changed, 418 insertions(+), 3 deletions(-)
+```
+
+### O que não foi feito
+
+A3.2b — correção pós-auditoria (abaixo).
+
+---
+
+## A3.2b — Dono no incidente só em `roteamentoFalha: ativo`
+
+### Defeito (auditor)
+
+Em `node-executor.ts`, `failureRouteDono = route.dono` rodava em **sombra** e o valor ia para `IncidentReporter.generateIncidentReport`, expondo `**Dono:**` no chat — violação de “sombra = nenhuma mudança visível”.
+
+### Correção
+
+`failureRouteDono = route.dono` movido para dentro de `if (roteamentoFalha === "ativo") { ... }` (`node-executor.ts:1671-1677`).
+
+### Diff resumido
+
+| Arquivo | Mudança |
+|---------|---------|
+| `src/core/orchestrator/node-executor.ts:1671-1677` | `failureRouteDono` só em modo `ativo` |
+| `tests/decision/a3-failure-routing.test.ts` | +2 testes integração (3ª tentativa, `ambiguous_spec` bloqueada: sombra byte-a-byte sem Dono + `FAILURE_ROUTE_WOULD_ACT`; ativo com `**Dono:** elicitador / fundador`) |
+
+### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  828 passed (828)
+   Duration  265.13s
+```
+
+### Commit
+
+**`efb3b04`** — `fix(a3): dono no incidente so em ativo (A3.2b)`
+
+```
+ docs/relatorios/A3-falha-roteada-ao-dono.md   |  62 +++++++
+ src/core/orchestrator/node-executor.ts         |   2 +-
+ tests/decision/a3-failure-routing.test.ts      | 252 ++++++++++++++++++++++++++
+ 3 files changed, 314 insertions(+), 2 deletions(-)
+```
+
+### `git status --short` (fim do passo)
+
+```
+ M .claude/.headroom_wrap_marker.json
+ M .serena/project.yml
+?? .agents/
+?? .claude/skills/
+?? skills-lock.json
+```
+
+(Nenhum arquivo do A3 pendente.)
+
+### O que não foi feito
+
+A3.3 — aguardando OK do fundador.
 
 ---

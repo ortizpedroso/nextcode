@@ -1653,7 +1653,6 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         });
 
         if (route) {
-          failureRouteDono = route.dono;
           if (route.emitWouldAct) {
             TelemetryLogger.log({
               sessionId: taskDb.sessionId,
@@ -1670,6 +1669,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             });
           }
           if (roteamentoFalha === "ativo") {
+            failureRouteDono = route.dono;
             finalStatus = route.finalStatus;
             if (route.blockedByPlanError) blockedByPlanError = true;
             if (route.planErrorSkipAttempt) planErrorSkipAttempt = true;
