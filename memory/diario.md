@@ -1,3 +1,12 @@
+## 16/10/2026 (91) — Teste real aprovado (20:45); "não está paralelo?" — diagnóstico
+
+**Trilha:** `SPEC_REVISAO→PLANEJAMENTO` 20:45:42, `→EXECUCAO` 20:45:47; 17 nós (scaffold + 16 etapas); base pronta 20:47:54; etapa 1 nível `pesado` (Jev).
+**Fundador tem razão para esta fase:** o decompositor (`spec-decomposer.ts:236-238`) encadeia as etapas do core em fila única — cada `base` depende da anterior (`nodes[nodes.length-1]`) — então as etapas 1→6 rodam **uma de cada vez**, mesmo quando não dependem entre si (ex.: whitelabel/notificações × middleware/asaas). Depois da etapa 6, backend/integração (7–12) rodam em paralelo até 3 (`paralelismo_maximo: 3`, YAML:156); frontend (13–16) espera a API (decisão de 07/10, P2 {erro}×{message}).
+**Melhoria possível:** dependência real por import/contrato entre arquivos do core, em vez de fila. Ganho: tempo. Risco: etapa compila contra contrato ainda não escrito (o motivo da fila). Medir antes; não mexer durante o teste.
+**Próximo passo:** acompanhar o teste; registrar a proposta na §5.0 com OK do fundador.
+
+---
+
 ## 16/10/2026 (90) — Spec do teste real pronta: liberada para aprovar
 
 **Trilha (msg 20:33:04, "Excluir o requisito REQ-001…"):** 1 chamada Opus (US$ 0,480; 122 s) — sem 2ª chamada escondida. Comparação semântica com a versão anterior: só o REQ do `.env.example` saiu; os outros 43 REQ, frontmatter e corpo idênticos; REQ-001…043 em sequência; `.env.example` 0 ocorrências; README no REQ-003; `CONFERENCIA_T8A_OK`; 0 segredo. M2 clareza 1,75 (aviso do Jev na mensagem — consultivo). Spec total do teste: US$ 4,38 em 7 chamadas.
