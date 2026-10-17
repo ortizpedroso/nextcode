@@ -1,3 +1,11 @@
+## 17/10/2026 (117) — Cache + conferência do conjunto na mudança 7; proposta 20 (memória)
+
+**Fundador:** "concordo" com o cache junto da mudança 7; ideias: ponto de memória como o OpenCode; correção só do que está errado, integrada e conferida no conjunto.
+**Registrado:** mudança 7 acréscimo 17/10 — cache de prompt; correção por âncora; conferência do conjunto por código (SM1/T8a/estrutura/REQ) + Jev item a item, sem nova chamada ao Opus; 2ª chamada escondida vira trecho. A 2ª ideia do fundador já era a mudança 7 (16/10) — completada, não duplicada.
+**Proposta 20 (aguarda):** memória = artefatos (Spec, Microbrief, P12, trilha, MEMORY.md), não resumo de conversa por LLM (risco de perder requisito); elicitador com Spec + últimas mensagens; encurtar saídas antigas no laço do executor; consertar o corte calado do `project-memory.ts` (50 linhas/6.000 bytes).
+
+---
+
 ## 17/10/2026 (116) — Dúvidas do fundador: modelos Claude por tarefa; expectativa de economia
 
 **Respondido:** uma chave Anthropic serve Haiku/Sonnet/Opus — o modelo é escolhido por chamada (já é assim: elicitador `claude-opus-5-5`, avaliador Claude padrão `claude-sonnet-4-5-20250929`). Qual modelo por papel = bench (mudança 14), não suposição. Mesma família entre si: vale a regra executor×avaliador (executor DeepSeek).
