@@ -73,3 +73,6 @@ Fundador: "concordo". Ordem: A3 (falha ao dono) → P8 pesquisador com Jev filtr
 
 ## 17/10 — avaliador-final cego (17) e porteiro mecânico (18)
 Fundador: "concordo com as ressalvas e com o porteiro mecânico". J3: cego (sem relatório do executor nem vereditos anteriores) e fechado (sem internet/MCP), com as provas mecânicas; defeito de código → analista (Microbrief de correção); defeito da Spec → elicitador/fundador; outra família do executor. Porteiro: tsc, testes, ESLint, stub/TODO por regex, citações arquivo:linha, escopo, segredo, dependência nova — dentro do laço do executor, antes do avaliador; não substitui avaliador nem E5.
+
+## 17/10 — Execução autônoma da E1 (mudança 23)
+Fundador: "avaliador claude, pois não pode ser da mesma família… crie um checklist… você vai implementar e o cursor vai auditar… quando eu tiver de escolher algo, você vai decidir o que é melhor para o projeto… dois relatórios: um do que você decidiu por mim e outro para o cursor auditar… continue de forma automática até que tudo esteja implementado". Papéis: elicitador Opus, pesquisa Claude, analista DeepSeek, executor DeepSeek, avaliador Claude (nunca a família do executor). Checklist na §5.0.

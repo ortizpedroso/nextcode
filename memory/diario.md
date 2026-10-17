@@ -1,3 +1,11 @@
+## 17/10/2026 (136) — Mudança 23: execução autônoma da E1 (Claude implementa, Cursor audita)
+
+**Fundador:** avaliador Claude (não pode ser da mesma família); checklist de tudo; Claude implementa e decide pelo fundador; 2 relatórios (decisões + auditoria do Cursor); seguir automático até o fim.
+**Registrado:** linha ▶ AGORA + checklist na §5.0, mudança 23, `decisoes.md`.
+**Próximo passo:** A2.1.
+
+---
+
 ## 17/10/2026 (135) — Recomendação única: papéis, skills e ordem da E1 até o fim
 
 **Fundador:** "me diz você e justifica… unicidade e seguir o plano até o fim… você se perde quando acontece um erro"; propôs Claude elicitador e pesquisa, analista DeepSeek, executor DeepSeek, avaliador DeepSeek; skills extremamente bem escritas; avaliador quebrado.
