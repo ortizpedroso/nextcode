@@ -1,3 +1,12 @@
+## 17/10/2026 (119) — Correção: mudança 20 não era aprovação; análise da memória do projeto
+
+**Fundador:** "não é para aceitar tudo… eu não pedi para mudar a memória, temos que analisar se vale a pena". Auditor tinha registrado a 20 como aprovada com tamanho novo — erro repetido (memória `push-back-honestly`). Revertido para proposta.
+**Evidência:** `MEMORY.md` = cópia truncada da Spec, sobrescrita a cada aprovação; 3 "regras do fundador" fixas no código; lições sempre vazias; arquivo real 41 linhas embaralhadas; entra em todo prompt do executor e do chat.
+**Recomendação:** não aumentar teto nem mexer agora; reavaliar após o Gate 1 (E3) com memória do que a Spec não tem (contratos entregues, decisões da execução, lições do A3), acumulando.
+**A3.1b** segue com o Cursor.
+
+---
+
 ## 17/10/2026 (118) — A3.1 auditado: 2 falsos positivos na pré-checagem; mudança 20 aprovada com tamanho
 
 **Conferido:** `5f8fbf5` + `66dcac6` dentro do R1; tsc 0 e 6/6 testes do A3 rodados pelo auditor. **Defeitos (sonda `scratchpad/a3-falso-positivo.ts`):** (1) critério que só **cita** arquivo que usa o REQ (fora do escopo) + rejeição por código errado → `plan_error` mecânico (falso) — causa: regra "motivo cita o REQ **ou** o arquivo", erro do **prompt do auditor**; (2) `pathInStageScope` compara final sem limite de segmento (`page.tsx` = `homepage.tsx`). Correção A3.1b: motivo tem de citar o próprio arquivo fora do escopo (caminho, ou nome final não genérico); só sufixo com `/`. 802/804: não reproduzido em 3 rodadas.
