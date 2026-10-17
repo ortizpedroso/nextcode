@@ -1,3 +1,13 @@
+## 17/10/2026 (131) — Diagnóstico das duas lentes; AV1 no cronograma
+
+**Fundador:** pôr no cronograma "melhorar os avaliadores… estão soltos e sem fazer o trabalho deles"; diagnóstico crítico enquanto o Cursor roda o A3.5.
+**Evidência:** código (`dual-lens-auditor.ts`, `node-executor.ts` 460-560 e 1287-1520, `evaluator-models.ts`, `skills/avaliador*/SKILL.md`) + cópia do `dev.db` (`%TEMP%/nc-aud-aval`, só leitura): 31 `EVALUATOR_MODEL` — 29 Nemotron, 2 DeepSeek com `independentFromExecutor:false` (11/10, 12/10: Nemotron timeout + Claude 404 no catálogo); 33 `JEV_EVIDENCE_CHECK` todos "executando em modo sombra" apesar de `modo: ativo`.
+**Veredito:** a Lente 1 funciona no básico (P3 4/4; B1c sem defeito para achar), mas o resto não cumpre o que a skill promete: tsc só depois da aprovação; JSON de 1 linha descarta a revisão de qualidade e as ressalvas; evidência do avaliador nunca conferida; cadeia fora da mudança 10; arquivo cortado aprovado; Lente 2 é comparação mecânica, não 2º avaliador. Exagero corrigido: não estão "sem fazer nada" — reprovaram certo onde foram medidos; o problema é que só foram medidos em caso fácil.
+**Registrado:** linha **AV1** na E1 (absorve B1b e porteiro 18), mudança 22, B1b ➡️ AV1.
+**Próximo passo:** auditar o A3.5 quando o Cursor terminar; fundador decide as 2 perguntas do AV1.
+
+---
+
 ## 17/10/2026 (130) — find-skills removida; Cursor parou certo no A2.0
 
 **Fundador:** "eu não mandei instalar nada, pedi para você analisar somente, pode tirar do projeto". Correto — o auditor instalou no 16/10 (diário 98) um comando que foi dado só para análise e registrou como "comando do fundador". Diário 98 corrigido.
