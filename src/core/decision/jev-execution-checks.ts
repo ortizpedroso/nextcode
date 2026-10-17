@@ -1,4 +1,5 @@
 import { askJevBatch, type JevQuestionSpec } from "@/core/decision/jev";
+import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 
 export type JevExecutionMode = "ativo" | "sombra" | "desligado";
@@ -8,12 +9,15 @@ export type JevFailureCause =
   | "environment"
   | "ambiguous_spec"
   | "evaluator_error"
-  | "incomplete_output";
+  | "incomplete_output"
+  | "plan_error";
 
 export interface JevFailureDiagnosis {
   causa: JevFailureCause;
   confianca: number;
   probabilidades: Record<string, number>;
+  fonte?: "mecanica" | "jev";
+  foraDoEscopo?: { req: string; arquivo: string }[];
 }
 
 export const FAILURE_CAUSE_CRITERIA: Record<JevFailureCause, string> = {
@@ -23,8 +27,10 @@ export const FAILURE_CAUSE_CRITERIA: Record<JevFailureCause, string> = {
     "missing package, missing types, tooling or build setup problem not caused by the code logic",
   ambiguous_spec:
     "the criteria are contradictory, incomplete or impossible to satisfy as written",
+  plan_error:
+    "the rejection says a requirement needs a file that is not in `arquivos_escopo`, and that requirement's criteria in `reqs_com_arquivos` do name that file",
   evaluator_error:
-    "the rejection reason contradicts itself or blames files outside this stage",
+    "the rejection is wrong about code inside `arquivos_escopo`, contradicts itself, or demands a file that the requirement's criteria do not name",
   incomplete_output:
     "the response was cut, empty, or missing files of the stage",
 };
@@ -33,6 +39,7 @@ export const FAILURE_CAUSE_LABELS_PT: Record<JevFailureCause, string> = {
   wrong_code: "código incorreto",
   environment: "ambiente/dependências",
   ambiguous_spec: "especificação ambígua",
+  plan_error: "erro do plano",
   evaluator_error: "erro do avaliador",
   incomplete_output: "saída incompleta",
 };
@@ -44,11 +51,137 @@ export const FAILURE_CAUSE_GUIDANCE_PT: Record<JevFailureCause, string> = {
     "ajuste apenas imports e tipos disponíveis no projeto, sem depender de pacotes ou configurações externas ausentes.",
   ambiguous_spec:
     "implemente a interpretação mais direta e compatível com os contratos existentes sem extrapolar o escopo.",
+  plan_error:
+    "ajuste a Spec ou o microbrief: o critério do REQ exige arquivo que não está no escopo desta etapa.",
   evaluator_error:
     "mantenha a implementação estritamente nos arquivos desta etapa e torne explícito no código e no relatório o atendimento de cada requisito.",
   incomplete_output:
     "entregue todos os arquivos do escopo completos do início ao fim e finalize com o relatório exigido.",
 };
+
+const FILE_PATH_IN_CRITERIA_RE =
+  /(?:[A-Za-z0-9_$@.-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
+
+export function extractFilePathsFromCriteriaText(text: string): string[] {
+  const found = new Set<string>();
+  for (const match of text.matchAll(FILE_PATH_IN_CRITERIA_RE)) {
+    const p = normalizeScopePath(match[0]);
+    if (p) found.add(p);
+  }
+  return Array.from(found);
+}
+
+export function pathInStageScope(arquivosEscopo: string[], arquivo: string): boolean {
+  const normFile = normalizeScopePath(arquivo);
+  for (const scopeEntry of arquivosEscopo) {
+    const normScope = normalizeScopePath(scopeEntry);
+    if (normScope === normFile) return true;
+    if (normFile.endsWith(`/${normScope}`) || normScope.endsWith(`/${normFile}`)) return true;
+    if (normFile.endsWith(normScope) || normScope.endsWith(normFile)) return true;
+  }
+  return false;
+}
+
+function motivoCitaReqOuArquivo(motivoRejeicao: string, reqId: string, arquivo: string): boolean {
+  const motivo = motivoRejeicao || "";
+  if (motivo.includes(reqId)) return true;
+  const norm = normalizeScopePath(arquivo);
+  if (motivo.includes(arquivo) || motivo.includes(norm)) return true;
+  const base = norm.split("/").pop();
+  if (base && motivo.includes(base)) return true;
+  return false;
+}
+
+export function detectPlanErrorMechanically(params: {
+  arquivosEscopo: string[];
+  criteriosPorReq: Record<string, string>;
+  reqsCobertos: string[];
+  motivoRejeicao: string;
+}): {
+  causa: "plan_error";
+  fonte: "mecanica";
+  confianca: 1;
+  foraDoEscopo: { req: string; arquivo: string }[];
+} | null {
+  const foraDoEscopo: { req: string; arquivo: string }[] = [];
+  for (const reqId of params.reqsCobertos) {
+    const criterio = params.criteriosPorReq[reqId] ?? "";
+    const paths = extractFilePathsFromCriteriaText(criterio);
+    for (const arquivo of paths) {
+      if (!pathInStageScope(params.arquivosEscopo, arquivo)) {
+        if (motivoCitaReqOuArquivo(params.motivoRejeicao, reqId, arquivo)) {
+          foraDoEscopo.push({ req: reqId, arquivo });
+        }
+      }
+    }
+  }
+  if (foraDoEscopo.length === 0) return null;
+  return {
+    causa: "plan_error",
+    fonte: "mecanica",
+    confianca: 1,
+    foraDoEscopo,
+  };
+}
+
+function buildReqsComArquivos(
+  reqsCobertos: string[],
+  criteriosPorReq: Record<string, string>
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const reqId of reqsCobertos) {
+    out[reqId] = extractFilePathsFromCriteriaText(criteriosPorReq[reqId] ?? "");
+  }
+  return out;
+}
+
+function buildFailureDiagnosisStateJson(params: {
+  etapa: { titulo: string; cluster: string; reqs_cobertos: string[] };
+  arquivosEscopo: string[];
+  criteriosPorReq: Record<string, string>;
+  motivoRejeicao: string;
+  tentativa: number;
+  historicoMotivos: string[];
+  maxChars: number;
+}): string {
+  const arquivos_escopo = params.arquivosEscopo.map(normalizeScopePath);
+  const reqs_com_arquivos = buildReqsComArquivos(params.etapa.reqs_cobertos, params.criteriosPorReq);
+
+  let motivo = params.motivoRejeicao || "";
+  let historico = params.historicoMotivos.slice(-3).map((m) => m.slice(0, 2000));
+
+  const shrink = (): string => {
+    const stateObj = {
+      etapa: {
+        titulo: params.etapa.titulo,
+        cluster: params.etapa.cluster,
+        reqs_cobertos: params.etapa.reqs_cobertos,
+      },
+      arquivos_escopo,
+      reqs_com_arquivos,
+      motivo_rejeicao: motivo,
+      tentativa: params.tentativa,
+      historico_motivos: historico,
+    };
+    return JSON.stringify(stateObj);
+  };
+
+  let json = shrink();
+  while (json.length > params.maxChars && historico.length > 0) {
+    historico = historico.slice(1);
+    json = shrink();
+  }
+  while (json.length > params.maxChars && motivo.length > 0) {
+    motivo = motivo.slice(0, Math.max(0, motivo.length - 500));
+    json = shrink();
+  }
+  while (json.length > params.maxChars && motivo.length > 200) {
+    motivo = motivo.slice(0, motivo.length - 200);
+    json = shrink();
+  }
+
+  return json;
+}
 
 export function formatFailureDiagnosisFeedbackLine(
   diagnostico: JevFailureDiagnosis | null | undefined,
@@ -70,6 +203,8 @@ export async function diagnoseStageFailureWithJev(params: {
     cluster: string;
     reqs_cobertos: string[];
   };
+  arquivosEscopo: string[];
+  criteriosPorReq: Record<string, string>;
   motivoRejeicao: string;
   tentativa: number;
   historicoMotivos: string[];
@@ -79,23 +214,53 @@ export async function diagnoseStageFailureWithJev(params: {
     return null;
   }
 
-  const stateObj = {
-    etapa: {
-      titulo: params.etapa.titulo,
-      cluster: params.etapa.cluster,
-      reqs_cobertos: params.etapa.reqs_cobertos,
-    },
-    motivo_rejeicao: (params.motivoRejeicao || "").slice(0, 4000),
-    tentativa: params.tentativa,
-    historico_motivos: params.historicoMotivos.slice(-3).map((m) => m.slice(0, 2000)),
-  };
+  const mecanica = detectPlanErrorMechanically({
+    arquivosEscopo: params.arquivosEscopo,
+    criteriosPorReq: params.criteriosPorReq,
+    reqsCobertos: params.etapa.reqs_cobertos,
+    motivoRejeicao: params.motivoRejeicao,
+  });
 
-  const stateJson = JSON.stringify(stateObj);
+  if (mecanica) {
+    const diagnosis: JevFailureDiagnosis = {
+      causa: mecanica.causa,
+      confianca: mecanica.confianca,
+      probabilidades: { plan_error: 1 },
+      fonte: mecanica.fonte,
+      foraDoEscopo: mecanica.foraDoEscopo,
+    };
+    TelemetryLogger.log({
+      sessionId: params.sessionId ?? undefined,
+      action: "JEV_FAILURE_DIAGNOSIS",
+      details: {
+        nodeId: params.nodeId,
+        tentativa: params.tentativa,
+        modo: params.modo,
+        causa: diagnosis.causa,
+        confianca: diagnosis.confianca,
+        probabilidades: diagnosis.probabilidades,
+        fonte: mecanica.fonte,
+        foraDoEscopo: mecanica.foraDoEscopo,
+      },
+    });
+    return diagnosis;
+  }
+
+  const stateJson = buildFailureDiagnosisStateJson({
+    etapa: params.etapa,
+    arquivosEscopo: params.arquivosEscopo,
+    criteriosPorReq: params.criteriosPorReq,
+    motivoRejeicao: params.motivoRejeicao,
+    tentativa: params.tentativa,
+    historicoMotivos: params.historicoMotivos,
+    maxChars: 8000,
+  });
+
   const questions: Record<string, JevQuestionSpec> = {
     failure_cause: {
       type: "choice",
       instructions:
-        "Examine `etapa`, `motivo_rejeicao`, `tentativa`, and `historico_motivos`. What is the primary cause of this stage failure?",
+        "Examine `etapa`, `arquivos_escopo`, `reqs_com_arquivos`, `motivo_rejeicao`, `tentativa`, and `historico_motivos`. What is the primary cause of this stage failure?",
       criteria: FAILURE_CAUSE_CRITERIA,
     },
   };
@@ -105,7 +270,7 @@ export async function diagnoseStageFailureWithJev(params: {
     state: stateJson,
     questions,
     sessionId: params.sessionId,
-    maxStateChars: 24000,
+    maxStateChars: 8000,
   });
 
   const ans = answers?.failure_cause;
@@ -139,6 +304,8 @@ export async function diagnoseStageFailureWithJev(params: {
       causa: diagnosis.causa,
       confianca: diagnosis.confianca,
       probabilidades: diagnosis.probabilidades,
+      fonte: "jev",
+      foraDoEscopo: [],
     },
   });
 

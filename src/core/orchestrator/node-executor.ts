@@ -1577,6 +1577,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           cluster: resolvedCluster,
           reqs_cobertos: nodePayload.reqsCobertos ?? nodeMicrobrief?.reqsCobertos ?? [],
         },
+        arquivosEscopo: filesScopeArr,
+        criteriosPorReq,
         motivoRejeicao: rejectionReason || "Falha não especificada.",
         tentativa: newAttempts,
         historicoMotivos: prevHistory.slice(-3).map((h) => h.rejectionReason),

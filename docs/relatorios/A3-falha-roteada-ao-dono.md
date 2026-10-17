@@ -105,3 +105,50 @@ Nenhum.
 A3.1 em diante — aguardando OK do fundador.
 
 ---
+
+## PASSO A3.1 — Causa `plan_error`, pré-checagem mecânica, estado curto
+
+### Falhas intermitentes A3.0 (802/804)
+
+Rodadas completas após A3.1 (3×): **810/810** verdes — **não reproduzido em 3 rodadas**.
+
+Na sessão A3.0, uma execução registrou **802 passed / 2 failed** (124 arquivos), mas a saída **não preservou** as linhas `FAIL` / nomes dos testes (terminal truncado). **Nomes dos 2 testes: não verificado** (falha não reproduzida).
+
+### O que mudou
+
+| Arquivo | Mudança (linhas aprox.) |
+|---------|-------------------------|
+| `src/core/decision/jev-execution-checks.ts` | `plan_error` + critérios/labels/guidance; `detectPlanErrorMechanically`, `extractFilePathsFromCriteriaText`, `pathInStageScope`, estado ≤8k com `arquivos_escopo` / `reqs_com_arquivos`; trilha `fonte`/`foraDoEscopo`; `maxStateChars: 8000` |
+| `src/core/orchestrator/node-executor.ts` | Chamada `diagnoseStageFailureWithJev`: `arquivosEscopo: filesScopeArr`, `criteriosPorReq` (~1580-1581) |
+| `tests/decision/a3-failure-routing.test.ts` | 6 testes (a–f) |
+
+**Nota:** `fonte: "jev"` vai na trilha `JEV_FAILURE_DIAGNOSIS`; no objeto retornado ao executor, `fonte` só aparece quando `fonte === "mecanica"` (compatível com `jev-failure-diagnosis.test.ts`).
+
+### `npx tsc --noEmit`
+
+```
+(exit 0 — sem saída)
+```
+
+### `npx vitest run` (últimas linhas)
+
+```
+ Test Files  125 passed (125)
+      Tests  810 passed (810)
+   Start at  08:34:00
+   Duration  241.34s (transform 5.40s, setup 2.42s, collect 32.06s, tests 140.55s, environment 40ms, prepare 23.20s)
+```
+
+### Commit
+
+_(hash abaixo após `git commit`)_
+
+### Desvios A3.0 / A3.1
+
+Nenhum. `incident-reporter.ts` não alterado (A3.2).
+
+### O que não foi feito
+
+A3.2 em diante.
+
+---
