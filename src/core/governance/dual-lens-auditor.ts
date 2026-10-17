@@ -64,8 +64,9 @@ export interface ValidationType2Result {
    * "heuristic_fallback": nenhum dispatchFn foi fornecido ou o LLM falhou/não respondeu JSON válido — o
    * veredito caiu de volta no heurístico antigo (apenas checa se houve alegação de sucesso / arquivos extraídos).
    * "n/a": Tipo 1 já reprovou, então a Lente 2 nem chegou a ser avaliada.
+   * "limite_tamanho": algum arquivo não cabe inteiro no que o avaliador lê (AV1.2) — reprovado sem chamar o LLM.
    */
-  method: "llm_blind" | "heuristic_fallback" | "n/a";
+  method: "llm_blind" | "heuristic_fallback" | "n/a" | "limite_tamanho";
   /**
    * true quando a alegação do worker (claimedSuccess ou tabela por REQ) diverge do veredito independente da
    * Lente Cega (blindVerdict.implemented / reqVerdicts) — só é calculável no método "llm_blind".
@@ -378,6 +379,24 @@ export class DualLensAuditor {
     };
   }
 
+  /**
+   * AV1.2 — limites do que o avaliador lê inteiro. Antes: 24 mil por arquivo / 80 mil no total, com o
+   * excesso cortado e a ordem "NÃO reprove por isso" (bug no fim de arquivo grande passava). O Claude
+   * Sonnet 5.5 tem 200 mil tokens de contexto; 60 mil / 200 mil caracteres deixam folga para skill e Brief.
+   */
+  public static oversizedFilesForBlindLens(codeContentMap: Record<string, string>): string[] {
+    const maxFile = Number(process.env.BLIND_AUDIT_MAX_FILE_CHARS) || 60000;
+    const maxTotal = Number(process.env.BLIND_AUDIT_MAX_TOTAL_CHARS) || 200000;
+    const out: string[] = [];
+    let total = 0;
+    for (const [filePath, content] of Object.entries(codeContentMap)) {
+      total += content.length;
+      if (content.length > maxFile) out.push(`${filePath} tem ${content.length} caracteres (máximo ${maxFile} por arquivo)`);
+    }
+    if (total > maxTotal) out.push(`a etapa soma ${total} caracteres (máximo ${maxTotal} no total)`);
+    return out;
+  }
+
   /** Chamadas à Lente Cega antes de cair no fallback (que rejeita). */
   private static readonly BLIND_LENS_MAX_CALLS = 2;
 
@@ -502,24 +521,11 @@ export class DualLensAuditor {
     dispatchFn: LLMDispatchFn,
     options?: ValidateType2Options
   ): Promise<{ verdict: BlindAuditVerdict; skillUsed: string } | null> {
-    const MAX_FILE_CHARS = Number(process.env.BLIND_AUDIT_MAX_FILE_CHARS) || 24000;
-    const MAX_TOTAL_CHARS = Number(process.env.BLIND_AUDIT_MAX_TOTAL_CHARS) || 80000;
-    let budget = MAX_TOTAL_CHARS;
-    const fileBlocks: string[] = [];
-    for (const [filePath, content] of Object.entries(codeContentMap)) {
-      if (budget <= 0) {
-        fileBlocks.push(`--- ${filePath} ---\n[NÃO EXIBIDO PELO NEXTCODE POR LIMITE DE TAMANHO — não é defeito do código]`);
-        continue;
-      }
-      const limit = Math.min(MAX_FILE_CHARS, budget);
-      const shown = content.slice(0, limit);
-      const note =
-        content.length > limit
-          ? `\n[... ${content.length - limit} caracteres OMITIDOS PELO NEXTCODE por limite de tamanho — o arquivo continua; NÃO reprove por isso]`
-          : "";
-      fileBlocks.push(`--- ${filePath} ---\n${shown}${note}`);
-      budget -= shown.length;
-    }
+    // AV1.2: o avaliador recebe cada arquivo INTEIRO. Quem não cabe já foi reprovado antes
+    // (`oversizedFilesForBlindLens` em validateType2) — nunca há trecho omitido aprovado.
+    const fileBlocks: string[] = Object.entries(codeContentMap).map(
+      ([filePath, content]) => `--- ${filePath} ---\n${content}`
+    );
 
     const cluster = options?.cluster;
     const skillName = cluster ? `avaliador-${cluster}` : "avaliador";
@@ -680,6 +686,22 @@ export class DualLensAuditor {
     }
 
     const filesInScope = Object.keys(codeContentMap);
+
+    const oversized = DualLensAuditor.oversizedFilesForBlindLens(codeContentMap);
+    if (dispatchFn && oversized.length > 0) {
+      const reason =
+        "O avaliador lê cada arquivo inteiro e nada além do limite é aprovado sem leitura (AV1.2): " +
+        oversized.join("; ") +
+        ". Divida o código em arquivos menores dentro do escopo da etapa.";
+      return {
+        verdict: "REJECTED",
+        rawVerdict: "REPROVADO",
+        lens1BlindReport: `[LENTE 1 - NÃO EXECUTADA]\n- ${reason}`,
+        lens2CrossVerification: "Não aplicável.",
+        rejectionReason: reason,
+        method: "limite_tamanho",
+      };
+    }
 
     if (dispatchFn) {
       let blindOutcome: { verdict: BlindAuditVerdict; skillUsed: string } | null = null;

@@ -1,3 +1,10 @@
+## 17/10/2026 (141) — AV1.2: avaliador não aprova arquivo cortado
+
+**Feito:** arquivo inteiro ao avaliador; acima de 60 mil/200 mil caracteres a etapa é reprovada sem LLM, com motivo. tsc 0; vitest 127/847. Decisão D23.
+**Próximo passo:** AV1.3.
+
+---
+
 ## 17/10/2026 (140) — AV1.1: avaliador Claude, nunca a família do executor
 
 **Feito:** cadeia Sonnet 5.5 → Opus 5.5 (Anthropic direto), família do executor recusada, 404 sem troca calada, sem queda para roteador livre. Sonda real: os dois respondem. tsc 0; vitest 127/846. Decisões D17–D22.

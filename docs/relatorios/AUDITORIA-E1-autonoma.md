@@ -86,3 +86,12 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 846 passed (846)` (4 a menos que o A2.3: testes da cadeia antiga removidos/fundidos, ver D22).
 
 **Auditor conferir:** nenhum caminho de produção chega a `smartRouter.dispatchWithFallback` no avaliador; `independent` só `true`; o bench ainda troca o modelo por `EVALUATOR_CLAUDE_MODEL`.
+
+---
+
+## AV1.2 — Avaliador não aprova o que não leu inteiro
+
+**Mudou:** `src/core/governance/dual-lens-auditor.ts` — `oversizedFilesForBlindLens` (60 mil / arquivo, 200 mil / etapa, ajustáveis por `BLIND_AUDIT_MAX_FILE_CHARS` / `BLIND_AUDIT_MAX_TOTAL_CHARS`); `validateType2` reprova antes de chamar o LLM (`method: "limite_tamanho"`); `runBlindLens` manda o arquivo inteiro (removido o corte com "NÃO reprove por isso").
+**Testes:** `tests/governance/blind-audit-full-code.test.ts` — o teste que exigia o aviso de corte foi substituído por 2 (arquivo acima do limite → reprovado sem chamar o LLM; soma acima do total → reprovado).
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 847 passed (847)`.
+**Auditor conferir:** `method: limite_tamanho` não é tratado como avaliador fora (`evaluatorOutage` só olha `heuristic_fallback`), então gasta tentativa — correto, o executor tem de dividir o arquivo.
