@@ -31,3 +31,18 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 126 passed (126)`, `Tests 840 passed (840)`.
 
 **Auditor conferir:** a regra D1 não reprova arquivo consumido de dependência; `PLANO_REPROVADO` não cria `TaskNode`; aviso no chat sai 1 vez; fim de linha LF.
+
+---
+
+## A2.2 — Analista DeepSeek planeja; código confere e monta o Microbrief
+
+**Mudou:**
+- `src/core/skills/spec-decomposer.ts`: `decomposeWithAnalistaSkill` reescrito (lista de arquivos + REQ com arquivos citados no prompt; até 3 rodadas com os erros da T8b; trilha `ANALISTA_PLAN_APPROVED` / `ANALISTA_PLAN_RETRY` / `ANALISTA_PLAN_FALLBACK` em todo caminho; custo `recordLlmCost` papel `analista`); `parseAnalystPlan`, `buildDecompositionFromAnalystPlan` (Microbrief completo: critérios da Spec, `lerContratos` = arquivos das etapas ancestrais, dependências), constantes `ANALISTA_MAX_RODADAS`/`ANALISTA_MAX_TOKENS`/`ANALISTA_TIMEOUT_MS`.
+- `src/core/orchestrator/plan-scope-check.ts`: `validatePlanStages` (+ arquivo da Spec sem etapa / arquivo inventado).
+- `src/core/llm/cost.ts`: papel `analista` no tipo de `recordLlmCost`.
+- `skills/analista/SKILL.md` reescrita (regras = as que o código confere; formato JSON; sem ferramentas).
+- Testes: `tests/orchestrator/analista-plan.test.ts` (novo, 8); `tests/harness/orchestration-policy-and-skills.test.ts`: analista sai da lista de skills com ferramentas.
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 848 passed (848)`.
+
+**Auditor conferir:** nenhum caminho de `decomposeWithAnalistaSkill` volta sem trilha; critérios do Microbrief = texto da Spec; nós do analista têm o mesmo formato de `payload` da heurística (o executor lê `microbrief`, `reqsCobertos`, `nodeFiles`).

@@ -282,11 +282,11 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma da E1 pelo Claude (mudança 23), auditoria pelo Cursor. Item atual: **A2.2**. Erro num passo vira sub-passo do mesmo item (ex.: A2.1b), nunca item novo.
+**▶ AGORA (atualizar a cada passo):** execução autônoma da E1 pelo Claude (mudança 23), auditoria pelo Cursor. Item atual: **A2.3**. Erro num passo vira sub-passo do mesmo item (ex.: A2.1b), nunca item novo.
 
 **Checklist da execução autônoma (mudança 23) — ordem fixa, cada linha = 1 commit com tsc + vitest:**
 - [x] **A2.1** T8b confere arquivo citado no critério × escopo da etapa (ou de etapa da qual depende) e **bloqueia** o plano na aprovação (BLOQUEADA + relatório "dono: analista")
-- [ ] **A2.2** analista DeepSeek planeja de verdade (skill reescrita junto com o código; código monta o Microbrief completo; até 2 rodadas com a lista de erros; heurística = reserva validada; tudo na trilha)
+- [x] **A2.2** analista DeepSeek planeja de verdade (skill reescrita junto com o código; código monta o Microbrief completo; até 2 rodadas com a lista de erros; heurística = reserva validada; tudo na trilha)
 - [ ] **A2.3** replay da Spec real `934939fc` com o analista (cópia do banco) — porta: cada REQ em 1 etapa, 0 pares fora do escopo, T8b válida
 - [ ] **AV1.1** cadeia do avaliador: Claude Sonnet 5.5 → Claude Opus 5.5; nunca a família do executor; sem cair em roteador livre
 - [ ] **AV1.2** avaliador não aprova o que não leu inteiro (arquivo cortado → reprova com motivo)

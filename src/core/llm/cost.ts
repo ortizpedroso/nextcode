@@ -60,7 +60,7 @@ export const LLM_COST_ACTION = "LLM_COST";
 export async function recordLlmCost(params: {
   sessionId?: string | null;
   nodeId?: string;
-  papel: "executor" | "avaliador" | "jev" | "elicitador" | "outro";
+  papel: "executor" | "avaliador" | "jev" | "elicitador" | "analista" | "outro";
   provider: string;
   model: string;
   usage: UsageLike | null | undefined;

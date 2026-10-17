@@ -448,7 +448,6 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       expect(skill.name).toBe(name);
       if (
         name.startsWith("executor-") ||
-        name === "analista" ||
         name === "elicitador"
       ) {
         expect(skill.ferramentas.length).toBeGreaterThan(0);

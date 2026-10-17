@@ -99,6 +99,28 @@ export function validateFinalPlan(
 ): PlanScopeCheckResult {
   const { stages } = planStagesFromNodes(nodes);
   if (stages.length === 0) return { valid: true, errors: [] };
+  return validatePlanStages(stages, reqIds, textoPorReq, maxFilesPerStage);
+}
+
+/**
+ * T8b sobre etapas soltas (plano do analista antes de virar nó). Com `arquivosDaSpec`, também confere
+ * que todo arquivo da Spec está em alguma etapa e que nenhuma etapa inventa arquivo.
+ */
+export function validatePlanStages(
+  stages: PlanStage[],
+  reqIds: string[],
+  textoPorReq: Record<string, string>,
+  maxFilesPerStage: number,
+  arquivosDaSpec?: string[]
+): PlanScopeCheckResult {
+  const extra: string[] = [];
+  if (arquivosDaSpec) {
+    const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+    const spec = new Set(arquivosDaSpec.map(norm));
+    const planned = new Set(stages.flatMap((s) => s.arquivos.map(norm)));
+    for (const f of spec) if (!planned.has(f)) extra.push(`[T8b ARQUIVO SEM ETAPA] "${f}" está na Spec e em nenhuma etapa.`);
+    for (const f of planned) if (!spec.has(f)) extra.push(`[T8b ARQUIVO INVENTADO] "${f}" não está na lista de arquivos da Spec.`);
+  }
   const macrobrief: MacrobriefDocument = {
     documento: "macrobrief",
     idMacrobrief: "plano-final",
@@ -111,6 +133,6 @@ export function validateFinalPlan(
   };
   const base = validateMacrobriefMechanical(macrobrief, reqIds, maxFilesPerStage);
   const scope = checkPlanScope(stages, textoPorReq);
-  const errors = [...base.errors, ...scope.errors];
+  const errors = [...extra, ...base.errors, ...scope.errors];
   return { valid: errors.length === 0, errors };
 }

@@ -1,3 +1,10 @@
+## 17/10/2026 (138) — A2.2 implementado: analista DeepSeek planeja, código confere
+
+**Feito:** `decomposeWithAnalistaSkill` reescrito (3 rodadas com os erros da T8b, Microbrief montado pelo código, trilha em todo caminho, 16 mil tokens/240 s); skill `analista` reescrita (sem ferramentas, JSON). tsc 0; vitest 127/848. Decisões D7–D13.
+**Próximo passo:** A2.3 — replay real da Spec `934939fc` com o analista.
+
+---
+
 ## 17/10/2026 (137) — A2.1 implementado (execução autônoma)
 
 **Feito:** plano conferido por código antes de criar etapas (`plan-scope-check.ts`), plano impossível → BLOQUEADA com aviso "Dono: analista"; heurística põe cada REQ em 1 etapa. Spec real: de 29 REQ repetidos + 186 pares fora do escopo (T8b dizia "válido") para **6 erros, bloqueado sem gastar**; P1–P4 válidos. tsc 0; vitest 126/840. Decisões D1–D6 em `DECISOES-AUTONOMAS-E1.md`; auditoria em `AUDITORIA-E1-autonoma.md`.
