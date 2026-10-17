@@ -1,3 +1,12 @@
+## 17/10/2026 (132) — A3.5 commitado pelo Cursor; auditoria pendente
+
+**Feito (Cursor):** `3ab15cb` — `fix(a3): trilha separa plan_error descartado de Jev fora (A3.5)`, em cima do `942eb66` (diário 131). Ainda **não auditado**.
+**Onde parou:** aguardando a resposta do Cursor colada pelo fundador para a auditoria do A3.5 (escopo 3 arquivos, sem amend, tsc/vitest, testes novos).
+**Próximo passo:** auditar A3.5 → commit `docs(diario): A3.5 auditado…` → liberar A2.0 (`docs/prompts/A2-analista-planeja.md`).
+**Pendências do fundador:** (1) A3 fica em `sombra` até o teste pesado com 0 decisão errada em `FAILURE_ROUTE_WOULD_ACT`? (2) avaliador de etapa = 1 LLM + checagens mecânicas, 2ª opinião só no J3? (3) ordem A2 → AV1?
+
+---
+
 ## 17/10/2026 (131) — Diagnóstico das duas lentes; AV1 no cronograma
 
 **Fundador:** pôr no cronograma "melhorar os avaliadores… estão soltos e sem fazer o trabalho deles"; diagnóstico crítico enquanto o Cursor roda o A3.5.
