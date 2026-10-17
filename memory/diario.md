@@ -1,3 +1,11 @@
+## 16/10/2026 (102) — Mudança 14 reaberta: eu aceitei sem criticar; análise crítica da cascata automática
+
+**Fundador:** "você tem a mania de aceitar só porque veio de mim; eu preciso de um profissional crítico". Correto: registrei a mudança 14 como aprovada sem prós/contras. Reaberta na §5.0 e em `decisoes.md`.
+**Crítica (cascata que o Jev + FreeLLMAPI montam sozinhos, aprendendo da trilha):** (1) sinal de qualidade ruim e circular — o único juiz em produção é o avaliador, que também está na cascata; Nemotron já reprovou certo e o diagnóstico do Jev nunca foi validado; (2) amostra pequena — poucos projetos por semana, ordem vira ruído (bench: ±15% de custo, 100% em tudo); (3) "melhor" depende da tarefa (core × tela × integração) — por papel×área×nível sobra quase nenhum dado; (4) FreeLLMAPI sabe disponibilidade, não qualidade; (5) escolha de modelo pelo Jev não economizou (09/10); (6) "até o pior" em avaliador/analista/elicitador = aprovar errado ou planejar errado; (7) roteamento que muda sozinho torna falha impossível de reproduzir — mesma família dos 7 defeitos de hoje (coisa mudando calada).
+**Recomendação:** cascata **fixa e curta** por papel (2–3 modelos), definida por teste pesado, versionada no YAML, mudada só por decisão registrada com evidência; FreeLLMAPI/NextCode só pulam por queda/cota dentro dela; **piso de qualidade** em papel crítico (acabou a lista → PAUSADA); Jev decide nível por tarefa e o dono da falha; reordenação proposta pelo Jev só depois de dezenas de projetos e com OK humano.
+
+---
+
 ## 16/10/2026 (101) — Mudança 14: cascata de modelos por papel (Jev + FreeLLMAPI)
 
 **Fundador:** "o Jev e o FreeLLMAPI vão montando uma cascata do melhor para o pior, vendo quem pode fazer o quê" (confirma: o papel delegado é a escolha/troca de modelo, não o analista).
