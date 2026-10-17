@@ -1,3 +1,13 @@
+## 16/10/2026 (92) — Teste real: "todos os provedores indisponíveis" (20:59:50) — meia verdade
+
+**Trilha:** etapa 3 (middleware, asaas, validacao) — última resposta do DeepSeek 20:57:49 → `SEM_LLM` 20:59:50 (2 min 01 s depois) → `LLM_VOLTOU` 20:59:53 → etapa 3 recomeçou, tentativas 0/3.
+**Causa:** o executor só pode usar o pago `deepseek-v4-pro` pelo FreeLLMAPI (`somente_pago`); a chamada não-streaming tem limite de 120 s (`gateways.ts:204-205`); o intervalo de 121 s bate com esse limite → resposta longa estourou o tempo → roteador sem alternativa devolve `exhausted` (`smart-router.ts:1309`) → `noLlmAvailable` → pausa com a mensagem "todos os provedores indisponíveis". O supervisor viu o FreeLLMAPI de pé 3 s depois e retomou. Não houve queda geral; a mensagem engana. (Timeout × queda não fica na trilha — só no console; conclusão pelo tempo.)
+**Custo:** a etapa 3 recomeça do zero (~US$ 0,04 e ~3 min perdidos). Até aqui: executor US$ 0,32, avaliador 0 (Nemotron), Jev ~0,001.
+**Outros sinais:** etapa 1 — 3 `EXECUTOR_REPORT_INVALID` (vários `arquivo:linha` num REQ, falha da skill já no S3); Nemotron reprovou a 1ª tentativa e o Jev diagnosticou `evaluator_error` 0,98 — a tentativa foi gasta mesmo assim.
+**Proposta (não mexer durante o teste):** registrar tipo da falha (timeout × rede) na trilha; mensagem distinguir "demorou demais" de "fora do ar"; limite maior ou streaming para o nível pesado.
+
+---
+
 ## 16/10/2026 (91) — Teste real aprovado (20:45); "não está paralelo?" — diagnóstico
 
 **Trilha:** `SPEC_REVISAO→PLANEJAMENTO` 20:45:42, `→EXECUCAO` 20:45:47; 17 nós (scaffold + 16 etapas); base pronta 20:47:54; etapa 1 nível `pesado` (Jev).
