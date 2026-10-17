@@ -462,10 +462,227 @@ Mesmo procedimento A3.3: `C:\Users\ortiz\AppData\Local\Temp\nc-a3-replay-failure
 
 ### Commit
 
-_(sem hash neste commit — regra do fundador.)_
+**`a2508ed`** — `fix(a3): plan_error so mecanico; replay refeito (A3.3b)`
 
 ### O que não foi feito
 
-A3.4 — aguardando OK do fundador.
+A3.4 — seção final abaixo.
+
+---
+
+## A3.4 — Relatório final (§8.4)
+
+### 1. Identificação
+
+Pacote **A3** (mudança 16). Hash de partida do A3: **`9193175`**. Intervalo implementado até **`647bfc6`** (HEAD do A3.3b auditado).
+
+```
+git log --oneline 9193175..647bfc6
+```
+
+| hash | implementador / auditor | assunto |
+|------|-------------------------|---------|
+| 647bfc6 | auditor | docs(diario): A3.3b auditado e aceito (125) |
+| a2508ed | implementador | fix(a3): plan_error so mecanico; replay refeito (A3.3b) |
+| 1529acf | auditor | docs(diario): A3.3 auditado, porta falhou no ctrl-2 (124) |
+| 1f226ef | implementador | test(a3): replay do diagnostico com trilha real e controles (A3.3) |
+| 0797e05 | auditor | docs(diario): A3.2b aceito; registro de 3 amends proibidos (123) |
+| 404f09a | implementador | fix(a3): dono no incidente so em ativo (A3.2b) |
+| 6c9aaff | auditor | docs(diario): A3.2 auditado, vazamento do modo sombra (122) |
+| 8526e18 | implementador | feat(a3): falha roteada ao dono em sombra (A3.2) |
+| e877dac | auditor | docs: A3.1b aceito; desligar memoria aprovado (121) |
+| e27fa6e | auditor | docs: recomendacao desligar memoria do projeto (120) |
+| 28e476e | implementador | docs(relatorio): A3.1b hash no relatorio |
+| 1b659c4 | implementador | fix(a3): pre-checagem exige arquivo fora do escopo citado no motivo (A3.1b) |
+| 8b80512 | auditor | docs: mudanca 20 volta a proposta… (119) |
+| be34a4a | auditor | docs: A3.1 auditado (2 falsos positivos)… (118) |
+| 66dcac6 | implementador | docs(relatorio): A3.1 hash e git show no relatorio |
+| 5f8fbf5 | implementador | feat(jev): plan_error mecanico… (A3.1) |
+| d18f0b3 | auditor | docs: cache e conferencia… (117) |
+| 19a4ffe | auditor | docs(diario): modelos Claude… (116) |
+| 4988ecb | auditor | docs: A3.0 auditado… (115) |
+| 8135733 | implementador | docs(relatorio): A3.0 inventario… |
+| ab07526 | auditor | docs: analise deep-research… (114) |
+| e8a1736 | auditor | docs: mudanca 19 aprovada; prompt A3… (113) |
+
+### 2. Por commit do implementador
+
+| hash | passo | git show --stat | tsc | vitest |
+|------|-------|-----------------|-----|--------|
+| 8135733 | A3.0 | `docs/relatorios/A3-falha-roteada-ao-dono.md \| 107 +` | seção A3.0: exit 0 | 124 / 804 (seção A3.0) |
+| 5f8fbf5 | A3.1 | `jev-execution-checks.ts +195`, `a3-failure-routing.test.ts +209`, … **439 +14−** | seção A3.1: exit 0 | 125 / 810 (seção A3.1) |
+| 66dcac6 | A3.1 doc | `relatorio \| 9 +1−` | não colado no passo | não colado no passo |
+| 1b659c4 | A3.1b | `jev-execution-checks.ts`, `a3-failure-routing.test.ts +60` **117 +6−** | seção A3.1b: exit 0 | 125 / 814 (seção A3.1b) |
+| 28e476e | A3.1b doc | `relatorio \| 8 +1−` | não colado no passo | não colado no passo |
+| 8526e18 | A3.2 | 8 arquivos **418 +3−** (policy, yaml, jev-execution-checks, incident-reporter, node-executor, tests, harness) | seção A3.2: exit 0 | 125 / 826 (seção A3.2) |
+| 404f09a | A3.2b | `node-executor.ts`, `a3-failure-routing.test.ts +251`, relatorio **329 +2−** | seção A3.2b: exit 0 | 125 / 828 (seção A3.2b) |
+| 1f226ef | A3.3 | `scripts/replay-failure-diagnosis.ts +475`, relatorio **551 +1−** | seção A3.3: exit 0 | 125 / 828 (seção A3.3) |
+| a2508ed | A3.3b | 4 arquivos **157 +63−** | seção A3.3b: exit 0 | 125 / 830 (seção A3.3b) |
+
+### 3. Testes novos (`tests/decision/a3-failure-routing.test.ts`)
+
+| arquivo › teste | o que prova |
+|-----------------|-------------|
+| a3-failure-routing.test.ts › a) etapa 3 real… | `plan_error` mecânico; Jev não chamado |
+| › b) etapa 1 real… | `vitest.config.ts` → `plan_error` mecânico |
+| › c) motivo cita arquivo… | critério não cita → Jev chamado |
+| › d) lib/x.ts × src/lib/x.ts | não dispara mecânico |
+| › e) motivo 50k chars | estado ≤ 8000; escopo intacto |
+| › f) as **6 opções**… | critérios ao Jev (**5 chaves**, sem `plan_error` após A3.3b) — **ressalva diário 125:** título diz "6 opções" |
+| › 7) route.ts no critério, motivo só soma.ts | mecânico null |
+| › 8) page.tsx × homepage.tsx | `pathInStageScope` false |
+| › 9) route.ts genérico | mecânico null |
+| › 10) casos reais etapa 3 e 1 | continuam `plan_error` mecânico |
+| › exporta GENERIC_FILE_NAMES | export presente |
+| › relatório sem dono | byte-a-byte sem linha Dono |
+| › relatório com dono | linha `**Dono:**` |
+| › sombra %s (it.each ×6) | sombra = desligado + `emitWouldAct` |
+| › ativo plan_error | blocked; não incrementa tentativa |
+| › ativo evaluator_error | 1ª free retry; 2ª como wrong_code |
+| › mecânica plan_error abaixo limiar | roteamento sombra aplica |
+| › A3.2b sombra ambiguous_spec | sem Dono no chat; trilha `FAILURE_ROUTE_WOULD_ACT` |
+| › A3.2b ativo ambiguous_spec | Dono elicitador / fundador |
+| › critérios sem plan_error (5) | `JEV_FAILURE_CAUSE_CRITERIA` no batch |
+| › resposta plan_error mock → null | Jev não pode impor plano |
+
+**Fora de `a3-failure-routing.test.ts` (A3):** `tests/harness/orchestration-policy-and-skills.test.ts` (+3 linhas `roteamentoFalha: "sombra"`) — seção A3.2 desvio.
+
+### 4. Evidência de nomes (`git grep -n`, 1ª definição)
+
+| nome | saída |
+|------|--------|
+| JevFailureCause | `src/core/decision/jev-execution-checks.ts:7` |
+| FAILURE_CAUSE_CRITERIA | `src/core/decision/jev-execution-checks.ts:23` |
+| JEV_FAILURE_CAUSE_CRITERIA | `src/core/decision/jev-execution-checks.ts:38` |
+| detectPlanErrorMechanically | `src/core/decision/jev-execution-checks.ts:118` |
+| buildFailureDiagnosisStateJson | `src/core/decision/jev-execution-checks.ts:161` |
+| diagnoseStageFailureWithJev | `src/core/decision/jev-execution-checks.ts:338` |
+| pathInStageScope | `src/core/decision/jev-execution-checks.ts:85` |
+| GENERIC_FILE_NAMES | `src/core/decision/jev-execution-checks.ts:95` |
+| FAILURE_ROUTE_DONO | `src/core/decision/jev-execution-checks.ts:209` |
+| roteamentoFalha | `src/core/config/orchestration-policy.ts:113` |
+| roteamento_falha | `config/politicas-orquestracao.yaml:165` |
+| FAILURE_ROUTE_WOULD_ACT | `src/core/orchestrator/node-executor.ts:1659` |
+| failureRouteDono | `src/core/orchestrator/node-executor.ts:1261` |
+
+### 5. Execução real
+
+Não houve execução de projeto: a ação está em **sombra** e a porta do A3 é o replay.
+
+**Escopo total (`git diff --stat 9193175..647bfc6`):** 13 arquivos, **2308 insertions(+), 72 deletions(-)** (inclui docs/diário/prompt além do código A3).
+
+**Testes A3 (`git diff --stat 9193175..647bfc6 -- tests/`):** `a3-failure-routing.test.ts +749`, `orchestration-policy-and-skills.test.ts +3`.
+
+**`prisma/dev.db` mtime (replay passo 1 deste passo):**
+
+- antes: `2026-10-16 21:22:35`
+- depois: `2026-10-16 21:22:35`
+
+**Custo Jev (replay passo 1):** input **2930**, output **324**, US$ **0,00012306** (`estimateJevCostUsd`).
+
+#### Tabela replay (passo 1 — colada da saída)
+
+| caso | motivo (200) | causa antiga | causa nova | fonte | conf. | rótulo | acertou |
+|------|--------------|--------------|------------|-------|-------|--------|---------|
+| task-base-1792197942354-1 / tentativa 1 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-001 e REQ-005 totalmente atendidos. REQ-002: tsconfig.json e next.config.mjs corretos; vitest.config.ts está fora do escopo desta et | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 1 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-032 e REQ-040 exigem arquivos de rota e teste fora do escopo desta etapa (src/app/api/v1/links/route.ts, tests/cobrancas.test.ts), n | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 2 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-009, REQ-013, REQ-015, REQ-016 estão implementados nos 4 arquivos permitidos. REQ-032 exige src/app/api/v1/links/route.ts e REQ-040  | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 3 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-009,013,015,016 implementados nos 4 arquivos da etapa. REQ-032 e REQ-040 exigem arquivos (api/v1/links/route.ts, tests/cobrancas.tes | — | plan_error | mecanica | 1 | plan_error | sim |
+| ctrl-1 | REQ-001: soma retorna a-b em src/lib/soma.ts:3 | — | wrong_code | jev | 0.99 | wrong_code | sim |
+| ctrl-2 | REQ-001: falta o arquivo src/lib/outro.ts | — | evaluator_error | jev | 0.7 | evaluator_error | sim |
+| ctrl-3 | Cannot find module 'zod' — dependência não instalada | — | environment | jev | 1 | environment | sim |
+| ctrl-4 | resposta do executor cortada: nenhum arquivo gerado | — | incomplete_output | jev | 1 | incomplete_output | sim |
+| ctrl-5 | REQ-002 contraditório: pede taxa de 2% e isenção ao mesmo tempo | — | ambiguous_spec | jev | 0.99 | ambiguous_spec | sim |
+
+**Comparação T-J com seção A3.3b:** `causa`, `fonte` e `acertou` idênticos em todas as linhas. Confiança do ctrl-2: **0,7** neste replay vs **0,75** na seção A3.3b (variabilidade do Jev; não entra no critério T-J literal).
+
+#### Ordem invertida (passo 1)
+
+```
+- ctrl-1: normal=wrong_code invertida=wrong_code mudou=não
+- ctrl-2: normal=evaluator_error invertida=evaluator_error mudou=não
+- ctrl-3: normal=environment invertida=environment mudou=não
+- ctrl-4: normal=incomplete_output invertida=incomplete_output mudou=não
+- ctrl-5: normal=ambiguous_spec invertida=ambiguous_spec mudou=não
+```
+
+### 6. Decisões do Jev (replay passo 1)
+
+| grupo | chamadas Jev |
+|-------|----------------|
+| Casos reais (4 tentativas) | **0** (todas `fonte: mecanica`) |
+| Controles sintéticos (diagnóstico normal) | **5** |
+| Controles (ordem invertida) | **5** |
+| **Total HTTP Jev no replay** | **10** |
+
+**Distribuição (normal, só `fonte: jev`):** `wrong_code` 1, `evaluator_error` 1, `environment` 1, `incomplete_output` 1, `ambiguous_spec` 1.
+
+**Confiança média (5 controles, normal):** (0,99 + 0,7 + 1 + 1 + 0,99) / 5 = **0,936**.
+
+**Abaixo de `limiarConfiancaDiagnostico` (0,8):** `src/core/config/orchestration-policy.ts:308` (padrão) — **1** caso (ctrl-2, 0,7).
+
+**Ordem invertida:** nenhuma causa mudou (5/5).
+
+### 7. Desvios do prompt (A3.0–A3.3b)
+
+| desvio | diário |
+|--------|--------|
+| A3.1: 2 falsos positivos na pré-checagem → A3.1b | 118 |
+| A3.1: `GENERIC_FILE_NAMES` export pedido no A3.2, não no A3.1 — **exportado** em A3.2 (`jev-execution-checks.ts:95`) | 121 |
+| A3.2: `orchestration-policy-and-skills.test.ts` fora da lista R1 | 122 |
+| A3.2: vazamento `Dono:` em sombra → A3.2b | 122 |
+| A3.2b: **3× `commit --amend`** proibidos (5b9b173 → 404f09a) | 123 |
+| A3.3: porta falhou ctrl-2; script copiava estado → A3.3b | 124 |
+| A3.3b: commit antes de aprovação na referência/diário | 125 |
+| **A3.4 (este passo):** nenhum |
+
+**Reflog (amends A3.2b):**
+
+```
+404f09a HEAD@{6}: commit (amend): fix(a3): dono no incidente so em ativo (A3.2b)
+efb3b04 HEAD@{7}: commit (amend): fix(a3): dono no incidente so em ativo (A3.2b)
+42ab45a HEAD@{8}: commit (amend): fix(a3): dono no incidente so em ativo (A3.2b)
+5b9b173 HEAD@{9}: commit: fix(a3): dono no incidente so em ativo (A3.2b)
+```
+
+### 8. Checklist travas T-A…T-K (pacote A3)
+
+| trava | cumprida | evidência |
+|-------|----------|-----------|
+| T-A | sim (A3.4) | `git log -1` = docs(prompt): A3.4…; parent 647bfc6; status só 5 linhas permitidas |
+| T-B | sim (A3.4) | só relatório alterado neste passo |
+| T-C | sim | números de seções anteriores + saídas coladas neste passo |
+| T-D | sim | tabela item 4 |
+| T-E | **não** (histórico) | 3 amends no A3.2b (reflog acima); **sim** neste passo A3.4 (commit novo, tsc/vitest abaixo) |
+| T-F | sim | mtime dev.db inalterado; replay em `%TEMP%` |
+| T-G | sim | nenhum segredo colado |
+| T-H | sim | sem pacotes novos no A3 |
+| T-I | sim | `git ls-files --eol docs/relatorios/A3-falha-roteada-ao-dono.md` → LF |
+| T-J | sim | causa/fonte/acertou = A3.3b; custo Jev < US$ 0,01 |
+| T-K | sim (A3.4) | Co-Authored-By no commit deste passo |
+
+### 9. Dúvidas abertas (fundador)
+
+- **(a)** Trocar `roteamento_falha` de **sombra** para **ativo**? Replay: 4/4 reais + 5/5 controles; casos reais de 1 sessão (`934939fc`).
+- **(b)** Quando o Jev devolve `plan_error` inválido → diagnóstico `null` / trilha `available: false` — separar de “Jev fora” num passo futuro? (diário 125)
+- **(c)** Risco residual A3.1b (121): motivo de código errado citando arquivo fora do escopo por extenso pode virar `plan_error` mecânico?
+- **(d)** Corrigir o título do teste **f)** (“6 opções” vs 5)?
+
+### Verificação neste commit (A3.4)
+
+#### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+#### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  830 passed (830)
+   Start at  16:04:28
+   Duration  184.78s
+```
 
 ---
