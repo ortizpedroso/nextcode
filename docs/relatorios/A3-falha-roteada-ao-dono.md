@@ -188,7 +188,14 @@ A3.2 em diante (A3.1 **não aprovado** até A3.1b).
 
 ### Commit
 
-_(preencher após `git commit`)_
+**`1b659c4`** — `fix(a3): pre-checagem exige arquivo fora do escopo citado no motivo (A3.1b)`
+
+```
+ docs/relatorios/A3-falha-roteada-ao-dono.md | 41 +++++++++++++++++++-
+ src/core/decision/jev-execution-checks.ts   | 22 ++++++++---
+ tests/decision/a3-failure-routing.test.ts   | 60 +++++++++++++++++++++++++++++
+ 3 files changed, 117 insertions(+), 6 deletions(-)
+```
 
 ### Desvios
 
