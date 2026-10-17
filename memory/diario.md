@@ -1,3 +1,12 @@
+## 17/10/2026 (127) — A3.4 auditado e aceito; A3 fechado (ação em sombra)
+
+**Conferido:** `7e976b7` — 1 commit, 1 arquivo (relatório, LF), reflog sem amend; seções antigas só com o hash `a2508ed` no A3.3b (2 linhas removidas, ambas permitidas); `prisma/dev.db` intacto (16/10 21:22); nomes da tabela 4 batem com `git grep`; escopo do A3 = 8 arquivos (lista R1 + teste de política aceito no 122). Os 9 itens §8.4 presentes; desvios e o "não" na T-E (amends) registrados. Diário 121 estava errado: `GENERIC_FILE_NAMES` **é** exportada (`jev-execution-checks.ts:95`).
+**Achado novo:** ctrl-2 caiu de 0,75 para **0,70** — abaixo do limiar 0,80; com `ativo` esse caso não agiria (lado seguro, segue o fluxo de hoje). Mostra que a confiança do Jev nesse tipo de caso oscila perto do limiar.
+**Pendências para o fundador (relatório item 9):** (a) `roteamento_falha` → `ativo`? Recomendação: **ainda não** — 4 casos reais de 1 sessão só; ligar depois de mais falhas reais em sombra (B1b/teste pesado) conferidas pelo auditor; (b) separar "Jev respondeu plan_error" de "Jev fora" na trilha; (c) risco residual do A3.1b; (d) título do teste f).
+**Próximo passo:** mudança 20 (desligar memória do projeto, aprovada no 121, executa o auditor) → sequência da mudança 16 (P8 pesquisador).
+
+---
+
 ## 17/10/2026 (126) — Prompt do A3.4 (relatório final)
 
 **Fundador:** "ok, escreva o prompt do A3.4". Prompt `docs/prompts/A3.4-relatorio-final.md`: só o relatório do A3, §8.4 com 9 itens, replay rodado de novo como prova final, desvios do A3.0–A3.3b com o diário que registrou cada um, dúvidas abertas (inclui `roteamento_falha` → `ativo`, que segue em `sombra`). Sem código, sem LLM.
