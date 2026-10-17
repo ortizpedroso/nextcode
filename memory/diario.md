@@ -1,3 +1,12 @@
+## 16/10/2026 (106) — Mudança 15: sem revenda; oficial pago + gratuito no fim
+
+**Fundador:** "sem revenda, só oficial pago e gratuito no fim" — mesma posição que recomendei (entrada 105); conferido antes de registrar.
+**Verificado na trilha:** 470 chamadas pelo FreeLLMAPI; `electronhub` 1 (12/10 20:57, `qwen-2.5-coder-32b`, nível pesado). Lacuna: só os papéis críticos filtram prefixo (`prefixos_rota_paga`); chat/`auto:` não filtram — a regra precisa valer em todo o NextCode.
+**Ação fora do código (fundador):** desligar o provedor `electronhub` no painel do FreeLLMAPI — o dado nem sai.
+**Próximo passo:** documentação oficial dos provedores (Anthropic, DeepSeek, NVIDIA) → perfis → testes pesados com as cascatas só de rotas aceitas.
+
+---
+
 ## 16/10/2026 (105) — Catálogo do FreeLLMAPI: 263 modelos, 136 com chave; sonda de 15
 
 **Feito:** `/v1/models` lido com a config do NextCode (cópia do banco; chave não impressa); sonda de rota em 15 candidatos (8 tokens, custo ~0). Números em `medicoes.md` 16/10 (noite).
