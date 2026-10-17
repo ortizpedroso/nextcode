@@ -8,6 +8,7 @@ import { SkillMiner } from "@/core/telemetry/skill-miner";
 import * as empiricalGateMod from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { executeTaskNode, setExecutorModeForTests } from "@/core/orchestrator/node-executor";
+import os from "os";
 
 describe("AV1.4 — porteiro: tsc do projeto antes do avaliador", () => {
   beforeEach(() => {
@@ -54,7 +55,8 @@ describe("AV1.4 — porteiro: tsc do projeto antes do avaliador", () => {
       failureHistory: null,
       createdAt: new Date(),
       updatedAt: new Date(),
-      session: { id: "sess-av14", canonicalSpec: "# Spec\nA", project: null },
+      // O porteiro só roda com pasta de projeto vinculada (o portão é simulado, nada é escrito nela).
+      session: { id: "sess-av14", canonicalSpec: "# Spec\nA", project: { path: os.tmpdir() } },
     };
     let lastData: any = null;
     vi.spyOn(prisma.taskNode, "updateMany").mockResolvedValue({ count: 1 } as any);

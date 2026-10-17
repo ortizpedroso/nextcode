@@ -167,11 +167,10 @@ describe("Passo 10.4 — Guarda de segredos no código gerado (ativo, fail-close
     const res = await executeTaskNode(task);
     expect(res.finalStatus).toBe("completed");
     expect(fetchSpy).not.toHaveBeenCalled();
-    // AV1.4: 1 chamada do porteiro (checkOnly, antes do avaliador) + 1 promoção depois da aprovação.
+    // AV1.4: sem projeto vinculado o porteiro não roda (D30 revista) — só a promoção depois da aprovação.
     const gateCalls = vi.mocked(empiricalGateMod.promoteWithEmpiricalGate).mock.calls;
-    expect(gateCalls).toHaveLength(2);
-    expect(gateCalls[0][4]).toEqual({ checkOnly: true });
-    expect(gateCalls[1][4]).toBeUndefined();
+    expect(gateCalls).toHaveLength(1);
+    expect(gateCalls[0][4]).toBeUndefined();
   });
 
   it("placeholder → passa sem chamar Jev", async () => {

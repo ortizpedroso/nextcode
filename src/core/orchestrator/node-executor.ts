@@ -1291,7 +1291,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     // "só conferir" (o projeto volta ao estado de antes). Erro novo de tipo/lint reprova a etapa como
     // Tipo 1 — sem gastar o avaliador — e o erro vai ao executor. Antes o tsc só rodava depois da
     // aprovação, e o avaliador aprovava código que não compilava (225 EMPIRICAL_BUILD_FAILED, 03–05/10).
-    if (type1Res.passed && !secretGuardRes.blocked && targetProjectRoot) {
+    // Só com pasta de projeto vinculada: sem ela o caminho cai em process.cwd() (o próprio NextCode) e o
+    // porteiro promoveria arquivos e rodaria o tsc no repositório do harness (sessão sem projeto já não
+    // executa em produção — PJ1, SESSAO_SEM_PROJETO).
+    if (type1Res.passed && !secretGuardRes.blocked && taskDb.session.project?.path) {
       const porteiro = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr, { checkOnly: true });
       TelemetryLogger.log({
         sessionId: taskDb.sessionId,

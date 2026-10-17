@@ -1,3 +1,10 @@
+## 17/10/2026 (147) — AV1.4b: porteiro só com pasta de projeto (D30 revista)
+
+**Achado:** sem projeto, o porteiro promovia no repositório do NextCode e rodava o tsc dele (teste estourou 15 s). **Feito:** porteiro exige pasta de projeto. tsc 0; vitest 129/858.
+**Próximo passo:** SM1 (já implementado, commit seguinte).
+
+---
+
 ## 17/10/2026 (146) — M20: memória do projeto desligada
 
 **Feito:** aprovação não grava `.nextcode/MEMORY.md`; prompts não injetam; módulo mantido. tsc 0; vitest 129/858 (1 instabilidade no "Fila nunca para" na 1ª rodada, passou isolado e na 2ª).

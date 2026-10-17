@@ -162,3 +162,11 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Mudou:** `src/core/orchestrator/execution-trigger.ts` — sem `consolidateMemoryFromSpec` na aprovação (e sem o import); `src/core/project/project-context.ts` — o snapshot não lê `.nextcode/MEMORY.md` e `formatProjectContext` não injeta a seção. `src/core/memory/project-memory.ts` intacto.
 **Testes:** `tests/memory/project-memory.test.ts` — 2 testes invertidos (snapshot não lê / contexto não inclui, com o arquivo ainda no disco; aprovar não grava).
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`. Na 1ª rodada da suíte, 1 falha em `end-to-end-harness-plan.test.ts` › "Item 1 (Fila nunca para)"; isolado passou 2/2 (3,9 s) e a suíte seguinte passou inteira → instável sob carga, sem relação com a M20 (registrar como dívida).
+
+---
+
+## AV1.4b — Porteiro só com pasta de projeto vinculada (correção de D30)
+
+**Achado (durante o SM1):** `tests/decision/jev-failure-diagnosis.test.ts` estourou 15 s — sem projeto, `targetProjectRoot` = `process.cwd()` e o porteiro promovia arquivos no repositório do NextCode e rodava o tsc dele.
+**Mudou:** `src/core/orchestrator/node-executor.ts` — condição do porteiro passa a exigir `taskDb.session.project?.path`. Testes: `av14-porteiro.test.ts` usa projeto em `os.tmpdir()` (portão simulado); `secret-guard.test.ts` volta a esperar 1 chamada do portão (sem projeto, sem porteiro).
+**Verificação (estado do commit, sem o SM1):** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`.
