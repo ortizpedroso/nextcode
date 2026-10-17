@@ -141,7 +141,15 @@ Na sessão A3.0, uma execução registrou **802 passed / 2 failed** (124 arquivo
 
 ### Commit
 
-_(hash abaixo após `git commit`)_
+**`5f8fbf5`** — `feat(jev): plan_error mecanico e estado curto no diagnostico de falha (A3.1)`
+
+```
+ docs/relatorios/A3-falha-roteada-ao-dono.md |  47 +++++++
+ src/core/decision/jev-execution-checks.ts   | 195 ++++++++++++++++++++++++--
+ src/core/orchestrator/node-executor.ts      |   2 +
+ tests/decision/a3-failure-routing.test.ts   | 209 ++++++++++++++++++++++++++++
+ 4 files changed, 439 insertions(+), 14 deletions(-)
+```
 
 ### Desvios A3.0 / A3.1
 
