@@ -1,3 +1,11 @@
+## 16/10/2026 (103) — Mudança 14 decidida: cascata fixa por teste
+
+**Fundador:** "concordo com a cascata fixa por teste", depois da crítica da entrada 102.
+**Registrado:** §5.0 mudança 14 reescrita; `decisoes.md`.
+**Próximo passo:** ler a documentação oficial (Anthropic, DeepSeek, NVIDIA) para o perfil de cada provedor — sem custo; depois os testes pesados que definem a primeira cascata de cada papel.
+
+---
+
 ## 16/10/2026 (102) — Mudança 14 reaberta: eu aceitei sem criticar; análise crítica da cascata automática
 
 **Fundador:** "você tem a mania de aceitar só porque veio de mim; eu preciso de um profissional crítico". Correto: registrei a mudança 14 como aprovada sem prós/contras. Reaberta na §5.0 e em `decisoes.md`.
