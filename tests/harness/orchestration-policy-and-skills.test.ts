@@ -47,6 +47,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     expect(policy.jevExecucao).toEqual({
       diagnosticoFalha: "ativo",
       bloqueioSpecAmbigua: "ativo",
+      roteamentoFalha: "sombra",
       verificacaoEvidencia: "ativo",
       auditoriaEntrega: "sombra",
       conferenciaEntrada: "sombra",
@@ -72,6 +73,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       expect(fallbackPolicy.jevExecucao).toEqual({
         diagnosticoFalha: "ativo",
         bloqueioSpecAmbigua: "ativo",
+        roteamentoFalha: "sombra",
         verificacaoEvidencia: "sombra",
         auditoriaEntrega: "sombra",
         conferenciaEntrada: "desligado",
@@ -113,6 +115,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       expect(customPolicy.jevExecucao).toEqual({
         diagnosticoFalha: "desligado",
         bloqueioSpecAmbigua: "ativo",
+        roteamentoFalha: "sombra",
         verificacaoEvidencia: "desligado",
         auditoriaEntrega: "desligado",
         conferenciaEntrada: "desligado",

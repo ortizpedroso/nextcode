@@ -81,7 +81,7 @@ export function pathInStageScope(arquivosEscopo: string[], arquivo: string): boo
   return false;
 }
 
-const GENERIC_FILE_NAMES = new Set([
+export const GENERIC_FILE_NAMES = new Set([
   "route.ts",
   "route.js",
   "page.tsx",
@@ -193,6 +193,123 @@ function buildFailureDiagnosisStateJson(params: {
   }
 
   return json;
+}
+
+export const FAILURE_ROUTE_DONO: Record<JevFailureCause, string> = {
+  wrong_code: "executor",
+  environment: "ambiente",
+  ambiguous_spec: "elicitador / fundador",
+  plan_error: "analista (erro do plano)",
+  evaluator_error: "avaliador",
+  incomplete_output: "executor",
+};
+
+export function failureRouteApplies(
+  diagnostico: JevFailureDiagnosis | null | undefined,
+  limiarConfiancaDiagnostico: number
+): diagnostico is JevFailureDiagnosis {
+  if (!diagnostico) return false;
+  if (diagnostico.fonte === "mecanica") return true;
+  return typeof diagnostico.confianca === "number" && diagnostico.confianca >= limiarConfiancaDiagnostico;
+}
+
+export function failureRouteAcao(causa: JevFailureCause, priorEvaluatorErrorRoutesInHistory: number): string {
+  switch (causa) {
+    case "plan_error":
+      return "bloquear_sem_tentativa";
+    case "ambiguous_spec":
+      return "bloqueio_spec_ambigua_existente";
+    case "evaluator_error":
+      return priorEvaluatorErrorRoutesInHistory < 1
+        ? "reavaliacao_sem_tentativa"
+        : "comportamento_wrong_code";
+    case "wrong_code":
+    case "incomplete_output":
+      return "comportamento_atual";
+    case "environment":
+      return "comportamento_atual_com_dono";
+    default:
+      return "comportamento_atual";
+  }
+}
+
+export interface FailureRoutePersistenceInput {
+  mode: JevExecutionMode;
+  diagnostico: JevFailureDiagnosis;
+  limiarConfianca: number;
+  priorEvaluatorErrorRoutesInHistory: number;
+  baselineFinalStatus: "failed" | "blocked";
+  baselineWouldIncrementAttempt: boolean;
+}
+
+export interface FailureRoutePersistenceOutput {
+  finalStatus: "failed" | "blocked";
+  incrementAttempt: boolean;
+  emitWouldAct: boolean;
+  dono: string;
+  acao: string;
+  blockedByPlanError: boolean;
+  planErrorSkipAttempt: boolean;
+  evaluatorErrorFreeRetry: boolean;
+}
+
+export function computeFailureRoutePersistence(
+  input: FailureRoutePersistenceInput
+): FailureRoutePersistenceOutput | null {
+  if (!failureRouteApplies(input.diagnostico, input.limiarConfianca)) {
+    return null;
+  }
+
+  const dono = FAILURE_ROUTE_DONO[input.diagnostico.causa];
+  const acao = failureRouteAcao(input.diagnostico.causa, input.priorEvaluatorErrorRoutesInHistory);
+
+  const base: FailureRoutePersistenceOutput = {
+    finalStatus: input.baselineFinalStatus,
+    incrementAttempt: input.baselineWouldIncrementAttempt,
+    emitWouldAct: false,
+    dono,
+    acao,
+    blockedByPlanError: false,
+    planErrorSkipAttempt: false,
+    evaluatorErrorFreeRetry: false,
+  };
+
+  if (input.mode === "desligado") {
+    return base;
+  }
+
+  if (input.mode === "sombra") {
+    return { ...base, emitWouldAct: true };
+  }
+
+  switch (input.diagnostico.causa) {
+    case "plan_error":
+      return {
+        ...base,
+        finalStatus: "blocked",
+        incrementAttempt: false,
+        blockedByPlanError: true,
+        planErrorSkipAttempt: true,
+      };
+    case "ambiguous_spec":
+      return base;
+    case "evaluator_error":
+      if (input.priorEvaluatorErrorRoutesInHistory < 1) {
+        return {
+          ...base,
+          finalStatus: "failed",
+          incrementAttempt: false,
+          evaluatorErrorFreeRetry: true,
+        };
+      }
+      return {
+        ...base,
+        dono: FAILURE_ROUTE_DONO.wrong_code,
+        acao: failureRouteAcao("evaluator_error", input.priorEvaluatorErrorRoutesInHistory),
+      };
+    default:
+      return base;
+  }
 }
 
 export function formatFailureDiagnosisFeedbackLine(

@@ -206,3 +206,43 @@ Nenhum.
 A3.2 — aguardando OK do fundador.
 
 ---
+
+## A3.2 — Roteamento de falha (`roteamentoFalha`, padrão sombra)
+
+### Diff resumido
+
+| Arquivo | Mudança |
+|---------|---------|
+| `src/core/decision/jev-execution-checks.ts:84` | `export const GENERIC_FILE_NAMES` |
+| `src/core/decision/jev-execution-checks.ts:198-312` | `FAILURE_ROUTE_DONO`, `failureRouteApplies`, `failureRouteAcao`, `computeFailureRoutePersistence` |
+| `src/core/config/orchestration-policy.ts:112,301,533-541` | tipo/padrão/leitura `roteamentoFalha` |
+| `config/politicas-orquestracao.yaml` | `roteamento_falha: sombra` |
+| `src/core/orchestrator/node-executor.ts:1255-1259,1624-1675,1690-1720,1783-1790` | roteamento pós-diagnóstico; flags `planErrorSkipAttempt` / `evaluatorErrorFreeRetry` (separadas de `evaluatorOutageFreeRetry`); trilha `FAILURE_ROUTE_WOULD_ACT`; `updatedAttempts` |
+| `src/core/governance/incident-reporter.ts:33,191` | `dono?: string`; linha `**Dono:**` opcional |
+| `tests/decision/a3-failure-routing.test.ts` | +12 testes A3.2 (sombra por causa, ativo plan/evaluator, golden incidente sem dono) |
+
+Produção: YAML e defaults em **`sombra`** — fluxo igual ao anterior; só trilha `FAILURE_ROUTE_WOULD_ACT`. Modo **`ativo`** coberto por testes unitários de `computeFailureRoutePersistence` (não ligado fora de testes).
+
+### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  826 passed (826)
+   Duration  219.69s
+```
+
+### Desvios
+
+- **`tests/harness/orchestration-policy-and-skills.test.ts`** (fora da lista R1 do A3.2): três `expect(policy.jevExecucao).toEqual` atualizados com `roteamentoFalha: "sombra"`. Sem isso, vitest quebra ao carregar `config/politicas-orquestracao.yaml` (item 4). Incluído no mesmo commit por exigência de suite verde.
+
+### Commit
+
+_(preencher após `git commit`)_
+
+---

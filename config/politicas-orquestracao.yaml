@@ -162,6 +162,7 @@ execucao:
 jev_execucao:
   diagnostico_falha: ativo            # ativo | desligado
   bloqueio_spec_ambigua: ativo        # ativo | sombra | desligado
+  roteamento_falha: sombra            # ativo | sombra | desligado
   verificacao_evidencia: ativo        # ativo | sombra | desligado
   auditoria_entrega: sombra          # ativo | sombra | desligado (J2, 13/10: sombra até J3/J4 provarem as perguntas)
   conferencia_entrada: sombra         # ativo | sombra | desligado (P5, 14/10: sombra até medir com Specs reais — Specs no formato antigo seriam recusadas)

@@ -110,6 +110,7 @@ export interface OrchestrationPolicy {
   jevExecucao: {
     diagnosticoFalha: "ativo" | "desligado";
     bloqueioSpecAmbigua: "ativo" | "sombra" | "desligado";
+    roteamentoFalha: "ativo" | "sombra" | "desligado";
     verificacaoEvidencia: "ativo" | "sombra" | "desligado";
     auditoriaEntrega: "ativo" | "sombra" | "desligado";
     conferenciaEntrada: "ativo" | "sombra" | "desligado";
@@ -297,6 +298,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
   jevExecucao: {
     diagnosticoFalha: "ativo",
     bloqueioSpecAmbigua: "ativo",
+    roteamentoFalha: "sombra",
     verificacaoEvidencia: "sombra",
     auditoriaEntrega: "sombra",
     conferenciaEntrada: "desligado",
@@ -528,6 +530,15 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   );
   if (bloqSpecRaw === "ativo" || bloqSpecRaw === "sombra" || bloqSpecRaw === "desligado") {
     policy.jevExecucao.bloqueioSpecAmbigua = bloqSpecRaw;
+  }
+
+  const roteamentoFalhaRaw = extractScalarString(
+    raw,
+    "roteamento_falha",
+    policy.jevExecucao.roteamentoFalha
+  );
+  if (roteamentoFalhaRaw === "ativo" || roteamentoFalhaRaw === "sombra" || roteamentoFalhaRaw === "desligado") {
+    policy.jevExecucao.roteamentoFalha = roteamentoFalhaRaw;
   }
 
   const verifEvidRaw = extractScalarString(

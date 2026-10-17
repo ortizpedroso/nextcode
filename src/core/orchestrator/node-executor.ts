@@ -35,7 +35,9 @@ import { buildErrorSignature } from "@/core/telemetry/error-signature";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { IncidentReporter, FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import {
+  computeFailureRoutePersistence,
   diagnoseStageFailureWithJev,
+  failureRouteApplies,
   formatFailureDiagnosisFeedbackLine,
   verifyStageEvidenceWithJev,
   type JevFailureDiagnosis,
@@ -1253,6 +1255,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let evaluatorOutageStreak = 0;
   let evaluatorOutageFreeRetry = false;
   let blockedByAmbiguousSpec = false;
+  let blockedByPlanError = false;
+  let planErrorSkipAttempt = false;
+  let evaluatorErrorFreeRetry = false;
+  let failureRouteDono: string | undefined;
   let newFailureHistory: string | undefined;
   let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
@@ -1620,6 +1626,57 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           blockedByAmbiguousSpec = true;
         }
       }
+
+      const roteamentoFalha = policy.jevExecucao.roteamentoFalha;
+      if (
+        jevDiagnostico &&
+        roteamentoFalha !== "desligado" &&
+        failureRouteApplies(jevDiagnostico, policy.jevExecucao.limiarConfiancaDiagnostico)
+      ) {
+        const priorEvaluatorErrorRoutes = prevHistory.filter(
+          (h) => h.diagnostico?.causa === "evaluator_error"
+        ).length;
+        const baselineWouldIncrementAttempt =
+          (finalStatus === "failed" || finalStatus === "blocked") &&
+          !evaluatorOutageFreeRetry &&
+          !blockedByAmbiguousSpec &&
+          !planErrorSkipAttempt &&
+          !evaluatorErrorFreeRetry;
+
+        const route = computeFailureRoutePersistence({
+          mode: roteamentoFalha,
+          diagnostico: jevDiagnostico,
+          limiarConfianca: policy.jevExecucao.limiarConfiancaDiagnostico,
+          priorEvaluatorErrorRoutesInHistory: priorEvaluatorErrorRoutes,
+          baselineFinalStatus: finalStatus === "blocked" ? "blocked" : "failed",
+          baselineWouldIncrementAttempt,
+        });
+
+        if (route) {
+          failureRouteDono = route.dono;
+          if (route.emitWouldAct) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "FAILURE_ROUTE_WOULD_ACT",
+              details: {
+                nodeId: taskDb.id,
+                tentativa: newAttempts,
+                causa: jevDiagnostico.causa,
+                fonte: jevDiagnostico.fonte ?? "jev",
+                confianca: jevDiagnostico.confianca,
+                acao: route.acao,
+                dono: route.dono,
+              },
+            });
+          }
+          if (roteamentoFalha === "ativo") {
+            finalStatus = route.finalStatus;
+            if (route.blockedByPlanError) blockedByPlanError = true;
+            if (route.planErrorSkipAttempt) planErrorSkipAttempt = true;
+            if (route.evaluatorErrorFreeRetry) evaluatorErrorFreeRetry = true;
+          }
+        }
+      }
     }
 
     let incidentReportMarkdown: string | undefined;
@@ -1633,14 +1690,22 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       });
       if (finalStatus === "blocked") {
         const history: FailureAttemptRecord[] = JSON.parse(newFailureHistory);
+        const planErrorScopeHint =
+          blockedByPlanError && jevDiagnostico?.foraDoEscopo?.length
+            ? `Erro do plano — arquivos fora do escopo desta etapa: ${jevDiagnostico.foraDoEscopo
+                .map((f) => `${f.req} → ${f.arquivo}`)
+                .join("; ")}. Ajuste a Spec Canônica ou o microbrief e depois clique em "Desbloquear / Re-tentar Etapa".`
+            : undefined;
         incidentReportMarkdown = IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, history, {
           maxAttempts,
+          ...(failureRouteDono ? { dono: failureRouteDono } : {}),
           ...(blockedByAmbiguousSpec
             ? {
                 unblockHint:
                   'Ajuste a Spec Canônica para eliminar a ambiguidade apontada no diagnóstico Jev e depois clique em "Desbloquear / Re-tentar Etapa" no painel da DAG.',
               }
             : {}),
+          ...(planErrorScopeHint ? { unblockHint: planErrorScopeHint } : {}),
         });
         if (blockedByAmbiguousSpec) {
           await prisma.message.create({
@@ -1648,6 +1713,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
               sessionId: taskDb.sessionId,
               role: "assistant",
               content: `🛑 **Etapa "${taskDb.title}" bloqueada por especificação ambígua (Jev) — ajuste a Spec Canônica antes de re-tentar.**\n\n${incidentReportMarkdown}`,
+            },
+          });
+        } else if (blockedByPlanError) {
+          await prisma.message.create({
+            data: {
+              sessionId: taskDb.sessionId,
+              role: "assistant",
+              content: `🛑 **Etapa "${taskDb.title}" bloqueada por erro do plano (escopo da etapa) — ajuste a Spec antes de re-tentar.**\n\n${incidentReportMarkdown}`,
             },
           });
         }
@@ -1711,7 +1784,9 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   const updatedAttempts =
     (finalStatus === "failed" || finalStatus === "blocked") &&
     !evaluatorOutageFreeRetry &&
-    !blockedByAmbiguousSpec
+    !blockedByAmbiguousSpec &&
+    !planErrorSkipAttempt &&
+    !evaluatorErrorFreeRetry
       ? newAttempts
       : taskDb.attempts;
 

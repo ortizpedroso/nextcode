@@ -1,11 +1,44 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  computeFailureRoutePersistence,
   detectPlanErrorMechanically,
   diagnoseStageFailureWithJev,
   FAILURE_CAUSE_CRITERIA,
+  FAILURE_ROUTE_DONO,
+  GENERIC_FILE_NAMES,
   pathInStageScope,
+  type JevFailureCause,
 } from "@/core/decision/jev-execution-checks";
+import { IncidentReporter, type FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import * as jevMod from "@/core/decision/jev";
+
+const BASELINE_ATTEMPT: FailureAttemptRecord = {
+  attemptNumber: 2,
+  rejectionReason: "Verificação empírica falhou — promoção desfeita: src/a.ts(1,1): error TS2322",
+  filesScope: ["src/a.ts"],
+  timestamp: "2026-10-03T00:00:00.000Z",
+};
+
+function persistenceForCause(
+  causa: JevFailureCause,
+  mode: "ativo" | "sombra" | "desligado",
+  extra?: Partial<Parameters<typeof computeFailureRoutePersistence>[0]>
+) {
+  return computeFailureRoutePersistence({
+    mode,
+    diagnostico: {
+      causa,
+      confianca: 0.9,
+      probabilidades: { [causa]: 0.9 },
+      fonte: "jev",
+    },
+    limiarConfianca: 0.8,
+    priorEvaluatorErrorRoutesInHistory: 0,
+    baselineFinalStatus: "failed",
+    baselineWouldIncrementAttempt: true,
+    ...extra,
+  });
+}
 
 describe("A3.1 — plan_error mecânico e estado curto do diagnóstico", () => {
   beforeEach(() => {
@@ -265,5 +298,138 @@ describe("A3.1 — plan_error mecânico e estado curto do diagnóstico", () => {
         motivoRejeicao: "REQ-002: vitest.config.ts não está no files_scope desta etapa.",
       })?.causa
     ).toBe("plan_error");
+  });
+});
+
+describe("A3.2 — roteamento de falha (sombra / ativo) e incidente", () => {
+  it("exporta GENERIC_FILE_NAMES para uso em testes e políticas", () => {
+    expect(GENERIC_FILE_NAMES.has("page.tsx")).toBe(true);
+    expect(GENERIC_FILE_NAMES.has("vitest.config.ts")).toBe(false);
+  });
+
+  it("relatório de incidente sem dono permanece idêntico ao formato anterior", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00.000Z"));
+    const history = [BASELINE_ATTEMPT];
+    const golden = `# Relatório de Incidente de Evolução (Política D-RANHO - Trava T6)
+
+> **Severidade:** ALTA — ciclo de tentativas automáticas esgotado (${history.length}/3)
+> **Tarefa:** \`N-golden\` — API
+> **Cluster Afetado:** \`backend\`
+> **Data de Registro:** 2026-10-03T12:00:00.000Z
+
+---
+
+## 1. Causa principal
+**Type-check real do projeto reprovado (promoção desfeita)**
+
+As tentativas falharam por causas diferentes: Type-check real do projeto reprovado (promoção desfeita).
+
+**Último erro (tentativa 2):**
+\`\`\`text
+Verificação empírica falhou — promoção desfeita: src/a.ts(1,1): error TS2322
+\`\`\`
+
+## 2. O que você precisa fazer
+O código passou nas auditorias isoladas, mas quebra o build do projeto mesclado. Abra os arquivos citados nos erros \`TS\` abaixo — normalmente é uma assinatura/export que o resto do projeto espera e o código gerado mudou. Corrija a interface esperada na Spec ou ajuste o arquivo manualmente.
+
+- **Arquivos envolvidos:** \`src/a.ts\`
+- **Para liberar:** depois de ajustar, clique em "Desbloquear / Re-tentar Etapa" no painel da DAG — um novo ciclo de tentativas começa do zero.
+
+## 3. Histórico das tentativas rejeitadas
+
+### Tentativa 2 — Type-check real do projeto reprovado (promoção desfeita)
+- **Data/Hora:** 2026-10-03T00:00:00.000Z
+- **Escopo:** \`src/a.ts\`
+- **Motivo:** Verificação empírica falhou — promoção desfeita: src/a.ts(1,1): error TS2322
+
+## 4. Estado do grafo (DAG)
+- Esta etapa está \`blocked\` e não será executada de novo automaticamente (nem pelo botão "Executar nó").
+- Etapas que não dependem dela seguem executando normalmente.
+`;
+    const report = IncidentReporter.generateIncidentReport("N-golden", "API", "backend", history, {
+      maxAttempts: 3,
+    });
+    expect(report).toBe(golden);
+    vi.useRealTimers();
+  });
+
+  it("relatório com dono inclui linha Dono", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-03T12:00:00.000Z"));
+    const report = IncidentReporter.generateIncidentReport("N1", "API", "backend", [BASELINE_ATTEMPT], {
+      maxAttempts: 3,
+      dono: "analista (erro do plano)",
+    });
+    expect(report).toContain("**Dono:** analista (erro do plano)");
+    vi.useRealTimers();
+  });
+
+  const causes: JevFailureCause[] = [
+    "plan_error",
+    "ambiguous_spec",
+    "evaluator_error",
+    "wrong_code",
+    "incomplete_output",
+    "environment",
+  ];
+
+  it.each(causes)("sombra %s: persistência igual a desligado + emitWouldAct", (causa) => {
+    const desligado = persistenceForCause(causa, "desligado")!;
+    const sombra = persistenceForCause(causa, "sombra")!;
+    expect(sombra.finalStatus).toBe(desligado.finalStatus);
+    expect(sombra.incrementAttempt).toBe(desligado.incrementAttempt);
+    expect(sombra.planErrorSkipAttempt).toBe(desligado.planErrorSkipAttempt);
+    expect(sombra.evaluatorErrorFreeRetry).toBe(desligado.evaluatorErrorFreeRetry);
+    expect(sombra.blockedByPlanError).toBe(desligado.blockedByPlanError);
+    expect(sombra.emitWouldAct).toBe(true);
+    expect(sombra.dono).toBe(FAILURE_ROUTE_DONO[causa]);
+  });
+
+  it("ativo plan_error: blocked, não incrementa tentativa", () => {
+    const route = persistenceForCause("plan_error", "ativo", {
+      diagnostico: {
+        causa: "plan_error",
+        confianca: 1,
+        probabilidades: { plan_error: 1 },
+        fonte: "mecanica",
+        foraDoEscopo: [{ req: "REQ-032", arquivo: "src/app/api/v1/links/route.ts" }],
+      },
+    })!;
+    expect(route.finalStatus).toBe("blocked");
+    expect(route.planErrorSkipAttempt).toBe(true);
+    expect(route.incrementAttempt).toBe(false);
+    expect(route.dono).toBe("analista (erro do plano)");
+  });
+
+  it("ativo evaluator_error: 1ª vez reavaliação sem tentativa; 2ª como wrong_code", () => {
+    const first = persistenceForCause("evaluator_error", "ativo")!;
+    expect(first.evaluatorErrorFreeRetry).toBe(true);
+    expect(first.finalStatus).toBe("failed");
+    expect(first.incrementAttempt).toBe(false);
+
+    const second = persistenceForCause("evaluator_error", "ativo", {
+      priorEvaluatorErrorRoutesInHistory: 1,
+    })!;
+    expect(second.evaluatorErrorFreeRetry).toBe(false);
+    expect(second.dono).toBe(FAILURE_ROUTE_DONO.wrong_code);
+    expect(second.acao).toBe("comportamento_wrong_code");
+  });
+
+  it("mecânica plan_error aplica roteamento mesmo abaixo do limiar Jev", () => {
+    const route = computeFailureRoutePersistence({
+      mode: "sombra",
+      diagnostico: {
+        causa: "plan_error",
+        confianca: 0.2,
+        probabilidades: { plan_error: 1 },
+        fonte: "mecanica",
+      },
+      limiarConfianca: 0.8,
+      priorEvaluatorErrorRoutesInHistory: 0,
+      baselineFinalStatus: "failed",
+      baselineWouldIncrementAttempt: true,
+    });
+    expect(route?.emitWouldAct).toBe(true);
   });
 });

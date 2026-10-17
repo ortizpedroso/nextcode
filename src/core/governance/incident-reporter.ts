@@ -30,6 +30,8 @@ export interface IncidentReportOptions {
   blockedDependents?: string[];
   /** Onde o humano libera o nó (DAG: botão do painel; chat: reenviar o pedido). */
   unblockHint?: string;
+  /** Dono roteado pela política A3 (opcional). */
+  dono?: string;
 }
 
 export interface FailureCategory {
@@ -188,7 +190,7 @@ export class IncidentReporter {
 ---
 
 ## 1. Causa principal
-**${lastCategory.label}**
+${options.dono ? `**Dono:** ${options.dono}\n\n` : ""}**${lastCategory.label}**
 
 ${persistenceNote}
 
