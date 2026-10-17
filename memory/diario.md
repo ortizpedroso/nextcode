@@ -1,3 +1,12 @@
+## 17/10/2026 (113) — Mudança 19 aprovada; prompt A3 fechado (cirúrgico) — início da implementação
+
+**Fundador:** "concordo com a 19"; "antes de continuar o estudo vamos implementar o que já temos… seja cirúrgico".
+**Feito:** 19 aprovada (E5, depois de A1/A2). Prompt `docs/prompts/A3-falha-roteada-ao-dono.md` reescrito: lista fechada de 7 arquivos; textos exatos dos critérios; pré-checagem mecânica (critério do REQ cita arquivo fora do escopo + motivo cita o REQ/arquivo); estado ≤ 8 mil; tabela de ação por causa em `sombra`; parada ao fim de cada passo; replay com os 4 casos reais (trilha: só 2 etapas guardam `failureHistory`, todas erro do plano — etapa 1 `vitest.config.ts`, etapa 3 REQ-032/040) + 5 controles sintéticos rotulados.
+**Foco macro:** A3 → A1 → A2 → P8 → B1b → J3 → J4 → E5 (testador).
+**Próximo passo:** fundador cola o A3.0 no Cursor; auditor confere o inventário.
+
+---
+
 ## 17/10/2026 (112) — Proposta 19 revisada: skill `testador` sobre o contrato da Spec
 
 **Fundador:** skill que monta testes em cima do contrato da Spec; "não podemos economizar na Spec".
