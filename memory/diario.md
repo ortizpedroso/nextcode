@@ -1,3 +1,13 @@
+## 16/10/2026 (94) — Diagnóstico macro: o elo Spec → plano não tem contrato; o analista nunca planejou
+
+**Fundador:** pensar macro, sem remendos; melhorar elicitador e analista; implementar o pesquisador.
+**Achado central:** o analista LLM existe no código (`decomposeWithAnalistaSkill`, `spec-decomposer.ts:317`, chamado em `execution-trigger.ts:384`) mas a chamada tem `AbortSignal.timeout(5000)` e `maxTokens: 4096` (≈370-381) — 5 s para planejar 59 arquivos; sem JSON na resposta ele volta calado para a heurística (`return baseDecomp`, sem registro nesse caminho). Cópia do `dev.db`: **0** `ANALISTA_PLAN_APPROVED`/`ANALISTA_PLAN_FALLBACK` em todo o banco. Quem planeja de verdade é a heurística por texto (`assignReqsForGroup`). No teste real também: `CONFERENCIA_ENTRADA ok:false` em sombra (ignorada) e `JEV_STATE_TOO_LARGE` no M3 (62.553 > 24.000).
+**Padrão dos 7 defeitos do dia:** auto-heal (ponto no nome), guarda cumulativa (regex de remoção), 2ª chamada escondida, timeout virando "sem provedor", REQ por menção de arquivo, analista que cai calado, sombra ignorada — todos são **heurística de texto agindo calada no lugar de contrato explícito + papel certo + validação que bloqueia**.
+**Solução macro (3 princípios):** (1) contrato estruturado — cada REQ da Spec declara `arquivos` (quem implementa) e `usa` (contratos que consome); elicitador produz, código valida; (2) cada papel faz o seu — analista LLM de verdade planeja (REQ→etapa, dependências por contrato, paralelismo), validação mecânica T8b bloqueia e devolve a lista ao analista; a heurística só como reserva registrada; pesquisador alimenta o elicitador com fonte oficial; (3) nada muda calado e falha vai para quem a causou (diagnóstico do Jev: plano → analista; Spec → elicitador; código → executor; avaliador → outro avaliador).
+**Proposta de ordem:** A1 contrato na Spec (skill elicitador + formato + SM1) → A2 analista real (+ PL1 absorvido) → A3 falha roteada ao dono (J2b ampliado) → P8 pesquisador → B1b → J3 → J4. Aguarda OK; nada alterado.
+
+---
+
 ## 16/10/2026 (93) — Teste real BLOQUEADO na etapa 3: erro de planejamento (decompositor), não do executor nem do avaliador
 
 **Relatório T6 colado pelo fundador:** etapa 3 (middleware, asaas, validacao, cobrancas) reprovada 3/3: "REQ-009,013,015,016 implementados… REQ-032 e REQ-040 exigem arquivos fora do escopo". Jev diagnosticou `evaluator_error` 85–87%.
