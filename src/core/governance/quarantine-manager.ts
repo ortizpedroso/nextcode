@@ -404,6 +404,11 @@ export class QuarantineManager {
     return snapshot.map((e) => e.destPath);
   }
 
+  /** AV1.4: há retrato de promoção (o porteiro conferiu e desfez; a quarentena já foi limpa). */
+  public hasPromotionSnapshot(taskId: string): boolean {
+    return (this.promotionSnapshots.get(taskId) || []).length > 0;
+  }
+
   /** Caminhos relativos ao projeto efetivamente copiados na última promoção da tarefa. */
   public lastPromotedFiles(taskId: string): string[] {
     const snapshot = this.promotionSnapshots.get(taskId) || [];

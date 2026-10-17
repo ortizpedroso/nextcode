@@ -1,3 +1,10 @@
+## 17/10/2026 (143) — AV1.4: porteiro (tsc + ESLint) antes do avaliador
+
+**Feito:** portão empírico em modo "só conferir" antes do avaliador; código que não compila é reprovado sem gastar avaliador; promoção real reaplica o retrato e confere de novo. tsc 0; vitest 129/856. Decisões D28–D30.
+**Próximo passo:** AV1.5 (controles com defeito plantado no Sonnet real).
+
+---
+
 ## 17/10/2026 (142) — AV1.3: avaliador com problemas por severidade e evidência conferida
 
 **Feito:** `problemas` (critico/importante/menor) decidem o veredito; citação do avaliador conferida (inventada → descartada); skill `avaliador` reescrita para dizer só o que o código faz. tsc 0; vitest 128/854. Decisões D24–D27.

@@ -97,10 +97,32 @@ export async function promoteWithEmpiricalGate(
   qm: QuarantineManager,
   taskId: string,
   projectRoot: string,
-  filesScope: string[]
+  filesScope: string[],
+  opts: { checkOnly?: boolean } = {}
 ): Promise<EmpiricalGateResult> {
   return withProjectBuildLock(projectRoot, async () => {
-    const promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
+    const result = await runEmpiricalGate(qm, taskId, projectRoot, filesScope);
+    // AV1.4 (porteiro): no modo "só conferir", o projeto volta ao estado de antes mesmo quando passa —
+    // a promoção de verdade só acontece depois da aprovação do avaliador.
+    if (opts.checkOnly && !result.rolledBack) qm.rollbackPromotion(taskId);
+    return result;
+  });
+}
+
+async function runEmpiricalGate(
+  qm: QuarantineManager,
+  taskId: string,
+  projectRoot: string,
+  filesScope: string[]
+): Promise<EmpiricalGateResult> {
+  {
+    let promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
+    // AV1.4: depois do porteiro a quarentena já foi limpa; a promoção real reaplica o mesmo conteúdo
+    // conferido e roda o tsc de novo (outra etapa pode ter mudado o projeto nesse meio-tempo).
+    if (promotedFiles.length === 0 && qm.hasPromotionSnapshot(taskId)) {
+      qm.reapplyPromotion(taskId);
+      promotedFiles = qm.lastPromotedFiles(taskId);
+    }
     let preexistingFailure = false;
 
     // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
@@ -166,5 +188,5 @@ export async function promoteWithEmpiricalGate(
       newErrors: [],
       failedStage: null,
     };
-  });
+  }
 }

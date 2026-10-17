@@ -38,6 +38,7 @@ Você é de outra família de modelo que o executor (trava T4): o seu papel é a
 1. **Escopo (T3):** o executor só escreveu nos arquivos permitidos da etapa.
 2. **Sintaxe e estrutura (Tipo 1):** parser do TypeScript sem erro de sintaxe; arquivos de rota/página com os exports exigidos.
 3. **Segredo (T10):** nenhum segredo no código.
+4. **Porteiro (tsc + ESLint do projeto):** o código desta etapa, mesclado ao projeto, compila (`tsc --noEmit`) e não tem erro novo de ESLint. Não gaste atenção com tipo ou import.
 
 ## 2. O que o harness faz depois de você
 - **A Lente 2 é feita pelo harness, por código:** compara o seu status de cada REQ com o que o executor declarou e confere se o `arquivo:linha` citado por ele existe. Divergência otimista ou citação inventada do executor reprova a etapa.

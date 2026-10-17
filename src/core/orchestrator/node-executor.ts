@@ -1287,6 +1287,33 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       qm.extractionIssues
     );
 
+    // AV1.4 — porteiro: o tsc (e o ESLint) do projeto mesclado rodam ANTES do avaliador, no modo
+    // "só conferir" (o projeto volta ao estado de antes). Erro novo de tipo/lint reprova a etapa como
+    // Tipo 1 — sem gastar o avaliador — e o erro vai ao executor. Antes o tsc só rodava depois da
+    // aprovação, e o avaliador aprovava código que não compilava (225 EMPIRICAL_BUILD_FAILED, 03–05/10).
+    if (type1Res.passed && !secretGuardRes.blocked && targetProjectRoot) {
+      const porteiro = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr, { checkOnly: true });
+      TelemetryLogger.log({
+        sessionId: taskDb.sessionId,
+        action: porteiro.passed ? "PORTEIRO_OK" : "PORTEIRO_REPROVADO",
+        details: {
+          nodeId: taskDb.id,
+          attempt: newAttempts,
+          etapa: porteiro.failedStage,
+          erro: porteiro.failureLine ?? null,
+          errosNovos: (porteiro.newErrors ?? []).slice(0, 10),
+          preexistente: porteiro.preexistingFailure,
+        },
+      });
+      if (!porteiro.passed) {
+        type1Res.passed = false;
+        type1Res.compilationErrors.push(
+          `[PORTEIRO ${empiricalStageLabel(porteiro.failedStage)}] ${porteiro.failureLine ?? "falhou"}` +
+            ((porteiro.newErrors?.length ?? 0) > 1 ? ` (+${porteiro.newErrors.length - 1} erro(s) novo(s))` : "")
+        );
+      }
+    }
+
     let validatedExecutorReport: MicrobriefAndReportDocument | null = null;
     if (type1Res.passed && nodeMicrobrief && nodeMicrobrief.reqsCobertos.length > 0) {
       let reportCheck = extractAndValidateExecutorReport(stepResultText, nodeMicrobrief, codeContentMap);

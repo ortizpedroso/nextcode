@@ -108,3 +108,18 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 128 passed (128)`, `Tests 854 passed (854)`.
 
 **Auditor conferir:** citação inventada → `null` → 2ª chamada → sem resposta válida, `heuristic_fallback` (avaliador fora, não aprova); problema `menor` sem linha não descarta a resposta.
+
+---
+
+## AV1.4 — Porteiro: tsc + ESLint do projeto antes do avaliador
+
+**Mudou:**
+- `src/core/governance/empirical-gate.ts`: `promoteWithEmpiricalGate(..., { checkOnly })` — no modo conferir desfaz a promoção mesmo passando (dentro da mesma trava do projeto); corpo movido para `runEmpiricalGate`; se a quarentena já foi limpa e há retrato, reaplica.
+- `src/core/governance/quarantine-manager.ts`: `hasPromotionSnapshot`.
+- `src/core/orchestrator/node-executor.ts`: porteiro logo depois do Tipo 1 (`PORTEIRO_OK` / `PORTEIRO_REPROVADO` na trilha); reprovado → `type1Res.passed = false` com `[PORTEIRO …]`.
+- `skills/avaliador/SKILL.md`: item 4 do "harness já fez" (agora verdadeiro).
+- Testes: `tests/governance/av14-porteiro.test.ts` (novo, 2); `tests/governance/secret-guard.test.ts`: o portão é chamado 2× (conferir + promover).
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 856 passed (856)`.
+
+**Auditor conferir:** o projeto fica igual ao de antes depois do porteiro (rollback); promoção real roda o tsc de novo; tempo extra por etapa = 1 tsc.
