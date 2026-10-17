@@ -153,67 +153,16 @@ async function main() {
     }
   };
 
-  const { normalizeScopePath } = await import("@/core/governance/dual-lens-auditor");
   const jevChecks = await import("@/core/decision/jev-execution-checks");
   const {
+    buildFailureDiagnosisStateJson,
     detectPlanErrorMechanically,
     diagnoseStageFailureWithJev,
-    extractFilePathsFromCriteriaText,
-    FAILURE_CAUSE_CRITERIA,
+    JEV_FAILURE_CAUSE_CRITERIA,
   } = jevChecks;
   const { askJevBatch, estimateJevCostUsd } = await import("@/core/decision/jev");
   const prismaMod = await import("@/lib/prisma");
   const prisma = prismaMod.default;
-
-  function buildFailureDiagnosisStateJson(params: {
-    etapa: { titulo: string; cluster: string; reqs_cobertos: string[] };
-    arquivosEscopo: string[];
-    criteriosPorReq: Record<string, string>;
-    motivoRejeicao: string;
-    tentativa: number;
-    historicoMotivos: string[];
-    maxChars: number;
-  }): string {
-    const arquivos_escopo = params.arquivosEscopo.map(normalizeScopePath);
-    const reqs_com_arquivos: Record<string, string[]> = {};
-    for (const reqId of params.etapa.reqs_cobertos) {
-      reqs_com_arquivos[reqId] = extractFilePathsFromCriteriaText(params.criteriosPorReq[reqId] ?? "");
-    }
-
-    let motivo = params.motivoRejeicao || "";
-    let historico = params.historicoMotivos.slice(-3).map((m) => m.slice(0, 2000));
-
-    const shrink = (): string => {
-      const stateObj = {
-        etapa: {
-          titulo: params.etapa.titulo,
-          cluster: params.etapa.cluster,
-          reqs_cobertos: params.etapa.reqs_cobertos,
-        },
-        arquivos_escopo,
-        reqs_com_arquivos,
-        motivo_rejeicao: motivo,
-        tentativa: params.tentativa,
-        historico_motivos: historico,
-      };
-      return JSON.stringify(stateObj);
-    };
-
-    let json = shrink();
-    while (json.length > params.maxChars && historico.length > 0) {
-      historico = historico.slice(1);
-      json = shrink();
-    }
-    while (json.length > params.maxChars && motivo.length > 0) {
-      motivo = motivo.slice(0, Math.max(0, motivo.length - 500));
-      json = shrink();
-    }
-    while (json.length > params.maxChars && motivo.length > 200) {
-      motivo = motivo.slice(0, motivo.length - 200);
-      json = shrink();
-    }
-    return json;
-  }
 
   const trailLogs = await prisma.telemetryLog.findMany({
     where: { action: "JEV_FAILURE_DIAGNOSIS" },
@@ -436,10 +385,9 @@ async function main() {
       maxChars: 8000,
     });
 
-    const invertedCriteria = Object.fromEntries(Object.entries(FAILURE_CAUSE_CRITERIA).reverse()) as Record<
-      string,
-      string
-    >;
+    const invertedCriteria = Object.fromEntries(
+      Object.entries(JEV_FAILURE_CAUSE_CRITERIA).reverse()
+    ) as Record<string, string>;
 
     const answers = await askJevBatch({
       purpose: "failure_diagnosis_inverted_order",
@@ -459,7 +407,7 @@ async function main() {
 
     const inv = answers?.failure_cause;
     const causaInvertida =
-      inv && inv.type === "choice" && inv.choice in FAILURE_CAUSE_CRITERIA ? inv.choice : "—";
+      inv && inv.type === "choice" && inv.choice in JEV_FAILURE_CAUSE_CRITERIA ? inv.choice : "—";
     const mudou = causaInvertida !== ref.causaNormal ? "SIM" : "não";
     console.log(
       `- ${ref.caso}: normal=${ref.causaNormal} invertida=${causaInvertida} mudou=${mudou}`

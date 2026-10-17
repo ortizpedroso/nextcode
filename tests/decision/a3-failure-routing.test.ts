@@ -4,6 +4,7 @@ import {
   detectPlanErrorMechanically,
   diagnoseStageFailureWithJev,
   FAILURE_CAUSE_CRITERIA,
+  JEV_FAILURE_CAUSE_CRITERIA,
   FAILURE_ROUTE_DONO,
   GENERIC_FILE_NAMES,
   pathInStageScope,
@@ -225,8 +226,8 @@ describe("A3.1 — plan_error mecânico e estado curto do diagnóstico", () => {
   it("f) as 6 opções de causa chegam ao Jev no criteria", async () => {
     vi.mocked(jevMod.askJevBatch).mockImplementation(async (args) => {
       const q = args.questions.failure_cause;
-      expect(Object.keys(q.criteria).sort()).toEqual(Object.keys(FAILURE_CAUSE_CRITERIA).sort());
-      expect(Object.keys(q.criteria)).toHaveLength(6);
+      expect(Object.keys(q.criteria).sort()).toEqual(Object.keys(JEV_FAILURE_CAUSE_CRITERIA).sort());
+      expect(Object.keys(q.criteria)).toHaveLength(5);
       return {
         failure_cause: {
           type: "choice",
@@ -682,5 +683,67 @@ describe("A3.2b — dono no incidente só em roteamento ativo", () => {
     expect(createdChatMessages).toHaveLength(1);
     const incidentInChat = incidentBodyFromChat(createdChatMessages[0].content);
     expect(incidentInChat).toContain("**Dono:** elicitador / fundador");
+  });
+});
+
+describe("A3.3b — plan_error só mecânico no Jev", () => {
+  beforeEach(() => {
+    vi.spyOn(jevMod, "askJevBatch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("critérios enviados ao Jev não contêm plan_error (5 opções)", async () => {
+    vi.mocked(jevMod.askJevBatch).mockImplementation(async (args) => {
+      const q = args.questions.failure_cause;
+      expect(Object.keys(q.criteria).sort()).toEqual(Object.keys(JEV_FAILURE_CAUSE_CRITERIA).sort());
+      expect(Object.keys(q.criteria)).toHaveLength(5);
+      expect(q.criteria).not.toHaveProperty("plan_error");
+      return {
+        failure_cause: {
+          type: "choice",
+          choice: "wrong_code",
+          confidence: 0.9,
+          probabilities: { wrong_code: 0.9 },
+        },
+      } as any;
+    });
+
+    await diagnoseStageFailureWithJev({
+      nodeId: "node-a3-3b-criteria",
+      etapa: { titulo: "T", cluster: "core", reqs_cobertos: ["REQ-001"] },
+      arquivosEscopo: ["src/lib/soma.ts"],
+      criteriosPorReq: { "REQ-001": "src/lib/soma.ts exporta soma" },
+      motivoRejeicao: "REQ-001: lógica errada em src/lib/soma.ts",
+      tentativa: 1,
+      historicoMotivos: [],
+      modo: "ativo",
+    });
+  });
+
+  it("resposta plan_error do Jev (mock) vira null", async () => {
+    vi.mocked(jevMod.askJevBatch).mockResolvedValue({
+      failure_cause: {
+        type: "choice",
+        choice: "plan_error",
+        confidence: 0.95,
+        probabilities: { plan_error: 0.95 },
+      },
+    } as any);
+
+    const diag = await diagnoseStageFailureWithJev({
+      nodeId: "node-a3-3b-null",
+      etapa: { titulo: "T", cluster: "core", reqs_cobertos: ["REQ-001"] },
+      arquivosEscopo: ["src/lib/soma.ts"],
+      criteriosPorReq: { "REQ-001": "src/lib/soma.ts exporta soma" },
+      motivoRejeicao: "REQ-001: falta o arquivo src/lib/outro.ts",
+      tentativa: 1,
+      historicoMotivos: [],
+      modo: "ativo",
+    });
+
+    expect(diag).toBeNull();
   });
 });

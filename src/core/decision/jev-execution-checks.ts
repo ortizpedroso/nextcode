@@ -35,6 +35,17 @@ export const FAILURE_CAUSE_CRITERIA: Record<JevFailureCause, string> = {
     "the response was cut, empty, or missing files of the stage",
 };
 
+export const JEV_FAILURE_CAUSE_CRITERIA: Record<
+  Exclude<JevFailureCause, "plan_error">,
+  string
+> = {
+  wrong_code: FAILURE_CAUSE_CRITERIA.wrong_code,
+  environment: FAILURE_CAUSE_CRITERIA.environment,
+  ambiguous_spec: FAILURE_CAUSE_CRITERIA.ambiguous_spec,
+  evaluator_error: FAILURE_CAUSE_CRITERIA.evaluator_error,
+  incomplete_output: FAILURE_CAUSE_CRITERIA.incomplete_output,
+};
+
 export const FAILURE_CAUSE_LABELS_PT: Record<JevFailureCause, string> = {
   wrong_code: "código incorreto",
   environment: "ambiente/dependências",
@@ -147,7 +158,7 @@ function buildReqsComArquivos(
   return out;
 }
 
-function buildFailureDiagnosisStateJson(params: {
+export function buildFailureDiagnosisStateJson(params: {
   etapa: { titulo: string; cluster: string; reqs_cobertos: string[] };
   arquivosEscopo: string[];
   criteriosPorReq: Record<string, string>;
@@ -390,7 +401,7 @@ export async function diagnoseStageFailureWithJev(params: {
       type: "choice",
       instructions:
         "Examine `etapa`, `arquivos_escopo`, `reqs_com_arquivos`, `motivo_rejeicao`, `tentativa`, and `historico_motivos`. What is the primary cause of this stage failure?",
-      criteria: FAILURE_CAUSE_CRITERIA,
+      criteria: JEV_FAILURE_CAUSE_CRITERIA,
     },
   };
 
@@ -403,7 +414,7 @@ export async function diagnoseStageFailureWithJev(params: {
   });
 
   const ans = answers?.failure_cause;
-  if (!ans || ans.type !== "choice" || !(ans.choice in FAILURE_CAUSE_CRITERIA)) {
+  if (!ans || ans.type !== "choice" || !(ans.choice in JEV_FAILURE_CAUSE_CRITERIA)) {
     TelemetryLogger.log({
       sessionId: params.sessionId ?? undefined,
       action: "JEV_FAILURE_DIAGNOSIS",

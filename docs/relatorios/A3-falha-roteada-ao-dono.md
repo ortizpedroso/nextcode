@@ -394,6 +394,78 @@ _(hash no commit seguinte ou na resposta do agente — não neste commit.)_
 
 ### O que não foi feito
 
+A3.3b — correção pós-porta (abaixo).
+
+---
+
+## A3.3b — `plan_error` só mecânico; replay refeito
+
+### Motivação
+
+Controle **ctrl-2** (A3.3): o Jev devolveu `plan_error` (0,5) onde o rótulo do auditor é `evaluator_error`; com ordem invertida a causa mudou. Risco acima do limiar 0,80. **Decisão:** `plan_error` deixa de ser opção do Jev; só `detectPlanErrorMechanically` atribui essa causa.
+
+### Código
+
+- `JEV_FAILURE_CAUSE_CRITERIA` (5 chaves, sem `plan_error`) usado em `askJevBatch` e na validação da resposta (`plan_error` do Jev → `null`).
+- `buildFailureDiagnosisStateJson` exportada; replay importa a original (sem cópia no script).
+- Replay invertido usa `JEV_FAILURE_CAUSE_CRITERIA` revertido.
+
+### Cópia do banco / telemetria
+
+Mesmo procedimento A3.3: `C:\Users\ortiz\AppData\Local\Temp\nc-a3-replay-failure-diagnosis\dev.db`, telemetria só em memória.
+
+### Tabela de replay (A3.3b)
+
+| caso | motivo (200 chars) | causa antiga | causa nova | fonte | conf. | rótulo auditor | acertou |
+|------|-------------------|--------------|------------|-------|-------|----------------|---------|
+| task-base-1792197942354-1 / t1 | …vitest.config.ts está fora do escopo desta et | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / t1 | …links/route.ts, tests/cobrancas.test.ts… | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / t2 | …REQ-032 exige src/app/api/v1/links/route.ts… | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / t3 | …api/v1/links/route.ts, tests/cobrancas.tes | — | plan_error | mecanica | 1 | plan_error | sim |
+| ctrl-1 | REQ-001: soma retorna a-b em src/lib/soma.ts:3 | — | wrong_code | jev | 0.99 | wrong_code | sim |
+| ctrl-2 | REQ-001: falta o arquivo src/lib/outro.ts | — | **evaluator_error** | jev | 0.75 | evaluator_error | **sim** |
+| ctrl-3 | Cannot find module 'zod'… | — | environment | jev | 1 | environment | sim |
+| ctrl-4 | resposta do executor cortada… | — | incomplete_output | jev | 1 | incomplete_output | sim |
+| ctrl-5 | REQ-002 contraditório… | — | ambiguous_spec | jev | 0.99 | ambiguous_spec | sim |
+
+**Porta A3.3:** 4/4 reais mecânicos; **5/5** controles; ordem invertida estável nos 5 casos Jev.
+
+### Ordem invertida (A3.3b)
+
+| caso | normal | invertida | mudou? |
+|------|--------|-----------|--------|
+| ctrl-1 | wrong_code | wrong_code | não |
+| ctrl-2 | evaluator_error | evaluator_error | não |
+| ctrl-3 | environment | environment | não |
+| ctrl-4 | incomplete_output | incomplete_output | não |
+| ctrl-5 | ambiguous_spec | ambiguous_spec | não |
+
+### Custo Jev (replay A3.3b)
+
+| input tokens | output tokens | US$ |
+|--------------|---------------|-----|
+| 2930 | 324 | 0,00012306 |
+
+### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  830 passed (830)
+   Duration  424.16s
+```
+
+### Commit
+
+_(sem hash neste commit — regra do fundador.)_
+
+### O que não foi feito
+
 A3.4 — aguardando OK do fundador.
 
 ---
