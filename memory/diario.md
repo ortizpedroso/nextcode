@@ -1,3 +1,13 @@
+## 17/10/2026 (133) — A3.5 auditado e aceito; A3 sem ressalva aberta
+
+**Conferido:** `3ab15cb` — 1 commit, 3 arquivos permitidos, LF, reflog sem amend; código: 15 linhas só dentro do bloco de resposta inválida (`plan_error` do Jev → trilha `available:true, descartado, confianca` e `null`; demais casos iguais); teste f) só com título novo; 2 testes novos. Relatório sem linha removida. Auditor rodou: `tsc` exit 0; `vitest` **125/832** verde.
+**Observação:** o Cursor partiu do `942eb66` (131), não do 130 da T-A — corrida causada pelo auditor, que commitou o 131 enquanto o Cursor trabalhava (aviso dado ao fundador). Sem efeito: arquivos não se cruzam. Lição: não commitar enquanto o implementador roda.
+**A3:** código ✅, ressalvas fechadas; segue em `sombra` (decisão do fundador pendente sobre ligar).
+**Próximo passo:** A2.0 liberado (`docs/prompts/A2-analista-planeja.md`, pré-condição: este commit).
+**Pendências do fundador:** (1) A3 em `sombra` até o teste pesado com 0 decisão errada? (2) avaliador de etapa = 1 LLM + checagens mecânicas, 2ª opinião só no J3? (3) ordem A2 → AV1?
+
+---
+
 ## 17/10/2026 (132) — A3.5 commitado pelo Cursor; auditoria pendente
 
 **Feito (Cursor):** `3ab15cb` — `fix(a3): trilha separa plan_error descartado de Jev fora (A3.5)`, em cima do `942eb66` (diário 131). Ainda **não auditado**.
