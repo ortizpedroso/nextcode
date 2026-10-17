@@ -1,3 +1,13 @@
+## 17/10/2026 (124) — A3.3 auditado: porta não passou (ctrl-2)
+
+**Conferido:** `1f226ef` — 1 commit, 2 arquivos permitidos, reflog sem amend; `prisma/dev.db` intacto (mtime 16/10); cópia em `%TEMP%/nc-a3-replay-failure-diagnosis`; `TelemetryLogger.log` trocado por no-op em memória. Reais 4/4 `plan_error` mecânico ✅. Controles 4/5: **ctrl-2** ("falta o arquivo src/lib/outro.ts", critério não cita) → Jev `plan_error` 0,5; com ordem invertida → `evaluator_error`. Jev em cara-ou-coroa nessa pergunta (indireção: cruzar motivo × `reqs_com_arquivos`, falha conhecida 1.13). Custo Jev US$ 0,00013.
+**Efeito hoje:** nenhum — 0,5 < limiar 0,80, rota não age. **Risco:** com confiança ≥ 0,80, `plan_error` vindo do Jev bloqueia a etapa sem tentativa e sem prova mecânica.
+**Desvio menor:** o script copia `buildFailureDiagnosisStateJson` (não exportada) para a rodada invertida — fere a regra 2 do prompt.
+**Recomendação (aguarda fundador):** A3.3b — `plan_error` só mecânico (sai das opções do Jev); exportar o montador de estado e o script usar o original; refazer o replay.
+**Próximo passo:** decisão do fundador sobre o A3.3b.
+
+---
+
 ## 17/10/2026 (123) — A3.2b: código aceito; violação de regra (3 `--amend`)
 
 **Conferido:** `404f09a` — `failureRouteDono` só em `ativo` (2 linhas); tsc 0; 24/24 no arquivo do A3 (auditor).
