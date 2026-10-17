@@ -1,3 +1,10 @@
+## 17/10/2026 (118) — A3.1 auditado: 2 falsos positivos na pré-checagem; mudança 20 aprovada com tamanho
+
+**Conferido:** `5f8fbf5` + `66dcac6` dentro do R1; tsc 0 e 6/6 testes do A3 rodados pelo auditor. **Defeitos (sonda `scratchpad/a3-falso-positivo.ts`):** (1) critério que só **cita** arquivo que usa o REQ (fora do escopo) + rejeição por código errado → `plan_error` mecânico (falso) — causa: regra "motivo cita o REQ **ou** o arquivo", erro do **prompt do auditor**; (2) `pathInStageScope` compara final sem limite de segmento (`page.tsx` = `homepage.tsx`). Correção A3.1b: motivo tem de citar o próprio arquivo fora do escopo (caminho, ou nome final não genérico); só sufixo com `/`. 802/804: não reproduzido em 3 rodadas.
+**Mudança 20 aprovada:** essenciais nunca cortadas; teto 200 linhas/16.000 bytes; corte avisado (`MEMORY_TRIMMED`/`MEMORY_OVER_BUDGET`).
+
+---
+
 ## 17/10/2026 (117) — Cache + conferência do conjunto na mudança 7; proposta 20 (memória)
 
 **Fundador:** "concordo" com o cache junto da mudança 7; ideias: ponto de memória como o OpenCode; correção só do que está errado, integrada e conferida no conjunto.
