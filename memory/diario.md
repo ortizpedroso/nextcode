@@ -1,3 +1,10 @@
+## 17/10/2026 (120) — Memória do projeto: recomendação desligar agora
+
+**Fundador:** "se ela está errada mude ou tire… me diga o que é melhor para o projeto nesse momento".
+**Recomendação (mudança 20, aguarda OK):** desligar gravação e injeção; manter o módulo e os testes de unidade; não apagar o arquivo do usuário; consertar após o Gate 1. Executar depois do A3, passo separado.
+
+---
+
 ## 17/10/2026 (119) — Correção: mudança 20 não era aprovação; análise da memória do projeto
 
 **Fundador:** "não é para aceitar tudo… eu não pedi para mudar a memória, temos que analisar se vale a pena". Auditor tinha registrado a 20 como aprovada com tamanho novo — erro repetido (memória `push-back-honestly`). Revertido para proposta.
