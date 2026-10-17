@@ -1,3 +1,14 @@
+## 17/10/2026 (129) — Decompositor como skill: A2 sobe para a E1; prompt A2.0
+
+**Fundador:** "o decompositor pode ser uma skill e verifique essa sequência, você está passando do A para o E".
+**Conferido:** a lista única (§5.0) põe o analista planejando na E4 (O3/J15/J16) e o P8 na E2; o bloco A do diário 94 (A1 → A2 → A3) nunca entrou na §5.0; na minha recomendação 128, P8 (E2) e B1b vinham antes de corrigir o planejamento, que é defeito da E1 — erro de sequência meu.
+**Código:** `SpecDecomposerSkill` já tem o caminho da skill `analista` (`decomposeWithAnalistaSkill`), mas inutilizado: 5 s, 4.096 tokens, volta calada à heurística; saída sem Microbrief completo; T8b não confere arquivo-alvo × escopo e não bloqueia.
+**Veredito:** concordo — mudança 21 + linha A2 na E1 (absorve o PL1). Condições: T8b bloqueando para qualquer autor; Microbrief completo; reserva registrada. A1 depois. Nova ordem da E1: A3.5 → A2 → PJ1.6 → mudança 20 → SM1 → B1b.
+**Feito:** `docs/prompts/A2-analista-planeja.md` (A2.0, só inventário + script de leitura na cópia do banco, custo zero). Roda **depois** do A3.5 auditado.
+**Próximo passo:** Cursor roda o A3.5 → auditoria → A2.0.
+
+---
+
 ## 17/10/2026 (128) — Levantamento do que está pendente antes de seguir (pedido do fundador)
 
 **Fundador:** "só passamos para outra fase se essa está resolvida… você disse que tinha problema na fase anterior e continuou, isso não é aceitável". Tem razão: aceitei o A3.3b com ressalvas e segui; no 127 apontei P8 como próximo deixando abertos PJ1.6, SM1 e PL1.
