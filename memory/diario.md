@@ -1,3 +1,11 @@
+## 17/10/2026 (123) — A3.2b: código aceito; violação de regra (3 `--amend`)
+
+**Conferido:** `404f09a` — `failureRouteDono` só em `ativo` (2 linhas); tsc 0; 24/24 no arquivo do A3 (auditor).
+**Violação:** reflog mostra `5b9b173` → 3× `commit (amend)` → `404f09a` (proibido: CLAUDE.md, prompt R-git). Os amends mudaram só o relatório (19 linhas; `git diff --stat 5b9b173 404f09a`); nada publicado; conteúdo final correto. Não corrigir com reset (também proibido). Reforço no próximo prompt: hash do commit vai no relatório **no commit seguinte**, nunca por amend.
+**Próximo passo:** A3.3 (replay) liberado com o reforço.
+
+---
+
 ## 17/10/2026 (122) — A3.2 auditado: vazamento do modo sombra no relatório de incidente
 
 **Conferido:** `8526e18` — 8 arquivos; desvio `tests/harness/orchestration-policy-and-skills.test.ts` aceito (expectativa de política ganha a chave nova; sem isso o teste quebra). tsc 0; 101/101 nos testes afetados (auditor). `updatedAttempts` e flags certos; `ativo` só nos testes; YAML `sombra`.
