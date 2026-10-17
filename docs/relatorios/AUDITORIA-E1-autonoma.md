@@ -145,3 +145,12 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Porta do AV1:** defeito plantado reprovado pelo motivo certo ✅; código correto aprovado ✅; 0 avaliação por mesma família ✅ (cadeia só Claude, executor DeepSeek); 0 aprovação só por gratuito ✅ (sem gratuito na cadeia). Bench P1–P4 sem regressão: **não rodado** (bench completo executa projetos inteiros; fica para o teste pesado, último item do checklist).
 
 **Auditor conferir:** rodar `npx tsx scripts/controles-avaliador-av15.ts 2` (≈ US$ 0,13); o caso 1 tem de aprovar e os 6 outros reprovar.
+
+---
+
+## PJ1.6b — Reabrir projeto só desarquiva e acha a pasta escolhida
+
+**Mudou:** `src/app/api/projects/route.ts` (POST): `requestedResolved` guardado antes do slug; a busca de projeto existente compara com a pasta escolhida e com o caminho final; reabrir faz `update` só de `{ isArchived: false }`.
+**Testes:** `tests/api/projects-open-existing.test.ts` +2 — (a) reabrir com nome/descrição/fixado diferentes mantém os antigos; (b) pasta `…/gateway` aberta com nome "Gateway Pagamentos" → mesmo `id`, `reopened: true`, sem criar `…/gateway/gateway-pagamentos`.
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 129 passed (129)`, `Tests 858 passed (858)`.
+**Não feito:** smoke PJ1.5 na tela (D33).

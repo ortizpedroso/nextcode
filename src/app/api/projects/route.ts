@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
     const trimmedName = name.trim();
     // Resolve o caminho absoluto de forma segura
     const slugName = trimmedName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-    let targetPath = requestedPath ? path.resolve(requestedPath.trim()) : null;
+    const requestedResolved = requestedPath ? path.resolve(String(requestedPath).trim()) : null;
+    let targetPath = requestedResolved;
 
     if (!targetPath) {
       // Se não informado, gera o caminho padrão na pasta raiz de projetos (ex: c:\projetos\nome-do-projeto)
@@ -70,21 +71,22 @@ export async function POST(request: NextRequest) {
       return process.platform === "win32" ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
     };
 
+    // PJ1.6b: reabrir procura o projeto pela pasta ESCOLHIDA (antes de acrescentar o slug) e pelo
+    // caminho final. Antes só pelo final: abrir C:\projetos\gateway com nome "Gateway Pagamentos"
+    // virava C:\projetos\gateway\gateway-pagamentos e duplicava o projeto.
     const existingByPath = await prisma.project.findMany({
       where: { path: { not: null } },
     });
     const reopenedProject = existingByPath.find(
-      (p) => p.path && targetPath && pathsEqual(p.path, targetPath)
+      (p) =>
+        p.path &&
+        ((requestedResolved && pathsEqual(p.path, requestedResolved)) || (targetPath && pathsEqual(p.path, targetPath)))
     );
     if (reopenedProject) {
+      // PJ1.6b: reabrir só desarquiva — nome, descrição e fixado ficam como estavam.
       const project = await prisma.project.update({
         where: { id: reopenedProject.id },
-        data: {
-          isArchived: false,
-          name: trimmedName,
-          ...(description !== undefined ? { description: description || null } : {}),
-          ...(isPinned !== undefined ? { isPinned: Boolean(isPinned) } : {}),
-        },
+        data: { isArchived: false },
         include: {
           sessions: {
             orderBy: { createdAt: "desc" },

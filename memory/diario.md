@@ -1,3 +1,10 @@
+## 17/10/2026 (145) — PJ1.6b: reabrir só desarquiva e acha a pasta escolhida
+
+**Feito:** rota POST de projetos corrigida; +2 testes. tsc 0; vitest 129/858. Smoke na tela pendente (D33).
+**Próximo passo:** M20 (desligar memória do projeto).
+
+---
+
 ## 17/10/2026 (144) — AV1.5: avaliador real passa nos 7 controles com defeito plantado
 
 **Feito:** `scripts/controles-avaliador-av15.ts`; Sonnet 5.5 7/7 pelo motivo certo (correto aprovado; status errado, stub, bug no fim de arquivo grande, validação faltando reprovados; limite e evidência inventada pegos pela parte mecânica). US$ 0,31 nas 3 rodadas. Medições em `medicoes.md`.
