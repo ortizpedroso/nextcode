@@ -1,3 +1,12 @@
+## 17/10/2026 (134) — A2.0 auditado e aceito; desenho do A2.1–A2.3 proposto
+
+**Conferido:** `b2576ce` — 1 commit, 2 arquivos novos (LF), nada existente alterado, reflog sem amend; script lê cópia em `%TEMP%`, sem escrita nem LLM; `prisma/dev.db` mtime igual. Auditor rodou o script: Spec 38.624 caracteres, 43 REQ, 58 arquivos; plano gravado = heurística (`numbersMatch: true`): 16 etapas, **29 REQ em mais de 1 etapa, 186 pares REQ×arquivo fora do escopo**, e mesmo assim `t8bCheck.valid: true`, 0 erros. Linhas citadas conferidas (`execution-trigger.ts:425` cria `TaskNode` sem olhar `t8bCheck`; `tier: heavy` → `deepseek-v4-pro`, YAML 87-90). tsc/vitest do relatório (125/832) = o que o auditor rodou no 133, só scripts/docs mudaram.
+**Achados novos:** (1) T8b é cega ao defeito que bloqueou o teste e não bloqueia na execução (só no intake); (2) o analista LLM, se ligado hoje, seria **DeepSeek** — mesma família do executor; (3) 4.096 tokens/5 s para 43 REQ × 58 arquivos não cabe; (4) o analista recebe só a Spec (sem macrobrief) e não tem ferramentas — para planejar projeto novo não precisa delas.
+**Proposta (aguarda OK):** A2.1 regra mecânica + bloqueio; A2.2 analista Claude atribui, código monta Microbrief; A2.3 replay da Spec real (Opus × Sonnet) + bench. Ressalva: a regra não pode ser "todo arquivo citado no escopo" — critério cita arquivo consumido (ex.: REQ-032 cita `validacao.ts`); certo = escopo próprio ∪ etapas de que depende.
+**Pendências do fundador:** OK do desenho A2; modelo do analista (medir Opus × Sonnet); A3 em sombra até o teste pesado?; avaliador = 1 LLM + mecânico?; ordem A2 → AV1?
+
+---
+
 ## 17/10/2026 (133) — A3.5 auditado e aceito; A3 sem ressalva aberta
 
 **Conferido:** `3ab15cb` — 1 commit, 3 arquivos permitidos, LF, reflog sem amend; código: 15 linhas só dentro do bloco de resposta inválida (`plan_error` do Jev → trilha `available:true, descartado, confianca` e `null`; demais casos iguais); teste f) só com título novo; 2 testes novos. Relatório sem linha removida. Auditor rodou: `tsc` exit 0; `vitest` **125/832** verde.
