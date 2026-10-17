@@ -1,3 +1,12 @@
+## 16/10/2026 (104) — "O Jev faz a análise e chama o modelo": análise crítica
+
+**Fundador:** o Jev analisa a tarefa e chama o modelo.
+**Achado (teste real `934939fc`, payload dos 17 nós):** o Jev **não escolheu nível em nenhuma etapa** — `jevPlan.source = "fallback"` em 16/16 (12 `pesado`, 4 `medio` vindos do Microbrief). Causa: a chamada M3 (`jev-decisions.ts` ≈327) manda `JSON.stringify({microbriefs})` inteiro como estado: 62.553 caracteres > limite 24.000 (`jev.ts:294-302`) → recusada sem chamar. Nos P1–P4 (pequenos) o Jev escolhia; no projeto de porte, nunca.
+**Veredito:** a ideia é certa no "o Jev analisa" e errada no "chama o modelo": o Jev devolve decisão, quem chama é o harness; e ele deve escolher **dentro da cascata fixa** (nível → posição na lista), nunca no catálogo inteiro (voltaria à cascata automática). Prós: barato (~US$ 0,0002/chamada), ~1 s, registrado com confiança, já integrado. Contras: escolha de nível nunca validada (09/10 não economizou); hoje quebra em projeto grande; se falhar → Opus/pesado (já decidido). Condição: o Jev recebe um resumo por etapa (área, nº de arquivos e REQ, sinais de dinheiro/segurança/integração), não o Microbrief inteiro, em lotes que caibam no limite; e a escolha dele é medida nos testes pesados.
+**Próximo passo:** decisão do fundador; isso entra no bloco A2 (analista + plano).
+
+---
+
 ## 16/10/2026 (103) — Mudança 14 decidida: cascata fixa por teste
 
 **Fundador:** "concordo com a cascata fixa por teste", depois da crítica da entrada 102.
