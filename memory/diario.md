@@ -1,3 +1,11 @@
+## 16/10/2026 (99) — Decisão: refinar as nossas skills; superpowers só como base de estudo
+
+**Fundador:** "era só uma ideia, não mistures o superpowers; vamos melhorar e refinar as nossas skill; podemos utilizar como base o superpowers".
+**Registrado:** linha S3 da §5.0 e `decisoes.md`. Nada herdado nem carregado do superpowers; padrões aproveitados: lista de completude (allium), arquivo exato + consome/entrega (writing-plans), dois eixos (code-review), fonte primária (research), testar antes (writing-skills).
+**Próximo passo:** elicitador — casos de teste e rodada com a skill atual (Opus, ~US$ 0,45 por caso), com OK do fundador para o gasto.
+
+---
+
 ## 16/10/2026 (98) — find-skills instalada (comando do fundador)
 
 **Fundador:** `npx skills add https://github.com/vercel-labs/skills --skill find-skills`. Rodado. Instalou **no projeto** (não global): `.agents/skills/find-skills/SKILL.md` (141 linhas, lida inteira: só ensina a usar `npx skills find/add`, nada executa sozinho; avaliação de segurança do instalador: Gen "Safe", Socket 0 alertas, Snyk "Med Risk"), atalho `.claude/skills/find-skills` → `.agents/...`, e `skills-lock.json`. Os 3 ficaram **sem commit**.
