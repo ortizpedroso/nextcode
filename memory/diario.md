@@ -1,3 +1,10 @@
+## 17/10/2026 (140) — AV1.1: avaliador Claude, nunca a família do executor
+
+**Feito:** cadeia Sonnet 5.5 → Opus 5.5 (Anthropic direto), família do executor recusada, 404 sem troca calada, sem queda para roteador livre. Sonda real: os dois respondem. tsc 0; vitest 127/846. Decisões D17–D22.
+**Próximo passo:** AV1.2 (não aprovar arquivo cortado).
+
+---
+
 ## 17/10/2026 (139) — A2.3 passou: Spec real planejada pelo analista, T8b válida
 
 **Feito:** replay real (`scripts/replay-analista-a23.ts`): 1ª tentativa cortada em 16 mil tokens (raciocínio do DeepSeek), 2ª cortada em 120 s (teto fixo do gateway) → A2.3b (32 mil tokens, 300 s, prazo configurável) → **aprovado na rodada 1, 35 etapas, 0 REQ repetido, T8b válida, US$ 0,099**. A2.3c: reserva cria dependência entre etapas irmãs → heurística também válida (0 erros). tsc 0; vitest 127/850. Decisões D14–D16.

@@ -493,17 +493,17 @@ export function makeBlindAuditDispatchFn(
   executorFamily: string = "deepseek"
 ): LLMDispatchFn {
   return async (messages) => {
-    // Avaliador forte e pago (prioriza modelos independentes do executor real da etapa).
+    // AV1.1: avaliador = Claude (Sonnet 5.5 → Opus 5.5), nunca a família do executor real da etapa.
+    // Sem resposta → null (o chamador trata como avaliador fora). Antes caía no roteador livre
+    // (`tier: fast`), que podia ser o próprio DeepSeek do executor ou um gratuito aprovando sozinho.
     const strong = await dispatchStrongEvaluator(messages, {
       executorFamily: (executorFamily as any) || "deepseek",
-      preferIndependentFirst: true,
     }).catch(() => null);
-    const paidOnly = isPaidOnlyRouting(loadOrchestrationPolicy());
     TelemetryLogger.log({
       sessionId,
       action: "EVALUATOR_MODEL",
       details: {
-        provider: strong?.provider ?? (paidOnly ? "nenhum-pago" : "freellmapi-fallback"),
+        provider: strong?.provider ?? "nenhum",
         model: strong?.model ?? null,
         independentFromExecutor: strong?.independent ?? false,
         failures: strong?.failures ?? [],
@@ -513,31 +513,26 @@ export function makeBlindAuditDispatchFn(
       await recordLlmCost({ sessionId, nodeId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
       return strong.content;
     }
-    if (paidOnly) {
-      return null;
+    // Só nos testes (mesmo padrão do analista, `execution-trigger.ts` `skipModel`): os testes de
+    // integração respondem executor e avaliador pelo roteador falso. EVALUATOR_STRICT_IN_TESTS=true
+    // testa o comportamento real. Em desenvolvimento e produção, nunca há esta queda.
+    if (process.env.NODE_ENV === "test" && process.env.EVALUATOR_STRICT_IN_TESTS !== "true") {
+      try {
+        const res = await smartRouter.dispatchWithFallback({
+          messages,
+          tier: "fast",
+          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+          omniRouteKey: readSecret(setting?.omniRouteKey),
+          stream: false,
+          signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
+        });
+        const json = await res.response.json().catch(() => null);
+        return json?.choices?.[0]?.message?.content ?? json?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+      } catch {
+        return null;
+      }
     }
-    try {
-      const res = await smartRouter.dispatchWithFallback({
-        messages,
-        tier: "fast",
-        geminiKey: readSecret(setting?.geminiKey),
-        groqKey: readSecret((setting as any)?.groqKey),
-        nvidiaKey: readSecret((setting as any)?.nvidiaKey),
-        deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
-        stream: false,
-        signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
-      });
-      const json = await res.response.json().catch(() => null);
-      return (
-        json?.choices?.[0]?.message?.content ??
-        json?.candidates?.[0]?.content?.parts?.[0]?.text ??
-        null
-      );
-    } catch {
-      return null;
-    }
+    return null;
   };
 }
 

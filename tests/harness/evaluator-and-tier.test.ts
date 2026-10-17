@@ -47,7 +47,7 @@ describe("Nível de modelo do executor (Jev + escalada)", () => {
   });
 });
 
-describe("Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek → Claude)", () => {
+describe("AV1.1 — cadeia trocada (bench) ainda passa pelo FreeLLMAPI com a trava de rota", () => {
   const fakeGateway: GatewayConfig = {
     id: "freellmapi",
     enabled: true,
@@ -59,41 +59,17 @@ describe("Cadeia do avaliador pelo FreeLLMAPI (Nemotron → DeepSeek → Claude)
   };
   const loader = async () => [fakeGateway];
 
-  it("Nemotron 429 e DeepSeek responde via custom/deepseek → usa DeepSeek e marca que não é independente", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
-      const body = JSON.parse(String(init?.body || "{}"));
-      if (body.model.includes("nemotron")) {
-        return new Response('{"error":{"message":"rate limit exceeded"}}', { status: 429 });
-      }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: '{"implemented":true}' } }] }),
-        { status: 200, headers: { "x-routed-via": "custom/deepseek-v4-pro" } }
-      );
-    });
-
-    const r1 = await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
-    expect(r1.provider).toBe("deepseek");
-    expect(r1.independent).toBe(false);
-    expect(r1.model).toBe("custom/deepseek-v4-pro");
-    expect(r1.failures.length).toBe(1);
-
-    // 429 = fora por 10 min: na 2ª chamada nem tenta Nemotron.
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    fetchSpy.mockClear();
-    await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const sentBody = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body || "{}"));
-    expect(sentBody.model).toBe("deepseek-v4-pro");
-  });
-
-  it("Nemotron respondendo via ollama/nemotron → usa Nemotron, independente do executor", async () => {
+  it("cadeia com Nemotron e executor DeepSeek → Nemotron via ollama/nemotron é aceito e independente", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
         status: 200,
         headers: { "x-routed-via": "ollama/nemotron-3-ultra" },
       })
     );
-    const r = await dispatchStrongEvaluator([{ role: "user", content: "x" }], { loader });
+    const r = await dispatchStrongEvaluator([{ role: "user", content: "x" }], {
+      loader,
+      chain: [{ provider: "nvidia", model: "nemotron-3-ultra", routedPrefixes: ["ollama/nemotron", "nvidia/"] }],
+    });
     expect(r.provider).toBe("nvidia");
     expect(r.independent).toBe(true);
     expect(r.model).toBe("ollama/nemotron-3-ultra");

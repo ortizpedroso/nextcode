@@ -11,10 +11,12 @@ import {
 describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
   beforeEach(() => {
     setPaidOnlyRoutingForTests(null);
+    process.env.EVALUATOR_STRICT_IN_TESTS = "true";
   });
 
   afterEach(() => {
     setPaidOnlyRoutingForTests(null);
+    delete process.env.EVALUATOR_STRICT_IN_TESTS;
     vi.restoreAllMocks();
   });
 
@@ -37,7 +39,7 @@ describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
     expect(dispatchSpy).not.toHaveBeenCalled();
   });
 
-  it("EVALUATOR_MODEL registra provider nenhum-pago", async () => {
+  it("EVALUATOR_MODEL registra provider nenhum", async () => {
     const logs: any[] = [];
     vi.spyOn(TelemetryLogger, "log").mockImplementation((entry) => {
       logs.push(entry);
@@ -61,7 +63,7 @@ describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
       sessionId: "sess-r1-4",
       action: "EVALUATOR_MODEL",
       details: {
-        provider: "nenhum-pago",
+        provider: "nenhum",
         model: null,
         independentFromExecutor: false,
         failures: ["deepseek: timeout"],
@@ -69,7 +71,7 @@ describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
     });
   });
 
-  it("somentePago false → mantém a rota gratuita (comportamento antigo)", async () => {
+  it("AV1.1: com somentePago false o avaliador sem resposta também não cai no roteador livre", async () => {
     const logs: any[] = [];
     vi.spyOn(TelemetryLogger, "log").mockImplementation((entry) => {
       logs.push(entry);
@@ -108,12 +110,12 @@ describe("Passo R1.4 — Avaliador sem queda para o gratuito", () => {
     const dispatchFn = makeBlindAuditDispatchFn(router, null, "sess-r1-4");
     const res = await dispatchFn([{ role: "user", content: "audite este código" }]);
 
-    expect(res).toBe('{"verdict":"APROVADO"}');
-    expect(dispatchSpy).toHaveBeenCalledTimes(1);
-    expect(dispatchSpy.mock.calls[0][0].tier).toBe("fast");
+    // AV1.1 (mudança 23): o avaliador nunca cai no roteador livre, nem com somentePago false.
+    expect(res).toBeNull();
+    expect(dispatchSpy).not.toHaveBeenCalled();
 
     const evalLogs = logs.filter((l) => l.action === "EVALUATOR_MODEL");
     expect(evalLogs).toHaveLength(1);
-    expect(evalLogs[0].details.provider).toBe("freellmapi-fallback");
+    expect(evalLogs[0].details.provider).toBe("nenhum");
   });
 });

@@ -71,3 +71,18 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 850 passed (850)`.
 
 **Auditor conferir:** reproduzir com `npx tsx scripts/replay-analista-a23.ts` (custo ≈ US$ 0,10; resultado do LLM pode variar — a porta é T8b válida); `gatewayTimeoutMs` não muda nenhuma outra chamada (padrão inalterado).
+
+---
+
+## AV1.1 — Cadeia do avaliador: Claude, nunca a família do executor
+
+**Mudou:**
+- `src/core/llm/evaluator-models.ts`: `defaultEvaluatorChain()` (Sonnet 5.5 → Opus 5.5, lida a cada chamada); `dispatchStrongEvaluator` recusa a família do executor, chama a Anthropic direto para Claude, registra 404 sem trocar de modelo, pausa 10 min em 401/402/403/429; outras famílias só se a cadeia for trocada (bench), pelo FreeLLMAPI com a trava de rota. Removida a auto-cura pelo catálogo.
+- `src/core/orchestrator/node-executor.ts` `makeBlindAuditDispatchFn`: sem queda para o roteador livre; `EVALUATOR_MODEL` com `provider: "nenhum"` quando ninguém responde; queda só em `NODE_ENV=test` (D21).
+- Testes reescritos: `tests/llm/evaluator-freellmapi.test.ts` (10: cadeia, família recusada, 404 → Opus, sem chave, 429, B1c 1a/1b/1c), `tests/harness/evaluator-and-tier.test.ts` (cadeia trocada pelo FreeLLMAPI), `tests/orchestrator/avaliador-somente-pago.test.ts` (modo estrito; sem queda mesmo com `somentePago: false`), `tests/orchestrator/characterization.test.ts` (avaliador não recebe chaves Groq/NVIDIA/DeepSeek).
+
+**Prova real (sonda, 17/10):** `claude-sonnet-5-5` → `{"ok":true}`, US$ 0,00013; `claude-opus-5-5` → `{"ok":true}`, US$ 0,00026; nenhuma falha.
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 846 passed (846)` (4 a menos que o A2.3: testes da cadeia antiga removidos/fundidos, ver D22).
+
+**Auditor conferir:** nenhum caminho de produção chega a `smartRouter.dispatchWithFallback` no avaliador; `independent` só `true`; o bench ainda troca o modelo por `EVALUATOR_CLAUDE_MODEL`.

@@ -654,7 +654,7 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
   });
 
   describe("Chaves BYOK no despacho (worker vs Auditor Cego)", () => {
-    it("Auditor Cego recebe groqKey, nvidiaKey e deepseekKey nos dois caminhos; worker segue divergência 2", async () => {
+    it("AV1.1: Auditor Cego NÃO recebe groqKey, nvidiaKey nem deepseekKey (nunca rota gratuita nem a família do executor); worker segue divergência 2", async () => {
       await prisma.setting.update({
         where: { id: "default" },
         data: {
@@ -706,10 +706,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
         expect(execWorkerCall!.nvidiaKey).toBe("nvapi-test-nvidia");
         expect(execWorkerCall!.deepseekKey).toBe("sk-test-deepseek");
 
-        // Auditor Cego em execute_node SEMPRE recebe as chaves
-        expect(execAuditorCall!.groqKey).toBe("gsk-test-groq");
-        expect(execAuditorCall!.nvidiaKey).toBe("nvapi-test-nvidia");
-        expect(execAuditorCall!.deepseekKey).toBe("sk-test-deepseek");
+        // AV1.1: o avaliador é Claude pela Anthropic; nunca recebe chave de rota gratuita nem da DeepSeek
+        expect(execAuditorCall!.groqKey).toBeUndefined();
+        expect(execAuditorCall!.nvidiaKey).toBeUndefined();
+        expect(execAuditorCall!.deepseekKey).toBeUndefined();
 
         // 2. Caminho process_queue
         routerSpy.mockClear();
@@ -751,10 +751,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
         expect(pqWorkerCall!.nvidiaKey).toBe("nvapi-test-nvidia");
         expect(pqWorkerCall!.deepseekKey).toBe("sk-test-deepseek");
 
-        // Auditor Cego em process_queue também recebe as chaves
-        expect(pqAuditorCall!.groqKey).toBe("gsk-test-groq");
-        expect(pqAuditorCall!.nvidiaKey).toBe("nvapi-test-nvidia");
-        expect(pqAuditorCall!.deepseekKey).toBe("sk-test-deepseek");
+        // AV1.1: idem no process_queue
+        expect(pqAuditorCall!.groqKey).toBeUndefined();
+        expect(pqAuditorCall!.nvidiaKey).toBeUndefined();
+        expect(pqAuditorCall!.deepseekKey).toBeUndefined();
       } finally {
         await prisma.setting.update({
           where: { id: "default" },

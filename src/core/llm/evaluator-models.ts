@@ -1,9 +1,11 @@
 /**
- * Avaliador forte (Trava T4/T5): modelo pago e, de preferência, de família diferente do executor.
+ * Avaliador forte (Trava T4/T5): modelo pago e SEMPRE de família diferente do executor.
  *
- * Cadeia (decisão do fundador, 07/10): Gemini Pro → Claude → DeepSeek. Um provedor que responde
- * "sem crédito" ou "chave inválida" fica de fora por 10 min, para não pagar latência a cada etapa.
- * Se nenhum pago responder, quem chama decide o que fazer (hoje: rota gratuita, marcada na trilha).
+ * Cadeia (mudança 23, fundador 17/10: "avaliador claude, pois não pode ser da mesma família"):
+ * Claude Sonnet 5.5 → Claude Opus 5.5, pela API oficial da Anthropic (o FreeLLMAPI não serve Claude,
+ * mudança 15). Candidato da mesma família do executor é recusado e registrado. Um provedor que responde
+ * "sem crédito" ou "chave inválida" fica de fora por 10 min. Modelo inexistente (404) é falha registrada
+ * — o avaliador nunca troca de modelo calado. Se ninguém responder, quem chama trata como avaliador fora.
  */
 import type { UsageLike } from "@/core/llm/cost";
 import { loadGatewayConfigs, callGateway, type GatewayConfig } from "@/core/llm/gateways";
@@ -16,11 +18,13 @@ export interface EvaluatorCandidate {
   routedPrefixes: string[];
 }
 
-export const EVALUATOR_CHAIN: EvaluatorCandidate[] = [
-  { provider: "nvidia", model: process.env.EVALUATOR_NEMOTRON_MODEL || "nemotron-3-ultra", routedPrefixes: ["ollama/nemotron", "nvidia/"] },
-  { provider: "deepseek", model: process.env.EVALUATOR_DEEPSEEK_MODEL || "deepseek-v4-pro", routedPrefixes: ["custom/deepseek"] },
-  { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929", routedPrefixes: ["anthropic/", "custom/claude"] },
-];
+/** Lida a cada chamada (o bench troca o modelo por variável de ambiente antes de rodar). */
+export function defaultEvaluatorChain(): EvaluatorCandidate[] {
+  return [
+    { provider: "claude", model: process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-5-5", routedPrefixes: ["anthropic/"] },
+    { provider: "claude", model: process.env.EVALUATOR_CLAUDE_RESERVE_MODEL || "claude-opus-5-5", routedPrefixes: ["anthropic/"] },
+  ];
+}
 
 export interface EvaluatorCallResult {
   content: string | null;
@@ -37,11 +41,9 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 const SKIP_MS = 10 * 60_000;
 const skippedUntil = new Map<EvaluatorProvider, number>();
-let activeClaudeModel: string | null = null;
 
 export function resetEvaluatorState(): void {
   skippedUntil.clear();
-  activeClaudeModel = null;
 }
 
 type AnthropicMessageJson = {
@@ -111,57 +113,88 @@ export async function dispatchStrongEvaluator(
 ): Promise<EvaluatorCallResult> {
   const executorFamily = opts.executorFamily ?? "deepseek";
   const failures: string[] = [];
+  const chain = opts.chain ?? defaultEvaluatorChain();
+  const timeoutMs = opts.timeoutMs ?? 120_000;
 
-  const gateways = await (opts.loader ?? loadGatewayConfigs)();
-  const free = gateways.find((g) => g.id === "freellmapi");
-  if (!free) {
-    return { content: null, provider: null, model: null, independent: false, failures: ["freellmapi: não configurado"] };
-  }
+  let gateways: GatewayConfig[] | null = null;
+  let claudeKey: string | null | undefined = opts.directClaudeKey;
 
-  const baseChain = opts.chain ?? EVALUATOR_CHAIN;
-  const effectiveChain = opts.preferIndependentFirst
-    ? [...baseChain].sort((a, b) => {
-        const aIndep = a.provider !== executorFamily ? 0 : 1;
-        const bIndep = b.provider !== executorFamily ? 0 : 1;
-        return aIndep - bIndep;
-      })
-    : baseChain;
-
-  for (const c of effectiveChain) {
+  for (const c of chain) {
+    if (c.provider === executorFamily) {
+      failures.push(`${c.provider}/${c.model}: mesma família do executor — recusado (T4)`);
+      continue;
+    }
     if ((skippedUntil.get(c.provider) ?? 0) > Date.now()) {
-      failures.push(`${c.provider}: fora por falta de crédito/chave (pausa de 10 min)`);
+      failures.push(`${c.provider}/${c.model}: fora por falta de crédito/chave (pausa de 10 min)`);
       continue;
     }
 
+    if (c.provider === "claude") {
+      try {
+        if (claudeKey === undefined) {
+          const prisma = (await import("@/lib/prisma")).default;
+          const { readSecret } = await import("@/core/security/crypto");
+          const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
+          claudeKey = readSecret(setting?.claudeKey);
+        }
+        if (!claudeKey || !claudeKey.trim() || claudeKey.startsWith("••••") || claudeKey.startsWith("****")) {
+          failures.push(`claude/${c.model}: sem chave da Anthropic em Configurações`);
+          continue;
+        }
+        const { safeFetch } = await import("@/core/security/safe-fetch");
+        const sysMsg = messages.find((m) => m.role === "system")?.content || "";
+        const userMessages = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
+        const antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": claudeKey.trim(),
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: c.model,
+            max_tokens: 8000,
+            ...(sysMsg ? { system: sysMsg } : {}),
+            messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
+          }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if ([401, 402, 403, 429].includes(antRes.status)) {
+          skippedUntil.set("claude", Date.now() + SKIP_MS);
+        }
+        const directResult = await parseAnthropicDirectMessageResponse(antRes, c.model, executorFamily, failures);
+        if (directResult) return directResult;
+      } catch (errDirect) {
+        failures.push(`claude/${c.model}: ${String(errDirect).slice(0, 140)}`);
+      }
+      continue;
+    }
+
+    // Outras famílias (só se a cadeia for trocada, ex.: bench) vão pelo FreeLLMAPI com a trava X-Routed-Via.
+    gateways = gateways ?? (await (opts.loader ?? loadGatewayConfigs)());
+    const free = gateways.find((g) => g.id === "freellmapi");
+    if (!free) {
+      failures.push(`${c.provider}/${c.model}: freellmapi não configurado`);
+      continue;
+    }
     try {
       const attempt = await callGateway(free, {
         messages,
         model: c.model,
         stream: false,
-        signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
+        signal: AbortSignal.timeout(timeoutMs),
         maxTokens: 8000,
       });
-
       if (attempt.ok) {
         const servedBy = attempt.servedBy || "";
-        const servedByLower = servedBy.toLowerCase();
-        const matchesPrefix = c.routedPrefixes.some((p) => servedByLower.startsWith(p.toLowerCase()));
-
-        if (matchesPrefix) {
+        if (c.routedPrefixes.some((p) => servedBy.toLowerCase().startsWith(p.toLowerCase()))) {
           const json = (await attempt.response.json().catch(() => ({}))) as {
             choices?: { message?: { content?: string } }[];
             usage?: UsageLike;
           };
           const text = json?.choices?.[0]?.message?.content ?? "";
           if (text.trim()) {
-            return {
-              content: text,
-              provider: c.provider,
-              model: attempt.servedBy,
-              independent: c.provider !== executorFamily,
-              failures,
-              usage: json?.usage ?? null,
-            };
+            return { content: text, provider: c.provider, model: servedBy, independent: true, failures, usage: json?.usage ?? null };
           }
           failures.push(`${c.provider}/${c.model}: resposta vazia`);
         } else {
@@ -169,13 +202,7 @@ export async function dispatchStrongEvaluator(
           failures.push(`${c.provider}/${c.model}: rota recusada ${servedBy}`);
         }
       } else {
-        if (
-          attempt.status === 401 ||
-          attempt.status === 402 ||
-          attempt.status === 403 ||
-          attempt.status === 429 ||
-          /credit|billing|prepayment|quota|rate.?limit/i.test(attempt.detail)
-        ) {
+        if ([401, 402, 403, 429].includes(attempt.status ?? 0) || /credit|billing|prepayment|quota|rate.?limit/i.test(attempt.detail)) {
           skippedUntil.set(c.provider, Date.now() + SKIP_MS);
         }
         failures.push(`${c.provider}/${c.model}: ${attempt.kind} ${attempt.status ?? ""} ${attempt.detail.replace(/\s+/g, " ").slice(0, 140)}`.trim());
@@ -185,108 +212,5 @@ export async function dispatchStrongEvaluator(
     }
   }
 
-  // Fallback transparente: se o provedor Claude foi solicitado e falhou no FreeLLMAPI,
-  // mas o usuário possui claudeKey salva diretamente no banco (Setting), consulta a API oficial da Anthropic.
-  if (effectiveChain.some((c) => c.provider === "claude") && (skippedUntil.get("claude") ?? 0) <= Date.now()) {
-    try {
-      let directKey = opts.directClaudeKey;
-      if (directKey === undefined) {
-        const prisma = (await import("@/lib/prisma")).default;
-        const { readSecret } = await import("@/core/security/crypto");
-        const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
-        directKey = readSecret(setting?.claudeKey);
-      }
-      if (directKey && directKey.trim() && !directKey.startsWith("••••") && !directKey.startsWith("****")) {
-        const { safeFetch } = await import("@/core/security/safe-fetch");
-        const sysMsg = messages.find((m) => m.role === "system")?.content || "";
-        const userMessages = messages
-          .filter((m) => m.role !== "system")
-          .map((m) => ({ role: m.role, content: m.content }));
-        let anthropicModel = activeClaudeModel || process.env.EVALUATOR_CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
-
-        let antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": directKey.trim(),
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: anthropicModel,
-            max_tokens: 8000,
-            ...(sysMsg ? { system: sysMsg } : {}),
-            messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
-          }),
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-        });
-
-        // Auto-recuperação sob demanda (Lazy Self-Healing):
-        // Se a Anthropic responder 404 (not_found_error / modelo descontinuado),
-        // consulta silenciosamente o catálogo em GET /v1/models, seleciona o Sonnet ativo mais recente
-        // e refaz a chamada sem interromper o fluxo do usuário.
-        if (antRes.status === 404) {
-          try {
-            const catalogRes = await safeFetch("https://api.anthropic.com/v1/models", {
-              headers: {
-                "x-api-key": directKey.trim(),
-                "anthropic-version": "2023-06-01",
-              },
-              signal: AbortSignal.timeout(10_000),
-            });
-            if (catalogRes.ok) {
-              const catalogJson = (await catalogRes.json().catch(() => ({}))) as {
-                data?: { id: string; display_name?: string }[];
-              };
-              const modelsList = catalogJson.data || [];
-              // Procura Sonnet mais recente ou alias flutuante
-              const candidates = modelsList.map((m) => m.id);
-              const bestCandidate =
-                candidates.find((id) => /claude-.*sonnet.*latest/i.test(id)) ||
-                candidates.filter((id) => /sonnet/i.test(id)).sort().reverse()[0] ||
-                candidates.filter((id) => /claude/i.test(id)).sort().reverse()[0];
-
-              if (bestCandidate && bestCandidate !== anthropicModel) {
-                anthropicModel = bestCandidate;
-                activeClaudeModel = bestCandidate;
-
-                // Nova tentativa silenciosa com o modelo ativo descoberto
-                antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
-                  method: "POST",
-                  headers: {
-                    "x-api-key": directKey.trim(),
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model: anthropicModel,
-                    max_tokens: 8000,
-                    ...(sysMsg ? { system: sysMsg } : {}),
-                    messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
-                  }),
-                  signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
-                });
-              }
-            }
-          } catch {
-            // Falha na descoberta silenciosa: preserva o tratamento de erro original abaixo
-          }
-        }
-
-        const directResult = await parseAnthropicDirectMessageResponse(
-          antRes,
-          anthropicModel,
-          executorFamily,
-          failures
-        );
-        if (directResult) {
-          return directResult;
-        }
-      }
-    } catch (errDirect) {
-      failures.push(`claude/direct: ${String(errDirect).slice(0, 140)}`);
-    }
-  }
-
   return { content: null, provider: null, model: null, independent: false, failures };
 }
-
