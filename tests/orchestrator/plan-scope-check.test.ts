@@ -97,3 +97,39 @@ describe("A2.1 — heurística de reserva põe cada REQ em uma etapa só", () =>
     expect(owners("REQ-002")).toEqual([["src/app/api/v1/links/route.ts"]]);
   });
 });
+
+describe("A2.3c — heurística acrescenta dependência entre etapas irmãs", () => {
+  it("REQ da rota A citando a rota B (irmã) → etapa de A passa a depender da de B; plano válido", () => {
+    const files = [
+      "src/app/api/a/route.ts",
+      "src/app/api/b/route.ts",
+      "src/app/api/c/route.ts",
+      "src/app/api/d/route.ts",
+      "src/app/api/e/route.ts",
+    ];
+    const reqs = [
+      { id: "REQ-001", titulo: "B", criterio: "src/app/api/b/route.ts responde 200" },
+      { id: "REQ-002", titulo: "E", criterio: "src/app/api/e/route.ts chama src/app/api/b/route.ts" },
+    ];
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Teste A2.3c",
+      status: "aprovada",
+      data: "2026-10-17",
+      objetivo: "teste",
+      stack: ["TypeScript", "Next.js"],
+      modulos: [{ id: "MOD-01", nome: "api", resumo: "api", arquivos: files }],
+      entidades: [],
+      arquivosAfetados: files,
+      requisitos: reqs,
+    } as any);
+    const d = SpecDecomposerSkill.decomposeSpec(spec, "Teste A2.3c", files);
+    const stageOf = (f: string) => d.nodes.find((n: any) => n.payload?.microbrief && (n.filesScope ?? []).includes(f))!;
+    const e = stageOf("src/app/api/e/route.ts");
+    const b = stageOf("src/app/api/b/route.ts");
+    expect(e.id).not.toBe(b.id);
+    expect(e.dependencies).toContain(b.id);
+    expect((e.payload as any).microbrief.arquivosPermitidos.lerContratos).toContain("src/app/api/b/route.ts");
+    const v = validateFinalPlan(d.nodes as any, ["REQ-001", "REQ-002"], Object.fromEntries(reqs.map((r) => [r.id, `${r.titulo} ${r.criterio}`])), 4);
+    expect(v).toEqual({ valid: true, errors: [] });
+  });
+});

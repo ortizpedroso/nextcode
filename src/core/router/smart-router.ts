@@ -242,6 +242,8 @@ export interface DispatchOptions {
   maxTokens?: number;
   /** Papéis críticos: só aceita resposta cujo X-Routed-Via comece com um destes prefixos. */
   allowedRoutedViaPrefixes?: string[];
+  /** Tempo máximo de cada chamada aos gateways (padrão do `callGateway`: 120 s). A2.3b: o analista precisa de mais. */
+  gatewayTimeoutMs?: number;
 }
 
 export interface DispatchResult {
@@ -794,7 +796,8 @@ export class SmartRouter {
     stream: boolean,
     signal?: AbortSignal,
     maxTokens?: number,
-    allowedRoutedViaPrefixes?: string[]
+    allowedRoutedViaPrefixes?: string[],
+    timeoutMs?: number
   ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
@@ -804,6 +807,7 @@ export class SmartRouter {
       stream,
       signal,
       maxTokens: maxTokens || Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
+      timeoutMs,
     });
     if (attempt.ok) {
       if (
@@ -1143,7 +1147,7 @@ export class SmartRouter {
         if (omniResult) return omniResult;
         continue;
       }
-      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes);
+      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes, options.gatewayTimeoutMs);
       if ("response" in gatewayResult) return gatewayResult;
       // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
       // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.

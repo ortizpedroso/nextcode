@@ -1,3 +1,10 @@
+## 17/10/2026 (139) — A2.3 passou: Spec real planejada pelo analista, T8b válida
+
+**Feito:** replay real (`scripts/replay-analista-a23.ts`): 1ª tentativa cortada em 16 mil tokens (raciocínio do DeepSeek), 2ª cortada em 120 s (teto fixo do gateway) → A2.3b (32 mil tokens, 300 s, prazo configurável) → **aprovado na rodada 1, 35 etapas, 0 REQ repetido, T8b válida, US$ 0,099**. A2.3c: reserva cria dependência entre etapas irmãs → heurística também válida (0 erros). tsc 0; vitest 127/850. Decisões D14–D16.
+**Próximo passo:** AV1.1 (cadeia do avaliador Claude).
+
+---
+
 ## 17/10/2026 (138) — A2.2 implementado: analista DeepSeek planeja, código confere
 
 **Feito:** `decomposeWithAnalistaSkill` reescrito (3 rodadas com os erros da T8b, Microbrief montado pelo código, trilha em todo caminho, 16 mil tokens/240 s); skill `analista` reescrita (sem ferramentas, JSON). tsc 0; vitest 127/848. Decisões D7–D13.

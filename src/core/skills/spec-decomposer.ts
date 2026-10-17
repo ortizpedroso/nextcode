@@ -11,7 +11,7 @@ import {
 import type { ClusterKind } from "../config/orchestration-policy";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import { loadRoleSkill, buildSkillSystemPrompt } from "./skill-runtime";
-import { GENERIC_FILE_NAMES, extractFilePathsFromCriteriaText } from "../decision/jev-execution-checks";
+import { GENERIC_FILE_NAMES, extractFilePathsFromCriteriaText, pathInStageScope } from "../decision/jev-execution-checks";
 import { validatePlanStages, type PlanStage } from "../orchestrator/plan-scope-check";
 import { recordLlmCost } from "../llm/cost";
 
@@ -271,6 +271,47 @@ export class SpecDecomposerSkill {
       }
     }
 
+    // A2.3c: se o REQ de uma etapa cita arquivo de outra etapa que não é ancestral dela, a etapa passa a
+    // depender dessa outra (lê o código como contrato) — a regra da T8b fica cumprida sem juntar etapas.
+    // Só quando não cria ciclo; com ciclo o erro continua e o plano é reprovado antes de executar.
+    // Teste real `934939fc`: os 6 erros restantes eram todos desse tipo (rotas irmãs, telas irmãs).
+    {
+      const byId = new Map(nodes.map((nd) => [nd.id, nd]));
+      const ancestorsOfNode = (id: string): Set<string> => {
+        const seen = new Set<string>();
+        const stack = [...(byId.get(id)?.dependencies ?? [])];
+        while (stack.length > 0) {
+          const d = stack.pop()!;
+          if (seen.has(d)) continue;
+          seen.add(d);
+          stack.push(...(byId.get(d)?.dependencies ?? []));
+        }
+        return seen;
+      };
+      for (const mb of microbriefs) {
+        const owner = byId.get(mb.idMicrobrief);
+        if (!owner) continue;
+        for (const reqId of mb.reqsCobertos) {
+          const r = declaredReqs.find((x) => x.id === reqId);
+          if (!r) continue;
+          for (const cited of extractFilePathsFromCriteriaText(`${r.titulo} ${r.criterio}`)) {
+            const target = nodes.find(
+              (nd) => nd.id !== owner.id && nd.payload && (nd.payload as { microbrief?: unknown }).microbrief && pathInStageScope(nd.filesScope ?? [], cited)
+            );
+            if (!target) continue;
+            const ownerAnc = ancestorsOfNode(owner.id);
+            if (ownerAnc.has(target.id) || pathInStageScope(owner.filesScope ?? [], cited)) continue;
+            if (ancestorsOfNode(target.id).has(owner.id)) continue;
+            owner.dependencies = [...(owner.dependencies ?? []), target.id];
+            mb.dependeDe = [...mb.dependeDe, target.id];
+            const novos = (target.filesScope ?? []).filter((f) => !mb.arquivosPermitidos.lerContratos.includes(f));
+            mb.arquivosPermitidos.lerContratos.push(...novos);
+            mb.interfacesConsome = [...mb.interfacesConsome, ...novos];
+          }
+        }
+      }
+    }
+
     // Garante que todos os REQs declarados estejam cobertos em pelo menos um Microbrief (Trava T8b)
     if (microbriefs.length > 0) {
       const coveredSet = new Set(microbriefs.flatMap((m) => m.reqsCobertos));
@@ -398,6 +439,8 @@ export class SpecDecomposerSkill {
     for (let rodada = 1; rodada <= ANALISTA_MAX_RODADAS; rodada++) {
       let content = "";
       let modelUsed = "";
+      let finishReason = "";
+      let reasoningChars = 0;
       try {
         const dispatchRes = await smartRouter.dispatchWithFallback({
           messages,
@@ -407,10 +450,13 @@ export class SpecDecomposerSkill {
           omniRouteUrl: options.omniRouteUrl,
           omniRouteKey: options.omniRouteKey,
           stream: false,
-          signal: AbortSignal.timeout(Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS),
+          gatewayTimeoutMs: Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS,
+          signal: AbortSignal.timeout((Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS) + 10_000),
         });
         const resJson = await dispatchRes.response.json().catch(() => ({}));
         content = resJson.choices?.[0]?.message?.content || "";
+        finishReason = String(resJson.choices?.[0]?.finish_reason || "");
+        reasoningChars = String(resJson.choices?.[0]?.message?.reasoning_content || "").length;
         modelUsed = String(dispatchRes.modelUsed || "");
         await recordLlmCost({
           sessionId,
@@ -426,7 +472,11 @@ export class SpecDecomposerSkill {
       const parsed = parseAnalystPlan(content);
       const errors = parsed.ok
         ? validatePlanStages(parsed.stages, reqIds, textoPorReq, FILES_PER_NODE, uniqueFiles).errors
-        : [parsed.error];
+        : [
+            finishReason === "length"
+              ? "[CORTADA] A resposta chegou ao limite de tokens antes de o JSON terminar. Pense pouco, não explique e não repita a Spec: responda só o JSON."
+              : parsed.error,
+          ];
 
       if (parsed.ok && errors.length === 0) {
         const result = buildDecompositionFromAnalystPlan({
@@ -448,7 +498,15 @@ export class SpecDecomposerSkill {
       TelemetryLogger.log({
         sessionId,
         action: "ANALISTA_PLAN_RETRY",
-        details: { rodada, model: modelUsed, erros: errors.length, amostra: errors.slice(0, 20) },
+        details: {
+          rodada,
+          model: modelUsed,
+          finishReason,
+          contentChars: content.length,
+          reasoningChars,
+          erros: errors.length,
+          amostra: errors.slice(0, 20),
+        },
       });
       messages.push({ role: "assistant", content: content || "(resposta vazia)" });
       messages.push({
@@ -578,10 +636,17 @@ export class SpecDecomposerSkill {
 
 /** A2.2 — rodadas do analista (1 plano + 2 correções com a lista de erros da T8b). */
 const ANALISTA_MAX_RODADAS = 3;
-/** Teto de saída do analista: o plano da Spec real (58 arquivos, 43 REQ) tem ~4 mil tokens; folga para raciocínio. */
-const ANALISTA_MAX_TOKENS = 16000;
-/** Antes: 5 s (nunca dava tempo; 0 `ANALISTA_PLAN_*` em todo o banco). */
-const ANALISTA_TIMEOUT_MS = 240_000;
+/**
+ * Teto de saída do analista. O plano da Spec real (58 arquivos, 43 REQ) tem ~4 mil tokens, mas o
+ * `deepseek-v4-pro` conta o raciocínio na saída: no replay A2.3 as 3 rodadas com 16.000 pararam em
+ * `length` sem JSON (US$ 0,21). 32.000 dá folga ao raciocínio.
+ */
+const ANALISTA_MAX_TOKENS = 32000;
+/**
+ * Tempo de cada chamada do analista. Antes: 5 s (nunca dava tempo; 0 `ANALISTA_PLAN_*` no banco).
+ * Replay A2.3: 16 mil tokens de saída levaram 90–104 s; com 32 mil o teto fixo de 120 s do gateway cortou.
+ */
+const ANALISTA_TIMEOUT_MS = 300_000;
 
 const ANALYST_CLUSTERS: ClusterKind[] = ["core", "backend", "integration", "frontend"];
 

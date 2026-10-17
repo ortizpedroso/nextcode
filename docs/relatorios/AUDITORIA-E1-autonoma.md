@@ -46,3 +46,28 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 848 passed (848)`.
 
 **Auditor conferir:** nenhum caminho de `decomposeWithAnalistaSkill` volta sem trilha; critérios do Microbrief = texto da Spec; nós do analista têm o mesmo formato de `payload` da heurística (o executor lê `microbrief`, `reqsCobertos`, `nodeFiles`).
+
+---
+
+## A2.3 — Replay real da Spec `934939fc` com o analista (+ A2.3b, A2.3c)
+
+**Script:** `scripts/replay-analista-a23.ts` (cópia do `dev.db` em `%TEMP%/nc-a23-replay-analista`, telemetria em memória; `prisma/dev.db` mtime antes/depois: `2026-10-16 21:22:35.462675000` nas 3 rodadas).
+
+| rodada do replay | configuração | resultado | custo |
+|---|---|---|---|
+| 1 | 16.000 tokens, prazo 120 s do gateway | 3 chamadas pararam em 16.000 tokens de saída sem JSON → reserva (heurística, 6 erros → seria BLOQUEADA) | US$ 0,2116 |
+| 2 | 32.000 tokens, prazo 120 s | 3 chamadas cortadas em 120 s (teto fixo do `callGateway`) | não medido (sem `usage`) |
+| 3 | 32.000 tokens, prazo 300 s (A2.3b) | **`ANALISTA_PLAN_APPROVED` na rodada 1**, 152 s, 15.063 tokens de entrada / 24.819 de saída | **US$ 0,0991** |
+
+**Porta (rodada 3):** 35 etapas; REQ em mais de 1 etapa: **0**; REQ sem etapa: **0**; T8b final (`validateFinalPlan`): **válida, 0 erros**. Antes (A2.0): 16 etapas, 29 REQ repetidos, 186 pares fora do escopo.
+**Reserva (A2.3c, sem LLM):** heurística na Spec real → 17 nós, T8b **válida, 0 erros** (antes do A2.3c: 6 erros).
+
+**Mudou:**
+- `src/core/router/smart-router.ts`: opção `gatewayTimeoutMs` repassada a `tryOpenAiGateway` → `callGateway`.
+- `src/core/llm/gateways.ts`: `GatewayCallOptions.timeoutMs` (sem ele, comportamento antigo).
+- `src/core/skills/spec-decomposer.ts`: analista 32.000 tokens / 300 s, erro `[CORTADA]` em `finish_reason: length`, trilha com `finishReason`/`contentChars`/`reasoningChars`; `decomposeSpec` acrescenta dependência entre etapas irmãs (A2.3c).
+- Testes: `analista-plan.test.ts` (+1: `[CORTADA]` e prazo/teto repassados); `plan-scope-check.test.ts` (+1: dependência entre irmãs).
+
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 127 passed (127)`, `Tests 850 passed (850)`.
+
+**Auditor conferir:** reproduzir com `npx tsx scripts/replay-analista-a23.ts` (custo ≈ US$ 0,10; resultado do LLM pode variar — a porta é T8b válida); `gatewayTimeoutMs` não muda nenhuma outra chamada (padrão inalterado).

@@ -38,7 +38,7 @@ const BAD = [
   { id: "mb-2", cluster: "backend", arquivos: ["src/app/api/v1/links/route.ts", "src/app/api/cobrancas/route.ts"], reqs: ["REQ-003"], dependeDe: ["mb-1"] },
 ];
 
-function fakeRouter(replies: (string | Error)[]) {
+function fakeRouter(replies: (string | Error)[], finishReason = "stop") {
   const calls: any[] = [];
   return {
     calls,
@@ -49,7 +49,7 @@ function fakeRouter(replies: (string | Error)[]) {
       return {
         providerUsed: "deepseek",
         modelUsed: "deepseek-v4-pro",
-        response: { json: async () => ({ choices: [{ message: { content: r } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }) },
+        response: { json: async () => ({ choices: [{ message: { content: r }, finish_reason: finishReason }], usage: { prompt_tokens: 10, completion_tokens: 5 } }) },
       };
     }),
   };
@@ -136,5 +136,14 @@ describe("A2.2 — analista planeja e o código confere", () => {
     const s = loadRoleSkill("analista");
     expect(s.ferramentas).toEqual([]);
     expect(s.passosMax).toBe(1);
+  });
+
+  it("A2.3b: resposta cortada no teto de tokens → erro [CORTADA] (não 'sem JSON') e prazo do gateway repassado", async () => {
+    const router = fakeRouter(['{"microbriefs": [ {"id": "mb-1"'], "length");
+    await SpecDecomposerSkill.decomposeWithAnalistaSkill({ specText: SPEC, titulo: "Teste A2.2", files: FILES, smartRouter: router });
+    expect(router.calls[1].at(-1).content).toContain("[CORTADA]");
+    const args = router.dispatchWithFallback.mock.calls[0][0] as any;
+    expect(args.gatewayTimeoutMs).toBe(300_000);
+    expect(args.maxTokens).toBe(32000);
   });
 });

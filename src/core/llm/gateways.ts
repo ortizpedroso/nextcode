@@ -198,11 +198,13 @@ export interface GatewayCallOptions {
   stream: boolean;
   signal?: AbortSignal;
   maxTokens?: number;
+  /** Tempo máximo desta chamada; sem ele vale LLM_GATEWAY_TIMEOUT_MS ou 30 s (stream) / 120 s. */
+  timeoutMs?: number;
 }
 
 export async function callGateway(gw: GatewayConfig, opts: GatewayCallOptions): Promise<GatewayAttempt> {
   const timeoutMs =
-    Number(process.env.LLM_GATEWAY_TIMEOUT_MS) || (opts.stream ? 30000 : 120000);
+    opts.timeoutMs || Number(process.env.LLM_GATEWAY_TIMEOUT_MS) || (opts.stream ? 30000 : 120000);
   const attemptTimeout = AbortSignal.timeout(timeoutMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, attemptTimeout]) : attemptTimeout;
   const started = Date.now();
