@@ -32,7 +32,12 @@ export default function DashboardOrchestrator() {
   const [budget, setBudget] = useState<SessionBudget | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   /** Enquanto /api/chat bloqueia (~minutos na Spec), mostra o pedido e o indicador antes da resposta. */
-  const [optimisticChat, setOptimisticChat] = useState<{ userPrompt: string; kind: "spec" | "reply" } | null>(
+  const [optimisticChat, setOptimisticChat] = useState<{
+    userPrompt: string;
+    kind: "spec" | "reply";
+    /** Quantas mensagens a tela tinha no envio: o que vier depois já é do servidor. */
+    baseCount: number;
+  } | null>(
     null
   );
   const [customProviders, setCustomProviders] = useState<CustomProviderItem[]>([]);
@@ -362,7 +367,7 @@ export default function DashboardOrchestrator() {
     abortControllerRef.current = controller;
 
     setLoading(true);
-    setOptimisticChat({ userPrompt: prompt, kind: isSpecApproved ? "reply" : "spec" });
+    setOptimisticChat({ userPrompt: prompt, kind: isSpecApproved ? "reply" : "spec", baseCount: messages.length });
     setConsoleLogs((prev) => [...prev, `[CHAT] Processando mensagem do usuário: "${prompt.substring(0, 30)}..." ${attachments ? `(${attachments.length} imagem/ns)` : ""}`]);
 
     try {
@@ -448,7 +453,11 @@ export default function DashboardOrchestrator() {
     }
   };
 
-  const displayMessages: SessionMessage[] = optimisticChat
+  // O /api/chat grava a mensagem do usuário logo no início e o polling de 2,5 s (ativo com `loading`)
+  // já a traz do servidor durante a espera: a cópia otimista só aparece enquanto ela não chegou.
+  const optimisticAlreadySynced =
+    optimisticChat !== null && messages.slice(optimisticChat.baseCount ?? 0).some((m) => m.role === "user");
+  const displayMessages: SessionMessage[] = optimisticChat && !optimisticAlreadySynced
     ? [
         ...messages,
         {

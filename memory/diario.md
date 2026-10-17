@@ -1,3 +1,13 @@
+## 16/10/2026 (89) — Mensagem duplicada de novo: minha 1ª correção estava incompleta
+
+**Fundador:** "minha mensagem duplicou novamente… você disse que tinha corrigido".
+**Conferido:** servidor é `next dev -p 3002` e o bundle servido (`.next/static/chunks/app/page.js`, 19:34) já tinha o `cccc2f9` → a correção estava no ar e não resolvia.
+**Causa real:** `/api/chat` grava a mensagem do usuário no início (`route.ts:234`); o polling de 2,5 s (`page.tsx` ≈185) liga com `loading` e chama `fetchSessionDetails` → `setMessages` com a mensagem do servidor **durante toda a espera** (2–4 min), somada à cópia otimista. O `cccc2f9` só cobria o instante final. Eu tinha diagnosticado pelo código do envio sem olhar o polling.
+**Correção:** `optimisticChat.baseCount` (tamanho da lista no envio); a cópia otimista só aparece enquanto nenhuma mensagem de usuário chegou do servidor depois dela. tsc 0; vitest 124/804. Referência PJ1.7 atualizada.
+**Próximo passo:** fundador confirma na próxima mensagem; Spec com "Excluir o REQ-001".
+
+---
+
 ## 16/10/2026 (88) — Correção "Remova o REQ-001": Spec idêntica de novo — erro meu na palavra
 
 **Trilha (msg 19:53:37):** 2 chamadas Opus (US$ 0,473 + 0,541 = 1,01); Spec byte a byte igual à anterior; REQ-001 do `.env.example` continua. Sessão: US$ 3,90.
