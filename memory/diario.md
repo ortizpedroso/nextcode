@@ -1,3 +1,11 @@
+## 17/10/2026 (109) — Auditoria do uso do Jev (docs oficiais + internet)
+
+**Feito:** docs locais do Jev + índice atual (17/10) + Jev Router (OpenRouter), JEV Auto Router e benchmark (LiteLLM). Relatório: `docs/relatorios/AUDITORIA-JEV.md`. Nada alterado.
+**Achados:** (1) escolher modelo é uso oficial, mas "instalado no Claude trabalha sozinho" é falso (página "Jev with coding agents"); (2) benchmark LiteLLM: 1 `choice` de nível com estado ≤8k → 95% de acerto de nível, qualidade final não medida; (3) Jev Router do OpenRouter fere regra 7/mudança 15; (4) no NextCode: 4 usos bons, M3 e diagnóstico quebrados por nós (estado 62k; falta causa "erro do plano"), J1 uso errado, `decideSdeCascadeEscalation` morta; (5) maior economia possível: filtrar o que entra no Opus (pesquisador P8 + receita RAG) e evitar tentativas (A3, SDE). Jev 1.14 saiu 14/10 (preview).
+**Próximo passo:** fundador decide a ordem proposta (A3 → P8 com Jev → formato garantido → M3 refeito → SDE → tirar J1); aprovado, entra na §5.0.
+
+---
+
 ## 17/10/2026 (108) — Sonda de repasse + diagnóstico do uso do Jev e das skills
 
 **Feito:** sonda (≈US$0,001): JSON e ferramenta passam pelo FreeLLMAPI (DeepSeek e Nemotron); desligar raciocínio não passa; DeepSeek recusa `tool_choice: required` com raciocínio. **Achado grave:** uma chamada foi para `router9` (revenda) — fundador precisa desligar router9 além do electronhub. Trilha do Jev no teste real lida: diagnóstico de falha rotulou erro de plano como `evaluator_error` (falta a categoria; só `ambiguous_spec` age).
