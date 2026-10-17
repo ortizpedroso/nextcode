@@ -1,3 +1,11 @@
+## 17/10/2026 (112) — Proposta 19 revisada: skill `testador` sobre o contrato da Spec
+
+**Fundador:** skill que monta testes em cima do contrato da Spec; "não podemos economizar na Spec".
+**Auditor:** concorda com skill separada `testador` (erro correlacionado se o analista planeja e testa; medível sozinha); só Spec, cega ao código; outra família; teste tem de falhar contra stubs do contrato. Ressalva: Spec "alto nível" = estrutura verificável (contrato, dono por REQ, critério testável), não mais tokens — o gasto do teste real foi desperdício (reescrita inteira, 2ª chamada). Consequência imediata: contrato do A1 desenhado para o `testador`.
+**Próximo passo:** fundador decide a 19; A3 com o Cursor.
+
+---
+
 ## 17/10/2026 (111) — Mudanças 17 e 18 aprovadas; proposta 19 (testes de aceite no Microbrief)
 
 **Fundador:** aprovou as ressalvas do avaliador-final cego (17) e o porteiro mecânico (18). Perguntou se o Microbrief pode definir testes dinâmicos por projeto.
