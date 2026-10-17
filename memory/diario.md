@@ -1,3 +1,12 @@
+## 17/10/2026 (128) — Levantamento do que está pendente antes de seguir (pedido do fundador)
+
+**Fundador:** "só passamos para outra fase se essa está resolvida… você disse que tinha problema na fase anterior e continuou, isso não é aceitável". Tem razão: aceitei o A3.3b com ressalvas e segui; no 127 apontei P8 como próximo deixando abertos PJ1.6, SM1 e PL1.
+**Pendências da E1 (verificadas no git/diário):** (1) A3 — 2 ressalvas (trilha `available:false` ambígua; título do teste f) → prompt `docs/prompts/A3.5-ressalvas-finais.md`; (2) PJ1.6b + smoke PJ1.5 abertos desde 16/10 (nenhum commit; `api/projects/route.ts` ainda sobrescreve nome ao reabrir); (3) mudança 20 (desligar memória) aprovada e não executada; (4) PL1 🔴 (decompositor; causa do teste real bloqueado) ainda "proposta" — o A3 só diagnostica, não conserta; (5) SM1 aprovado 16/10, não implementado; (6) A1/A2 (diário 94) citados como "foco macro" (110, 113) mas **nunca entraram na §5.0** nem em `decisoes.md` — lista única incoerente; (7) linha B1 estava ⬜ e Fase 9 🔄 embora executados e substituídos pelo B1c — corrigido agora (regra 4 da §5.0); (8) `.agents/`, `.claude/skills/`, `skills-lock.json` = instalação do find-skills (diário 98), sem destino.
+**Recomendação (aguarda fundador):** fechar na ordem A3.5 → PJ1.6 → mudança 20 → PL1 (correção mecânica, antes do P8) → SM1 → B1b teste pesado (com A3 em sombra conferido) → só então P8. A3 → `ativo`: decidir com os `FAILURE_ROUTE_WOULD_ACT` do teste pesado (0 falso).
+**Próximo passo:** fundador decide as 3 perguntas; cola o A3.5 no Cursor.
+
+---
+
 ## 17/10/2026 (127) — A3.4 auditado e aceito; A3 fechado (ação em sombra)
 
 **Conferido:** `7e976b7` — 1 commit, 1 arquivo (relatório, LF), reflog sem amend; seções antigas só com o hash `a2508ed` no A3.3b (2 linhas removidas, ambas permitidas); `prisma/dev.db` intacto (16/10 21:22); nomes da tabela 4 batem com `git grep`; escopo do A3 = 8 arquivos (lista R1 + teste de política aceito no 122). Os 9 itens §8.4 presentes; desvios e o "não" na T-E (amends) registrados. Diário 121 estava errado: `GENERIC_FILE_NAMES` **é** exportada (`jev-execution-checks.ts:95`).
