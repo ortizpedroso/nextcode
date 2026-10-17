@@ -1,3 +1,10 @@
+## 17/10/2026 (126) — Prompt do A3.4 (relatório final)
+
+**Fundador:** "ok, escreva o prompt do A3.4". Prompt `docs/prompts/A3.4-relatorio-final.md`: só o relatório do A3, §8.4 com 9 itens, replay rodado de novo como prova final, desvios do A3.0–A3.3b com o diário que registrou cada um, dúvidas abertas (inclui `roteamento_falha` → `ativo`, que segue em `sombra`). Sem código, sem LLM.
+**Próximo passo:** executar A3.4 → auditoria.
+
+---
+
 ## 17/10/2026 (125) — A3.3b auditado e aceito (com ressalvas menores)
 
 **Conferido:** `a2508ed` — 1 commit, 4 arquivos (código, teste, script, relatório); reflog sem amend; `prisma/dev.db` intacto (mtime 16/10 21:22). Auditor rodou: `tsc` exit 0; `vitest` **125/830** verde; replay 2× → reais 4/4 `plan_error` mecânico, controles **5/5** (ctrl-2 agora `evaluator_error` 0,75), ordem invertida estável nos 5; custo Jev US$ 0,00012. Script usa o `buildFailureDiagnosisStateJson` original (desvio do A3.3 corrigido).
