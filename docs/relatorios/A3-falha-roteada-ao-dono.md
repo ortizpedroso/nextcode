@@ -319,6 +319,81 @@ Em `node-executor.ts`, `failureRouteDono = route.dono` rodava em **sombra** e o 
 
 ### O que não foi feito
 
-A3.3 — aguardando OK do fundador.
+A3.3 — ver seção abaixo.
+
+---
+
+## A3.3 — Replay do diagnóstico (trilha real + controles)
+
+### Script
+
+`scripts/replay-failure-diagnosis.ts` — executado com `npx tsx scripts/replay-failure-diagnosis.ts`.
+
+### Cópia do banco (somente leitura)
+
+- **Origem:** `C:\projetos\nextcode\prisma\dev.db` + `dev.db-wal`
+- **Cópia:** `C:\Users\ortiz\AppData\Local\Temp\nc-a3-replay-failure-diagnosis\dev.db`
+- **DATABASE_URL:** `file:C:/Users/ortiz/AppData/Local/Temp/nc-a3-replay-failure-diagnosis/dev.db`
+- **Repositório:** nunca apontou para `prisma/dev.db` durante o replay.
+
+### Telemetria
+
+**Estratégia:** `TelemetryLogger.log` substituído por função em memória que só acumula `usage` de eventos `JEV_DECISION`; **nenhum** `INSERT` de telemetria na cópia. Diagnóstico via `detectPlanErrorMechanically` / `diagnoseStageFailureWithJev` (sem duplicar a lógica de causa). `sessionId: null` nos replays (sem `recordLlmCost`).
+
+### Tabela de replay
+
+| caso | motivo (200 chars) | causa antiga (trilha) | causa nova | fonte | confiança | rótulo auditor | acertou |
+|------|-------------------|------------------------|------------|-------|-----------|----------------|---------|
+| task-base-1792197942354-1 / tentativa 1 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-001 e REQ-005 totalmente atendidos. REQ-002: tsconfig.json e next.config.mjs corretos; vitest.config.ts está fora do escopo desta et | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 1 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-032 e REQ-040 exigem arquivos de rota e teste fora do escopo desta etapa (src/app/api/v1/links/route.ts, tests/cobrancas.test.ts), n | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 2 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-009, REQ-013, REQ-015, REQ-016 estão implementados nos 4 arquivos permitidos. REQ-032 exige src/app/api/v1/links/route.ts e REQ-040  | evaluator_error | plan_error | mecanica | 1 | plan_error | sim |
+| task-base-1792197942354-3 / tentativa 3 | Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: REQ-009,013,015,016 implementados nos 4 arquivos da etapa. REQ-032 e REQ-040 exigem arquivos (api/v1/links/route.ts, tests/cobrancas.tes | — | plan_error | mecanica | 1 | plan_error | sim |
+| ctrl-1 | REQ-001: soma retorna a-b em src/lib/soma.ts:3 | — | wrong_code | jev | 0.99 | wrong_code | sim |
+| ctrl-2 | REQ-001: falta o arquivo src/lib/outro.ts | — | plan_error | jev | 0.5 | evaluator_error | **não** |
+| ctrl-3 | Cannot find module 'zod' — dependência não instalada | — | environment | jev | 1 | environment | sim |
+| ctrl-4 | resposta do executor cortada: nenhum arquivo gerado | — | incomplete_output | jev | 1 | incomplete_output | sim |
+| ctrl-5 | REQ-002 contraditório: pede taxa de 2% e isenção ao mesmo tempo | — | ambiguous_spec | jev | 0.99 | ambiguous_spec | sim |
+
+**Porta (parcial):** 4/4 tentativas reais → `plan_error` + `fonte: mecanica`. Controles: **4/5** batem o rótulo; **ctrl-2** o Jev devolveu `plan_error` (0,5) em vez de `evaluator_error` (pré-checagem mecânica não aplicável — arquivo citado no motivo não está no critério).
+
+### Ordem invertida (`FAILURE_CAUSE_CRITERIA` revertido) — casos `fonte: jev`
+
+| caso | causa (normal) | causa (invertida) | mudou? |
+|------|----------------|-------------------|--------|
+| ctrl-1 | wrong_code | wrong_code | não |
+| ctrl-2 | plan_error | evaluator_error | **SIM** |
+| ctrl-3 | environment | environment | não |
+| ctrl-4 | incomplete_output | incomplete_output | não |
+| ctrl-5 | ambiguous_spec | ambiguous_spec | não |
+
+Casos reais: nenhum chegou ao Jev (todos mecânicos).
+
+### Custo Jev (replay)
+
+| input tokens | output tokens | US$ (estimateJevCostUsd) |
+|--------------|---------------|---------------------------|
+| 3180 | 363 | 0,00013356 |
+
+### `npx tsc --noEmit`
+
+```
+(saída vazia — exit 0)
+```
+
+### `npx vitest run` (totais)
+
+```
+ Test Files  125 passed (125)
+      Tests  828 passed (828)
+   Duration  210.38s
+```
+
+### Commit
+
+_(hash no commit seguinte ou na resposta do agente — não neste commit.)_
+
+### O que não foi feito
+
+A3.4 — aguardando OK do fundador.
 
 ---
