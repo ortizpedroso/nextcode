@@ -1,3 +1,12 @@
+## 18/10/2026 (163) — pstack (backnotprop/pstack) analisado: referência de estudo, não resolve o TR1
+
+**Fundador:** analisar o pstack, "pode resolver muitos dos nossos problemas". Só leitura (nada instalado, memória `pasted-command-is-for-analysis`).
+**O que é:** espelho do plugin `pstack` do Cursor — pacote de skills para o **agente de desenvolvimento** (Claude Code/Cursor/Codex), não para o harness do NextCode: `poteto-mode` + 23 playbooks + ~30 skills + 24 `principle-*`; MIT; ~2,2 mil estrelas, 24 commits, sem release; skills interdependentes; autor "não acredita em planejamento — a melhor spec é código".
+**Veredito:** não ataca os problemas medidos (1 ferramenta por turno, exploração repetida, pausa que recomeça, relatório P12, sem cache) — não descreve redução de chamadas, agrupamento de ferramentas nem cache. Contraria o desenho do NextCode (Spec primeiro). Decisão de 16/10 (diário 99) vale: estudar, não carregar.
+**Aproveitar como padrão (com nome no S3/TR1):** `principle-encode-lessons-in-structure` (lição vira teste/lint, não texto — = porteiro); `principle-sequence-verifiable-units` (etapa termina em estado conferível); `principle-guard-the-context-window` (bruto fica fora do contexto principal, só resumo — = TR1 13); `principle-make-operations-idempotent` (= pausa sem recomeço, TR1 1); `interrogate` (outro modelo tenta quebrar o diff — = J3); playbook `eval` (teste cego de mudança de skill — = método do S3).
+
+---
+
 ## 18/10/2026 (162) — Como reduzir chamadas: diagnóstico com a trilha; TR1 (12)–(14)
 
 **Fundador:** decidir como engenheiro (não por ele ter dito); como diminuir chamadas e melhorar o todo; começar quando o teste terminar.
