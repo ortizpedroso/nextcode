@@ -1,3 +1,12 @@
+## 18/10/2026 (154) — Jev na Spec e Graphify: diagnóstico e proposta (mudança 25)
+
+**Fundador:** Jev tem de ajudar a deixar a Spec redonda (rever perguntas e o que fazer com as respostas); Graphify apareceu na tela.
+**Achado:** M2 corta a Spec em 22.000 caracteres e os REQ começam no 29.654 → Jev não viu nenhum REQ; `escopo_fechado` pergunta por "seção 7" inexistente; perguntas largas; resposta só vira aviso. Graphify sugerido porque "pasta existe" = "tem código" (pasta tem só package.json e README).
+**Recomendação (aguarda OK):** não mexer durante o teste pesado; depois: desligar o aviso M2 e corrigir o gatilho do Graphify (mecânico); redesenho do Jev na Spec na E2 (J8/J11/mudança 7): perguntas por item, itens reprovados voltam ao elicitador por trecho, resíduo ao usuário.
+**Agora:** ignorar o aviso do Jev e não clicar no Graphify; aprovar a Spec.
+
+---
+
 ## 18/10/2026 (153) — Teste real, ponto 1 (Spec) auditado; regex de rota dinâmica corrigida
 
 **Sessão `8e2f2052` (Multi_Gateway, `C:\projetos\multi_gateway`):** Spec do Opus em 320 s, 40.562 tokens (84% do teto), US$ 0,834; data corrigida pelo harness; sem 2ª chamada; 51 REQ, 115 arquivos, estrutura ok; plano de reserva válido.
