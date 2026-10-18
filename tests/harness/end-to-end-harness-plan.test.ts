@@ -4,6 +4,7 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import prisma from "@/lib/prisma";
 import { SmartRouter, type DispatchResult } from "@/core/router/smart-router";
+import * as empiricalGateMod from "@/core/governance/empirical-gate";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
@@ -97,7 +98,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     }
   });
 
-  it("Avaliador fora do ar não gasta tentativa do executor (até 2 vezes seguidas); a 3ª queda passa a contar", async () => {
+  it("Mudança 24: avaliador fora do ar não gasta tentativa — 3 reavaliações grátis e na 4ª a sessão PAUSA (aviso no chat), nó pendente com 0 tentativas", async () => {
     const projectDir = makeTempProjectDir();
     const project = await prisma.project.create({ data: { name: "Projeto Avaliador Fora", path: projectDir } });
     createdProjectIds.push(project.id);
@@ -116,6 +117,16 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     });
     createdSessionIds.push(session.id);
 
+    // O teste mede a pausa do avaliador, não o tsc: o porteiro é simulado (4 rodadas de tsc real ≈ 14 s).
+    vi.spyOn(empiricalGateMod, "promoteWithEmpiricalGate").mockResolvedValue({
+      passed: true,
+      rolledBack: false,
+      buildResult: { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 },
+      lintResult: null,
+      preexistingFailure: false,
+      newErrors: [],
+      failedStage: null,
+    } as any);
     // Executor responde código; o avaliador nunca devolve um veredito válido.
     vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
       const sys = opts.messages.map((m) => m.content).join("\n");
@@ -133,9 +144,14 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     const node = await prisma.taskNode.findFirstOrThrow({ where: { sessionId: session.id, role: { not: "scaffold" } } });
     const result = JSON.parse(node.result || "{}");
     expect(result.auditMethod).toBe("heuristic_fallback");
-    // 2 quedas grátis + a 3ª conta: o laço da fila não pode girar para sempre.
-    expect(result.evaluatorOutageStreak).toBeGreaterThanOrEqual(3);
-    expect(node.attempts).toBe(result.evaluatorOutageStreak - 2);
+    expect(result.evaluatorOutageStreak).toBe(4);
+    expect(node.attempts).toBe(0);
+    expect(node.status).toBe("pending");
+    const dbSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(dbSession.phase).toBe("PAUSADA");
+    expect(JSON.parse(dbSession.phaseContext || "{}").pausaAvaliador.pausa).toBe(1);
+    const msgs = await prisma.message.findMany({ where: { sessionId: session.id } });
+    expect(msgs.some((m) => m.content.includes("Avaliador fora do ar — execução pausada (pausa 1 de 6)"))).toBe(true);
   });
 
   it.each([

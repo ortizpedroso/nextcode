@@ -25,6 +25,7 @@ import {
   extractAndValidateExecutorReport,
   type MicrobriefAndReportDocument,
 } from "@/core/templates/artifact-templates";
+import { MAX_PAUSAS_AVALIADOR } from "@/core/orchestrator/phase-machine";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
@@ -355,7 +356,17 @@ export function getStepTimeoutMs(): number {
 }
 
 /** Quedas seguidas do avaliador que não gastam tentativa do executor. */
-export const MAX_FREE_EVALUATOR_RETRIES = 2;
+/** Mudança 24 (fundador 18/10): 3 reavaliações sem gastar tentativa; depois a sessão pausa 5 min (não gasta). */
+export const MAX_FREE_EVALUATOR_RETRIES = 3;
+export const EVALUATOR_PAUSE_MS = 5 * 60_000;
+
+/** Falhas que não se resolvem esperando (chave, permissão, crédito) → bloquear na hora. */
+export function isEvaluatorAccessFailure(failures: string[]): boolean {
+  if (failures.length === 0) return false;
+  return failures.every((f) =>
+    /HTTP 40[13]|sem chave|credit|billing|authentication|permission|mesma família/i.test(f)
+  );
+}
 
 export function readEvaluatorOutageStreak(result?: string | null): number {
   try {
@@ -491,14 +502,17 @@ export function makeBlindAuditDispatchFn(
   sessionId?: string,
   nodeId?: string,
   executorFamily: string = "deepseek"
-): LLMDispatchFn {
-  return async (messages) => {
+): LLMDispatchFn & { lastFailures: string[] } {
+  const state = { lastFailures: [] as string[] };
+  const fn = async (messages: Parameters<LLMDispatchFn>[0]) => {
     // AV1.1: avaliador = Claude (Sonnet 5.5 → Opus 5.5), nunca a família do executor real da etapa.
     // Sem resposta → null (o chamador trata como avaliador fora). Antes caía no roteador livre
     // (`tier: fast`), que podia ser o próprio DeepSeek do executor ou um gratuito aprovando sozinho.
     const strong = await dispatchStrongEvaluator(messages, {
       executorFamily: (executorFamily as any) || "deepseek",
     }).catch(() => null);
+    // Mudança 24: guarda o motivo da última falha para decidir entre pausar e bloquear.
+    state.lastFailures = strong?.content ? [] : (strong?.failures ?? ["avaliador: exceção na chamada"]);
     TelemetryLogger.log({
       sessionId,
       action: "EVALUATOR_MODEL",
@@ -527,12 +541,18 @@ export function makeBlindAuditDispatchFn(
           signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
         });
         const json = await res.response.json().catch(() => null);
-        return json?.choices?.[0]?.message?.content ?? json?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+        const text = json?.choices?.[0]?.message?.content ?? json?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+        // O falso respondeu: se não houver veredito válido, o motivo é a resposta, não falta de chave.
+        if (text) state.lastFailures = ["avaliador: resposta sem veredito válido"];
+        return text;
       } catch {
         return null;
       }
     }
     return null;
+  };
+  return Object.defineProperty(fn, "lastFailures", { get: () => state.lastFailures }) as LLMDispatchFn & {
+    lastFailures: string[];
   };
 }
 
@@ -1440,6 +1460,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       }
     }
 
+    const blindAuditDispatch = makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id, actualExecutorFamily);
     const type2Res = await DualLensAuditor.validateType2(
       type1Res,
       // O avaliador também vê o código real das dependências (só leitura), para conferir chamadas,
@@ -1452,7 +1473,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           : ""),
       stepResultText,
       codeContentMap,
-      makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id, actualExecutorFamily),
+      blindAuditDispatch,
       {
         cluster: resolvedCluster,
         expectedReqs: nodePayload.reqsCobertos,
@@ -1507,8 +1528,70 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       TelemetryLogger.log({
         sessionId: taskDb.sessionId,
         action: "EVALUATOR_UNAVAILABLE",
-        details: { nodeId: taskDb.id, streak: evaluatorOutageStreak, attemptConsumed: !evaluatorOutageFreeRetry },
+        details: { nodeId: taskDb.id, streak: evaluatorOutageStreak, attemptConsumed: false, falhas: blindAuditDispatch.lastFailures.slice(0, 6) },
       });
+
+      // Mudança 24: passadas as 3 reavaliações grátis, a etapa NÃO gasta tentativa — volta para a fila e a
+      // sessão pausa 5 min (o supervisor só retoma com o Claude respondendo). Chave/crédito/permissão não
+      // se resolvem esperando → bloqueia na hora. Mais de MAX_PAUSAS_AVALIADOR pausas seguidas → bloqueia.
+      if (!evaluatorOutageFreeRetry && !secretGuardRes.blocked) {
+        qm.purgeWorkspace(taskDb.id);
+        const falhas = blindAuditDispatch.lastFailures;
+        const definitivo = isEvaluatorAccessFailure(falhas);
+        const pausa = evaluatorOutageStreak - MAX_FREE_EVALUATOR_RETRIES;
+        const ate = new Date(Date.now() + EVALUATOR_PAUSE_MS);
+        const motivo = (falhas[0] ?? "sem resposta válida do avaliador").slice(0, 200);
+        const pausedTask = await prisma.taskNode.update({
+          where: { id: taskDb.id },
+          data: {
+            status: "pending",
+            attempts: taskDb.attempts,
+            result: JSON.stringify({ evaluatorOutageStreak, auditMethod: type2Res.method, evaluatorFailures: falhas.slice(0, 6) }),
+          },
+        });
+        const bloqueia = definitivo || pausa > MAX_PAUSAS_AVALIADOR;
+        await applyPhaseEvent(
+          taskDb.sessionId,
+          { type: "AVALIADOR_FORA", ate: ate.toISOString(), pausa, motivo, definitivo },
+          {
+            detalheAviso: [
+              "**Dono:** ambiente (avaliador fora do ar).",
+              `Etapa "${taskDb.title}": nenhuma tentativa do executor foi gasta (${taskDb.attempts || 0}/${taskDb.maxAttempts || 3}).`,
+              "Falhas do avaliador:",
+              ...falhas.slice(0, 6).map((f) => `- ${f}`),
+              definitivo ? "Verifique a chave e o crédito da Anthropic em Configurações." : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          }
+        );
+        if (!bloqueia) {
+          await prisma.message.create({
+            data: {
+              sessionId: taskDb.sessionId,
+              role: "assistant",
+              content:
+                `⏸️ **Avaliador fora do ar — execução pausada (pausa ${pausa} de ${MAX_PAUSAS_AVALIADOR}).** ` +
+                `A etapa "${taskDb.title}" voltou para a fila sem gastar tentativa. Nova tentativa a partir de ` +
+                `${ate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}, quando o Claude responder. Motivo: ${motivo}`,
+            },
+          });
+        }
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: bloqueia ? "EVALUATOR_OUTAGE_BLOCKED" : "EVALUATOR_OUTAGE_PAUSED",
+          details: { nodeId: taskDb.id, pausa, definitivo, ate: ate.toISOString(), falhas: falhas.slice(0, 6) },
+        });
+        return {
+          success: false,
+          claimed: true,
+          executedTask: pausedTask,
+          finalStatus: bloqueia ? "blocked" : "paused",
+          executorSkillUsed: executorSkillName,
+          evaluatorSkillUsed,
+          promotionTarget: null,
+        };
+      }
     }
 
     if (type2Res.divergenceDetected) {

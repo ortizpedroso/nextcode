@@ -1,3 +1,11 @@
+## 18/10/2026 (152) — M24: avaliador fora do ar pausa em vez de gastar tentativa
+
+**Fundador:** "3 tentativas e, se não conseguir, aguarda 5 minutos" → auditor aceitou com 3 ajustes (sonda no Claude, limite de 6 pausas, chave/crédito bloqueia na hora); "pode fazer".
+**Feito:** 3 reavaliações grátis; depois PAUSADA com aviso, nova tentativa a cada 5 min só com o Claude respondendo; 6 pausas → BLOQUEADA "dono: ambiente"; 401/403/crédito → BLOQUEADA na hora. Sonda real ok. tsc 0; vitest 131/871 (2×). Mudança 24 na referência.
+**Próximo passo:** fundador reinicia o NextCode e roda o teste pesado real; auditor audita a trilha.
+
+---
+
 ## 18/10/2026 (151) — Fundador roda o teste pesado real; PJ2 (fechar com retomada + risco da pasta-mãe) registrado
 
 **Fundador:** vai rodar um pedido real no NextCode e o Claude audita todos os pontos. Arquivar não é o que ele quer: quer **fechar** guardando onde parou e retomar ao abrir. Achou risco: abriu por engano a pasta que contém todos os projetos, não consegue fechar e um clique errado pode apagar tudo. Fica para depois do teste pesado.

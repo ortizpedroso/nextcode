@@ -43,6 +43,10 @@ export function parseSessionPhaseContext(
   if (parsed.faseAntesDoBloqueio) {
     ctx.faseAntesDoBloqueio = parsed.faseAntesDoBloqueio;
   }
+  // Mudança 24: pausa por avaliador fora do ar (até quando e qual pausa).
+  if (parsed.pausaAvaliador && typeof parsed.pausaAvaliador.ate === "string") {
+    ctx.pausaAvaliador = parsed.pausaAvaliador;
+  }
 
   return ctx;
 }
@@ -56,6 +60,7 @@ export function serializeSessionPhaseContext(ctx: PhaseContext): string {
     voltasConferencia: ctx.voltasConferencia,
     ...(ctx.faseAntesDaPausa ? { faseAntesDaPausa: ctx.faseAntesDaPausa } : {}),
     ...(ctx.faseAntesDoBloqueio ? { faseAntesDoBloqueio: ctx.faseAntesDoBloqueio } : {}),
+    ...(ctx.pausaAvaliador ? { pausaAvaliador: ctx.pausaAvaliador } : {}),
   };
   return JSON.stringify(data);
 }

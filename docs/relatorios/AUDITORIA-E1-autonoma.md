@@ -248,3 +248,18 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 | skills de cluster ainda falavam em "duas lentes" e `passos_max` 25/35 | `description` dos 4 `avaliador-*` diz Lente 1 (Lente 2 no harness); `passos_max: 1` | `grep "duas lentes" skills/avaliador-*/SKILL.md` → vazio |
 
 **Verificação deste commit:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 130 passed (130)`, `Tests 864 passed (864)`.
+
+---
+
+## M24 — Avaliador fora do ar: 3 grátis, pausa de 5 min com sonda no Claude, limite de 6, chave/crédito bloqueia
+
+**Mudou:**
+- `src/core/orchestrator/phase-machine.ts`: evento `AVALIADOR_FORA {ate, pausa, motivo, definitivo}` em EXECUCAO e PAUSADA; `PhaseContext.pausaAvaliador`; `MAX_PAUSAS_AVALIADOR = 6`; acima do limite ou `definitivo` → BLOQUEADA com `AVISAR_HUMANO`; `LLM_VOLTOU` limpa a pausa.
+- `src/core/orchestrator/session-phase.ts`: grava e lê `pausaAvaliador`.
+- `src/core/orchestrator/node-executor.ts`: `MAX_FREE_EVALUATOR_RETRIES = 3`; `EVALUATOR_PAUSE_MS`; `isEvaluatorAccessFailure`; `makeBlindAuditDispatchFn` expõe `lastFailures`; passadas as 3 grátis → nó `pending` sem gastar tentativa, `AVALIADOR_FORA`, aviso ⏸️ no chat, trilha `EVALUATOR_OUTAGE_PAUSED` / `EVALUATOR_OUTAGE_BLOCKED`.
+- `src/core/orchestrator/job-worker.ts`: `probeEvaluator` (sonda de poucos tokens no Claude); `superviseEvaluatorPauses` (antes de `ate` nada; depois sonda → `LLM_VOLTOU` + reenfileira, ou nova pausa com aviso / bloqueio); chamado em `runOnce`; `supervisePausedSessions` não pega mais sessão com `pausaAvaliador`.
+- Testes: `tests/orchestrator/avaliador-fora-pausa.test.ts` (novo, 7); `end-to-end-harness-plan.test.ts`: teste antigo ("a 3ª queda passa a contar") reescrito para a regra nova — 4ª queda pausa, 0 tentativas — com o porteiro simulado (sem isso, 14 s de 15 s de limite; o limite não foi aumentado); listas de eventos de `phase-machine.test.ts` e `sem-parada-silenciosa.test.ts` com o evento novo.
+
+**Prova real:** `probeEvaluator()` → `{"ok":true}` (Claude Sonnet 5.5, cópia do banco).
+**Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` 2× → `Test Files 131 passed (131)`, `Tests 871 passed (871)` nas duas.
+**Limitação conhecida:** ao retomar, a etapa roda o executor de novo (o código da tentativa anterior não é guardado para só reavaliar) — até 6 execuções extras do DeepSeek numa queda longa (≈ US$ 0,03 cada).

@@ -44,6 +44,7 @@ export type PhaseEvent =
   | { type: 'CONFERENCIA_FALHOU'; culpa: ConferenceCulprit }
   | { type: 'PLANO_PRONTO' }
   | { type: 'PLANO_REPROVADO' }
+  | { type: 'AVALIADOR_FORA'; ate: string; pausa: number; motivo: string; definitivo: boolean }
   | { type: 'SEM_PENDENCIAS' }
   | { type: 'SEM_LLM' }
   | { type: 'LLM_VOLTOU' }
@@ -74,6 +75,41 @@ export interface PhaseContext {
   voltasConferencia: number;      // idas e voltas CONFERENCIA → MACROBRIEF/SPEC_REVISAO (§3, regra 6)
   faseAntesDaPausa?: Phase;       // para voltar de PAUSADA (§3, regra 9)
   faseAntesDoBloqueio?: Phase;    // para voltar de BLOQUEADA (§3, regras 7 e 8)
+  /** Mudança 24: pausa por avaliador fora do ar — o supervisor só retoma depois de `ate` e com o Claude respondendo. */
+  pausaAvaliador?: { ate: string; pausa: number; motivo: string };
+}
+
+/** Mudança 24: pausas seguidas de 5 min por avaliador fora do ar antes de bloquear. */
+export const MAX_PAUSAS_AVALIADOR = 6;
+
+function handleAvaliadorFora(
+  ctx: PhaseContext,
+  event: Extract<PhaseEvent, { type: 'AVALIADOR_FORA' }>
+): TransitionResult {
+  if (event.definitivo || event.pausa > MAX_PAUSAS_AVALIADOR) {
+    return {
+      ok: true,
+      ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO', faseAntesDaPausa: undefined, pausaAvaliador: undefined },
+      effects: [
+        {
+          type: 'AVISAR_HUMANO',
+          motivo: event.definitivo
+            ? `avaliador sem acesso (${event.motivo})`
+            : `avaliador fora do ar há ${MAX_PAUSAS_AVALIADOR} pausas seguidas (${event.motivo})`,
+        },
+      ],
+    };
+  }
+  return {
+    ok: true,
+    ctx: {
+      ...ctx,
+      phase: 'PAUSADA',
+      faseAntesDaPausa: 'EXECUCAO',
+      pausaAvaliador: { ate: event.ate, pausa: event.pausa, motivo: event.motivo },
+    },
+    effects: [],
+  };
 }
 
 export interface PhaseOptions {
@@ -428,7 +464,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   EXECUCAO: {
-    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'AVALIADOR_FORA', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['mudanca_durante_execucao', 'duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_PENDENCIAS') {
@@ -440,6 +476,9 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
       }
       if (event.type === 'SEM_LLM') {
         return handleSemLlm(ctx);
+      }
+      if (event.type === 'AVALIADOR_FORA') {
+        return handleAvaliadorFora(ctx, event);
       }
       if (event.type === 'EXECUTOR_BLOQUEADO') {
         return {
@@ -485,9 +524,13 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   PAUSADA: {
-    allowedEvents: ['LLM_VOLTOU', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['LLM_VOLTOU', 'AVALIADOR_FORA', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
+      // Mudança 24: o supervisor sondou o Claude e ele continua fora → estende a pausa (ou bloqueia no limite)
+      if (event.type === 'AVALIADOR_FORA') {
+        return handleAvaliadorFora(ctx, event);
+      }
       // §3, regra 9: LLM_VOLTOU volta para faseAntesDaPausa
       if (event.type === 'LLM_VOLTOU') {
         const destino = ctx.faseAntesDaPausa ?? 'EXECUCAO';
@@ -498,7 +541,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
 
         return {
           ok: true,
-          ctx: { ...ctx, phase: destino, faseAntesDaPausa: undefined },
+          ctx: { ...ctx, phase: destino, faseAntesDaPausa: undefined, pausaAvaliador: undefined },
           effects,
         };
       }

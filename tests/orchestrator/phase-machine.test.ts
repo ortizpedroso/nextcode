@@ -584,6 +584,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
         expect(res.allowedEvents).toEqual([
           'SEM_PENDENCIAS',
           'SEM_LLM',
+          'AVALIADOR_FORA',
           'EXECUTOR_BLOQUEADO',
           'TETO_CUSTO',
           'FALHA_REPETIDA',
@@ -676,6 +677,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'CONFERENCIA_FALHOU', culpa: 'macrobrief' },
       { type: 'PLANO_PRONTO' },
       { type: 'PLANO_REPROVADO' },
+      { type: 'AVALIADOR_FORA', ate: '2026-10-18T12:05:00.000Z', pausa: 1, motivo: 'x', definitivo: false },
       { type: 'SEM_PENDENCIAS' },
       { type: 'SEM_LLM' },
       { type: 'LLM_VOLTOU' },

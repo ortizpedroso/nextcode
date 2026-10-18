@@ -49,6 +49,77 @@ export async function isAnyLlmGatewayReachable(): Promise<boolean> {
 
 export const LONG_PAUSE_NOTICE_MS = 300_000;
 
+/** Mudança 24: sonda de poucos tokens no avaliador de produção (Claude). Falhas vão para o motivo da pausa. */
+export async function probeEvaluator(): Promise<{ ok: boolean; motivo: string; definitivo: boolean }> {
+  const { dispatchStrongEvaluator } = await import("@/core/llm/evaluator-models");
+  const { isEvaluatorAccessFailure } = await import("@/core/orchestrator/node-executor");
+  const r = await dispatchStrongEvaluator([{ role: "user", content: 'Responda só: {"ok":true}' }], {
+    executorFamily: "deepseek",
+    timeoutMs: 20_000,
+  }).catch((err) => ({ content: null, failures: [String(err).slice(0, 140)] }));
+  if (r.content) return { ok: true, motivo: "", definitivo: false };
+  return { ok: false, motivo: (r.failures[0] ?? "sem resposta").slice(0, 200), definitivo: isEvaluatorAccessFailure(r.failures) };
+}
+
+/**
+ * Mudança 24: sessões pausadas por avaliador fora do ar. Antes de `ate`, não faz nada; depois, sonda o
+ * Claude: respondeu → `LLM_VOLTOU` e reenfileira; não respondeu → nova pausa de 5 min (ou bloqueia no
+ * limite / em falha de chave ou crédito), com aviso no chat. Retorna as sessões retomadas.
+ */
+export async function superviseEvaluatorPauses(
+  probeFn: () => Promise<{ ok: boolean; motivo: string; definitivo: boolean }> = probeEvaluator,
+  now: Date = new Date()
+): Promise<number> {
+  const sessions = await prisma.session.findMany({
+    where: { phase: "PAUSADA", phaseContext: { contains: "pausaAvaliador" } },
+    select: { id: true, phaseContext: true },
+  });
+  let resumed = 0;
+  for (const session of sessions) {
+    let pausa: { ate: string; pausa: number; motivo: string } | undefined;
+    try {
+      pausa = JSON.parse(session.phaseContext || "{}").pausaAvaliador;
+    } catch {
+      pausa = undefined;
+    }
+    if (!pausa || now.getTime() < new Date(pausa.ate).getTime()) continue;
+    const probe = await probeFn().catch(() => ({ ok: false, motivo: "sonda falhou", definitivo: false }));
+    if (probe.ok) {
+      const res = await applyPhaseEvent(session.id, { type: "LLM_VOLTOU" });
+      if (res.ok && res.ctx.phase === "EXECUCAO") {
+        await enqueueSessionQueueJob(session.id);
+        resumed++;
+      }
+      TelemetryLogger.log({ sessionId: session.id, action: "EVALUATOR_OUTAGE_RESUMED", details: { pausa: pausa.pausa } });
+      continue;
+    }
+    const proxima = pausa.pausa + 1;
+    const ate = new Date(now.getTime() + 5 * 60_000);
+    const res = await applyPhaseEvent(
+      session.id,
+      { type: "AVALIADOR_FORA", ate: ate.toISOString(), pausa: proxima, motivo: probe.motivo, definitivo: probe.definitivo },
+      { detalheAviso: `**Dono:** ambiente (avaliador fora do ar).\nÚltima sonda: ${probe.motivo}` }
+    );
+    if (res.ok && res.ctx.phase === "PAUSADA") {
+      await prisma.message.create({
+        data: {
+          sessionId: session.id,
+          role: "assistant",
+          content:
+            `⏸️ **Avaliador ainda fora do ar (pausa ${proxima}).** Nova tentativa a partir de ` +
+            `${ate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}. Motivo: ${probe.motivo}`,
+        },
+      });
+    }
+    TelemetryLogger.log({
+      sessionId: session.id,
+      action: res.ok && res.ctx.phase === "BLOQUEADA" ? "EVALUATOR_OUTAGE_BLOCKED" : "EVALUATOR_OUTAGE_PAUSED",
+      details: { pausa: proxima, definitivo: probe.definitivo, motivo: probe.motivo },
+    });
+  }
+  return resumed;
+}
+
 /**
  * Supervisor periódico da fila (Item 1 do PLANO-DE-ACAO):
  * Verifica sessões em `PAUSADA` (que possuem `faseAntesDaPausa` registrada por `SEM_LLM`).
@@ -59,12 +130,15 @@ export async function supervisePausedSessions(
   probeGatewayFn: () => Promise<boolean> = isAnyLlmGatewayReachable,
   now: Date = new Date()
 ): Promise<number> {
+  // Pausas por avaliador fora do ar têm supervisor próprio (superviseEvaluatorPauses): a sonda genérica
+  // de "algum gateway responde" as retomaria na hora com o DeepSeek de pé.
   const pausedSessions = await prisma.session.findMany({
     where: {
       phase: "PAUSADA",
       phaseContext: {
         contains: "faseAntesDaPausa",
       },
+      NOT: { phaseContext: { contains: "pausaAvaliador" } },
     },
     select: { id: true },
   });
@@ -377,6 +451,7 @@ export async function superviseSilentSessions(options?: {
  */
 export async function runOnce(workerId: string = defaultProcessWorkerId): Promise<number> {
   await supervisePausedSessions().catch(() => 0);
+  await superviseEvaluatorPauses().catch(() => 0);
   await superviseExecutionQueue().catch(() => ({ orphanSessionsResumed: 0, stuckNodesReset: 0 }));
   await superviseSilentSessions().catch(() => 0);
 
