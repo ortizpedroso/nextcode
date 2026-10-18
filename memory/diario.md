@@ -1,3 +1,12 @@
+## 18/10/2026 (151) — Fundador roda o teste pesado real; PJ2 (fechar com retomada + risco da pasta-mãe) registrado
+
+**Fundador:** vai rodar um pedido real no NextCode e o Claude audita todos os pontos. Arquivar não é o que ele quer: quer **fechar** guardando onde parou e retomar ao abrir. Achou risco: abriu por engano a pasta que contém todos os projetos, não consegue fechar e um clique errado pode apagar tudo. Fica para depois do teste pesado.
+**Conferido:** a trava de "apagar a pasta" (`api/projects/[id]/route.ts` ≈101-104) só cobre raiz do disco, pasta do NextCode e `C:\projetos` exato (comparação sensível a maiúsculas) — risco real para pasta-mãe em outro lugar. Registrado como **PJ2** na §5.0 (depois do teste pesado).
+**Durante o teste:** nunca usar "Remover e apagar a pasta do computador".
+**Próximo passo:** fundador roda; auditor lê a trilha (cópia do banco) quando ele avisar.
+
+---
+
 ## 17/10/2026 (150) — Auditoria do Cursor conferida; ressalvas fechadas
 
 **Cursor (`f4d0401`):** aceito com ressalvas; HEAD 130/863 2×; replay do analista e controles do avaliador repetidos com sucesso (US$ 0,22); concorda com D1–D39 (ressalva na D26).
