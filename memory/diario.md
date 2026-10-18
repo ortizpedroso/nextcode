@@ -1,3 +1,12 @@
+## 18/10/2026 (157) — Teste real seguindo; TR1 (achados) e JV1 (Jev estratégico) registrados
+
+**Estado (08:09):** etapa 3 aprovada depois do desbloqueio (`.env.example` gravado no disco); 23 concluídas, 3 rodando, 28 na fila, 1 falha em retentativa; US$ 6,57.
+**Achado grave:** 143 pausas `SEM_LLM` em 8 etapas (50 idas e voltas) — uma chamada lenta do DeepSeek (até 112 s) faz a etapa recomeçar do zero.
+**Fundador:** anotar todos os problemas para um prompt de melhoria; revisar o Jev nos pontos estratégicos. **Registrado:** TR1 (8 achados) e JV1 (regra: toda pergunta tem dono da resposta) na §5.0. Prompt depois do fim do teste, com os números finais.
+**Próximo passo:** acompanhar até o fim do teste.
+
+---
+
 ## 18/10/2026 (156) — Teste real, ponto 2: planejamento ok; `.env.example` bloqueava a etapa 3 (corrigido)
 
 **Planejamento:** analista DeepSeek aprovado na 1ª rodada, 54 etapas, T8b ok, US$ 0,13. **Execução:** etapas 9 e 17 aprovadas pelo Sonnet e promovidas; etapa 1 reprovada (retentativa).
