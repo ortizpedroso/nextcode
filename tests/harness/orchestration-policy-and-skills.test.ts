@@ -536,6 +536,26 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     expect(denyProtectedDb.allowed).toBe(false);
     expect(denyProtectedDb.violationReason).toContain("[SKILL PROTECTED PATH]");
 
+    // Teste real 18/10: `.env.example` (modelo sem segredo) é permitido; `.env` e `.env.local` continuam proibidos.
+    for (const [file, ok] of [
+      [".env.example", true],
+      ["./.env.example", true],
+      [".env.sample", true],
+      [".env", false],
+      [".env.local", false],
+      [".env.production", false],
+    ] as const) {
+      const r = enforceSkillToolPermission({
+        skill: executorBackend,
+        toolName: "write_file",
+        targetFile: file,
+        allowedScopeFiles: [file.replace(/^\.\//, "")],
+        currentStep: 3,
+      });
+      expect(r.allowed, file).toBe(ok);
+      if (!ok) expect(r.violationReason).toContain("[SKILL PROTECTED PATH]");
+    }
+
     const denyMaxSteps = enforceSkillToolPermission({
       skill: executorBackend,
       toolName: "read_file",

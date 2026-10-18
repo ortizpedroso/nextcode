@@ -1,3 +1,12 @@
+## 18/10/2026 (156) — Teste real, ponto 2: planejamento ok; `.env.example` bloqueava a etapa 3 (corrigido)
+
+**Planejamento:** analista DeepSeek aprovado na 1ª rodada, 54 etapas, T8b ok, US$ 0,13. **Execução:** etapas 9 e 17 aprovadas pelo Sonnet e promovidas; etapa 1 reprovada (retentativa).
+**Defeito:** executor proibido de escrever `.env.example` (proteção `.env.*`) → etapa 3 falha sempre; corrigido (modelos sem segredo permitidos) + teste; tsc 0; vitest 131/872.
+**Pendentes registrados:** relatório P12 com vários `arquivo:linha` (S3); M3 estado grande; teto US$ 0,50 pede autorização a cada meio dólar.
+**Próximo passo:** quando a etapa 3 bloquear (está na 2ª de 3), fundador reinicia o NextCode e clica Desbloquear; auditor segue acompanhando.
+
+---
+
 ## 18/10/2026 (155) — Mudança 25 aprovada; teste pesado segue
 
 **Fundador:** "concordo" com a ordem: teste pesado → aviso M2 desligado + Graphify corrigido (com o PJ2) → redesenho do Jev na Spec na E2.

@@ -271,3 +271,15 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Trilha (cópia do `dev.db`):** intenção `criar_novo` pelo Jev → ELICITACAO; M0 (Jev) marcou multi-tenant, pagamentos, split por subconta, WhatsApp+e-mail, API pública, whitelabel; **Opus 5.5 em 320 s, 40.562 tokens de saída (84% do teto de 48 mil), `end_turn`, US$ 0,834**; `SPEC_AUTO_HEAL` 1 correção (data "2025-06-01" → 2026-10-18, SM1 c funcionando); **sem 2ª chamada** (`SPEC_FIX_CALL` ausente: a conferência não achou problema); M2 (Jev) clareza 1,29/3, escopo fechado 0,04; `CONFERENCIA_T8A_OK`; SPEC_REVISAO. Custo total até aqui: **≈ US$ 0,835**.
 **Conferência mecânica do auditor:** 51 REQ, 115 arquivos, 16 módulos; `checkSpecStructure` sem problemas; plano de reserva (heurística) 31 nós, **T8b válida, 0 erros**.
 **Defeito achado e corrigido (A2.1c):** a regex de caminhos (`extractFilePathsFromCriteriaText` e `citedFilePaths`) não aceitava `[`, `]`, `(`, `)` → rotas dinâmicas (`src/app/api/checkout/[slug]/route.ts`) não entravam na conferência de escopo; REQ-026, REQ-029 e REQ-045 escapavam. Corrigido nas duas; +2 testes; Spec real reconferida: os 51 REQ com arquivo extraído, plano válido. tsc 0; vitest 131/872.
+
+---
+
+## Teste real — ponto 2: planejamento e início da execução (sessão `8e2f2052`, 18/10)
+
+**Planejamento:** `ANALISTA_PLAN_APPROVED` na rodada 1 (DeepSeek, ≈ 3 min, **US$ 0,133**), **54 etapas**, `PLANO_T8B_OK` 0 erros → EXECUCAO. A2 funcionando com Spec de 51 REQ / 115 arquivos.
+**Execução (até ≈ 06:09):** base sem IA instalada; etapas 9 e 17 **aprovadas pelo Claude Sonnet 5.5** (≈ US$ 0,02 cada) e promovidas; etapa 1 reprovada pelo Sonnet (`wrong_code` 1,0 pelo Jev) — retentativa normal; porteiro `PORTEIRO_OK` com falhas preexistentes do projeto parcial (esperado).
+**Defeitos achados:**
+1. 🔴 **`.env.example` proibido para o executor** (`skill-runtime.ts` ≈305: `.env.*` inteiro protegido) — a Spec manda criar (REQ-002) e o SM1 passou a preservá-lo → a etapa 3 nunca passa (`[MISSING FILE]`), e o Jev rotulou `incomplete_output` 0,74 (o dono real é o harness). **Corrigido:** modelos sem segredo (`.env.example|sample|template`) permitidos; `.env`, `.env.local` e demais continuam proibidos; o conteúdo segue pela guarda de segredos. Teste novo; tsc 0; vitest 131/872.
+2. 🟡 `EXECUTOR_REPORT_INVALID` em quase toda etapa: o executor cita vários `arquivo:linha` por REQ e o validador aceita um só (dívida do S3, diário 74) — gasta reenvio só de relatório.
+3. 🟡 `JEV_STATE_TOO_LARGE` no M3 (29.094 > 24.000): nível do executor caiu na reserva (`medio` para todos) — já previsto na mudança 16 (M3 refeito).
+4. ℹ️ `BUDGET_AUTHORIZED` +US$ 0,50 com US$ 0,515 gastos — o teto de execução de US$ 0,50 interrompe a cada meio dólar até alguém autorizar.
