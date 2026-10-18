@@ -3,7 +3,7 @@ name: avaliador-integration
 description: >
   Avaliador especializado do cluster integration (clientes de APIs externas,
   webhooks, gateways de pagamento, timeouts, idempotência e segurança de borda).
-  Herda o protocolo de duas lentes do avaliador genérico.
+  Herda a Lente 1 do avaliador genérico (a Lente 2 é feita pelo harness).
 papel: avaliador
 cluster: integration
 herda_de: skills/avaliador/SKILL.md
@@ -13,7 +13,7 @@ ferramentas: []
 permissoes:
   escrever: nunca
   comandos: []
-passos_max: 25
+passos_max: 1
 entrada:
   lente_1_cega:
     - microbriefs_cluster

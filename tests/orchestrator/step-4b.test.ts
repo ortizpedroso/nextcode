@@ -934,4 +934,59 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     expect(data.assistantMessage.content).toContain("duvida_avulsa");
     expect(data.assistantMessage.content).toContain("status");
   });
+
+  it("SM1 (e): REQ citando arquivo fora da lista → 2ª chamada de correção registrada (SPEC_FIX_CALL) e avisada; data carimbada e correção listada", async () => {
+    const { TelemetryLogger } = await import("@/core/telemetry/telemetry-logger");
+    const logs: any[] = [];
+    const realLog = TelemetryLogger.log.bind(TelemetryLogger);
+    vi.spyOn(TelemetryLogger, "log").mockImplementation((e: any) => {
+      logs.push(e);
+      return realLog(e);
+    });
+    const { session } = await createTestProjectAndSession({
+      title: "SM1 e",
+      phase: "ELICITACAO",
+      specApproved: false,
+      canonicalSpec: null,
+    });
+    const base = {
+      titulo: "SM1 e",
+      status: "aguardando_aprovacao",
+      data: "2025-10-16",
+      objetivo: "Testar a 2ª chamada visível.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [{ id: "MOD-A", nome: "A", resumo: "A", arquivos: ["src/lib/a.ts"] }],
+      entidades: [],
+      arquivosAfetados: ["src/lib/a.ts"],
+    };
+    const comProblema = renderCanonicalSpecDocument({
+      ...base,
+      requisitos: [{ id: "REQ-001", titulo: "A", criterio: "src/lib/a.ts exporta a() e vitest.config.ts roda os testes" }],
+    } as any);
+    const corrigida = renderCanonicalSpecDocument({
+      ...base,
+      requisitos: [{ id: "REQ-001", titulo: "A", criterio: "src/lib/a.ts exporta a()" }],
+    } as any);
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback")
+      .mockResolvedValueOnce(makeFakeDispatchResult(comProblema))
+      .mockResolvedValueOnce(makeFakeDispatchResult(corrigida));
+
+    const res = await postChat(
+      new NextRequest("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: session.id, prompt: "Criar a lib a" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    const fix = logs.find((l) => l.action === "SPEC_FIX_CALL");
+    expect(fix).toBeDefined();
+    expect(fix.details.adotada).toBe(true);
+    expect(fix.details.problemasAntes.join(" ")).toContain("vitest.config.ts");
+    expect(data.assistantMessage.content).toContain("pedi uma correção ao modelo (2ª chamada)");
+    expect(data.assistantMessage.content).toContain("Data da Spec corrigida");
+    const dbSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(parseSpecDocument(dbSession.canonicalSpec || "")!.requisitos?.[0].criterio).not.toContain("vitest.config.ts");
+  });
 });

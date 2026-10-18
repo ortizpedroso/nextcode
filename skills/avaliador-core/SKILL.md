@@ -2,8 +2,8 @@
 name: avaliador-core
 description: >
   Avaliador especializado do cluster core (domínio puro, tipos compartilhados,
-  stores, repositórios e utilitários). Herda o protocolo de duas lentes do avaliador
-  genérico.
+  stores, repositórios e utilitários). Herda a Lente 1 do avaliador genérico (a Lente 2 é
+  feita pelo harness).
 papel: avaliador
 cluster: core
 herda_de: skills/avaliador/SKILL.md
@@ -13,7 +13,7 @@ ferramentas: []
 permissoes:
   escrever: nunca
   comandos: []
-passos_max: 25
+passos_max: 1
 entrada:
   lente_1_cega:
     - microbriefs_cluster

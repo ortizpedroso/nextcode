@@ -2,8 +2,8 @@
 name: avaliador-backend
 description: >
   Avaliador especializado do cluster backend (rotas de API Next.js, Server Actions,
-  validações de entrada, status HTTP e contratos de erro). Herda o protocolo de
-  duas lentes do avaliador genérico.
+  validações de entrada, status HTTP e contratos de erro). Herda a Lente 1 do
+  avaliador genérico (a Lente 2 é feita pelo harness).
 papel: avaliador
 cluster: backend
 herda_de: skills/avaliador/SKILL.md
@@ -13,7 +13,7 @@ ferramentas: []
 permissoes:
   escrever: nunca
   comandos: []
-passos_max: 25
+passos_max: 1
 entrada:
   lente_1_cega:
     - microbriefs_cluster

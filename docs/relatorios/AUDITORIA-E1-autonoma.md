@@ -235,3 +235,16 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 - (a) Aceita D21 (ramo de teste no avaliador) ou prefere trocar os testes de integração por dublês de módulo?
 - (b) Avaliador fora do ar persistente → PAUSADA em vez de gastar tentativa (mudança 10)? Recomendo sim, num passo próprio.
 - (c) Teste pesado agora (Spec real `934939fc`, sem teto, decisão de 16/10) logo depois da auditoria do Cursor?
+
+---
+
+## Fechamento das ressalvas do Cursor (`docs/relatorios/AUDITORIA-E1-autonoma-cursor.md`, `f4d0401`)
+
+| ressalva | ação | prova |
+|---|---|---|
+| vitest falhou nos commits isolados (sqlite sem tabelas) | causa: o worktree não tem `prisma/test.db` (o vitest usa esse arquivo, `vitest.config` → `DATABASE_URL`) nem `.env` (ignorado pelo git). Refeito para `3ad117b` (o commit separado por stash) com `prisma db push` no `test.db` do worktree | `tsc` 0; vitest **127/129 arquivos, 855/858**; reexecução das falhas: `step-4b` passa (instável na 1ª rodada fria), `mega-stress` › "TESTE PESADO 3" falha só por falta de `.env` (Jev não configurado no worktree) e passa no repositório (16/16). Nenhuma falha de código |
+| `skipModel` volta sem trilha `ANALISTA_PLAN_*` | `ANALISTA_PLAN_FALLBACK` com `reason: modelo_desligado_em_teste` / `sem_roteador` | `spec-decomposer.ts` (início de `decomposeWithAnalistaSkill`) |
+| SM1 (e) sem teste de rota | teste novo em `tests/orchestrator/step-4b.test.ts` › "SM1 (e)": Spec com REQ citando `vitest.config.ts` → `SPEC_FIX_CALL` (`adotada: true`), aviso "2ª chamada" e "Data da Spec corrigida" na mensagem, Spec gravada sem a citação | passa |
+| skills de cluster ainda falavam em "duas lentes" e `passos_max` 25/35 | `description` dos 4 `avaliador-*` diz Lente 1 (Lente 2 no harness); `passos_max: 1` | `grep "duas lentes" skills/avaliador-*/SKILL.md` → vazio |
+
+**Verificação deste commit:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 130 passed (130)`, `Tests 864 passed (864)`.

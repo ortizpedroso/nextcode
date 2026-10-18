@@ -1,8 +1,8 @@
 ---
 name: avaliador-frontend
 description: >
-  Avaliador especializado do cluster frontend. Herda integralmente o protocolo
-  de duas lentes do avaliador genérico e acrescenta auditoria estática das 104
+  Avaliador especializado do cluster frontend. Herda a Lente 1 do avaliador
+  genérico (a Lente 2 é feita pelo harness) e acrescenta auditoria estática das 104
   regras do Web Interface Guidelines (cópia local fixa), regras CRITICAL e HIGH
   do React Best Practices, checklist do ui-ux-pro-max e pré-voo seletivo do
   taste-skill (apenas páginas públicas, nunca dashboards).
@@ -16,7 +16,7 @@ permissoes:
   escrever: nunca
   comandos: []
   rede_externa: bloqueada # T7/T10: nunca faz WebFetch externo durante avaliação; usa apenas cópias locais fixadas
-passos_max: 35
+passos_max: 1
 referencias_locais_fixas:
   - caminho: skills/avaliador-frontend/references/web-interface-guidelines-command.md
     origem_repo: https://github.com/vercel-labs/web-interface-guidelines

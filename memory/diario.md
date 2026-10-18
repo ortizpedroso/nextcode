@@ -1,3 +1,11 @@
+## 17/10/2026 (150) — Auditoria do Cursor conferida; ressalvas fechadas
+
+**Cursor (`f4d0401`):** aceito com ressalvas; HEAD 130/863 2×; replay do analista e controles do avaliador repetidos com sucesso (US$ 0,22); concorda com D1–D39 (ressalva na D26).
+**Conferido pelo auditor:** 1 arquivo no commit do Cursor; ressalvas procedentes. **Fechadas:** trilha no `skipModel`; teste de rota do SM1 (e); skills de cluster sem "duas lentes" e `passos_max: 1`; commit isolado `3ad117b` provado com `test.db` criado no worktree (855/858; as 3 falhas eram ambiente — sem `.env`, 1ª rodada fria). tsc 0; vitest 130/864.
+**Próximo passo:** teste pesado (porta da E1) — aguarda OK do fundador (custo real).
+
+---
+
 ## 17/10/2026 (149) — Execução autônoma da E1 concluída; aguarda auditoria do Cursor
 
 **Feito (12 commits de código, `3ea5ef9`…`c10d3b7`, cada um com tsc 0 e vitest verde):** A2.1–A2.3c (plano conferido e bloqueado; analista DeepSeek planeja a Spec real com T8b válida, US$ 0,099), AV1.1–AV1.5 (avaliador Claude Sonnet→Opus, nunca a família do executor; arquivo inteiro; problemas por severidade; evidência conferida; porteiro tsc+ESLint; 7/7 nos controles reais), PJ1.6b, M20, SM1. Gasto total com LLM ≈ US$ 0,62. HEAD: 130 arquivos / 863 testes.

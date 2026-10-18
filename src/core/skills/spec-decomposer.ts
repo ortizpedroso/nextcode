@@ -393,6 +393,12 @@ export class SpecDecomposerSkill {
     const baseDecomp = SpecDecomposerSkill.decomposeSpec(specText, titulo, files, stack, sessionId);
 
     if (skipModel || !smartRouter) {
+      // Ressalva da auditoria do Cursor (17/10): nenhum caminho volta sem trilha.
+      TelemetryLogger.log({
+        sessionId,
+        action: "ANALISTA_PLAN_FALLBACK",
+        details: { reason: skipModel ? "modelo_desligado_em_teste" : "sem_roteador" },
+      });
       return baseDecomp;
     }
 
