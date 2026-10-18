@@ -1,3 +1,12 @@
+## 18/10/2026 (153) — Teste real, ponto 1 (Spec) auditado; regex de rota dinâmica corrigida
+
+**Sessão `8e2f2052` (Multi_Gateway, `C:\projetos\multi_gateway`):** Spec do Opus em 320 s, 40.562 tokens (84% do teto), US$ 0,834; data corrigida pelo harness; sem 2ª chamada; 51 REQ, 115 arquivos, estrutura ok; plano de reserva válido.
+**Defeito (meu, A2.1):** caminho com colchetes/parênteses não era lido → 3 REQ fora da conferência de escopo. Corrigido + testes; tsc 0; vitest 131/872.
+**M2 do Jev ("escopo fechado 0,04"):** pergunta larga, já medida como não confiável (J1, diário 109) — não bloqueia aprovação.
+**Próximo passo:** fundador aprova a Spec (com o NextCode reiniciado para pegar a correção); auditor audita o planejamento.
+
+---
+
 ## 18/10/2026 (152) — M24: avaliador fora do ar pausa em vez de gastar tentativa
 
 **Fundador:** "3 tentativas e, se não conseguir, aguarda 5 minutos" → auditor aceitou com 3 ajustes (sonda no Claude, limite de 6 pausas, chave/crédito bloqueia na hora); "pode fazer".

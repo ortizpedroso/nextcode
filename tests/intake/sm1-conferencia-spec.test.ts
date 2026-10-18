@@ -51,6 +51,11 @@ describe("SM1 — conferência mecânica da Spec", () => {
     expect(problems.some((p) => p.includes('"REQ-001" cita o arquivo "vitest.config.ts"'))).toBe(true);
     expect(problems.some((p) => p.includes('cita o arquivo "src/lib/a.ts"'))).toBe(false);
     expect(citedFilePaths("usa src/lib/a.ts e vitest.config.ts")).toEqual(["src/lib/a.ts", "vitest.config.ts"]);
+    // Rotas dinâmicas e grupos do App Router (Spec real Multi_Gateway, 18/10)
+    expect(citedFilePaths("src/app/api/checkout/[slug]/route.ts expõe GET; src/app/(auth)/login/page.tsx")).toEqual([
+      "src/app/api/checkout/[slug]/route.ts",
+      "src/app/(auth)/login/page.tsx",
+    ]);
   });
 
   it("(c) data da Spec é carimbada pelo NextCode, e a troca é registrada", () => {

@@ -263,3 +263,11 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Prova real:** `probeEvaluator()` → `{"ok":true}` (Claude Sonnet 5.5, cópia do banco).
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` 2× → `Test Files 131 passed (131)`, `Tests 871 passed (871)` nas duas.
 **Limitação conhecida:** ao retomar, a etapa roda o executor de novo (o código da tentativa anterior não é guardado para só reavaliar) — até 6 execuções extras do DeepSeek numa queda longa (≈ US$ 0,03 cada).
+
+---
+
+## Teste real do fundador — ponto 1: Spec (sessão `8e2f2052`, projeto `C:\projetos\multi_gateway`, 18/10)
+
+**Trilha (cópia do `dev.db`):** intenção `criar_novo` pelo Jev → ELICITACAO; M0 (Jev) marcou multi-tenant, pagamentos, split por subconta, WhatsApp+e-mail, API pública, whitelabel; **Opus 5.5 em 320 s, 40.562 tokens de saída (84% do teto de 48 mil), `end_turn`, US$ 0,834**; `SPEC_AUTO_HEAL` 1 correção (data "2025-06-01" → 2026-10-18, SM1 c funcionando); **sem 2ª chamada** (`SPEC_FIX_CALL` ausente: a conferência não achou problema); M2 (Jev) clareza 1,29/3, escopo fechado 0,04; `CONFERENCIA_T8A_OK`; SPEC_REVISAO. Custo total até aqui: **≈ US$ 0,835**.
+**Conferência mecânica do auditor:** 51 REQ, 115 arquivos, 16 módulos; `checkSpecStructure` sem problemas; plano de reserva (heurística) 31 nós, **T8b válida, 0 erros**.
+**Defeito achado e corrigido (A2.1c):** a regex de caminhos (`extractFilePathsFromCriteriaText` e `citedFilePaths`) não aceitava `[`, `]`, `(`, `)` → rotas dinâmicas (`src/app/api/checkout/[slug]/route.ts`) não entravam na conferência de escopo; REQ-026, REQ-029 e REQ-045 escapavam. Corrigido nas duas; +2 testes; Spec real reconferida: os 51 REQ com arquivo extraído, plano válido. tsc 0; vitest 131/872.

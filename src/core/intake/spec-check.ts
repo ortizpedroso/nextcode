@@ -129,7 +129,7 @@ export function checkSpecStructure(spec: ParsedSpec): string[] {
  * Caminhos de arquivo citados num texto — mesma regra de `extractFilePathsFromCriteriaText`
  * (`jev-execution-checks.ts`), repetida aqui para não criar import circular com o intake.
  */
-const CITED_FILE_RE = /(?:[A-Za-z0-9_$@.-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
+const CITED_FILE_RE = /(?:[A-Za-z0-9_$@.()[\]-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
 export function citedFilePaths(text: string): string[] {
   const found = new Set<string>();
   for (const m of (text || "").matchAll(CITED_FILE_RE)) {

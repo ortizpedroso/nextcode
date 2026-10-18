@@ -133,3 +133,13 @@ describe("A2.3c — heurística acrescenta dependência entre etapas irmãs", ()
     expect(v).toEqual({ valid: true, errors: [] });
   });
 });
+
+describe("A2.1c — caminho com colchetes (rota dinâmica) entra na conferência de escopo", () => {
+  it("REQ numa etapa citando src/app/api/checkout/[slug]/route.ts de etapa irmã → erro", () => {
+    const a: PlanStage = { id: "a", arquivos: ["src/app/api/checkout/[slug]/route.ts"], reqs: [], dependeDe: [] };
+    const b: PlanStage = { id: "b", arquivos: ["src/lib/x.ts"], reqs: ["REQ-026"], dependeDe: [] };
+    const r = checkPlanScope([a, b], { "REQ-026": "src/app/api/checkout/[slug]/route.ts expõe GET usando src/lib/x.ts" });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0]).toContain('"src/app/api/checkout/[slug]/route.ts"');
+  });
+});

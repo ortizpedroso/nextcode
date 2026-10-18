@@ -70,8 +70,11 @@ export const FAILURE_CAUSE_GUIDANCE_PT: Record<JevFailureCause, string> = {
     "entregue todos os arquivos do escopo completos do início ao fim e finalize com o relatório exigido.",
 };
 
+// Colchetes e parênteses entram no segmento de pasta: rotas dinâmicas e grupos do App Router
+// (`src/app/api/checkout/[slug]/route.ts`, `src/app/(auth)/login/page.tsx`). Sem isso o caminho era
+// ignorado e o REQ escapava da conferência de escopo (Spec real Multi_Gateway, 18/10: REQ-026/029/045).
 const FILE_PATH_IN_CRITERIA_RE =
-  /(?:[A-Za-z0-9_$@.-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
+  /(?:[A-Za-z0-9_$@.()[\]-]+\/)+[A-Za-z0-9_$@.-]+\.[A-Za-z0-9]+|\b[A-Za-z0-9_$@.-]+\.config\.[A-Za-z0-9]+\b/g;
 
 export function extractFilePathsFromCriteriaText(text: string): string[] {
   const found = new Set<string>();
