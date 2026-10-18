@@ -1,3 +1,9 @@
+## 18/10/2026 (158) — Cache de prompt da Anthropic: não usado hoje; entra no TR1 (9)
+
+**Fundador:** colou a doc oficial de prompt caching. **Conferido:** 0 `cache_control` no código; no teste, avaliador 34 chamadas / 444.878 tokens de entrada / 0 do cache / US$ 1,42. Leitura do cache = 5% da entrada no Opus/Sonnet 5.5. **Registrado:** TR1 item (9) com o plano (2 cortes no avaliador, automático no elicitador, medir antes de 1 h). Não mexer durante o teste.
+
+---
+
 ## 18/10/2026 (157) — Teste real seguindo; TR1 (achados) e JV1 (Jev estratégico) registrados
 
 **Estado (08:09):** etapa 3 aprovada depois do desbloqueio (`.env.example` gravado no disco); 23 concluídas, 3 rodando, 28 na fila, 1 falha em retentativa; US$ 6,57.
