@@ -1,3 +1,10 @@
+## 18/10/2026 (161) — Divisão DeepSeek × Claude: manter; medir 3 trocas
+
+**Fundador:** a divisão atual é a melhor ou mudar quem faz o quê? **Dados do teste (09:3x):** executor DeepSeek US$ 6,26 (741 chamadas), avaliador Sonnet US$ 2,13 (46), Spec Opus US$ 0,83, analista DeepSeek US$ 0,13; 19 de 33 etapas aprovadas na 1ª; 14 reprovações do avaliador, 14 diagnósticos `wrong_code`; 143 pausas e 37 relatórios recusados (defeitos do harness, não de modelo).
+**Recomendação:** manter (gerador barato + verificador forte de outra família); trocar o executor por Claude obrigaria avaliador não-Claude (T4) e multiplicaria o maior custo. Medir antes de mudar: analista Sonnet × DeepSeek; avaliador em `medium`; Fable 5.1 na Spec e no J3. Primeiro corrigir o desperdício do harness (TR1 1–3).
+
+---
+
 ## 18/10/2026 (160) — Teste real 09:22: 29 concluídas; etapa 15 bloqueada pela regra dos 3 importantes
 
 **Estado:** EXECUCAO; 29 concluídas, 22 na fila, 2 em retentativa, 1 bloqueada (15, subconta Asaas), US$ 8,83. Etapa 15: tentativa 1 código errado (campos do Tenant não gravados), 2 segredo no código (guarda pegou), 3 REQ ok mas 3 problemas `importante` → reprovada pela D24. Registrado TR1 (11). Recomendação ao fundador: desbloquear (o executor recebe a lista exata).
