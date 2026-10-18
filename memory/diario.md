@@ -1,3 +1,9 @@
+## 18/10/2026 (159) — Guias do Fable 5/5.1 analisados; TR1 (10) esforço e Fable a medir
+
+**Fundador:** colou os guias oficiais de prompting do Fable 5 e 5.1. **Conferido:** nenhuma chamada Claude define `effort` (tudo em `high`, o padrão); skills sem pedido de "mostre seu raciocínio" (risco de recusa); Fable não usado. **Registrado:** TR1 (10) — medir esforço do avaliador e Fable 5.1 `low` nos controles do AV1.5 antes de qualquer troca. Teste real segue sem mudança.
+
+---
+
 ## 18/10/2026 (158) — Cache de prompt da Anthropic: não usado hoje; entra no TR1 (9)
 
 **Fundador:** colou a doc oficial de prompt caching. **Conferido:** 0 `cache_control` no código; no teste, avaliador 34 chamadas / 444.878 tokens de entrada / 0 do cache / US$ 1,42. Leitura do cache = 5% da entrada no Opus/Sonnet 5.5. **Registrado:** TR1 item (9) com o plano (2 cortes no avaliador, automático no elicitador, medir antes de 1 h). Não mexer durante o teste.
