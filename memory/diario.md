@@ -1,3 +1,9 @@
+## 18/10/2026 (160) — Teste real 09:22: 29 concluídas; etapa 15 bloqueada pela regra dos 3 importantes
+
+**Estado:** EXECUCAO; 29 concluídas, 22 na fila, 2 em retentativa, 1 bloqueada (15, subconta Asaas), US$ 8,83. Etapa 15: tentativa 1 código errado (campos do Tenant não gravados), 2 segredo no código (guarda pegou), 3 REQ ok mas 3 problemas `importante` → reprovada pela D24. Registrado TR1 (11). Recomendação ao fundador: desbloquear (o executor recebe a lista exata).
+
+---
+
 ## 18/10/2026 (159) — Guias do Fable 5/5.1 analisados; TR1 (10) esforço e Fable a medir
 
 **Fundador:** colou os guias oficiais de prompting do Fable 5 e 5.1. **Conferido:** nenhuma chamada Claude define `effort` (tudo em `high`, o padrão); skills sem pedido de "mostre seu raciocínio" (risco de recusa); Fable não usado. **Registrado:** TR1 (10) — medir esforço do avaliador e Fable 5.1 `low` nos controles do AV1.5 antes de qualquer troca. Teste real segue sem mudança.
