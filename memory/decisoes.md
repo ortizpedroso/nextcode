@@ -76,3 +76,6 @@ Fundador: "concordo com as ressalvas e com o porteiro mecânico". J3: cego (sem 
 
 ## 17/10 — Execução autônoma da E1 (mudança 23)
 Fundador: "avaliador claude, pois não pode ser da mesma família… crie um checklist… você vai implementar e o cursor vai auditar… quando eu tiver de escolher algo, você vai decidir o que é melhor para o projeto… dois relatórios: um do que você decidiu por mim e outro para o cursor auditar… continue de forma automática até que tudo esteja implementado". Papéis: elicitador Opus, pesquisa Claude, analista DeepSeek, executor DeepSeek, avaliador Claude (nunca a família do executor). Checklist na §5.0.
+
+## 18/10 — Mudança 25 (Jev na Spec e Graphify)
+Fundador: "concordo". Ordem: teste pesado agora → depois, junto do PJ2: aviso M2 desligado até o redesenho e Graphify só com código de verdade na pasta → redesenho do Jev na Spec (perguntas por item, correção por trecho, resíduo ao usuário) na E2 (J8/J11/mudança 7).

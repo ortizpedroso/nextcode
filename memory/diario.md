@@ -1,3 +1,10 @@
+## 18/10/2026 (155) — Mudança 25 aprovada; teste pesado segue
+
+**Fundador:** "concordo" com a ordem: teste pesado → aviso M2 desligado + Graphify corrigido (com o PJ2) → redesenho do Jev na Spec na E2.
+**Próximo passo:** fundador reinicia o NextCode e aprova a Spec da sessão `8e2f2052`; auditor audita o planejamento.
+
+---
+
 ## 18/10/2026 (154) — Jev na Spec e Graphify: diagnóstico e proposta (mudança 25)
 
 **Fundador:** Jev tem de ajudar a deixar a Spec redonda (rever perguntas e o que fazer com as respostas); Graphify apareceu na tela.
