@@ -1,3 +1,11 @@
+## 18/10/2026 (162) — Como reduzir chamadas: diagnóstico com a trilha; TR1 (12)–(14)
+
+**Fundador:** decidir como engenheiro (não por ele ter dito); como diminuir chamadas e melhorar o todo; começar quando o teste terminar.
+**Trilha:** executor 741 chamadas / ~33 execuções de etapa ≈ 22 turnos; protocolo força 1 ferramenta por turno; 5,2 leituras antes da 1ª escrita; tsconfig lido 42×, schema 21×; prompt médio 13,6 mil tokens (12,2 mil do cache); saída média 1.548 (1.230 de raciocínio). **Registrado:** TR1 (12) várias ações por turno, (13) contexto fixo no 1º prompt, (14) retentativa a partir do código anterior; meta ≤ 10 turnos/etapa.
+**Próximo passo:** fim do teste → prompt de melhoria (TR1 + JV1) em ordem de impacto.
+
+---
+
 ## 18/10/2026 (161) — Divisão DeepSeek × Claude: manter; medir 3 trocas
 
 **Fundador:** a divisão atual é a melhor ou mudar quem faz o quê? **Dados do teste (09:3x):** executor DeepSeek US$ 6,26 (741 chamadas), avaliador Sonnet US$ 2,13 (46), Spec Opus US$ 0,83, analista DeepSeek US$ 0,13; 19 de 33 etapas aprovadas na 1ª; 14 reprovações do avaliador, 14 diagnósticos `wrong_code`; 143 pausas e 37 relatórios recusados (defeitos do harness, não de modelo).
