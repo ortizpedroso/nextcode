@@ -1,3 +1,12 @@
+## 17/10/2026 (149) — Execução autônoma da E1 concluída; aguarda auditoria do Cursor
+
+**Feito (12 commits de código, `3ea5ef9`…`c10d3b7`, cada um com tsc 0 e vitest verde):** A2.1–A2.3c (plano conferido e bloqueado; analista DeepSeek planeja a Spec real com T8b válida, US$ 0,099), AV1.1–AV1.5 (avaliador Claude Sonnet→Opus, nunca a família do executor; arquivo inteiro; problemas por severidade; evidência conferida; porteiro tsc+ESLint; 7/7 nos controles reais), PJ1.6b, M20, SM1. Gasto total com LLM ≈ US$ 0,62. HEAD: 130 arquivos / 863 testes.
+**Relatórios:** `docs/relatorios/DECISOES-AUTONOMAS-E1.md` (D1–D39, resumo no topo) e `docs/relatorios/AUDITORIA-E1-autonoma.md` (§8.4, travas, desvios, dívidas). Prompt do Cursor: `docs/prompts/AUDITORIA-E1-autonoma-cursor.md`.
+**Onde parou:** checklist da mudança 23 completo até "Relatórios"; falta auditoria do Cursor e o teste pesado (porta da E1).
+**Pendências do fundador:** (a) D21 (ramo de teste no avaliador); (b) avaliador fora persistente → PAUSADA; (c) teste pesado logo após a auditoria; smoke da tela do PJ1; ligar `roteamento_falha` depois do teste pesado.
+
+---
+
 ## 17/10/2026 (148) — SM1: conferência mecânica da Spec
 
 **Feito:** `.env.example` preservado; REQ citando arquivo fora da lista vira problema; data carimbada; troca/remoção reconhecidas; 2ª chamada, correções e reinjeções registradas e avisadas no chat. tsc 0; vitest 130/863. Decisões D35–D39.

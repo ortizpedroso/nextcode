@@ -1,9 +1,28 @@
 # Auditoria da execução autônoma da E1 (mudança 23) — para o Cursor auditar
 
 Implementador: Claude. Auditor: Cursor. Hash de partida: `7067106` (`docs: mudanca 23 execucao autonoma da E1; checklist na 5.0 (136)`).
-Decisões tomadas em nome do fundador: `docs/relatorios/DECISOES-AUTONOMAS-E1.md`.
+Decisões tomadas em nome do fundador: `docs/relatorios/DECISOES-AUTONOMAS-E1.md` (D1–D39).
 
-Cada seção: o que mudou (`arquivo:linha`), testes novos, saída de `tsc`/`vitest` no estado do commit, prova real e o que o auditor deve conferir.
+## 1. Identificação (§8.4)
+`git log --oneline 7067106..c10d3b7` — 12 commits de código, 1 por passo, cada um com o seu registro no diário e nesta auditoria no mesmo commit:
+
+| hash | passo | tsc | vitest (arquivos/testes) |
+|---|---|---|---|
+| `3ea5ef9` | A2.1 T8b escopo + bloqueio | 0 | 126 / 840 |
+| `801864b` | A2.2 analista planeja | 0 | 127 / 848 |
+| `f404648` | A2.3 replay real + A2.3b/c | 0 | 127 / 850 |
+| `a06fa8d` | AV1.1 cadeia Claude | 0 | 127 / 846 |
+| `37108c9` | AV1.2 arquivo inteiro | 0 | 127 / 847 |
+| `d3b9f86` | AV1.3 problemas + evidência + skills | 0 | 128 / 854 |
+| `522f7f8` | AV1.4 porteiro | 0 | 129 / 856 |
+| `42b878e` | AV1.5 controles reais | — (só script e docs) | — |
+| `5005022` | PJ1.6b reabrir projeto | 0 | 129 / 858 |
+| `324a586` | M20 memória desligada | 0 | 129 / 858 |
+| `3ad117b` | AV1.4b porteiro só com projeto | 0 | 129 / 858 |
+| `c10d3b7` | SM1 conferência da Spec | 0 | 130 / 863 |
+
+Escopo total: `git diff --stat 7067106..c10d3b7` → 46 arquivos, +2.409 / −1.056 (código, testes, skills, scripts, docs). `git reflog` do período: **0** amend/reset/rebase.
+Gasto real com LLM na execução: analista US$ 0,31 (3 replays) · avaliador US$ 0,31 (controles) + US$ 0,0004 (sonda) · **≈ US$ 0,62**.
 
 ---
 
@@ -185,3 +204,34 @@ A heurística ainda não acha plano válido para a Spec real — esperado: só o
 **Verificação:** `npx tsc --noEmit` exit 0; `npx vitest run` → `Test Files 130 passed (130)`, `Tests 863 passed (863)` (rodado com SM1 + AV1.4b, que é o estado deste commit).
 **Não testado:** a rota do chat com Spec real (exige chamada ao Opus); as mudanças nela são só trilha e texto do aviso.
 **Auditor conferir:** porta do SM1 — Spec com `.env.example` preservada ✅ (teste a); REQ citando arquivo fora da lista reprovado na conferência ✅ (teste b); data = dia real ✅ (teste c).
+
+---
+
+## Checklist das travas (§8.2) para toda a execução
+
+| trava | cumprida | evidência |
+|---|---|---|
+| T-A pré-condição | sim | partida `7067106`, `git status` só `.claude/` e `.serena/` (não tocados) |
+| T-B escopo | sim, com o escopo da mudança 23 | arquivos acima; `.claude/` e `.serena/` nunca adicionados |
+| T-C literalidade | ver desvios | decisões D1–D39 registradas antes de cada commit |
+| T-D nomes reais | sim | todo nome citado aqui existe no HEAD (auditor: `git grep -n`) |
+| T-E 1 passo = 1 commit, tsc 0, vitest verde | sim | tabela da seção 1; SM1 e AV1.4b separados com stash para cada commit ter a própria suíte |
+| T-F banco | sim | todos os scripts usam cópia em `%TEMP%`; `prisma/dev.db` mtime `2026-10-16 21:22:35` antes e depois dos replays |
+| T-G segredos | sim | chaves só lidas da cópia do banco e enviadas à própria API; nada em log/relatório |
+| T-H dependências | sim | nenhum pacote novo |
+| T-I fim de linha | sim | arquivos em LF (`git ls-files --eol`) |
+| T-J paradas | sim | nenhuma 422 do Jev; custo muito abaixo de qualquer teto |
+| T-K co-autoria | sim | todos os commits com `Co-Authored-By: Claude Opus 5.5` |
+
+## Desvios e dívidas
+1. **D30 errada, corrigida no AV1.4b** (porteiro sem projeto rodava no repositório do harness).
+2. **Testes reescritos porque testavam o comportamento proibido** (D22): cadeia antiga do avaliador, auto-cura de modelo, chaves BYOK no avaliador, queda para gratuito, aviso de corte do arquivo, memória lida/gravada.
+3. **Queda do avaliador para o roteador só em teste** (D21) — código de produção com ramo de teste, no mesmo padrão do `skipModel` do analista.
+4. **Teste instável:** `end-to-end-harness-plan.test.ts` › "Item 1 (Fila nunca para)" falhou 1 vez sob a suíte inteira (M20), passou isolado 2/2 e na rodada seguinte.
+5. **Não feito:** smoke da tela PJ1.5 (D33); bench P1–P4 completo; teste pesado (último item do checklist, depois desta auditoria); rota do chat com Spec real (SM1 e).
+6. **Fora do escopo, visto e não mexido:** `makeBlindAuditDispatchFn` mantém os parâmetros `smartRouter`/`setting` (usados só no ramo de teste); avaliador fora do ar por mais de 2 vezes ainda gasta tentativa (não vira PAUSADA) — a mudança 10 pedia PAUSADA.
+
+## Dúvidas abertas para o fundador
+- (a) Aceita D21 (ramo de teste no avaliador) ou prefere trocar os testes de integração por dublês de módulo?
+- (b) Avaliador fora do ar persistente → PAUSADA em vez de gastar tentativa (mudança 10)? Recomendo sim, num passo próprio.
+- (c) Teste pesado agora (Spec real `934939fc`, sem teto, decisão de 16/10) logo depois da auditoria do Cursor?

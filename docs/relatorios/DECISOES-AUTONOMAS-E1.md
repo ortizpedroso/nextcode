@@ -2,6 +2,14 @@
 
 Autorização do fundador (17/10): "quando eu tiver de escolher algo, você, repito você vai decidir o que é melhor para o projeto". Cada decisão abaixo tem o motivo e a evidência; o fundador pode reverter qualquer uma.
 
+## Resumo para o fundador (ler primeiro)
+- **Papéis agora:** elicitador Claude Opus 5.5 · **analista DeepSeek** (planeja; o código confere o plano) · executor DeepSeek · **avaliador Claude Sonnet 5.5 → Opus 5.5** (nunca DeepSeek; nunca gratuito; nunca roteador livre).
+- **O que mudou no comportamento:** plano impossível não executa mais (fica BLOQUEADA com aviso "Dono: analista"); o analista planeja de verdade; o avaliador lê o arquivo inteiro, aponta problemas por severidade, tem a citação conferida e só é chamado depois do tsc/ESLint passar; memória do projeto desligada; Spec preserva `.env.example`, data certa, troca reconhecida, 2ª chamada visível.
+- **Decisões que eu reverteria se fosse você discordar:** D21 (só em teste o avaliador usa o roteador falso), D27 (Lente 2 continua mecânica), D16 (reserva cria dependência entre etapas irmãs).
+- **Erro meu corrigido durante a execução:** D30 (porteiro sem projeto rodava no repositório do NextCode) → AV1.4b.
+- **Não feito (precisa de você ou do Cursor):** smoke da tela do PJ1 (D33); teste pesado (porta da E1, só depois da auditoria do Cursor); bench P1–P4 completo.
+- **Pendências de decisão que continuam suas:** ligar `roteamento_falha` (A3) depois do teste pesado; A1 (contrato na Spec) depois da E1.
+
 | # | Passo | Decisão | Alternativa descartada | Motivo / evidência |
 |---|---|---|---|---|
 | D1 | A2.1 | Regra de escopo do plano: arquivo citado no critério do REQ tem de estar na etapa do REQ **ou numa etapa da qual ela depende** (direta ou indireta) | "todo arquivo citado no escopo da etapa" | o critério cita arquivo **consumido** (REQ-032 cita `src/lib/validacao.ts` porque usa as regras dele); a regra simples reprovaria plano correto |
