@@ -1,3 +1,11 @@
+## 18/10/2026 (164) — Revisão rigorosa do pstack conferida (interrogate, prove-it-works, blast-radius)
+
+**Fundador:** o material fala de revisão rigorosa, verificar. **Lido (só leitura):** `interrogate` (2+ modelos de famílias diferentes, mesmo pedido; achado dos 2 pesa mais; líder classifica agir/considerar/anotado/descartado; não aplica correção), `principle-prove-it-works` (prova = o artefato real, script determinístico que dá para rodar de novo; compilar não é prova), `blast-radius` (escala de confiança: dito < arquivo:linha < falha descartada < executado < reproduzido; achar o fato único que garante a segurança).
+**Comparação:** nosso avaliador já não confia no relato (Lente Cega) e cita `arquivo:linha` conferido (nível 2); porteiro executa tsc; falta nível 4 (testes rodados — mudanças 18/19).
+**Registrado:** TR1 (11) com a proposta de baldes (só crítico bloqueia; importante vira correção da próxima rodada) + "fato que garante" no veredito; J3 com revisão por 2 famílias e classificação. Aguarda OK junto do prompt de melhoria.
+
+---
+
 ## 18/10/2026 (163) — pstack (backnotprop/pstack) analisado: referência de estudo, não resolve o TR1
 
 **Fundador:** analisar o pstack, "pode resolver muitos dos nossos problemas". Só leitura (nada instalado, memória `pasted-command-is-for-analysis`).
