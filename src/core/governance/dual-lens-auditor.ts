@@ -11,6 +11,7 @@ import { BriefBuilder } from "../brief/brief-builder";
 import { loadRoleSkill, buildSkillSystemPrompt } from "../skills/skill-runtime";
 import {
   classifyLens2Divergence,
+  parseFileLineRefList,
   type Lens1ReqStatus,
   type Lens2DivergenceKind,
   type MicrobriefAndReportDocument,
@@ -839,19 +840,22 @@ export class DualLensAuditor {
             const declaredStatus = claim.statusDeclarado;
             let citedLineExists = true;
             if (claim.evidenciaCitada) {
-              const lineMatch = claim.evidenciaCitada.trim().match(/^([^:\s]+):(\d+)(?:-(\d+))?$/);
-              if (!lineMatch) {
+              // TR1 (3)/P4: a evidência pode ser uma lista ("a.ts:1-5; a.ts:24-29; b.ts:3"); cada
+              // referência tem de existir no código desta etapa.
+              const refs = parseFileLineRefList(claim.evidenciaCitada);
+              if (!refs) {
                 citedLineExists = false;
               } else {
-                const normCited = normalizeScopePath(lineMatch[1]);
-                const matchedFileContent = Object.entries(codeContentMap).find(
-                  ([k]) => normalizeScopePath(k) === normCited
-                )?.[1];
-                const startLine = Number(lineMatch[2]);
-                const endLine = lineMatch[3] ? Number(lineMatch[3]) : startLine;
-                const totalLines = matchedFileContent ? matchedFileContent.split(/\r?\n/).length : 0;
-                if (!matchedFileContent || startLine < 1 || endLine < startLine || endLine > totalLines) {
-                  citedLineExists = false;
+                for (const ref of refs) {
+                  const normCited = normalizeScopePath(ref.file);
+                  const matchedFileContent = Object.entries(codeContentMap).find(
+                    ([k]) => normalizeScopePath(k) === normCited
+                  )?.[1];
+                  const totalLines = matchedFileContent ? matchedFileContent.split(/\r?\n/).length : 0;
+                  if (!matchedFileContent || ref.start < 1 || ref.end < ref.start || ref.end > totalLines) {
+                    citedLineExists = false;
+                    break;
+                  }
                 }
               }
             }

@@ -1,3 +1,12 @@
+## 20/10/2026 (181) — Bench parado por memória; regressão minha do P4 achada e corrigida (Lente 2)
+
+**Bench (parcial, parado pelo Claude Code por falta de memória no P3):** P1 ENTREGUE 10/10 (US$ 0,0744); **P2 BLOQUEADA 0/13** (US$ 0,0778). **Causa (minha, do P4):** o executor passou a citar lista de referências (válida), mas a Lente 2 em `dual-lens-auditor.ts` ainda conferia uma referência só → "Executor citou evidência inexistente (src/lib/tarefas.ts:1-5; …:24-29; …)" nas 3 tentativas. Os testes do P4 não cobriam o avaliador com lista.
+**Feito:** Lente 2 com `parseFileLineRefList`; `tests/governance/lens2-lista-evidencia.test.ts` (2) — falha sem a correção (stash), passa com ela. tsc 0; **suíte inteira 136/908 verde**. Decisão D41.
+**Próximo passo:** com liberação do fundador (memória), refazer o bench P1–P4 `padrao`; depois os 2 relatórios.
+**Pendências do fundador:** liberar o bench (pago, ~US$ 0,8; a máquina ficou sem memória 2× hoje).
+
+---
+
 ## 20/10/2026 (180) — P13 preparado: bench mede chamadas e ações do executor por etapa
 
 **Achado:** o laço gravava o `LLM_COST` do executor sem `nodeId` — por isso o bench de 16/10 mostrava "0 tokens / US$ 0" do executor por etapa. **Feito:** `nodeId` no custo do executor; `scripts/bench.ts` com colunas Chamadas exec. / Ações / Tentativas e média de chamadas por etapa (meta TR1 ≤ 10). tsc 0; suíte 135/906 verde.
