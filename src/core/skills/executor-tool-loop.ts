@@ -448,6 +448,8 @@ export interface ExecutorToolLoopParams {
   skill: LoadedRoleSkill;
   microbrief: MicrobriefAndReportDocument;
   initialMessages: DispatchMessage[];
+  /** TR1 (14): arquivos da tentativa anterior, gravados na quarentena antes do 1º turno. */
+  seedFiles?: Record<string, string>;
   smartRouter: SmartRouter;
   qm: QuarantineManager;
   projectRoot: string;
@@ -504,6 +506,13 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
       ...(microbrief.arquivosPermitidos.modificar ?? []),
     ])
   );
+  const normalizedScope = new Set(allowedScopeFiles.map(normalizeScopePath));
+  for (const [file, content] of Object.entries(params.seedFiles ?? {})) {
+    const rel = normalizeScopePath(file);
+    if (!normalizedScope.has(rel)) continue;
+    qm.writeFile(nodeId, rel, content);
+    quarantinedFiles.set(rel, QuarantineManagerClass.sanitizeContent(rel, content));
+  }
 
   const messages: DispatchMessage[] = [...initialMessages];
   const loopStartMs = Date.now();

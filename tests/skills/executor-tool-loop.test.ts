@@ -10,7 +10,10 @@ import {
   buildExecutorFixedContext,
   executeTaskNode,
   FIXED_CONTEXT_MAX_FILE_CHARS,
+  pickAttemptCodeToKeep,
+  PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS,
   readNodeMicrobrief,
+  readPreviousAttemptCode,
   setExecutorModeForTests,
   setPaidOnlyRoutingForTests,
   setScaffoldInstallerForTests,
@@ -976,6 +979,91 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(firstPrompt).toContain("TSCFG-X");
     expect(firstPrompt).toContain("SCHEMA-X");
     expect(firstPrompt).not.toContain("EXATAMENTE UM bloco");
+  });
+
+  it("TR1 (14) a) retentativa recebe o código anterior no prompt e na quarentena; só edita e conclui", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await setupSingleTaskSession(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+
+    const firstAttempt = [
+      "```json acao\n" +
+        JSON.stringify([
+          {
+            ferramenta: "write_file",
+            args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return 'ERRADO';\n}\n" },
+          },
+          { ferramenta: "run_check", args: { comando: "typecheck" } },
+        ]) +
+        "\n```",
+      toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }),
+    ];
+    const secondAttempt = [
+      "```json acao\n" +
+        JSON.stringify([
+          {
+            ferramenta: "edit_file",
+            args: { caminho: "src/greet.ts", trecho_antigo: "return 'ERRADO';", trecho_novo: "return `Ola, ${name}!`;" },
+          },
+          { ferramenta: "run_check", args: { comando: "typecheck" } },
+        ]) +
+        "\n```",
+      toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }),
+    ];
+    const evaluatorFail = JSON.stringify({
+      implemented: false,
+      missingRequirements: ["REQ-001"],
+      justification: "greet devolve texto fixo.",
+      reqVerdicts: [{ id: "REQ-001", status: "nao_implementado", evidencia: "src/greet.ts:2 devolve 'ERRADO'" }],
+    });
+    let attempt = 1;
+    let turnIdx = 0;
+    let secondFirstPrompt = "";
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(attempt === 1 ? evaluatorFail : EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      }
+      const turns = attempt === 1 ? firstAttempt : secondAttempt;
+      if (attempt === 2 && turnIdx === 0) secondFirstPrompt = sys;
+      const reply = turns[Math.min(turnIdx, turns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res1 = await executeTaskNode(task);
+    expect(res1.finalStatus).toBe("failed");
+    const saved = JSON.parse((await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } })).result!);
+    expect(saved.codigoTentativa["src/greet.ts"]).toContain("ERRADO");
+
+    attempt = 2;
+    turnIdx = 0;
+    const retryTask = await prisma.taskNode.findUniqueOrThrow({
+      where: { id: task.id },
+      include: { session: { include: { project: true } } },
+    });
+    const res2 = await executeTaskNode(retryTask);
+    expect(res2.finalStatus).toBe("completed");
+    expect(turnIdx).toBe(2);
+    expect(secondFirstPrompt).toContain("CÓDIGO DA TENTATIVA ANTERIOR");
+    expect(secondFirstPrompt).toContain("return 'ERRADO';");
+    expect(fs.readFileSync(path.join(projectDir, "src", "greet.ts"), "utf-8")).toContain("Ola, ${name}!");
+  });
+
+  it("TR1 (14) b) readPreviousAttemptCode/pickAttemptCodeToKeep: só escopo, nada se aprovado, teto total", () => {
+    const result = JSON.stringify({ success: false, codigoTentativa: { "src/a.ts": "A", "src/fora.ts": "F" } });
+    expect(readPreviousAttemptCode(result, ["src/a.ts"])).toEqual({ "src/a.ts": "A" });
+    expect(readPreviousAttemptCode(JSON.stringify({ success: true, codigoTentativa: { "src/a.ts": "A" } }), ["src/a.ts"])).toBeNull();
+    expect(readPreviousAttemptCode("{nao json", ["src/a.ts"])).toBeNull();
+    const big = "x".repeat(PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS);
+    expect(Object.keys(pickAttemptCodeToKeep({ "src/grande.ts": big, "src/b.ts": "B" })!)).toEqual(["src/grande.ts"]);
+    expect(pickAttemptCodeToKeep({})).toBeUndefined();
   });
 
   it("TR1 (13) b) buildExecutorFixedContext: contratos, sem repetir o bloco das dependências, corte por arquivo", () => {

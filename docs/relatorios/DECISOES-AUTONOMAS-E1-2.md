@@ -13,3 +13,7 @@
 | D7 | P2 | Corte de **20.000 caracteres por arquivo** com aviso "use read_file para o resto"; **40.000 no total** | sem corte | o schema da Spec real é grande; sem corte, um arquivo come o prompt inteiro de todos os turnos |
 | D8 | P2 | No bloco das dependências, arquivo que estoura o teto é **pulado** em vez de **parar a lista** | manter o `break` | com `break`, um arquivo grande escondia todos os menores depois dele — causa de leitura repetida |
 | D9 | P2 | Contexto fixo só no modo laço | também na chamada única | a chamada única não tem `read_file`; nada a economizar |
+| D10 | P3 | Código da tentativa reprovada guardado no `result` do nó (`codigoTentativa`), não numa tabela nova | quarentena mantida entre tentativas; tabela nova | o laço apaga a quarentena no início (`prepareWorkspace`); o `result` já é lido na retentativa para o feedback — sem migração de banco |
+| D11 | P3 | **Nunca** guardar quando a guarda de segredos reprovou | guardar sempre | o código voltaria ao LLM com o segredo (regra 7 do fundador) |
+| D12 | P3 | Código anterior vai **no prompt e já gravado na quarentena** | só no prompt | só no prompt, o modelo regrava o arquivo inteiro (custo de saída); na quarentena, `edit_file` corrige o trecho e os arquivos que estavam certos seguem para a promoção sem reescrita |
+| D13 | P3 | Só arquivos ainda no escopo da etapa; teto de 60.000 caracteres (arquivo que estoura é pulado) | sem filtro | se o plano mudou, arquivo fora do escopo seria negado (T3) e gastaria turno |

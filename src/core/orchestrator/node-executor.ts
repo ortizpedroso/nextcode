@@ -749,6 +749,43 @@ export function buildExecutorFixedContext(
   );
 }
 
+export const PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS = 60000;
+
+/**
+ * TR1 (14): código que a tentativa reprovada deixou na quarentena, para a próxima partir dele.
+ * Guardado só no modo laço e nunca quando a guarda de segredos reprovou (o código voltaria ao LLM).
+ */
+export function pickAttemptCodeToKeep(codeContentMap: Record<string, string>): Record<string, string> | undefined {
+  const kept: Record<string, string> = {};
+  let used = 0;
+  for (const [file, content] of Object.entries(codeContentMap)) {
+    if (used + content.length > PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS) continue;
+    used += content.length;
+    kept[file] = content;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
+/** Lê o código da tentativa anterior do `result` do nó, só dos arquivos ainda no escopo da etapa. */
+export function readPreviousAttemptCode(
+  resultJson: string | null | undefined,
+  allowedScopeFiles: string[]
+): Record<string, string> | null {
+  if (!resultJson) return null;
+  try {
+    const prev = JSON.parse(resultJson);
+    if (prev?.success || !prev?.codigoTentativa || typeof prev.codigoTentativa !== "object") return null;
+    const scope = new Set(allowedScopeFiles.map((f) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "")));
+    const out: Record<string, string> = {};
+    for (const [file, content] of Object.entries(prev.codigoTentativa as Record<string, unknown>)) {
+      if (typeof content === "string" && scope.has(file)) out[file] = content;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Instalador usado pela etapa de base; trocado nos testes para não acessar a rede. */
 let scaffoldInstaller: Installer = npmInstaller;
 export function setScaffoldInstallerForTests(installer: Installer | null): void {
@@ -1060,6 +1097,25 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     );
     if (fixedBlock) dispatchMessages.push({ role: "system", content: fixedBlock });
   }
+  // TR1 (14): retentativa parte do código anterior (já na quarentena) + defeitos do feedback acima.
+  const previousAttemptCode =
+    useToolLoop && nodeMicrobrief
+      ? readPreviousAttemptCode(taskDb.result, [
+          ...(nodeMicrobrief.arquivosPermitidos.criar ?? []),
+          ...(nodeMicrobrief.arquivosPermitidos.modificar ?? []),
+        ])
+      : null;
+  if (previousAttemptCode) {
+    dispatchMessages.push({
+      role: "system",
+      content:
+        "CÓDIGO DA TENTATIVA ANTERIOR (já está na quarentena desta etapa — corrija SÓ os defeitos apontados " +
+        "com edit_file; não reescreva do zero nem releia estes arquivos):\n\n" +
+        Object.entries(previousAttemptCode)
+          .map(([f, c]) => `--- ${f} ---\n${c}`)
+          .join("\n\n"),
+    });
+  }
 
   dispatchMessages.push({
     role: "user",
@@ -1118,6 +1174,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       skill: loadedExecutorSkill,
       microbrief: nodeMicrobrief,
       initialMessages: finalDispatchMessages,
+      seedFiles: previousAttemptCode ?? undefined,
       smartRouter,
       qm,
       projectRoot: targetProjectRoot,
@@ -1909,6 +1966,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       jevDiagnostico: jevDiagnostico ?? undefined,
       jevEvidencia: jevEvidencia ?? undefined,
       incidentReport: incidentReportMarkdown,
+      codigoTentativa:
+        finalStatus !== "completed" && loopCodeContentMap && !secretGuardRes.blocked
+          ? pickAttemptCodeToKeep(loopCodeContentMap)
+          : undefined,
     };
   } catch (err) {
     finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";

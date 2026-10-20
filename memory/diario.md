@@ -1,3 +1,12 @@
+## 20/10/2026 (168) — Relatório do que falta + P3 feito: retentativa parte do código anterior (TR1 14)
+
+**Fundador:** relatório do que falta, sem inventar; revisar `docs/` sempre que houver dúvida, perguntar só se persistir (memória `docs-folder-is-the-map`). Relatório entregue no chat, tirado só da §5.0 (checklist P1–P13, tabela E1–E6, mudanças do cronograma, §6).
+**Feito (P3):** reprovação no modo laço guarda `codigoTentativa` no `result` do nó (≤ 60 mil caracteres; nunca se a guarda de segredos reprovou); a retentativa recebe o código no prompt ("corrija só os defeitos com edit_file") e já gravado na quarentena (`seedFiles`, só arquivos do escopo). Decisões D10–D13.
+**Prova:** tsc 0; teste de ponta a ponta: tentativa 1 reprovada pelo avaliador → tentativa 2 conclui em 2 turnos com `edit_file`; **suíte inteira 131/882 verde** (sem estouros nesta rodada).
+**Próximo passo:** P4 (relatório P12 aceita lista de referências).
+
+---
+
 ## 20/10/2026 (167) — P2 feito: contexto fixo no 1º prompt do executor (TR1 13)
 
 **Feito:** `buildExecutorFixedContext` (`node-executor.ts`) põe no 1º prompt do laço `tsconfig.json`, `prisma/schema.prisma` e os `lerContratos` do Microbrief que o bloco das dependências não trouxe (20 mil caracteres por arquivo, 40 mil no total, aviso "não leia de novo"); no bloco das dependências, arquivo grande agora é pulado em vez de esconder os seguintes; textos "EXATAMENTE UM bloco" que sobraram no prompt (P1) corrigidos. Decisões D6–D9.
