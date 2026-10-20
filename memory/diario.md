@@ -1,3 +1,12 @@
+## 20/10/2026 (185) — Revisão da pasta docs: unicidade da evolução e o que falta
+
+**Pedido do fundador:** revisar tudo em `docs/`, conferir a unicidade da evolução e se falta implementar algo.
+**Corrigido (só documentação, nenhum código):** referência — cabeçalho (909/136 em 20/10), §3.1 (bench, analista, avaliadores, teto estavam como ❌/⚠️), linhas da §5.0 (SM1 ⬜→✅ `c10d3b7`; PL1 → absorvido pelo A2; TR1 → 🔄 com (6)(7)(10) abertos; PJ2 → (2) ✅ `d73f945`, PJ2b ⬜; PJ1.6b auditado), §6 itens 1, 1b, 2 marcados decididos com a fonte, §7 (B1 executado; 239 arquivos), **§9.6 nova** (16–20/10 faltavam no registro de evolução). `memory/decisoes.md`: mudança 26 (faltava). `memory/medicoes.md`: teste real `8e2f2052` e bench 20/10 (faltavam). `DECISOES-AUTONOMAS-E1-2.md`: seção "o que ficou de fora e por quê" (a mudança 26 prometia e não tinha).
+**Achados que dependem do fundador (não mexi):** A1 (contrato na Spec) é citado em A2/mudança 19 mas **não tem linha na §5.0**; "Fora da ordem" segue aguardando decisão (M1/M4 código morto, YAML `verificacao_evidencia`, §3.2 `McpServer.env` desatualizada); §6 itens 3–7 abertos; `roteamento_falha` → `ativo` (A3).
+**Próximo passo:** auditoria do Cursor da mudança 26 → teste pesado (porta da E1).
+
+---
+
 ## 20/10/2026 (184) — Auditoria da mudança 26 pronta para o Cursor
 
 **Feito (regra §8.1 item 4):** `docs/relatorios/AUDITORIA-E1-producao.md` (testes novos com o que provam, travas T-A…T-K, desvios, dúvidas) + prompt `docs/prompts/AUDITORIA-E1-producao-cursor.md` (commits isolados, HEAD 2×, D41/D42 falham sem a correção, bench P1–P4 até US$ 0,60, conferência dirigida, D1–D42). Referência: ▶ AGORA aponta a auditoria e depois o teste pesado.

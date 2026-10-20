@@ -202,3 +202,9 @@ Sonda (15 candidatos): 200 — `deepseek-v4-pro` via **`custom/`** (pago, chave 
 - **Analista DeepSeek, Spec real `934939fc` (43 REQ, 58 arquivos, 38.624 caracteres):** 16 mil tokens → 3× `length` sem JSON (US$ 0,21); 32 mil + prazo 120 s → 3× corte; 32 mil + 300 s → aprovado na rodada 1, 152 s, 15.063 in / 24.819 out, **US$ 0,099**, 35 etapas, 0 REQ repetido, T8b válida.
 - **Sonda avaliador:** `claude-sonnet-5-5` e `claude-opus-5-5` respondem pela Anthropic (US$ 0,00013 / 0,00026 por "ok").
 - **Controles do avaliador (Sonnet 5.5, 7 casos com defeito plantado):** 7/7 pelo motivo certo na rodada final; casos LLM 14/14 na rodada dupla; ≈ US$ 0,01 por avaliação; arquivo de 52.912 caracteres lido até o fim.
+
+## 18–19/10 — Teste real `8e2f2052` (fundador; Multi_Gateway, 51 REQ, 54 etapas)
+49/55 etapas concluídas, 6 bloqueadas; 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; limite de 25 passos estourado 3× (diário 165).
+
+## 20/10 — Bench P1–P4 `padrao` depois da mudança 26 (Claude; `docs/relatorios/bench/2026-10-20-1244.md` + `-1314.md`)
+P1 ENTREGUE 10/10 US$ 0,0675 · P2 ENTREGUE 13/13 US$ 0,2134 (depois do `835e98f`; antes PAUSADA 10/13 2× por gateway cortar em 120 s) · P3 ENTREGUE 12/12 US$ 0,1243 · P4 ENTREGUE 12/12 US$ 0,0612. Chamadas do executor por etapa: média 2,5–4, **máx. 4** (meta TR1 ≤ 10); todas as etapas aprovadas na 1ª. Cache do avaliador: 3.236 tokens lidos + 1.713 gravados numa avaliação do P2. n = 1 por projeto.

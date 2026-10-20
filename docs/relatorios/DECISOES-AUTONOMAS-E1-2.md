@@ -46,3 +46,18 @@
 | D40 | P12 | Busca de repositório aninhado até **3 níveis** | varrer tudo | pasta-mãe típica tem projetos 1–2 níveis abaixo; varrer o disco inteiro trava a rota |
 | D41 | P13 | **Erro meu do P4 corrigido:** a Lente 2 conferia a evidência do executor como referência única; com lista válida acusava "evidência inexistente" e reprovava | — | bench 20/10: P2 BLOQUEADA 0/13 com 3 reprovações `WORKER_SELF_REPORT_DIVERGENCE` (antes 13/13). A Lente 2 agora usa `parseFileLineRefList` e confere cada referência; teste novo falha sem a correção e passa com ela |
 | D42 | P13 | **Erro achado no bench corrigido:** o turno do executor passa ao gateway o mesmo limite da etapa (`stepTimeoutMs`, 300 s), não os 120 s padrão do `callGateway` | aumentar o padrão de todos os gateways; ignorar (pausa já não gasta tentativa) | bench 20/10: tela do P2 passou de 120 s 2×, o FreeLLMAPI pôs a rota em espera e a sessão pausou. O analista já fazia igual (`ANALISTA_TIMEOUT_MS`). Depois da correção: P2 ENTREGUE 13/13 |
+
+## O que ficou de fora da mudança 26 e por quê
+> Registrado em 20/10 na revisão da pasta `docs/` (a linha da mudança 26 prometia o motivo aqui e ele faltava). Cada motivo aponta o documento que já fixava a ordem.
+
+| Item | Motivo | Fonte |
+|---|---|---|
+| Redesenho do Jev na Spec (perguntas por item, correção por trecho) | o fundador pôs na **E2** | mudança 25 (`memory/decisoes.md` 18/10) |
+| TR1 (7) Spec perto do teto | é a correção por trecho (mudança 7), mesma linha da E2 | §5.0 TR1 (7) |
+| A1 contrato na Spec | o A2 foi feito "usando o que a Spec já tem; A1 depois"; o formato do contrato depende do `testador` (E5) | §5.0 linha A2; mudança 19 |
+| E5 autoteste | depende das decisões do fundador §6 itens 6–7 | §5.0 linha E5 |
+| J3 `avaliador-final` | na ordem da E1 vem depois de J2b + J2.7 | §5.0 linhas J2b, J3 |
+| PJ2b fechar com retomada | o fundador marcou PJ2 "depois do teste pesado" (a parte de risco, pasta-mãe, foi feita no P12) | §5.0 linha PJ2 |
+| JV1 completo | a porta exige a tabela de usos conferida na trilha do teste real e o fundador decidir A3 → `ativo` | §5.0 linha JV1 |
+| TR1 (10) `effort`/Fable | medir exige rodar controles pagos com cada esforço; nada medido ainda — não se muda por suposição | §5.0 TR1 (10) |
+| TR1 (6) `package.json` com dois donos | **sem motivo de ordem: não coube na execução.** Passo pequeno, candidato ao próximo pacote | §5.0 TR1 (6) |
