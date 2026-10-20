@@ -50,6 +50,9 @@ export interface ReqLens2ComparisonItem {
 
 export interface ValidationType2Result {
   verdict: "APPROVED" | "REJECTED";
+  correcoesSugeridas?: string[];
+  fatoQueGarante?: string;
+  nivelProva?: BlindAuditVerdict["nivelProva"];
   rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
   ressalvas?: string[];
   reqVerdicts?: ReqBlindVerdictItem[];
@@ -89,6 +92,11 @@ export interface BlindAuditVerdict {
   ressalvas?: string[];
   reqVerdicts?: ReqBlindVerdictItem[];
   problemas?: BlindAuditProblem[];
+  /** TR1 (11): problemas `importante` — viram lista de correção da próxima rodada, não reprovam. */
+  correcoesSugeridas?: string[];
+  /** TR1 (11): o fato que garante a etapa certa e o nível em que foi provado (escala do blast-radius). */
+  fatoQueGarante?: string;
+  nivelProva?: "dito" | "arquivo_linha" | "falha_descartada" | "executado" | "reproduzido";
 }
 
 /**
@@ -609,11 +617,11 @@ export class DualLensAuditor {
           "requisitos do Brief foram de fato implementados." +
           reqsInstruction +
           " Responda SOMENTE com um JSON, sem markdown e sem texto extra, no formato exato: " +
-          '{"implemented":true|false,"missingRequirements":["..."],"justification":"motivo em até 40 palavras"' +
+          '{"implemented":true|false,"missingRequirements":["..."],"justification":"motivo em até 40 palavras","fatoQueGarante":"...","nivelProva":"arquivo_linha"' +
           (reqsInstruction ? ',"reqVerdicts":[...]' : "") +
           ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
           "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
-          "Problema critico reprova; 3 ou mais importantes reprovam; 1 ou 2 importantes aprovam com ressalva; menor não muda o veredito." +
+          "Só problema critico reprova; importante aprova com ressalva e vira correção da próxima rodada; menor só registra. Problema que você considerou e descartou não entra na lista. Diga também em fatoQueGarante qual fato do código garante que a etapa está certa e em nivelProva como chegou a ele: dito | arquivo_linha | falha_descartada | executado | reproduzido." +
           skillBlock,
       },
       {
@@ -679,7 +687,7 @@ export class DualLensAuditor {
       // Se houver reqVerdicts explícitos e algum estiver parcial ou ausente, implemented é false (P12)
       const hasIncompleteReq = reqVerdicts ? reqVerdicts.some((r) => r.status !== "implementado") : false;
       const effectiveImplemented =
-        hasIncompleteReq || criticos.length > 0 || importantes.length >= 3 ? false : Boolean(parsed.implemented);
+        hasIncompleteReq || criticos.length > 0 ? false : Boolean(parsed.implemented);
 
       const ressalvasFinais = [
         ...(ressalvas ?? []),
@@ -697,7 +705,7 @@ export class DualLensAuditor {
       const missing = Array.isArray(parsed.missingRequirements)
         ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
         : [];
-      const bloqueantes = [...criticos, ...(importantes.length >= 3 ? importantes : [])].map(
+      const bloqueantes = criticos.map(
         (p) => `[${p.severidade}] ${p.arquivoLinha}: ${p.descricao}`
       );
 
@@ -711,6 +719,11 @@ export class DualLensAuditor {
           ressalvas: ressalvasFinais.length > 0 ? ressalvasFinais : undefined,
           reqVerdicts,
           problemas,
+          correcoesSugeridas: importantes.length > 0 ? importantes.map((p) => `${p.arquivoLinha}: ${p.descricao}`) : undefined,
+          fatoQueGarante: typeof parsed.fatoQueGarante === "string" ? parsed.fatoQueGarante.slice(0, 300) : undefined,
+          nivelProva: ["dito", "arquivo_linha", "falha_descartada", "executado", "reproduzido"].includes(parsed.nivelProva)
+            ? parsed.nivelProva
+            : undefined,
         },
       };
     } catch {
@@ -924,6 +937,9 @@ export class DualLensAuditor {
           verdict,
           rawVerdict: effectiveRawVerdict,
           ressalvas: blindVerdict.ressalvas,
+          correcoesSugeridas: blindVerdict.correcoesSugeridas,
+          fatoQueGarante: blindVerdict.fatoQueGarante,
+          nivelProva: blindVerdict.nivelProva,
           reqVerdicts: blindVerdict.reqVerdicts,
           reqDivergences: reqDivergences.length > 0 ? reqDivergences : undefined,
           lens2ByReq: lens2ByReq.length > 0 ? lens2ByReq : undefined,

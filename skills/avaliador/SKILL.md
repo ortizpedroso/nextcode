@@ -68,14 +68,15 @@ Olhe: separação de responsabilidades, tratamento de erro, contratos entre etap
 
 ## 5. Como o veredito é decidido (pelo harness, a partir da sua resposta)
 - Algum REQ `parcial`/`ausente` → **REPROVADO**.
-- Algum problema `critico` → **REPROVADO**. 3 ou mais `importante` → **REPROVADO**.
-- 1 ou 2 `importante` → **APROVADO_COM_RESSALVA** (promove; as ressalvas vão para o resumo).
-- `menor` não muda o veredito.
+- Algum problema `critico` → **REPROVADO**. Só `critico` bloqueia.
+- Qualquer número de `importante` → **APROVADO_COM_RESSALVA** (promove; as ressalvas vão para o resumo e viram correção da próxima rodada).
+- `menor` só registra. Problema que você considerou e descartou não entra na lista.
+- Diga em `fatoQueGarante` qual fato do código garante a etapa certa e em `nivelProva` como chegou a ele: `dito` < `arquivo_linha` < `falha_descartada` < `executado` < `reproduzido`.
 - REPROVADO volta ao executor com os seus `arquivo:linha` e descrições — escreva a descrição como instrução de correção.
 
 ## 6. Formato da resposta (exato; só o JSON, sem markdown)
 ```json
-{"implemented":true,"missingRequirements":[],"justification":"motivo em até 40 palavras","reqVerdicts":[{"id":"REQ-001","status":"implementado","evidencia":"src/app/api/tarefas/route.ts:8-14"}],"problemas":[{"severidade":"importante","req":"REQ-001","arquivoLinha":"src/app/api/tarefas/route.ts:9","descricao":"request.json() sem try/catch: JSON inválido vira 500; devolver 400"}]}
+{"implemented":true,"missingRequirements":[],"justification":"motivo em até 40 palavras","fatoQueGarante":"POST valida titulo antes de gravar (route.ts:9-12)","nivelProva":"arquivo_linha","reqVerdicts":[{"id":"REQ-001","status":"implementado","evidencia":"src/app/api/tarefas/route.ts:8-14"}],"problemas":[{"severidade":"importante","req":"REQ-001","arquivoLinha":"src/app/api/tarefas/route.ts:9","descricao":"request.json() sem try/catch: JSON inválido vira 500; devolver 400"}]}
 ```
 - `reqVerdicts`: **todos** os REQ pedidos, nenhum a mais.
 - `problemas`: lista vazia (`[]`) se não houver.

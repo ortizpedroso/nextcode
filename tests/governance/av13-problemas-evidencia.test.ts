@@ -42,14 +42,26 @@ describe("AV1.3 — evidência do avaliador conferida e problemas por severidade
     expect(r.rejectionReason).toContain("[critico] src/lib/soma.ts:2: aceita NaN e devolve NaN");
   });
 
-  it("1 importante → APROVADO_COM_RESSALVA; 3 importantes → REPROVADO", async () => {
+  it("TR1 (11): 1 ou 3 importantes → APROVADO_COM_RESSALVA com correções sugeridas; só critico reprova", async () => {
     const imp = (i: number) => ({ severidade: "importante", arquivoLinha: "src/lib/soma.ts:1", descricao: `imp ${i}` });
     const one = await judge({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: [ok], problemas: [imp(1)] });
     expect(one.verdict).toBe("APPROVED");
     expect(one.rawVerdict).toBe("APROVADO_COM_RESSALVA");
     expect(one.ressalvas).toEqual(["src/lib/soma.ts:1: imp 1"]);
-    const three = await judge({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: [ok], problemas: [imp(1), imp(2), imp(3)] });
-    expect(three.verdict).toBe("REJECTED");
+    const three = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      reqVerdicts: [ok],
+      problemas: [imp(1), imp(2), imp(3)],
+      fatoQueGarante: "soma.ts:1 devolve a + b",
+      nivelProva: "arquivo_linha",
+    });
+    expect(three.verdict).toBe("APPROVED");
+    expect(three.rawVerdict).toBe("APROVADO_COM_RESSALVA");
+    expect(three.correcoesSugeridas).toHaveLength(3);
+    expect(three.fatoQueGarante).toBe("soma.ts:1 devolve a + b");
+    expect(three.nivelProva).toBe("arquivo_linha");
   });
 
   it("problema 'menor' não muda o veredito nem precisa de linha", async () => {

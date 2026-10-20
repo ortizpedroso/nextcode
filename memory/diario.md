@@ -1,3 +1,20 @@
+## 20/10/2026 (173) — P7 feito: só `critico` reprova; `importante` vira ressalva (TR1 11)
+
+**Feito:** `dual-lens-auditor.ts` — regra "3 importantes reprovam" removida; `importante` → APROVADO_COM_RESSALVA + `correcoesSugeridas`; `fatoQueGarante`/`nivelProva` pedidos e gravados no resultado; skills `avaliador` e `avaliador-frontend` alinhadas. Decisões D24–D26.
+**Prova:** tsc 0; teste AV1.3 reescrito (3 importantes → ressalva com 3 correções e o fato); **suíte inteira 131/889 verde**.
+**Próximo passo:** P8 (cache de prompt no avaliador).
+
+---
+
+## 20/10/2026 (172) — P6 registrado (`c074f1f` + `d050322`); P7 em teste
+
+**Feito:** `c074f1f` (P6 no código + timeout dos e2e) e `d050322` (checklist P6 e decisões D20–D23, que tinham ficado fora do 1º commit por falha do `sed`).
+**Onde parou:** P7 implementado, sem commit: só `critico` reprova; `importante` aprova com ressalva e vira `correcoesSugeridas`; o avaliador informa `fatoQueGarante` + `nivelProva`; skills `avaliador` e `avaliador-frontend` alinhadas; teste AV1.3 atualizado; `tests/governance` 77/77 e tsc 0. Suíte inteira rodando.
+**Próximo passo:** commit do P7 → P8 (cache de prompt no avaliador; desenho: `cache_control` no sistema e no Brief, custo de escrita no cache em `cost.ts`) → P9–P13 → relatórios.
+**Pendências do fundador:** nenhuma nova — execução autônoma; decisões tomadas vão para `DECISOES-AUTONOMAS-E1-2.md` e lista final no chat. Continuam as da §6 (privacidade do Jev, Gate 1 do Gateway, Exa na T7, autoteste 6–7) e a mudança 20 (memória do projeto) não aprovada.
+
+---
+
 ## 20/10/2026 (171) — P6 feito: regra do harness que contradiz o plano bloqueia sem gastar tentativa (TR1 2); timeout dos e2e
 
 **Feito:** o laço conta negações repetidas (`harnessDenials`) de caminho protegido dentro do escopo e de executor sem escrita; ≥ 2 iguais → BLOQUEADA, tentativa não gasta, "Dono: harness" e a regra no chat (`HARNESS_RULE_BLOCK`). Decisões D20–D22. **Pendência do timeout resolvida (D23):** e2e 120 s, `step-4b` 60 s.

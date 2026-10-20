@@ -67,7 +67,7 @@ Além do protocolo base, na avaliação do cluster `frontend` você executa **5 
 Audite o código contra as 104 regras de acessibilidade, foco, formulários e animações da referência local fixada.
 Esta referência está sempre ativa para o cluster frontend e é carregada pelo harness.
 Reporte violações vinculando a regra violada e a evidência com `arquivo:linha`.
-Violações graves (falta de ARIA, ausência de foco, perda de dados) reprovam como `critico` ou `importante`.
+Violações graves (falta de ARIA, ausência de foco, perda de dados) são `critico` (reprova); as demais, `importante` (ressalva).
 
 ---
 
@@ -76,7 +76,7 @@ Violações graves (falta de ARIA, ausência de foco, perda de dados) reprovam c
 Audite o código contra as 22 regras de performance React (eliminação de waterfalls, bundle size e server-side).
 Esta referência entra quando a etapa exigir auditoria de performance React; o harness inclui a referência.
 Reporte violações vinculando o identificador da regra e a evidência com `arquivo:linha`.
-Waterfalls evitáveis, imports de módulos mutáveis no servidor ou bundle inflado reprovam como `critico` ou `importante`.
+Waterfalls evitáveis, imports de módulos mutáveis no servidor ou bundle inflado são `importante` (ressalva); só reprova o que quebra REQ, contrato ou segurança (`critico`).
 
 ---
 
@@ -92,7 +92,7 @@ O avaliador não executa comandos de navegador e julga exclusivamente o código 
 Audite os 32 itens de refinamento de interface (estados vazio/loading/erro, contraste, hierarquia e ergonomia).
 Esta referência está sempre ativa para o cluster frontend e é carregada pelo harness.
 Reporte itens ausentes com evidência `arquivo:linha` nos componentes de interface avaliados.
-Falta de estados obrigatórios ou inconsistência grave de design reprovam como `importante` ou `critico`.
+Falta de estado obrigatório pela Spec é `critico` (reprova); inconsistência de design é `importante` (ressalva).
 
 ---
 
