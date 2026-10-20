@@ -47,6 +47,7 @@ import {
 } from "@/core/orchestrator/spec-draft";
 import { maskSecretsForJev } from "@/core/governance/secret-guard";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { hasExistingSourceCode } from "@/core/project/source-files";
 import { redactSecretsInChatWithJev } from "@/core/governance/secret-guard";
 import type { Phase } from "@/core/orchestrator/phase-machine";
 
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest) {
       faseAtual: phaseBefore,
       temSpecEmRevisao: Boolean(sessionBefore?.canonicalSpec?.trim() && isPreExecutionPhase),
       resumoSpec: sessionBefore?.canonicalSpec ?? null,
-      temCodigoExistente: Boolean(ctxProjectEarly?.path && fs.existsSync(ctxProjectEarly.path)),
+      temCodigoExistente: hasExistingSourceCode(ctxProjectEarly?.path),
       sessionId: activeSessionId,
       policy: chatPolicy,
     });
@@ -938,8 +939,21 @@ export async function POST(request: NextRequest) {
               sessionId: activeSessionId,
             }).catch(() => null);
 
-            if (clareza && clareza.source === "jev" && !clareza.readyForUserApproval) {
-              guardRes.finalMessageContent += `\n\n⚠️ O Jev avaliou que esta Spec ainda não está pronta para aprovar — clareza ${clareza.clarityScore}/3 (confiança ${clareza.clarityConfidence.toFixed(2)}), escopo fechado ${clareza.escopoFechadoProb.toFixed(2)}, sem contradições ${clareza.semContradicoesProb.toFixed(2)}. Revise os requisitos e a seção 7 antes de aprovar.`;
+            // Mudança 25 (a): o aviso do M2 sai do chat até o redesenho da E2 — o Jev via só os primeiros
+            // 22 mil caracteres (nenhum REQ na Spec real) e perguntava por uma "seção 7" que não existe.
+            // Aviso enganoso é pior que nenhum; a medida segue registrada na trilha (modo sombra).
+            if (clareza && clareza.source === "jev") {
+              TelemetryLogger.log({
+                sessionId: activeSessionId,
+                action: "SPEC_CLARITY_SHADOW",
+                details: {
+                  pronta: clareza.readyForUserApproval,
+                  clareza: clareza.clarityScore,
+                  confianca: clareza.clarityConfidence,
+                  escopoFechado: clareza.escopoFechadoProb,
+                  semContradicoes: clareza.semContradicoesProb,
+                },
+              });
             }
           } catch {
             /* ignora falha de auto-cura */
@@ -1036,7 +1050,8 @@ export async function POST(request: NextRequest) {
     const currentSession = await prisma.session.findUnique({ where: { id: activeSessionId } });
 
     let graphifySuggestion: { reasoning: string; projectId: string } | null = null;
-    if (ctxProject?.id && ctxProject?.path && fs.existsSync(ctxProject.path)) {
+    // Mudança 25 (b): Graphify só com código de verdade na pasta (contagem mecânica, sem Jev).
+    if (ctxProject?.id && ctxProject?.path && hasExistingSourceCode(ctxProject.path)) {
       try {
         const graphJsonPath = path.join(ctxProject.path, "graphify-out", "graph.json");
         const graphJaExiste = fs.existsSync(graphJsonPath);

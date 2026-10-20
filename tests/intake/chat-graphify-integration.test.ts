@@ -36,6 +36,10 @@ describe("Pacote E4 — Integração do Chat com Telemetria Graphify via JEV", (
     if (!fs.existsSync(fakeTmpDir)) {
       fs.mkdirSync(fakeTmpDir, { recursive: true });
     }
+    // Mudança 25 (b): Graphify só com código de verdade na pasta.
+    fs.mkdirSync(path.join(fakeTmpDir, "src"), { recursive: true });
+    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(fakeTmpDir, "src", `m${i}.ts`), `export const m${i} = ${i};
+`);
 
     const project = await prisma.project.create({
       data: { name: "Sistema Piloto E4", path: fakeTmpDir },
@@ -120,5 +124,30 @@ describe("Pacote E4 — Integração do Chat com Telemetria Graphify via JEV", (
     expect(json.graphifySuggestion).toBeNull();
     // Nem gasta tokens/chamada ao Jev se o grafo já existe!
     expect(spyJev).not.toHaveBeenCalled();
+  });
+
+  it("mudança 25 (b): pasta só com package.json e README não sugere Graphify nem chama o Jev", async () => {
+    const emptyDir = path.join(process.cwd(), "tmp", "test-graphify-vazio");
+    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.mkdirSync(emptyDir, { recursive: true });
+    fs.writeFileSync(path.join(emptyDir, "package.json"), '{"name":"x"}');
+    fs.writeFileSync(path.join(emptyDir, "README.md"), "# x");
+    const project = await prisma.project.create({ data: { name: "Projeto Vazio", path: emptyDir } });
+    createdProjectIds.push(project.id);
+    const session = await prisma.session.create({ data: { projectId: project.id, phase: "ENTRADA", specApproved: false } });
+    createdSessionIds.push(session.id);
+    const spyJev = vi.spyOn(jevDecisions, "decideGraphifyEligibilityWithJev");
+
+    const res = await postChat(
+      new NextRequest("http://localhost:3000/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: session.id, projectId: project.id, prompt: "Quais são as dependências do projeto?" }),
+      })
+    );
+    const json = await res.json();
+    expect(json.graphifySuggestion ?? null).toBeNull();
+    expect(spyJev).not.toHaveBeenCalled();
+    fs.rmSync(emptyDir, { recursive: true, force: true });
   });
 });

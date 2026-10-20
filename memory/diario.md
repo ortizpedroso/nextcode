@@ -1,3 +1,19 @@
+## 20/10/2026 (178) — P11 feito: aviso M2 fora do chat; Graphify só com código (mudança 25)
+
+**Fundador:** "pode rodar". **Prova:** tsc 0; **suíte inteira 134/901 verde**. Decisões D36–D37.
+**Próximo passo:** P12 (ligar `folder-safety.ts` nas rotas de projeto + testes).
+
+---
+
+## 20/10/2026 (177) — P11 implementado, sem commit: suíte interrompida por falta de memória
+
+**Feito (sem commit):** aviso M2 fora do chat (vira `SPEC_CLARITY_SHADOW` na trilha); `temCodigoExistente` e a sugestão do Graphify passam por `hasExistingSourceCode` (`src/core/project/source-files.ts`, ≥ 5 arquivos-fonte, ignora config/docs/`node_modules`); teste do Graphify com pasta de código + caso pasta vazia; `tests/project/source-files.test.ts`. tsc 0; testes do P11 4/4.
+**Onde parou:** a suíte inteira do P11 foi parada pelo Claude Code por falta de memória na máquina (não é falha de teste) — não reiniciei por conta própria. P12: `src/core/project/folder-safety.ts` escrito, ainda não ligado nas rotas, sem testes.
+**Próximo passo:** quando o fundador liberar, rodar a suíte inteira → commit do P11 → P12 (ligar a trava em `api/projects/[id]` DELETE e na criação/abertura) → P13 → relatórios.
+**Pendências do fundador:** liberar a nova rodada da suíte (memória da máquina).
+
+---
+
 ## 20/10/2026 (176) — P10 feito: placar nas mensagens de bloqueio, pausa e teto (TR1 5)
 
 **Feito:** `session-scoreboard.ts` (`computeScoreboard`/`formatScoreboard`/`sessionScoreboardMarkdown`); placar no relatório de incidente (bloqueio por tentativas e por regra), no aviso de pausa `SEM_LLM` e na mensagem de teto; painel com `#n` na ordem do plano e selo "rodando agora". Decisões D34–D35.
