@@ -1,3 +1,12 @@
+## 20/10/2026 (183) — Bench P1–P4 completo: meta TR1 atingida; corrigido limite de 120 s do executor
+
+**Bench (fundador liberou):** P1 ENTREGUE 10/10, P3 12/12, P4 12/12; P2 PAUSADA 10/13 duas vezes na etapa de tela. **Causa:** o turno do executor cortava no gateway em 120 s (padrão do `callGateway`) embora a etapa tenha 300 s; `deepseek-v4-pro` passou disso, o FreeLLMAPI deu 429 (rota em espera ~85 s) e as repetições do turno pausaram a sessão.
+**Feito:** `executor-tool-loop.ts` passa `gatewayTimeoutMs: stepTimeoutMs` (D42); teste novo falha sem a correção. tsc 0; **suíte 136/909 verde**; commit `835e98f`. P2 de novo: **ENTREGUE 13/13**. Máximo de 4 chamadas do executor por etapa (meta ≤ 10), todas aprovadas na 1ª. Custo dos benches hoje: ~US$ 0,64. Relatório seção 3 e referência (P13 [x]) atualizados.
+**Próximo passo:** mudança 26 concluída; seguir a próxima linha de §5.0 com o fundador.
+**Pendências do fundador:** nenhuma desta mudança.
+
+---
+
 ## 20/10/2026 (182) — Relatório de implementação escrito; P13 aguardando bench
 
 **Feito:** `docs/relatorios/IMPLEMENTADO-E1-producao.md` (commits, tsc/vitest por commit, o que mudou, bench parcial, o que falta); checklist dos relatórios marcado.

@@ -22,6 +22,7 @@ Base: teste real `8e2f2052` — 1.724 chamadas do executor, 548 pausas `SEM_LLM`
 | `d73f945` | P12 trava de pasta-mãe (PJ2) | 0 | 135 / 906 |
 | `49598bc` | P13 bench mede chamadas/ações por etapa | 0 | 135 / 906 |
 | `014d816` | correção do P4 na Lente 2 (achada no bench) | 0 | 136 / 908 |
+| `835e98f` | limite de tempo do gateway no turno do executor (achado no bench) | 0 | 136 / 909 |
 
 ## 2. O que mudou, por passo
 
@@ -39,17 +40,22 @@ Base: teste real `8e2f2052` — 1.724 chamadas do executor, 548 pausas `SEM_LLM`
 - **P12** `folder-safety.ts`: DELETE com `apagarPasta` e POST de projeto recusam (409) pasta-mãe, sem diferenciar maiúsculas no Windows.
 - **P13** `nodeId` no `LLM_COST` do executor (antes o bench mostrava US$ 0 do executor por etapa); `scripts/bench.ts` com chamadas, ações e tentativas por etapa e média contra a meta ≤ 10.
 
-## 3. Prova real (bench) — PARCIAL
-Rodada `npm run bench -- --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1`, 20/10, **parada pelo Claude Code por falta de memória durante o P3** (não é falha do bench):
+## 3. Prova real (bench) — meta do TR1 atingida
+Rodada `npm run bench -- --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1`, 20/10 (`docs/relatorios/bench/2026-10-20-1244.md`), e P2 de novo depois da correção `835e98f` (`2026-10-20-1314.md`):
 
-| Projeto | Fase | Aceite | Custo |
-|---|---|---|---|
-| P1 | ENTREGUE | 10/10 | US$ 0,0744 |
-| P2 | BLOQUEADA | 0/13 | US$ 0,0778 |
+| Projeto | Fase | Aceite | Custo | Chamadas do executor por etapa (média / máx.) | Aprovadas na 1ª |
+|---|---|---|---|---|---|
+| P1 | ENTREGUE | 10/10 | US$ 0,0675 | 2,5 / 3 | todas |
+| P2 | ENTREGUE | 13/13 | US$ 0,2134 | 2,8 / 4 | todas |
+| P3 | ENTREGUE | 12/12 | US$ 0,1243 | 2,5 / 3 | todas |
+| P4 | ENTREGUE | 12/12 | US$ 0,0612 | 4 / 4 | todas |
 
-**P2 bloqueou por defeito meu do P4** (Lente 2 com referência única; ver D41) — corrigido em `014d816`, com teste que falha sem a correção. **A meta do TR1 (≤ 10 chamadas do executor por etapa, sem baixar a aprovação na 1ª) ainda não está provada:** falta refazer o bench P1–P4 completo.
+Comparação: teste real `8e2f2052` — 1.724 chamadas do executor, US$ 18,78. Meta TR1 ≤ 10 por etapa: **máximo medido 4**. Cache do avaliador (P8) ativo: ex. 3.236 tokens lidos do cache e 1.713 gravados numa avaliação do P2.
+
+**Defeitos achados pelo bench e corrigidos:**
+- `014d816` (D41): Lente 2 lia uma referência só → P2 BLOQUEADA 0/13 na 1ª rodada.
+- `835e98f` (D42): o turno do executor cortava no gateway em 120 s (padrão do `callGateway`) mesmo com 300 s por etapa. A tela do P2 (`deepseek-v4-pro`) passou de 120 s, o FreeLLMAPI pôs a rota em espera (~85 s, HTTP 429) e as repetições do turno pausaram a sessão (SEM_LLM) — igual em 2 rodadas. Agora o executor passa `gatewayTimeoutMs: stepTimeoutMs`, como o analista. Teste falha sem a correção; suíte 136/909 verde.
 
 ## 4. O que não foi feito / continua aberto
-- Bench P1–P4 completo depois da correção (aguarda liberação do fundador; memória da máquina).
-- Ganho real do cache (P8): só aparece em `cache_read_input_tokens` de chamada paga — medir no mesmo bench.
+- Ganho do cache (P8) em dinheiro: confirmado que funciona; o tamanho da economia só aparece em sessão longa (5 min de validade), não num bench de 1 rodada.
 - Ficam para depois, sem mudança (mudança 26): JV1 completo, redesenho do Jev na Spec (E2), A1, J3, E5, fechar-com-retomada na tela (PJ2b); TR1 (6) e (7).
