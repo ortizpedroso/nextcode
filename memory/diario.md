@@ -1,3 +1,12 @@
+## 20/10/2026 (182) — Relatório de implementação escrito; P13 aguardando bench
+
+**Feito:** `docs/relatorios/IMPLEMENTADO-E1-producao.md` (commits, tsc/vitest por commit, o que mudou, bench parcial, o que falta); checklist dos relatórios marcado.
+**Onde parou:** P1–P12 feitos e commitados; P13 parcial (P1 10/10; P2 0/13 por defeito meu do P4, corrigido em `014d816`).
+**Próximo passo:** com liberação do fundador, `npm run bench -- --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1` (pago, ~US$ 0,8) e atualizar a seção 3 do relatório.
+**Pendências do fundador:** liberar o bench.
+
+---
+
 ## 20/10/2026 (181) — Bench parado por memória; regressão minha do P4 achada e corrigida (Lente 2)
 
 **Bench (parcial, parado pelo Claude Code por falta de memória no P3):** P1 ENTREGUE 10/10 (US$ 0,0744); **P2 BLOQUEADA 0/13** (US$ 0,0778). **Causa (minha, do P4):** o executor passou a citar lista de referências (válida), mas a Lente 2 em `dual-lens-auditor.ts` ainda conferia uma referência só → "Executor citou evidência inexistente (src/lib/tarefas.ts:1-5; …:24-29; …)" nas 3 tentativas. Os testes do P4 não cobriam o avaliador com lista.

@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P13**.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P13** (bench completo aguarda liberação do fundador).
 
 **Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
 
@@ -300,7 +300,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **P11** aviso M2 desligado + Graphify só com código (mudança 25) — M2 sai do chat e vira `SPEC_CLARITY_SHADOW` na trilha; Graphify (e o `temCodigoExistente` do fan-out) só com ≥ 5 arquivos-fonte na pasta (`hasExistingSourceCode`, sem Jev)
 - [x] **P12** trava de apagar pasta-mãe / pasta com outros projetos (PJ2, segurança) — `folder-safety.ts`: apagar recusa (409, nada apagado) raiz, pasta do NextCode, pasta de projetos, pasta com outro projeto cadastrado ou com repositório aninhado (`.git`/`package.json` até 3 níveis); abrir recusa as mesmas pastas-mãe e pasta com outro projeto cadastrado; comparação sem maiúsculas no Windows
 - [ ] **P13** medição: bench P1–P4 com os números de chamadas por etapa e aprovação na 1ª
-- [ ] **Relatórios:** `docs/relatorios/IMPLEMENTADO-E1-producao.md` e `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md`
+- [x] **Relatórios:** `docs/relatorios/IMPLEMENTADO-E1-producao.md` e `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md` (P13 parcial: bench parado por memória; refazer)
 
 **Checklist da execução autônoma (mudança 23) — ordem fixa, cada linha = 1 commit com tsc + vitest:**
 - [x] **A2.1** T8b confere arquivo citado no critério × escopo da etapa (ou de etapa da qual depende) e **bloqueia** o plano na aprovação (BLOQUEADA + relatório "dono: analista")
