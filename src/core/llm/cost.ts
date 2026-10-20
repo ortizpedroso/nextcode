@@ -43,7 +43,12 @@ export interface UsageLike {
   input_tokens?: number;
   output_tokens?: number;
   cache_read_input_tokens?: number;
+  /** Anthropic: tokens gravados no cache nesta chamada (5 min = 1,25× a entrada). */
+  cache_creation_input_tokens?: number;
 }
+
+/** Escrita no cache da Anthropic com TTL de 5 min (doc oficial de prompt caching, colada 18/10). */
+export const CACHE_WRITE_5M_MULTIPLIER = 1.25;
 
 export function costFromUsage(model: string, usage: UsageLike | null | undefined): number {
   const price = priceFor(model);
@@ -51,7 +56,14 @@ export function costFromUsage(model: string, usage: UsageLike | null | undefined
   const cached = usage.prompt_cache_hit_tokens ?? usage.cache_read_input_tokens ?? 0;
   const input = (usage.prompt_tokens ?? (usage.input_tokens ?? 0) + cached) - cached;
   const output = usage.completion_tokens ?? usage.output_tokens ?? 0;
-  return (Math.max(0, input) * price.input + cached * price.cachedInput + output * price.output) / 1_000_000;
+  const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+  return (
+    (Math.max(0, input) * price.input +
+      cached * price.cachedInput +
+      cacheWrite * price.input * CACHE_WRITE_5M_MULTIPLIER +
+      output * price.output) /
+    1_000_000
+  );
 }
 
 export const LLM_COST_ACTION = "LLM_COST";

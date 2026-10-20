@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P8**.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P9**.
 
 **Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
 
@@ -294,7 +294,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **P5** chamada lenta/oscilação: repetir o turno com espera antes de pausar (TR1 1) — prazo estourado, sem provedor, exceção ou resposta vazia repetem o MESMO turno após 5 s e 20 s (`EXECUTOR_TURN_RETRY`; `NEXTCODE_TURN_RETRY_DELAYS_MS`); só depois falha ou pausa; na pausa, o código já gravado fica no nó (`pausado`) e a retomada parte dele
 - [x] **P6** negação repetida de ferramenta = dono harness, sem gastar tentativa (TR1 2) — a mesma ação negada ≥ 2× por regra que contradiz o plano (caminho protegido DENTRO do escopo do Microbrief; executor sem escrita) bloqueia a etapa sem gastar tentativa, com "Dono: harness" e a regra no chat (`HARNESS_RULE_BLOCK`); ferramenta inventada e arquivo fora do escopo continuam com o executor ou o plano
 - [x] **P7** avaliador: só `critico` bloqueia; `importante` vira ressalva (TR1 11) — qualquer número de `importante` → APROVADO_COM_RESSALVA + `correcoesSugeridas` no resultado da etapa; `menor` só registra; problema descartado não entra; veredito traz `fatoQueGarante` e `nivelProva` (escala do blast-radius); skills `avaliador` e `avaliador-frontend` alinhadas
-- [ ] **P8** avaliador: cache de prompt da Anthropic (TR1 9)
+- [x] **P8** avaliador: cache de prompt da Anthropic (TR1 9) — `buildAnthropicCachedBody`: corte 1 = system (skill + regras), corte 2 = Brief antes de `[ARQUIVOS GERADOS]`, TTL 5 min; `usage` guarda `cache_read_input_tokens` e `cache_creation_input_tokens`; custo da escrita (1,25× a entrada) entra no `LLM_COST`
 - [ ] **P9** teto de custo estimado pelo plano, 1 autorização (TR1 4)
 - [ ] **P10** mensagem de bloqueio com placar e o que fazer (TR1 5)
 - [ ] **P11** aviso M2 desligado + Graphify só com código (mudança 25)

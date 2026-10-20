@@ -49,8 +49,44 @@ export function resetEvaluatorState(): void {
 type AnthropicMessageJson = {
   content?: { type: string; text?: string }[];
   stop_reason?: string;
-  usage?: { input_tokens?: number; output_tokens?: number };
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  };
 };
+
+/** Divisa entre o que se repete nas chamadas da mesma etapa (Brief) e o que muda (código). */
+export const EVALUATOR_CACHE_SPLIT_MARKER = "[ARQUIVOS GERADOS]";
+
+/**
+ * TR1 (9): monta system e mensagens com `cache_control` (5 min). Corte 1 = system (skill + regras,
+ * igual em todas as etapas do cluster); corte 2 = Brief da etapa, antes do código — reaproveitado
+ * nas chamadas repetidas da Lente Cega e nas retentativas da mesma etapa.
+ */
+export function buildAnthropicCachedBody(messages: { role: string; content: string }[]): {
+  system?: { type: "text"; text: string; cache_control: { type: "ephemeral" } }[];
+  messages: { role: string; content: string | { type: "text"; text: string; cache_control?: { type: "ephemeral" } }[] }[];
+} {
+  const sysMsg = messages.find((m) => m.role === "system")?.content || "";
+  const rest = messages.filter((m) => m.role !== "system");
+  const out = rest.map((m) => {
+    const idx = m.role === "user" ? m.content.indexOf(EVALUATOR_CACHE_SPLIT_MARKER) : -1;
+    if (idx <= 0) return { role: m.role, content: m.content as string };
+    return {
+      role: m.role,
+      content: [
+        { type: "text" as const, text: m.content.slice(0, idx), cache_control: { type: "ephemeral" as const } },
+        { type: "text" as const, text: m.content.slice(idx) },
+      ],
+    };
+  });
+  return {
+    ...(sysMsg ? { system: [{ type: "text" as const, text: sysMsg, cache_control: { type: "ephemeral" as const } }] } : {}),
+    messages: out.length > 0 ? out : [{ role: "user", content: "ok" }],
+  };
+}
 
 async function parseAnthropicDirectMessageResponse(
   antRes: Response,
@@ -87,6 +123,8 @@ async function parseAnthropicDirectMessageResponse(
         ? {
             input_tokens: antJson.usage.input_tokens,
             output_tokens: antJson.usage.output_tokens,
+            cache_read_input_tokens: antJson.usage.cache_read_input_tokens,
+            cache_creation_input_tokens: antJson.usage.cache_creation_input_tokens,
           }
         : null,
     };
@@ -142,8 +180,6 @@ export async function dispatchStrongEvaluator(
           continue;
         }
         const { safeFetch } = await import("@/core/security/safe-fetch");
-        const sysMsg = messages.find((m) => m.role === "system")?.content || "";
-        const userMessages = messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
         const antRes = await safeFetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: {
@@ -154,8 +190,7 @@ export async function dispatchStrongEvaluator(
           body: JSON.stringify({
             model: c.model,
             max_tokens: 8000,
-            ...(sysMsg ? { system: sysMsg } : {}),
-            messages: userMessages.length > 0 ? userMessages : [{ role: "user", content: "ok" }],
+            ...buildAnthropicCachedBody(messages),
           }),
           signal: AbortSignal.timeout(timeoutMs),
         });

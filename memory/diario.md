@@ -1,3 +1,11 @@
+## 20/10/2026 (174) — P8 feito: cache de prompt no avaliador Claude (TR1 9)
+
+**Feito:** `evaluator-models.ts` manda `system` e o Brief com `cache_control` (5 min), código fora do cache; `usage` com leitura/escrita do cache; `cost.ts` cobra escrita a 1,25×. Decisões D27–D30.
+**Prova:** tsc 0; `tests/llm/evaluator-prompt-cache.test.ts` (4: cortes, sem marcador, corpo real enviado ao `fetch`, preço); **suíte inteira 132/893 verde**. Ganho real (`cache_read_input_tokens` > 0) só se mede com chamada paga — fica para o P13.
+**Próximo passo:** P9 (teto pelo plano, 1 autorização).
+
+---
+
 ## 20/10/2026 (173) — P7 feito: só `critico` reprova; `importante` vira ressalva (TR1 11)
 
 **Feito:** `dual-lens-auditor.ts` — regra "3 importantes reprovam" removida; `importante` → APROVADO_COM_RESSALVA + `correcoesSugeridas`; `fatoQueGarante`/`nivelProva` pedidos e gravados no resultado; skills `avaliador` e `avaliador-frontend` alinhadas. Decisões D24–D26.
