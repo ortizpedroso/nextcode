@@ -695,7 +695,8 @@ export async function buildDependencyContext(
     const abs = path.join(projectRoot, f);
     if (!fs.existsSync(abs)) continue;
     const content = fs.readFileSync(abs, "utf8");
-    if (used + content.length > MAX_TOTAL) break;
+    // Um arquivo grande não pode esconder os menores que vêm depois dele.
+    if (used + content.length > MAX_TOTAL) continue;
     used += content.length;
     blocks.push(`--- ${f} ---\n${content}`);
   }
@@ -703,6 +704,47 @@ export async function buildDependencyContext(
   return (
     "ARQUIVOS JÁ EXISTENTES NO PROJETO (entregues pelas etapas anteriores — use os tipos, nomes e assinaturas " +
     "EXATAMENTE como estão abaixo; não os altere nem os redeclare):\n\n" +
+    blocks.join("\n\n")
+  );
+}
+
+export const FIXED_CONTEXT_MAX_FILE_CHARS = 20000;
+export const FIXED_CONTEXT_MAX_TOTAL_CHARS = 40000;
+
+/**
+ * TR1 (13): o que toda etapa precisa e o executor lia de novo a cada turno (teste real `8e2f2052`:
+ * tsconfig lido 42×, schema 21×) — tsconfig, schema do Prisma e os contratos do Microbrief
+ * (`lerContratos`) que ainda não vieram no bloco das dependências. Lido do disco do projeto.
+ */
+export function buildExecutorFixedContext(
+  projectRoot: string | null | undefined,
+  lerContratos: string[],
+  alreadyIncluded: string | null
+): string | null {
+  if (!projectRoot) return null;
+  const candidates = ["tsconfig.json", "prisma/schema.prisma", ...lerContratos];
+  let used = 0;
+  const blocks: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of candidates) {
+    const f = raw.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+    if (seen.has(f)) continue;
+    seen.add(f);
+    if (alreadyIncluded?.includes(`--- ${f} ---`)) continue;
+    const abs = path.join(projectRoot, f);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+    let content = fs.readFileSync(abs, "utf8");
+    if (content.length > FIXED_CONTEXT_MAX_FILE_CHARS) {
+      content = `${content.slice(0, FIXED_CONTEXT_MAX_FILE_CHARS)}\n...[cortado em ${FIXED_CONTEXT_MAX_FILE_CHARS} caracteres; use read_file para o resto]`;
+    }
+    if (used + content.length > FIXED_CONTEXT_MAX_TOTAL_CHARS) continue;
+    used += content.length;
+    blocks.push(`--- ${f} ---\n${content}`);
+  }
+  if (blocks.length === 0) return null;
+  return (
+    "CONTEXTO FIXO DO PROJETO (conteúdo atual no disco — NÃO leia estes arquivos de novo com read_file; " +
+    "use-os como estão):\n\n" +
     blocks.join("\n\n")
   );
 }
@@ -937,7 +979,7 @@ DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Escopo de arquivos desta etapa: ${taskDb.filesScope || "[]"}. Grave cada arquivo na quarentena usando a ferramenta \`write_file\` (ou \`edit_file\`), confira a compilação com \`run_check\` (\`{"comando": "typecheck"}\`) e encerre com \`finish\` passando o YAML de \`relatorio_executor\` listando cada requisito (REQ) desta etapa com o arquivo do escopo e as linhas reais (1-indexadas).
 Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou\`, \`testes\`, \`arquivos_alterados\`) NÃO vêm do modelo: o harness carimba com \`stampHarnessMeasuredFields\`.
-3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Em cada turno, responda com EXATAMENTE UM bloco \`\`\`json acao.${executorSkillInstructions}\n\n${buildExecutorToolProtocolPrompt()}`
+3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Em cada turno, responda com UM bloco \`\`\`json acao (uma ação ou uma lista de ações independentes).${executorSkillInstructions}\n\n${buildExecutorToolProtocolPrompt()}`
     : `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
@@ -1010,11 +1052,19 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   if (dependencyBlock) {
     dispatchMessages.push({ role: "system", content: dependencyBlock });
   }
+  if (useToolLoop) {
+    const fixedBlock = buildExecutorFixedContext(
+      taskDb.session.project?.path,
+      nodeMicrobrief?.arquivosPermitidos.lerContratos ?? [],
+      dependencyBlock
+    );
+    if (fixedBlock) dispatchMessages.push({ role: "system", content: fixedBlock });
+  }
 
   dispatchMessages.push({
     role: "user",
     content: useToolLoop
-      ? `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma usando o protocolo de ferramentas (EXATAMENTE UM bloco \`\`\`json acao por turno) até chamar finish.`
+      ? `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma usando o protocolo de ferramentas (UM bloco \`\`\`json acao por turno, com uma ação ou uma lista) até chamar finish.`
       : `[EXECUÇÃO DA ETAPA DA DAG: ${taskDb.title}]\nPapel/Função: ${taskDb.role}\nEscopo de Arquivos: ${taskDb.filesScope || "[]"}\nObjetivo: Execute esta etapa de forma 100% autônoma e retorne os códigos de todos os arquivos no escopo.`,
   });
 

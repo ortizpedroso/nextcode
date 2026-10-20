@@ -1,3 +1,11 @@
+## 20/10/2026 (167) — P2 feito: contexto fixo no 1º prompt do executor (TR1 13)
+
+**Feito:** `buildExecutorFixedContext` (`node-executor.ts`) põe no 1º prompt do laço `tsconfig.json`, `prisma/schema.prisma` e os `lerContratos` do Microbrief que o bloco das dependências não trouxe (20 mil caracteres por arquivo, 40 mil no total, aviso "não leia de novo"); no bloco das dependências, arquivo grande agora é pulado em vez de esconder os seguintes; textos "EXATAMENTE UM bloco" que sobraram no prompt (P1) corrigidos. Decisões D6–D9.
+**Prova:** tsc 0; `executor-tool-loop.test.ts` 27/27 duas vezes (2 novos: prompt real com tsconfig e schema; função com contratos, sem repetição e corte). Suíte inteira 868/880: 12 estouros de 15 s (e2e, gateways, multi-provider, 1 do laço); os 3 arquivos não-e2e passam 48/48 isolados e o e2e passa 11/11 com `--testTimeout=120000`. Máquina lenta sob carga — pendência do `testTimeout` continua anotada.
+**Próximo passo:** P3 (retentativa a partir do código anterior + defeitos).
+
+---
+
 ## 19/10/2026 (166) — P1 feito: executor com várias ações por turno (TR1 12)
 
 **Feito:** `parseExecutorToolActions` aceita lista de até 8 ações num bloco `json acao` (ou vários blocos somados); o laço executa na ordem e devolve todos os resultados numa mensagem; teto 48 mil caracteres/turno (leitura excedente volta "peça de novo"); `finish` só sozinho (misturado: as outras rodam, ele volta "ignorado"); telemetria `acoesNoTurno`; protocolo atualizado no prompt e nas 4 skills de executor. Decisões D1–D5 em `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md`.

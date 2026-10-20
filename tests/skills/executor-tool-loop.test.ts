@@ -7,7 +7,9 @@ import { SmartRouter, type DispatchResult } from "@/core/router/smart-router";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
 import { runOnce } from "@/core/orchestrator/job-worker";
 import {
+  buildExecutorFixedContext,
   executeTaskNode,
+  FIXED_CONTEXT_MAX_FILE_CHARS,
   readNodeMicrobrief,
   setExecutorModeForTests,
   setPaidOnlyRoutingForTests,
@@ -926,6 +928,76 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(secondTurnLastMessage).toContain("[RESULTADO write_file]");
     expect(secondTurnLastMessage).toContain("[RESULTADO finish]");
     expect(secondTurnLastMessage).toContain("vai SOZINHO");
+  });
+
+  it("TR1 (13) a) 1º prompt do executor traz tsconfig e schema do Prisma como contexto fixo", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await setupSingleTaskSession(projectDir);
+    fs.writeFileSync(path.join(projectDir, "tsconfig.json"), '{"compilerOptions":{"strict":true,"marcador":"TSCFG-X"}}');
+    fs.mkdirSync(path.join(projectDir, "prisma"), { recursive: true });
+    fs.writeFileSync(path.join(projectDir, "prisma", "schema.prisma"), "model Tarefa { id String @id } // SCHEMA-X\n");
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+
+    const executorTurns = [
+      "```json acao\n" +
+        JSON.stringify([
+          {
+            ferramenta: "write_file",
+            args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return name;\n}\n" },
+          },
+          { ferramenta: "run_check", args: { comando: "typecheck" } },
+        ]) +
+        "\n```",
+      toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }),
+    ];
+    let turnIdx = 0;
+    let firstPrompt = "";
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      }
+      if (turnIdx === 0) firstPrompt = sys;
+      const reply = executorTurns[Math.min(turnIdx, executorTurns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(task);
+    expect(res.finalStatus).toBe("completed");
+    expect(firstPrompt).toContain("CONTEXTO FIXO DO PROJETO");
+    expect(firstPrompt).toContain("--- tsconfig.json ---");
+    expect(firstPrompt).toContain("TSCFG-X");
+    expect(firstPrompt).toContain("SCHEMA-X");
+    expect(firstPrompt).not.toContain("EXATAMENTE UM bloco");
+  });
+
+  it("TR1 (13) b) buildExecutorFixedContext: contratos, sem repetir o bloco das dependências, corte por arquivo", () => {
+    const dir = makeTempProjectDir();
+    fs.mkdirSync(path.join(dir, "src", "lib"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "tsconfig.json"), "{}");
+    fs.writeFileSync(path.join(dir, "src", "lib", "a.ts"), "export type A = 1;");
+    fs.writeFileSync(path.join(dir, "src", "lib", "b.ts"), "export type B = 2;");
+    fs.writeFileSync(path.join(dir, "src", "lib", "grande.ts"), "x".repeat(FIXED_CONTEXT_MAX_FILE_CHARS + 50));
+
+    const block = buildExecutorFixedContext(
+      dir,
+      ["src/lib/a.ts", "./src/lib/b.ts", "src/lib/grande.ts", "src/lib/nao-existe.ts"],
+      "ARQUIVOS JÁ EXISTENTES...\n\n--- src/lib/a.ts ---\nexport type A = 1;"
+    )!;
+    expect(block).toContain("--- tsconfig.json ---");
+    expect(block).not.toContain("--- src/lib/a.ts ---");
+    expect(block).toContain("--- src/lib/b.ts ---");
+    expect(block).toContain(`cortado em ${FIXED_CONTEXT_MAX_FILE_CHARS} caracteres`);
+    expect(block).not.toContain("nao-existe");
+    expect(buildExecutorFixedContext(null, ["src/lib/b.ts"], null)).toBeNull();
+    expect(buildExecutorFixedContext(makeTempProjectDir(), [], null)).toBeNull();
   });
 
   it("parseExecutorToolActions a) lista num bloco ```json acao → todas as ações, na ordem", () => {
