@@ -12,6 +12,7 @@ import { sessionCostUsd, sessionCostBreakdown, type SessionCostBreakdown } from 
 import { loadOrchestrationPolicy, type OrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+import { sessionScoreboardMarkdown } from "@/core/orchestrator/session-scoreboard";
 
 export const BUDGET_AUTHORIZED_ACTION = "BUDGET_AUTHORIZED";
 const ALERT_MARKER = "Alerta de custo";
@@ -125,11 +126,14 @@ export async function enforceBudgetBeforeBatch(sessionId: string): Promise<boole
     action: "BUDGET_CEILING_REACHED",
     details: { spentUsd: b.spentUsd, limitUsd: b.limitUsd, transitionOk: res.ok },
   });
+  const placar = await sessionScoreboardMarkdown(sessionId).catch(() => "");
   await postOnce(
     sessionId,
     BLOCK_MARKER,
     b.limitUsd,
-    `🛑 **${BLOCK_MARKER}:** gasto de ${fmt(b.spentUsd)} para um teto de ${fmt(b.limitUsd)}. A execução parou e nenhuma etapa foi perdida. Para continuar, autorize ${fmt(b.sugestaoAutorizacaoUsd)} (estimativa das etapas que faltam; botão "Autorizar mais verba" no painel da execução) — uma autorização cobre o resto do plano.`
+    `🛑 **${BLOCK_MARKER}:** gasto de ${fmt(b.spentUsd)} para um teto de ${fmt(b.limitUsd)}. A execução parou e nenhuma etapa foi perdida. Para continuar, autorize ${fmt(b.sugestaoAutorizacaoUsd)} (estimativa das etapas que faltam; botão "Autorizar mais verba" no painel da execução) — uma autorização cobre o resto do plano.${placar ? `
+
+${placar}` : ""}`
   );
   return false;
 }

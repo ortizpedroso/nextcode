@@ -317,7 +317,7 @@ export function DagSidebar({
             Nenhum nó ativo. Digite um objetivo no prompt para decompor e executar as tarefas automaticamente.
           </div>
         ) : (
-          tasks.map((task) => {
+          tasks.map((task, planIndex) => {
             const isExecuting = executingNodeId === task.id || task.status === "running";
             const taskCostUsd = budget?.breakdown?.byNode?.[task.id];
             return (
@@ -333,7 +333,14 @@ export function DagSidebar({
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-bold text-slate-900 dark:text-white text-xs leading-snug">
+                    {/* TR1 (5): número = ordem do plano (a mesma do placar no chat). */}
+                    <span className="mr-1 font-mono text-slate-400">#{planIndex + 1}</span>
                     {task.title}
+                    {isExecuting && (
+                      <span className="ml-1.5 rounded bg-blue-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                        rodando agora
+                      </span>
+                    )}
                   </span>
                   <div className="shrink-0">{getStatusBadge(task.status)}</div>
                 </div>

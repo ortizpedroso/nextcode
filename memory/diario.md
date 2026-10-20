@@ -1,3 +1,11 @@
+## 20/10/2026 (176) — P10 feito: placar nas mensagens de bloqueio, pausa e teto (TR1 5)
+
+**Feito:** `session-scoreboard.ts` (`computeScoreboard`/`formatScoreboard`/`sessionScoreboardMarkdown`); placar no relatório de incidente (bloqueio por tentativas e por regra), no aviso de pausa `SEM_LLM` e na mensagem de teto; painel com `#n` na ordem do plano e selo "rodando agora". Decisões D34–D35.
+**Prova:** tsc 0; `tests/orchestrator/session-scoreboard.test.ts` (3); **suíte inteira 133/899 verde**.
+**Próximo passo:** P11 (M2 desligado + Graphify só com código) — `src/core/project/source-files.ts` já escrito, sem commit.
+
+---
+
 ## 20/10/2026 (175) — P9 feito: teto pelo tamanho do plano e 1 autorização (TR1 4)
 
 **Feito:** `budget-guard.ts` — `estimativaPlanoUsd` e `sugestaoAutorizacaoUsd`; teto = max(fixo, estimativa) + autorizado; mensagem de teto e botão do painel pedem o que falta de uma vez; parâmetros no YAML. Decisões D31–D33.

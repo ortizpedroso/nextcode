@@ -32,6 +32,8 @@ export interface IncidentReportOptions {
   unblockHint?: string;
   /** Dono roteado pela política A3 (opcional). */
   dono?: string;
+  /** TR1 (5): placar da sessão já formatado (`sessionScoreboardMarkdown`). */
+  placar?: string;
 }
 
 export interface FailureCategory {
@@ -221,7 +223,9 @@ ${attemptsHistory
   )
   .join("\n")}
 ## 4. Estado do grafo (DAG)
-- Esta etapa está \`blocked\` e não será executada de novo automaticamente (nem pelo botão "Executar nó").
+${options.placar ? `${options.placar}
+
+` : ""}- Esta etapa está \`blocked\` e não será executada de novo automaticamente (nem pelo botão "Executar nó").
 - Etapas que não dependem dela seguem executando normalmente.
 `;
   }

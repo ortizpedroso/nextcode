@@ -7,6 +7,7 @@ import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
+import { sessionScoreboardMarkdown } from "@/core/orchestrator/session-scoreboard";
 import {
   runExecutorToolLoop,
   buildExecutorToolProtocolPrompt,
@@ -181,6 +182,7 @@ export async function reportBlockedNodeToHuman(sessionId: string, nodeId: string
   const report = IncidentReporter.generateIncidentReport(node.id, node.title, node.cluster, history, {
     maxAttempts: node.maxAttempts,
     blockedDependents,
+    placar: await sessionScoreboardMarkdown(sessionId),
   });
 
   await prisma.message.create({
@@ -751,6 +753,13 @@ export function buildExecutorFixedContext(
     "use-os como estão):\n\n" +
     blocks.join("\n\n")
   );
+}
+
+async function scoreboardSuffix(sessionId: string): Promise<string> {
+  const placar = await sessionScoreboardMarkdown(sessionId).catch(() => "");
+  return placar ? `
+
+${placar}` : "";
 }
 
 export const PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS = 60000;
@@ -1353,7 +1362,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         data: {
           sessionId: taskDb.sessionId,
           role: "assistant",
-          content: `⚠️ **${pauseMarker}.** A etapa "${taskDb.title}" voltou para a fila sem consumir nenhuma tentativa (${taskDb.attempts || 0}/${taskDb.maxAttempts || 3}). O supervisor retomará a execução automaticamente assim que um gateway responder.`,
+          content: `⚠️ **${pauseMarker}.** A etapa "${taskDb.title}" voltou para a fila sem consumir nenhuma tentativa (${taskDb.attempts || 0}/${taskDb.maxAttempts || 3}). O supervisor retomará a execução automaticamente assim que um gateway responder.${await scoreboardSuffix(taskDb.sessionId)}`,
         },
       });
     }
@@ -1939,6 +1948,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             : undefined;
         incidentReportMarkdown = IncidentReporter.generateIncidentReport(taskDb.id, taskDb.title, taskDb.cluster, history, {
           maxAttempts,
+          placar: await sessionScoreboardMarkdown(taskDb.sessionId),
           ...(failureRouteDono ? { dono: failureRouteDono } : {}),
           ...(blockedByAmbiguousSpec
             ? {
