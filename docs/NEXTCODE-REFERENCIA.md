@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P6**.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P7**.
 
 **Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
 
@@ -292,7 +292,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **P3** executor: retentativa a partir do código anterior + defeitos (TR1 14) — reprovação no modo laço guarda `codigoTentativa` no resultado do nó (até 60 mil caracteres; nunca quando a guarda de segredos reprovou); a próxima tentativa recebe esse código no prompt e já gravado na quarentena (só arquivos do escopo), com a ordem de corrigir com `edit_file`; os defeitos continuam no bloco de feedback que já existia
 - [x] **P4** relatório P12 aceita lista de referências (TR1 3) — `parseFileLineRefList` aceita "a.ts:1-2,10-20; b.ts:4" e uma por linha; lista YAML dentro de `arquivo_linha` não vira REQ vazio (era a origem de `Referência inválida para ""`); REQ repetido por arquivo vira 1 linha (referências somadas, status mais baixo); cada referência conferida (escopo, existe, linhas); `finish` aceita lista; 4 skills de executor com o formato
 - [x] **P5** chamada lenta/oscilação: repetir o turno com espera antes de pausar (TR1 1) — prazo estourado, sem provedor, exceção ou resposta vazia repetem o MESMO turno após 5 s e 20 s (`EXECUTOR_TURN_RETRY`; `NEXTCODE_TURN_RETRY_DELAYS_MS`); só depois falha ou pausa; na pausa, o código já gravado fica no nó (`pausado`) e a retomada parte dele
-- [ ] **P6** negação repetida de ferramenta = dono harness, sem gastar tentativa (TR1 2)
+- [x] **P6** negação repetida de ferramenta = dono harness, sem gastar tentativa (TR1 2) — a mesma ação negada ≥ 2× por regra que contradiz o plano (caminho protegido DENTRO do escopo do Microbrief; executor sem escrita) bloqueia a etapa sem gastar tentativa, com "Dono: harness" e a regra no chat (`HARNESS_RULE_BLOCK`); ferramenta inventada e arquivo fora do escopo continuam com o executor ou o plano
 - [ ] **P7** avaliador: só `critico` bloqueia; `importante` vira ressalva (TR1 11)
 - [ ] **P8** avaliador: cache de prompt da Anthropic (TR1 9)
 - [ ] **P9** teto de custo estimado pelo plano, 1 autorização (TR1 4)
