@@ -40,7 +40,7 @@ Você implementa os arquivos de integração externa listados em `arquivos_permi
    reqs:
      - id: REQ-001
        status: atendido | parcial | nao_atendido
-       arquivo_linha: "src/lib/x.ts:10-25"
+       arquivo_linha: "src/lib/x.ts:10-25"   # vários: "a.ts:10-25; b.ts:3-8" (1 linha por REQ)
        como: "uma frase"
    ```
    Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.

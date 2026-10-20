@@ -10,6 +10,7 @@ import {
   stripExecutorReportBlocks,
   classifyLens2Divergence,
   validateEvaluatorVerdictMechanical,
+  parseFileLineRefList,
   type EvaluatorVerdictDocument,
 } from "@/core/templates/artifact-templates";
 import { renderCanonicalSpecDocument, parseSpecDocument } from "@/core/intake/spec-format";
@@ -366,5 +367,101 @@ describe("Templates Canônicos (P1) e Conferências Mecânicas (P12 / T2 / T3 / 
     expect(badLineRes.valid).toBe(false);
     expect(badLineRes.errors.some((e) => e.includes("cita linhas 7-50") && e.includes("possui 12 linha(s)"))).toBe(true);
   });
-});
 
+  it("TR1 (3): relatório aceita lista de referências — em linha, lista YAML e REQ repetido por arquivo (formatos do teste real 8e2f2052)", () => {
+    const { microbriefs } = buildP1ProjectArtifacts();
+    const mb2 = structuredClone(microbriefs[1]);
+    mb2.arquivosPermitidos.criar = ["src/app/api/tarefas/route.ts", "src/lib/b.ts"];
+    const code12 = Array.from({ length: 12 }, (_, i) => `export const l${i + 1} = ${i + 1};`).join("\n");
+    const map = { "src/app/api/tarefas/route.ts": code12, "src/lib/b.ts": "export const b = 1;\nexport const c = 2;" };
+    const wrap = (lines: string[]) => ["```yaml relatorio_executor", "reqs:", ...lines, "```"].join("\n");
+
+    const inline = extractAndValidateExecutorReport(
+      wrap([
+        "  - id: REQ-002",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:1-2,4-6; src/lib/b.ts:1"',
+        '    como: "GET"',
+        "  - id: REQ-003",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:L7-L12"',
+        '    como: "POST"',
+      ]),
+      mb2,
+      map
+    );
+    expect(inline.errors).toEqual([]);
+    expect(inline.valid).toBe(true);
+
+    const yamlList = extractAndValidateExecutorReport(
+      wrap([
+        "  - id: REQ-002",
+        "    status: atendido",
+        "    arquivo_linha:",
+        '      - "src/app/api/tarefas/route.ts:1-6"',
+        "      - src/lib/b.ts:2",
+        '    como: "GET"',
+        "  - id: REQ-003",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+        '    como: "POST"',
+      ]),
+      mb2,
+      map
+    );
+    expect(yamlList.errors).toEqual([]);
+    expect(yamlList.report!.registroCumprimento.map((r) => r.reqId)).toEqual(["REQ-002", "REQ-003"]);
+    expect(yamlList.report!.registroCumprimento[0].arquivoLinha).toBe("src/app/api/tarefas/route.ts:1-6; src/lib/b.ts:2");
+
+    const repeated = extractAndValidateExecutorReport(
+      wrap([
+        "  - id: REQ-002",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6"',
+        '    como: "GET na rota"',
+        "  - id: REQ-002",
+        "    status: parcial",
+        '    arquivo_linha: "src/lib/b.ts:1-2"',
+        '    como: "tipo em b"',
+        "  - id: REQ-003",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+        '    como: "POST"',
+      ]),
+      mb2,
+      map
+    );
+    expect(repeated.errors).toEqual([]);
+    const req2 = repeated.report!.registroCumprimento.find((r) => r.reqId === "REQ-002")!;
+    expect(req2.statusDeclarado).toBe("parcial");
+    expect(req2.arquivoLinha).toBe("src/app/api/tarefas/route.ts:1-6; src/lib/b.ts:1-2");
+
+    const oneBad = extractAndValidateExecutorReport(
+      wrap([
+        "  - id: REQ-002",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:1-6; src/lib/b.ts:9"',
+        '    como: "GET"',
+        "  - id: REQ-003",
+        "    status: atendido",
+        '    arquivo_linha: "src/app/api/tarefas/route.ts:7-12"',
+        '    como: "POST"',
+      ]),
+      mb2,
+      map
+    );
+    expect(oneBad.valid).toBe(false);
+    expect(oneBad.errors.some((e) => e.includes("cita linhas 9-9") && e.includes('"src/lib/b.ts"'))).toBe(true);
+  });
+
+  it("TR1 (3): parseFileLineRefList recusa vazio e arquivo sem linha", () => {
+    expect(parseFileLineRefList("a.ts:1-2, 5; b.tsx:3")).toEqual([
+      { file: "a.ts", start: 1, end: 2 },
+      { file: "a.ts", start: 5, end: 5 },
+      { file: "b.tsx", start: 3, end: 3 },
+    ]);
+    expect(parseFileLineRefList("")).toBeNull();
+    expect(parseFileLineRefList("src/a.ts:1; src/b.ts")).toBeNull();
+    expect(parseFileLineRefList("ver o arquivo")).toBeNull();
+  });
+});

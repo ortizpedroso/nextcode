@@ -379,7 +379,8 @@ function formatFinishReportBlock(rawReport: unknown): string {
         const r = item as Record<string, unknown>;
         lines.push(`  - id: ${String(r.id ?? "")}`);
         lines.push(`    status: ${String(r.status ?? "atendido")}`);
-        lines.push(`    arquivo_linha: "${String(r.arquivo_linha ?? "")}"`);
+        const refs = Array.isArray(r.arquivo_linha) ? r.arquivo_linha.map(String).join("; ") : String(r.arquivo_linha ?? "");
+        lines.push(`    arquivo_linha: "${refs}"`);
         lines.push(`    como: "${String(r.como ?? "").replace(/"/g, '\\"')}"`);
       }
       return `\`\`\`yaml relatorio_executor\n${lines.join("\n")}\n\`\`\``;

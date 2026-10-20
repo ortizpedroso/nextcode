@@ -1,3 +1,12 @@
+## 20/10/2026 (169) — P4 feito: relatório P12 aceita lista de referências (TR1 3)
+
+**Causa (trilha `8e2f2052`, 40 `EXECUTOR_REPORT_INVALID`):** (a) várias referências num campo (`a.ts:1-2,10-20; b.ts:4`) recusadas pela regra de 1 referência; (b) lista YAML dentro de `arquivo_linha` virava REQ vazio (`inválida para ""`); (c) o mesmo REQ em 1 linha por arquivo dava "Requisito duplicado".
+**Feito:** `parseFileLineRefList` + conferência de cada referência (escopo, arquivo existe, linhas); lista YAML lida como valor do campo; REQ repetido juntado (status mais baixo); `finish` aceita lista; formato nas 4 skills de executor. Decisões D14–D16.
+**Prova:** tsc 0; 2 testes novos com os 3 formatos reais + referência ruim no meio da lista; **suíte inteira 131/884 verde**.
+**Próximo passo:** P5 (chamada lenta/oscilação: repetir o turno com espera antes de pausar).
+
+---
+
 ## 20/10/2026 (168) — Relatório do que falta + P3 feito: retentativa parte do código anterior (TR1 14)
 
 **Fundador:** relatório do que falta, sem inventar; revisar `docs/` sempre que houver dúvida, perguntar só se persistir (memória `docs-folder-is-the-map`). Relatório entregue no chat, tirado só da §5.0 (checklist P1–P13, tabela E1–E6, mudanças do cronograma, §6).

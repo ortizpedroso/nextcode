@@ -486,6 +486,31 @@ export function stripExecutorReportBlocks(rawOutput: string): string {
   );
 }
 
+export interface FileLineRef {
+  file: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * TR1 (3): lê uma ou várias referências — "a.ts:10-25", "a.ts:1-2,10-20; b.ts:4" ou uma por linha.
+ * Devolve null se não houver nenhuma ou se sobrar texto que não é referência (ex.: arquivo sem linha).
+ */
+export function parseFileLineRefList(text: string): FileLineRef[] | null {
+  const refs: FileLineRef[] = [];
+  const pieceRe = /([^\s:;,"'`]+):(\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*)/g;
+  const leftover = String(text || "").replace(pieceRe, (_all, rawFile: string, ranges: string) => {
+    const file = rawFile.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+    for (const range of ranges.split(",")) {
+      const [s, e] = range.trim().split("-").map(Number);
+      refs.push({ file, start: s, end: e ?? s });
+    }
+    return " ";
+  });
+  if (refs.length === 0 || leftover.replace(/[\s;,]+/g, "").length > 0) return null;
+  return refs;
+}
+
 function unquoteYamlValue(raw: string): string {
   const trimmed = raw.trim();
   if (
@@ -529,6 +554,8 @@ export function parseExecutorReportYamlBlock(
   let inReqs = false;
   let currentItem: Record<string, string> | null = null;
 
+  let itemIndent = -1;
+  let lastKey: string | null = null;
   for (const rawLine of lines) {
     const line = rawLine.replace(/\s+#.*$/, "");
     if (! line.trim() || line.trim().startsWith("#")) continue;
@@ -539,11 +566,19 @@ export function parseExecutorReportYamlBlock(
     }
     if (!inReqs) continue;
 
-    const itemStart = line.match(/^\s*-\s*(.*)$/);
+    const itemStart = line.match(/^(\s*)-\s*(.*)$/);
+    // TR1 (3): lista YAML dentro de um campo (arquivo_linha:\n  - "a.ts:1-5") é valor do campo, não REQ novo.
+    if (itemStart && currentItem && lastKey && itemStart[1].length > itemIndent) {
+      const value = unquoteYamlValue(itemStart[2]);
+      currentItem[lastKey] = currentItem[lastKey] ? `${currentItem[lastKey]}; ${value}` : value;
+      continue;
+    }
     if (itemStart) {
+      itemIndent = itemStart[1].length;
+      lastKey = null;
       if (currentItem) rawItems.push(currentItem);
       currentItem = {};
-      const rest = itemStart[1].trim();
+      const rest = itemStart[2].trim();
       if (rest.startsWith("{") && rest.endsWith("}")) {
         const inner = rest.slice(1, -1);
         for (const pair of inner.split(",")) {
@@ -552,7 +587,10 @@ export function parseExecutorReportYamlBlock(
         }
       } else {
         const kv = rest.match(/^([a-zA-Z0-9_]+)\s*:\s*(.*)$/);
-        if (kv) currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+        if (kv) {
+          currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+          lastKey = kv[2].trim() ? null : kv[1].toLowerCase();
+        }
       }
       continue;
     }
@@ -561,12 +599,13 @@ export function parseExecutorReportYamlBlock(
       const kv = line.match(/^\s+([a-zA-Z0-9_]+)\s*:\s*(.*)$/);
       if (kv) {
         currentItem[kv[1].toLowerCase()] = unquoteYamlValue(kv[2]);
+        lastKey = kv[2].trim() ? null : kv[1].toLowerCase();
       }
     }
   }
   if (currentItem) rawItems.push(currentItem);
 
-  const rows: ExecutorReqRow[] = rawItems.map((item) => {
+  const parsedRows: ExecutorReqRow[] = rawItems.map((item) => {
     const reqId = (item.id || item.req_id || item.reqid || "").trim().toUpperCase();
     const rawStatus = (item.status || item.status_declarado || item.statusdeclarado || "").trim().toLowerCase();
     const statusDeclarado: ExecutorReqRow["statusDeclarado"] =
@@ -575,7 +614,7 @@ export function parseExecutorReportYamlBlock(
         : ("PENDENTE" as const);
     const arquivoLinha = (item.arquivo_linha || item.arquivolinha || item.evidencia || "")
       .trim()
-      .replace(/:L(\d+)(?:-L?(\d+))?$/i, (_all, s, e) => (e ? `:${s}-${e}` : `:${s}`));
+      .replace(/:L(\d+)(?:-L?(\d+))?/gi, (_all, s, e) => (e ? `:${s}-${e}` : `:${s}`));
     const comoFoiImplementado = (
       item.como ||
       item.como_foi_implementado ||
@@ -589,6 +628,24 @@ export function parseExecutorReportYamlBlock(
       comoFoiImplementado,
     };
   });
+
+  // TR1 (3): o mesmo REQ em várias linhas (uma por arquivo) vira uma linha só com as referências somadas.
+  const STATUS_RANK = { nao_atendido: 0, PENDENTE: 0, parcial: 1, atendido: 2 } as const;
+  const rows: ExecutorReqRow[] = [];
+  for (const row of parsedRows) {
+    const existing = row.reqId ? rows.find((r) => r.reqId === row.reqId) : undefined;
+    if (!existing) {
+      rows.push(row);
+      continue;
+    }
+    existing.arquivoLinha = [existing.arquivoLinha, row.arquivoLinha].filter(Boolean).join("; ");
+    if (STATUS_RANK[row.statusDeclarado] < STATUS_RANK[existing.statusDeclarado]) {
+      existing.statusDeclarado = row.statusDeclarado;
+    }
+    if (row.comoFoiImplementado && !existing.comoFoiImplementado.includes(row.comoFoiImplementado)) {
+      existing.comoFoiImplementado = [existing.comoFoiImplementado, row.comoFoiImplementado].filter(Boolean).join(" ");
+    }
+  }
 
   return {
     ...structuredClone(microbrief),
@@ -704,38 +761,36 @@ export function validateExecutorReportMechanical(
       errors.push(`[RELATÓRIO P12] Descrição de implementação ausente ou PENDENTE para "${row.reqId}".`);
     }
 
-    const lineMatch = row.arquivoLinha.trim().match(FILE_LINE_RE);
-    if (!lineMatch) {
+    const refs = parseFileLineRefList(row.arquivoLinha);
+    if (!refs) {
       errors.push(
-        `[RELATÓRIO P12] Referência Arquivo:Linha inválida para "${row.reqId}": "${row.arquivoLinha}" (esperado caminho:linha ou caminho:inicio-fim).`
+        `[RELATÓRIO P12] Referência Arquivo:Linha inválida para "${row.reqId}": "${row.arquivoLinha}" (esperado caminho:linha ou caminho:inicio-fim; várias separadas por ";").`
       );
       continue;
     }
 
-    const citedFile = lineMatch[1].replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
-    const startLine = Number(lineMatch[2]);
-    const endLine = lineMatch[3] ? Number(lineMatch[3]) : startLine;
+    for (const ref of refs) {
+      if (!allowedFilesSet.has(ref.file)) {
+        errors.push(
+          `[RELATÓRIO P12] O requisito "${row.reqId}" cita o arquivo "${ref.file}", que não pertence ao escopo permitido do Microbrief.`
+        );
+        continue;
+      }
 
-    if (!allowedFilesSet.has(citedFile)) {
-      errors.push(
-        `[RELATÓRIO P12] O requisito "${row.reqId}" cita o arquivo "${citedFile}", que não pertence ao escopo permitido do Microbrief.`
-      );
-      continue;
-    }
+      const fileContent = normalizedContentMap.get(ref.file);
+      if (fileContent === undefined) {
+        errors.push(
+          `[RELATÓRIO P12] O requisito "${row.reqId}" cita "${ref.file}", mas esse arquivo não existe na quarentena.`
+        );
+        continue;
+      }
 
-    const fileContent = normalizedContentMap.get(citedFile);
-    if (fileContent === undefined) {
-      errors.push(
-        `[RELATÓRIO P12] O requisito "${row.reqId}" cita "${citedFile}", mas esse arquivo não existe na quarentena.`
-      );
-      continue;
-    }
-
-    const totalLines = fileContent.split(/\r?\n/).length;
-    if (startLine < 1 || endLine < startLine || endLine > totalLines) {
-      errors.push(
-        `[RELATÓRIO P12] O requisito "${row.reqId}" cita linhas ${startLine}-${endLine} em "${citedFile}", mas o arquivo possui ${totalLines} linha(s).`
-      );
+      const totalLines = fileContent.split(/\r?\n/).length;
+      if (ref.start < 1 || ref.end < ref.start || ref.end > totalLines) {
+        errors.push(
+          `[RELATÓRIO P12] O requisito "${row.reqId}" cita linhas ${ref.start}-${ref.end} em "${ref.file}", mas o arquivo possui ${totalLines} linha(s).`
+        );
+      }
     }
   }
 
