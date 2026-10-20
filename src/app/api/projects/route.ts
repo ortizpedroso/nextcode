@@ -3,6 +3,7 @@ import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
+import { checkFolderSafeToOpen } from "@/core/project/folder-safety";
 
 export async function GET(request: Request) {
   // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
@@ -82,6 +83,18 @@ export async function POST(request: NextRequest) {
         p.path &&
         ((requestedResolved && pathsEqual(p.path, requestedResolved)) || (targetPath && pathsEqual(p.path, targetPath)))
     );
+    // P12 (PJ2): pasta-mãe não vira projeto (abrir por engano e depois "apagar a pasta" apagaria tudo).
+    if (!reopenedProject && targetPath) {
+      const safety = checkFolderSafeToOpen(targetPath, {
+        otherProjectPaths: existingByPath.map((p) => p.path!).filter(Boolean),
+      });
+      if (!safety.ok) {
+        return NextResponse.json(
+          { error: `Recusado: a pasta "${targetPath}" ${safety.motivo}. Escolha a pasta do projeto, não a pasta que o contém.` },
+          { status: 409 }
+        );
+      }
+    }
     if (reopenedProject) {
       // PJ1.6b: reabrir só desarquiva — nome, descrição e fixado ficam como estavam.
       const project = await prisma.project.update({

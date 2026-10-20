@@ -97,4 +97,38 @@ describe("API /api/projects/[id] — DELETE (Exclusão Resiliente de Projetos)",
     // 5. Verifica que a pasta física foi removida do disco
     expect(fs.existsSync(tmpFolder)).toBe(false);
   });
+
+  it("P12: pasta com outro repositório dentro → 409, nada apagado (nem a pasta, nem o registro)", async () => {
+    fs.mkdirSync(path.join(tmpFolder, "outro-projeto", ".git"), { recursive: true });
+    fs.writeFileSync(path.join(tmpFolder, "outro-projeto", "package.json"), "{}");
+    const proj = await prisma.project.create({ data: { name: "Pasta-mãe", path: tmpFolder } });
+
+    const res = await DELETE(
+      new NextRequest(`http://localhost:3000/api/projects/${proj.id}?apagarPasta=true`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: proj.id }) }
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("contém outro projeto ou repositório");
+    expect(fs.existsSync(path.join(tmpFolder, "outro-projeto", "package.json"))).toBe(true);
+    expect(await prisma.project.findUnique({ where: { id: proj.id } })).not.toBeNull();
+    await prisma.project.delete({ where: { id: proj.id } });
+  });
+
+  it("P12: pasta que contém a pasta de outro projeto cadastrado → 409 (sem diferenciar maiúsculas)", async () => {
+    const inner = path.join(tmpFolder, "Filho");
+    fs.mkdirSync(inner);
+    const child = await prisma.project.create({ data: { name: "Filho", path: inner } });
+    const mother = await prisma.project.create({
+      data: { name: "Mãe", path: process.platform === "win32" ? tmpFolder.toUpperCase() : tmpFolder },
+    });
+
+    const res = await DELETE(
+      new NextRequest(`http://localhost:3000/api/projects/${mother.id}?apagarPasta=true`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: mother.id }) }
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("contém outro projeto cadastrado");
+    expect(fs.existsSync(inner)).toBe(true);
+    await prisma.project.deleteMany({ where: { id: { in: [child.id, mother.id] } } });
+  });
 });

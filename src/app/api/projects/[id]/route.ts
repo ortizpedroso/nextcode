@@ -3,6 +3,7 @@ import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
 import * as fs from "fs";
 import * as path from "path";
+import { checkFolderSafeToDelete } from "@/core/project/folder-safety";
 
 export async function PATCH(
   request: NextRequest,
@@ -71,6 +72,21 @@ export async function DELETE(
 
     const { searchParams } = new URL(request.url);
     const apagarPasta = searchParams.get("apagarPasta") === "true";
+
+    // P12 (PJ2, segurança): antes de mexer em qualquer coisa, recusa apagar pasta-mãe — pasta que
+    // contém outro projeto cadastrado, outro repositório, o NextCode ou a pasta de projetos.
+    if (apagarPasta && project.path) {
+      const others = await prisma.project.findMany({ where: { id: { not: id }, path: { not: null } }, select: { path: true } });
+      const safety = checkFolderSafeToDelete(project.path, { otherProjectPaths: others.map((o) => o.path!) });
+      if (!safety.ok) {
+        return NextResponse.json(
+          {
+            error: `Recusado: a pasta "${project.path}" ${safety.motivo}. Nada foi apagado. Use "Remover" sem apagar a pasta, ou apague à mão.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     // 2. Limpeza mecânica em cascata de dependências do SQLite (Mensagens, Tarefas e Sessões)
     const sessionIds = project.sessions.map((s) => s.id);

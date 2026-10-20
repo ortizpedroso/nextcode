@@ -1,3 +1,11 @@
+## 20/10/2026 (179) — P12 feito: trava de pasta-mãe ao apagar e ao abrir projeto (PJ2)
+
+**Feito:** `src/core/project/folder-safety.ts` (`checkFolderSafeToDelete`, `checkFolderSafeToOpen`, comparação sem maiúsculas no Windows); DELETE `api/projects/[id]` com `apagarPasta` responde 409 antes de qualquer exclusão; POST `api/projects` recusa pasta-mãe. Decisões D38–D40.
+**Prova:** tsc 0; 5 testes novos (função + 409 no DELETE com repositório aninhado e com projeto cadastrado em maiúsculas + 409 no POST); **suíte inteira 135/906 verde**.
+**Próximo passo:** P13 (bench P1–P4 com chamadas por etapa) → relatórios.
+
+---
+
 ## 20/10/2026 (178) — P11 feito: aviso M2 fora do chat; Graphify só com código (mudança 25)
 
 **Fundador:** "pode rodar". **Prova:** tsc 0; **suíte inteira 134/901 verde**. Decisões D36–D37.
