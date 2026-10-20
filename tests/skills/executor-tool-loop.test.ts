@@ -10,6 +10,7 @@ import {
   buildExecutorFixedContext,
   executeTaskNode,
   FIXED_CONTEXT_MAX_FILE_CHARS,
+  getStepTimeoutMs,
   pickAttemptCodeToKeep,
   PREVIOUS_ATTEMPT_MAX_TOTAL_CHARS,
   readNodeMicrobrief,
@@ -932,6 +933,32 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(secondTurnLastMessage).toContain("[RESULTADO write_file]");
     expect(secondTurnLastMessage).toContain("[RESULTADO finish]");
     expect(secondTurnLastMessage).toContain("vai SOZINHO");
+  });
+
+  it("bench 20/10: o turno do executor passa ao gateway o limite da etapa (não os 120 s padrão)", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await setupSingleTaskSession(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+    const timeouts: (number | undefined)[] = [];
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      }
+      timeouts.push(opts.gatewayTimeoutMs);
+      return makeOkDispatch(toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }), "deepseek", "deepseek-chat");
+    });
+
+    await executeTaskNode(task);
+    expect(timeouts.length).toBeGreaterThan(0);
+    expect(timeouts.every((t) => t === getStepTimeoutMs())).toBe(true);
+    expect(getStepTimeoutMs()).toBeGreaterThan(120_000);
   });
 
   it("TR1 (13) a) 1º prompt do executor traz tsconfig e schema do Prisma como contexto fixo", async () => {

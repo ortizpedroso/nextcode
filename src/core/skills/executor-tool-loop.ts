@@ -701,6 +701,9 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
   }
 
   async function dispatchOneTurn(): Promise<TurnDispatchOutcome> {
+    // O gateway cortava em 120 s (padrão do callGateway) mesmo com a etapa podendo durar stepTimeoutMs:
+    // no bench de 20/10 a tela do P2 (deepseek-v4-pro) passou de 120 s 2×, o FreeLLMAPI pôs a rota
+    // em espera (~85 s) e as repetições do turno acharam a rota fechada → pausa SEM_LLM.
     const stepSignal = AbortSignal.timeout(stepTimeoutMs);
     const dispatchPromise = params.paidGateways
       ? smartRouter.dispatchWithFallback({
@@ -711,6 +714,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           maxTokens,
           stream: false,
           signal: stepSignal,
+          gatewayTimeoutMs: stepTimeoutMs,
         })
       : smartRouter.dispatchWithFallback({
           messages,
@@ -724,6 +728,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           omniRouteKey: routerKeys.omniRouteKey ?? undefined,
           stream: false,
           signal: stepSignal,
+          gatewayTimeoutMs: stepTimeoutMs,
         });
 
     const timeoutPromise = new Promise<null>((resolve) => {
