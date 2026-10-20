@@ -494,6 +494,8 @@ export interface ExecutorToolLoopResult {
   stepsUsed: number;
   failureReason?: string;
   lastModelUsed?: string;
+  /** TR1 (2): mesma ação negada ≥ 2× por regra do harness (não do escopo do Microbrief). */
+  harnessDenials: HarnessDenial[];
 }
 
 export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promise<ExecutorToolLoopResult> {
@@ -535,6 +537,9 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
   let consecutiveInvalidTurns = 0;
   let currentStep = 0;
   let lastModelUsed = "";
+  const denialCounts = new Map<string, HarnessDenial>();
+  const repeatedHarnessDenials = (): HarnessDenial[] =>
+    Array.from(denialCounts.values()).filter((d) => d.vezes >= HARNESS_DENIAL_REPEAT_THRESHOLD);
 
   while (true) {
     currentStep += 1;
@@ -544,6 +549,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         finished: false,
         noLlmAvailable: false,
         codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+        harnessDenials: repeatedHarnessDenials(),
         finishReportText: "",
         stepsUsed: currentStep - 1,
         failureReason: `[LOOP TIMEOUT] Limite total do laço excedido (${Math.round(loopTimeoutMs / 60000)} min).`,
@@ -560,6 +566,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         finished: false,
         noLlmAvailable: false,
         codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+        harnessDenials: repeatedHarnessDenials(),
         finishReportText: "",
         stepsUsed: currentStep - 1,
         failureReason:
@@ -598,6 +605,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         finished: false,
         noLlmAvailable: outcome.noLlm,
         codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+        harnessDenials: repeatedHarnessDenials(),
         finishReportText: "",
         stepsUsed: outcome.noLlm ? currentStep - 1 : currentStep,
         ...(outcome.noLlm ? {} : { failureReason: outcome.reason }),
@@ -625,6 +633,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           finished: false,
           noLlmAvailable: false,
           codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+          harnessDenials: repeatedHarnessDenials(),
           finishReportText: "",
           stepsUsed: currentStep,
           failureReason: `[PROTOCOL ERROR] ${MAX_CONSECUTIVE_INVALID_TURNS} turnos inválidos seguidos: ${parsedTurn.error}`,
@@ -661,6 +670,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           finished: true,
           noLlmAvailable: false,
           codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+          harnessDenials: repeatedHarnessDenials(),
           finishReportText: formatFinishReportBlock(actions[0].args.relatorio_executor),
           stepsUsed: currentStep,
           lastModelUsed,
@@ -834,6 +844,15 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           acoesNoTurno,
         },
       });
+      const regra = violationReason.match(/^\[([A-Z ]+)\]/)?.[1];
+      const inScope =
+        typeof rawTargetPath === "string" && normalizedScope.has(normalizeScopePath(rawTargetPath));
+      if (regra && HARNESS_RULE_CODES.has(regra) && (regra !== "SKILL PROTECTED PATH" || inScope)) {
+        const alvo = rawTargetPath ?? commandArg ?? "";
+        const key = `${regra}|${ferramenta}|${alvo}`;
+        const prev = denialCounts.get(key);
+        denialCounts.set(key, { regra, ferramenta, alvo, motivo: violationReason, vezes: (prev?.vezes ?? 0) + 1 });
+      }
       return violationReason;
     }
 
@@ -986,6 +1005,22 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     return toolOutput;
   }
 }
+
+export interface HarnessDenial {
+  regra: string;
+  ferramenta: string;
+  alvo: string;
+  motivo: string;
+  vezes: number;
+}
+
+export const HARNESS_DENIAL_REPEAT_THRESHOLD = 2;
+/**
+ * Negações em que o harness contradiz o próprio plano: caminho protegido que ESTÁ no escopo do Microbrief
+ * (caso `.env.example` do teste real) e papel executor sem permissão de escrita. Ferramenta/comando
+ * inventado pelo modelo e arquivo fora do escopo (plano, A3) continuam sendo do executor.
+ */
+const HARNESS_RULE_CODES = new Set(["SKILL PROTECTED PATH", "SKILL WRITE DENIED"]);
 
 type TurnDispatchOutcome =
   | { kind: "ok"; text: string }

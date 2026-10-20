@@ -1124,6 +1124,58 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     });
   });
 
+  it("TR1 (2) a) caminho protegido DENTRO do escopo negado 2× ⇒ BLOQUEADA com 'Dono: harness', nenhuma tentativa gasta", async () => {
+    const projectDir = makeTempProjectDir();
+    const { session, task } = await setupSingleTaskSession(projectDir);
+    const payload = JSON.parse(task.payload!);
+    payload.microbrief.arquivosPermitidos.criar.push(".env");
+    const scopedTask = await prisma.taskNode.update({
+      where: { id: task.id },
+      data: { payload: JSON.stringify(payload), filesScope: JSON.stringify(["src/greet.ts", ".env"]) },
+      include: { session: { include: { project: true } } },
+    });
+    const envTurn = toolTurn("write_file", { caminho: ".env", conteudo: "X=1\n" });
+    const turns = [envTurn, envTurn, toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML })];
+    let turnIdx = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      const reply = turns[Math.min(turnIdx, turns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(scopedTask);
+    expect(res.finalStatus).toBe("blocked");
+    const after = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
+    expect(after.attempts).toBe(0);
+    const msgs = await prisma.message.findMany({ where: { sessionId: session.id, role: "assistant" } });
+    expect(msgs.some((m) => m.content.includes("Dono: harness") && m.content.includes(".env"))).toBe(true);
+    expect(await waitForTelemetryLogs(session.id, "HARNESS_RULE_BLOCK")).toHaveLength(1);
+  });
+
+  it("TR1 (2) b) caminho protegido FORA do escopo negado 2× ⇒ continua sendo erro do executor (sem bloqueio do harness)", async () => {
+    const projectDir = makeTempProjectDir();
+    const { session, task } = await setupSingleTaskSession(projectDir);
+    const envTurn = toolTurn("write_file", { caminho: ".env", conteudo: "X=1\n" });
+    const turns = [envTurn, envTurn, toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML })];
+    let turnIdx = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      const reply = turns[Math.min(turnIdx, turns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(task);
+    expect(res.finalStatus).toBe("failed");
+    const after = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
+    expect(after.attempts).toBe(1);
+    const blocks = await prisma.telemetryLog.findMany({ where: { sessionId: session.id, action: "HARNESS_RULE_BLOCK" } });
+    expect(blocks).toHaveLength(0);
+  });
+
   it("TR1 (1) c) turnRetryDelaysMs: padrão 5 s e 20 s; variável de ambiente troca", () => {
     const prev = process.env.NEXTCODE_TURN_RETRY_DELAYS_MS;
     delete process.env.NEXTCODE_TURN_RETRY_DELAYS_MS;

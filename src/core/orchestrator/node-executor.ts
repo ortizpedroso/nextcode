@@ -7,7 +7,11 @@ import { readSecret } from "@/core/security/crypto";
 import { buildProjectContextBlock } from "@/core/project/project-context";
 import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { loadRoleSkill, buildSkillSystemPrompt, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
-import { runExecutorToolLoop, buildExecutorToolProtocolPrompt } from "@/core/skills/executor-tool-loop";
+import {
+  runExecutorToolLoop,
+  buildExecutorToolProtocolPrompt,
+  type HarnessDenial,
+} from "@/core/skills/executor-tool-loop";
 import { dispatchStrongEvaluator } from "@/core/llm/evaluator-models";
 import { loadPaidGatewaysForTier } from "@/core/llm/paid-routing";
 import { recordLlmCost } from "@/core/llm/cost";
@@ -1167,6 +1171,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let stepResultText = "";
   let noLlmAvailable = false;
   let loopCodeContentMap: Record<string, string> | null = null;
+  let loopHarnessDenials: HarnessDenial[] = [];
   let actualExecutorFamily = "deepseek";
 
   if (useToolLoop && nodeMicrobrief && loadedExecutorSkill) {
@@ -1198,6 +1203,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
 
     noLlmAvailable = loopRes.noLlmAvailable;
     loopCodeContentMap = loopRes.codeContentMap;
+    loopHarnessDenials = loopRes.harnessDenials ?? [];
     stepResultText = loopRes.finishReportText || loopRes.failureReason || "";
     if (loopRes.lastModelUsed) {
       if (/qwen/i.test(loopRes.lastModelUsed)) actualExecutorFamily = "qwen";
@@ -1387,6 +1393,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let planErrorSkipAttempt = false;
   let evaluatorErrorFreeRetry = false;
   let failureRouteDono: string | undefined;
+  let blockedByHarnessRule = false;
   let newFailureHistory: string | undefined;
   let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
@@ -1900,6 +1907,19 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       }
     }
 
+    // TR1 (2): a mesma ação negada ≥ 2× por regra do harness não é erro do executor — outra tentativa
+    // bateria na mesma regra. Bloqueia sem gastar tentativa, com "Dono: harness" e a regra no chat.
+    if ((finalStatus === "failed" || finalStatus === "blocked") && loopHarnessDenials.length > 0) {
+      finalStatus = "blocked";
+      blockedByHarnessRule = true;
+      failureRouteDono = "harness";
+      TelemetryLogger.log({
+        sessionId: taskDb.sessionId,
+        action: "HARNESS_RULE_BLOCK",
+        details: { nodeId: taskDb.id, tentativa: newAttempts, negacoes: loopHarnessDenials },
+      });
+    }
+
     let incidentReportMarkdown: string | undefined;
     if (finalStatus === "failed" || finalStatus === "blocked") {
       newFailureHistory = appendFailureAttempt(taskDb.failureHistory, {
@@ -1927,6 +1947,13 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
               }
             : {}),
           ...(planErrorScopeHint ? { unblockHint: planErrorScopeHint } : {}),
+          ...(blockedByHarnessRule
+            ? {
+                unblockHint:
+                  "Regra do harness negou a mesma ação repetidas vezes (nenhuma tentativa gasta). Corrija a regra ou o " +
+                  'escopo e clique em "Desbloquear / Re-tentar Etapa".',
+              }
+            : {}),
         });
         if (blockedByAmbiguousSpec) {
           await prisma.message.create({
@@ -1942,6 +1969,17 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
               sessionId: taskDb.sessionId,
               role: "assistant",
               content: `🛑 **Etapa "${taskDb.title}" bloqueada por erro do plano (escopo da etapa) — ajuste a Spec antes de re-tentar.**\n\n${incidentReportMarkdown}`,
+            },
+          });
+        } else if (blockedByHarnessRule) {
+          const regras = loopHarnessDenials
+            .map((d) => `- \`${d.ferramenta}\` em \`${d.alvo || "(sem alvo)"}\` negada ${d.vezes}×: ${d.motivo}`)
+            .join("\n");
+          await prisma.message.create({
+            data: {
+              sessionId: taskDb.sessionId,
+              role: "assistant",
+              content: `🛑 **Etapa "${taskDb.title}" bloqueada por regra do harness — Dono: harness (não é erro do executor; nenhuma tentativa gasta).**\n\n${regras}\n\n${incidentReportMarkdown}`,
             },
           });
         }
@@ -2011,7 +2049,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     !evaluatorOutageFreeRetry &&
     !blockedByAmbiguousSpec &&
     !planErrorSkipAttempt &&
-    !evaluatorErrorFreeRetry
+    !evaluatorErrorFreeRetry &&
+    !blockedByHarnessRule
       ? newAttempts
       : taskDb.attempts;
 

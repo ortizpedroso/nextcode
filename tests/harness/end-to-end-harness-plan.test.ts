@@ -67,7 +67,9 @@ function makeExhaustedDispatch(): DispatchResult {
   };
 }
 
-describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", () => {
+// Fluxo inteiro (fila + executor + avaliador + entrega) num SQLite compartilhado: 9–40 s por caso medidos
+// em 19–20/10; o padrão de 15 s do vitest.config estourava sob carga (diário 166–171).
+describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", { timeout: 120_000 }, () => {
   beforeEach(() => {
     setExecutorModeForTests("chamada_unica");
     setPaidOnlyRoutingForTests(false);

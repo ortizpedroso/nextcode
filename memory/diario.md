@@ -1,3 +1,11 @@
+## 20/10/2026 (171) — P6 feito: regra do harness que contradiz o plano bloqueia sem gastar tentativa (TR1 2); timeout dos e2e
+
+**Feito:** o laço conta negações repetidas (`harnessDenials`) de caminho protegido dentro do escopo e de executor sem escrita; ≥ 2 iguais → BLOQUEADA, tentativa não gasta, "Dono: harness" e a regra no chat (`HARNESS_RULE_BLOCK`). Decisões D20–D22. **Pendência do timeout resolvida (D23):** e2e 120 s, `step-4b` 60 s.
+**Prova:** tsc 0; 2 testes novos (dentro do escopo → bloqueio do harness, 0 tentativas; fora do escopo → erro do executor, 1 tentativa). Suíte 887/889: as 2 falhas eram estouro de 15 s em `Verificação de tela` (e2e); isolados passam (13 s e 9 s) — motivo do D23.
+**Próximo passo:** P7.
+
+---
+
 ## 20/10/2026 (170) — P5 feito: oscilação repete o turno com espera; pausa guarda o progresso (TR1 1)
 
 **Feito:** `dispatchOneTurn` + repetição do MESMO turno (5 s, 20 s; `EXECUTOR_TURN_RETRY`) em prazo, sem provedor, exceção e resposta vazia; só depois falha/pausa; pausa grava `codigoTentativa` com `pausado: true` e a retomada parte dele (sem feedback de reprovação). Suíte com esperas 0 (`vitest.config.ts`). Decisões D17–D19.
