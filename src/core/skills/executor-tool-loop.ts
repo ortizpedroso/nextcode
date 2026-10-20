@@ -21,6 +21,21 @@ export const LOOP_TOTAL_TIMEOUT_MS = 20 * 60 * 1000;
 export const MAX_ACTIONS_PER_TURN = 8;
 /** Teto da soma dos resultados de um turno; o que passar disso volta como "repita no próximo turno". */
 export const MAX_TURN_OUTPUT_CHARS = 48_000;
+/**
+ * TR1 (1): esperas antes de repetir o MESMO turno quando a chamada some (prazo, sem provedor, exceção,
+ * resposta vazia). Teste real: 548 pausas `SEM_LLM` — a etapa recomeçava do zero por uma oscilação.
+ * `NEXTCODE_TURN_RETRY_DELAYS_MS="5000,20000"` troca o padrão (a suíte usa "0,0").
+ */
+export function turnRetryDelaysMs(): number[] {
+  const raw = process.env.NEXTCODE_TURN_RETRY_DELAYS_MS;
+  if (raw !== undefined) {
+    return raw
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((n) => Number.isFinite(n) && n >= 0);
+  }
+  return [5_000, 20_000];
+}
 
 const IGNORED_DIRS = new Set(["node_modules", ".next", ".git", ".nextcode"]);
 
@@ -553,113 +568,41 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
       };
     }
 
+    // TR1 (1): oscilação (prazo, sem provedor, exceção, resposta vazia) repete o MESMO turno com espera;
+    // só depois das esperas a etapa falha ou a sessão pausa — o progresso do laço não se perde à toa.
     let turnText = "";
-    try {
-      const stepSignal = AbortSignal.timeout(stepTimeoutMs);
-      const dispatchPromise = params.paidGateways
-        ? smartRouter.dispatchWithFallback({
-            messages,
-            tier: "heavy",
-            gateways: params.paidGateways,
-            allowedRoutedViaPrefixes: params.allowedRoutedViaPrefixes,
-            maxTokens,
-            stream: false,
-            signal: stepSignal,
-          })
-        : smartRouter.dispatchWithFallback({
-            messages,
-            tier: executorTier === "rapido" ? "fast" : "heavy",
-            maxTokens,
-            geminiKey: routerKeys.geminiKey ?? undefined,
-            groqKey: routerKeys.groqKey ?? undefined,
-            nvidiaKey: routerKeys.nvidiaKey ?? undefined,
-            deepseekKey: routerKeys.deepseekKey ?? undefined,
-            omniRouteUrl: routerKeys.omniRouteUrl ?? undefined,
-            omniRouteKey: routerKeys.omniRouteKey ?? undefined,
-            stream: false,
-            signal: stepSignal,
-          });
-
-      const timeoutPromise = new Promise<null>((resolve) => {
-        if (stepSignal.aborted) return resolve(null);
-        stepSignal.addEventListener("abort", () => resolve(null), { once: true });
-      });
-
-      const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as Awaited<
-        ReturnType<SmartRouter["dispatchWithFallback"]>
-      > | null;
-
-      if (!dispatchRes) {
-        return {
-          finished: false,
-          noLlmAvailable: false,
-          codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
-          finishReportText: "",
-          stepsUsed: currentStep,
-          failureReason: `Timeout de resposta excedido no turno #${currentStep} da etapa (limite ${Math.round(stepTimeoutMs / 1000)}s).`,
-        };
+    const retryDelays = turnRetryDelaysMs();
+    for (let retry = 0; ; retry++) {
+      let outcome: TurnDispatchOutcome;
+      try {
+        outcome = await dispatchOneTurn();
+      } catch (err) {
+        outcome = { kind: "falha", noLlm: false, reason: `Exceção/Timeout no turno #${currentStep}: ${String(err)}` };
       }
-
-      if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
-        return {
-          finished: false,
-          noLlmAvailable: true,
-          codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
-          finishReportText: "",
-          stepsUsed: currentStep - 1,
-        };
+      if (outcome.kind === "ok") {
+        turnText = outcome.text;
+        break;
       }
-
-      const resJson = await dispatchRes.response.json().catch((err: unknown) => {
+      if (retry < retryDelays.length) {
         TelemetryLogger.log({
           sessionId,
-          action: "EXECUTOR_RESPONSE_UNREADABLE",
-          details: { nodeId, passo: currentStep, aborted: stepSignal.aborted, error: String(err).slice(0, 200) },
+          action: "EXECUTOR_TURN_RETRY",
+          details: { nodeId, passo: currentStep, repeticao: retry + 1, esperaMs: retryDelays[retry], motivo: outcome.reason },
         });
-        return {};
-      });
-
-      if (dispatchRes.modelUsed) {
-        lastModelUsed = dispatchRes.modelUsed;
+        if (retryDelays[retry] > 0) await new Promise((r) => setTimeout(r, retryDelays[retry]));
+        continue;
       }
-
-      await recordLlmCost({
-        sessionId,
-        papel: "executor",
-        provider: String(dispatchRes.providerUsed),
-        model: String(dispatchRes.modelUsed || ""),
-        usage: resJson.usage,
-      });
-
-      if (resJson.choices?.[0]?.finish_reason === "length") {
-        TelemetryLogger.log({
-          sessionId,
-          action: "EXECUTOR_OUTPUT_TRUNCATED",
-          details: {
-            nodeId,
-            passo: currentStep,
-            modelUsed: dispatchRes.modelUsed,
-            providerUsed: dispatchRes.providerUsed,
-          },
-        });
-      }
-
-      if (resJson.choices?.[0]?.message?.content) {
-        turnText = resJson.choices[0].message.content;
-      } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
-        turnText = resJson.candidates[0].content.parts[0].text;
-      }
-    } catch (err) {
+      // Resposta vazia depois das esperas segue como turno inválido (conta no limite de 3), como antes.
+      if (outcome.vazia) break;
       return {
         finished: false,
-        noLlmAvailable: false,
+        noLlmAvailable: outcome.noLlm,
         codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
         finishReportText: "",
-        stepsUsed: currentStep,
-        failureReason: `Exceção/Timeout no turno #${currentStep}: ${String(err)}`,
+        stepsUsed: outcome.noLlm ? currentStep - 1 : currentStep,
+        ...(outcome.noLlm ? {} : { failureReason: outcome.reason }),
       };
     }
-
     const parsedTurn = parseExecutorToolActions(turnText);
     if (!parsedTurn.ok) {
       consecutiveInvalidTurns += 1;
@@ -745,6 +688,99 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
 
     messages.push({ role: "assistant", content: turnText });
     messages.push({ role: "user", content: results.join("\n\n") });
+  }
+
+  async function dispatchOneTurn(): Promise<TurnDispatchOutcome> {
+    const stepSignal = AbortSignal.timeout(stepTimeoutMs);
+    const dispatchPromise = params.paidGateways
+      ? smartRouter.dispatchWithFallback({
+          messages,
+          tier: "heavy",
+          gateways: params.paidGateways,
+          allowedRoutedViaPrefixes: params.allowedRoutedViaPrefixes,
+          maxTokens,
+          stream: false,
+          signal: stepSignal,
+        })
+      : smartRouter.dispatchWithFallback({
+          messages,
+          tier: executorTier === "rapido" ? "fast" : "heavy",
+          maxTokens,
+          geminiKey: routerKeys.geminiKey ?? undefined,
+          groqKey: routerKeys.groqKey ?? undefined,
+          nvidiaKey: routerKeys.nvidiaKey ?? undefined,
+          deepseekKey: routerKeys.deepseekKey ?? undefined,
+          omniRouteUrl: routerKeys.omniRouteUrl ?? undefined,
+          omniRouteKey: routerKeys.omniRouteKey ?? undefined,
+          stream: false,
+          signal: stepSignal,
+        });
+
+    const timeoutPromise = new Promise<null>((resolve) => {
+      if (stepSignal.aborted) return resolve(null);
+      stepSignal.addEventListener("abort", () => resolve(null), { once: true });
+    });
+
+    const dispatchRes = (await Promise.race([dispatchPromise, timeoutPromise])) as Awaited<
+      ReturnType<SmartRouter["dispatchWithFallback"]>
+    > | null;
+
+    if (!dispatchRes) {
+      return {
+        kind: "falha",
+        noLlm: false,
+        reason: `Timeout de resposta excedido no turno #${currentStep} da etapa (limite ${Math.round(stepTimeoutMs / 1000)}s).`,
+      };
+    }
+
+    if (dispatchRes.providerUsed === "none" || dispatchRes.tierTag === "exhausted") {
+      return { kind: "falha", noLlm: true, reason: "nenhum provedor respondeu" };
+    }
+
+    const resJson = await dispatchRes.response.json().catch((err: unknown) => {
+      TelemetryLogger.log({
+        sessionId,
+        action: "EXECUTOR_RESPONSE_UNREADABLE",
+        details: { nodeId, passo: currentStep, aborted: stepSignal.aborted, error: String(err).slice(0, 200) },
+      });
+      return {};
+    });
+
+    if (dispatchRes.modelUsed) {
+      lastModelUsed = dispatchRes.modelUsed;
+    }
+
+    await recordLlmCost({
+      sessionId,
+      papel: "executor",
+      provider: String(dispatchRes.providerUsed),
+      model: String(dispatchRes.modelUsed || ""),
+      usage: resJson.usage,
+    });
+
+    if (resJson.choices?.[0]?.finish_reason === "length") {
+      TelemetryLogger.log({
+        sessionId,
+        action: "EXECUTOR_OUTPUT_TRUNCATED",
+        details: {
+          nodeId,
+          passo: currentStep,
+          modelUsed: dispatchRes.modelUsed,
+          providerUsed: dispatchRes.providerUsed,
+        },
+      });
+    }
+
+    let text = "";
+    if (resJson.choices?.[0]?.message?.content) {
+      text = resJson.choices[0].message.content;
+    } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
+      text = resJson.candidates[0].content.parts[0].text;
+    }
+    if (!text.trim()) {
+      return { kind: "falha", noLlm: false, vazia: true, reason: `Resposta vazia no turno #${currentStep}.` };
+    }
+    return { kind: "ok", text };
   }
 
   async function runOneAction(action: ParsedToolAction, acoesNoTurno: number): Promise<string> {
@@ -950,6 +986,10 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     return toolOutput;
   }
 }
+
+type TurnDispatchOutcome =
+  | { kind: "ok"; text: string }
+  | { kind: "falha"; noLlm: boolean; reason: string; vazia?: boolean };
 
 function isWriteAction(ferramenta: string): boolean {
   return ferramenta === "write_file" || ferramenta === "edit_file";

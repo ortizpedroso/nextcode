@@ -13,6 +13,8 @@ export default defineConfig({
     // valia e a suíte gravava no dev.db real. Os processos filhos herdam este valor.
     env: {
       DATABASE_URL: `file:${path.resolve(__dirname, "prisma", "test.db")}`,
+      // TR1 (1): sem espera real entre as repetições de turno na suíte.
+      NEXTCODE_TURN_RETRY_DELAYS_MS: "0,0",
     },
     // Os testes de integração compartilham o mesmo arquivo SQLite (prisma/test.db),
     // incluindo Setting(id="default") e a fila global na tabela Job.

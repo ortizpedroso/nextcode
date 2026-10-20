@@ -27,6 +27,7 @@ import {
   parseExecutorToolAction,
   parseExecutorToolActions,
   MAX_ACTIONS_PER_TURN,
+  turnRetryDelaysMs,
 } from "@/core/skills/executor-tool-loop";
 
 const createdSessionIds: string[] = [];
@@ -1054,6 +1055,82 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(secondFirstPrompt).toContain("CÓDIGO DA TENTATIVA ANTERIOR");
     expect(secondFirstPrompt).toContain("return 'ERRADO';");
     expect(fs.readFileSync(path.join(projectDir, "src", "greet.ts"), "utf-8")).toContain("Ola, ${name}!");
+  });
+
+  it("TR1 (1) a) provedor some 2× no meio do laço e volta ⇒ mesmo turno repetido, etapa concluída sem pausar", async () => {
+    const projectDir = makeTempProjectDir();
+    const { session, task } = await setupSingleTaskSession(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+    const writeTurn =
+      "```json acao\n" +
+      JSON.stringify([
+        {
+          ferramenta: "write_file",
+          args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return name;\n}\n" },
+        },
+        { ferramenta: "run_check", args: { comando: "typecheck" } },
+      ]) +
+      "\n```";
+    let calls = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      calls++;
+      if (calls === 1) return makeOkDispatch(writeTurn, "deepseek", "deepseek-chat");
+      if (calls === 2 || calls === 3) return makeExhaustedDispatch();
+      return makeOkDispatch(toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }), "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(task);
+    expect(res.finalStatus).toBe("completed");
+    expect(calls).toBe(4);
+    const retries = await waitForTelemetryLogs(session.id, "EXECUTOR_TURN_RETRY");
+    expect(retries).toHaveLength(2);
+    const s = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
+    expect(s.phase).not.toBe("PAUSADA");
+  });
+
+  it("TR1 (1) b) provedor fora depois das esperas ⇒ pausa guardando o código já gravado; a retomada parte dele", async () => {
+    const projectDir = makeTempProjectDir();
+    const { session, task } = await setupSingleTaskSession(projectDir);
+    const writeTurn = toolTurn("write_file", {
+      caminho: "src/greet.ts",
+      conteudo: "export function greet(name: string): string {\n  return 'PARCIAL';\n}\n",
+    });
+    let calls = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async () => {
+      calls++;
+      return calls === 1 ? makeOkDispatch(writeTurn, "deepseek", "deepseek-chat") : makeExhaustedDispatch();
+    });
+
+    const res = await executeTaskNode(task);
+    expect(calls).toBe(4);
+    const paused = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
+    expect(paused.status).toBe("pending");
+    expect(paused.attempts).toBe(0);
+    const saved = JSON.parse(paused.result!);
+    expect(saved.pausado).toBe(true);
+    expect(saved.codigoTentativa["src/greet.ts"]).toContain("PARCIAL");
+    expect((await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).phase).toBe("PAUSADA");
+    expect(res.success).toBe(false);
+    expect(readPreviousAttemptCode(paused.result, ["src/greet.ts"])).toEqual({
+      "src/greet.ts": saved.codigoTentativa["src/greet.ts"],
+    });
+  });
+
+  it("TR1 (1) c) turnRetryDelaysMs: padrão 5 s e 20 s; variável de ambiente troca", () => {
+    const prev = process.env.NEXTCODE_TURN_RETRY_DELAYS_MS;
+    delete process.env.NEXTCODE_TURN_RETRY_DELAYS_MS;
+    expect(turnRetryDelaysMs()).toEqual([5000, 20000]);
+    process.env.NEXTCODE_TURN_RETRY_DELAYS_MS = "100, 200,x";
+    expect(turnRetryDelaysMs()).toEqual([100, 200]);
+    process.env.NEXTCODE_TURN_RETRY_DELAYS_MS = prev;
   });
 
   it("TR1 (14) b) readPreviousAttemptCode/pickAttemptCodeToKeep: só escopo, nada se aprovado, teto total", () => {

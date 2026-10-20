@@ -1,3 +1,11 @@
+## 20/10/2026 (170) — P5 feito: oscilação repete o turno com espera; pausa guarda o progresso (TR1 1)
+
+**Feito:** `dispatchOneTurn` + repetição do MESMO turno (5 s, 20 s; `EXECUTOR_TURN_RETRY`) em prazo, sem provedor, exceção e resposta vazia; só depois falha/pausa; pausa grava `codigoTentativa` com `pausado: true` e a retomada parte dele (sem feedback de reprovação). Suíte com esperas 0 (`vitest.config.ts`). Decisões D17–D19.
+**Prova:** tsc 0; 3 testes novos (provedor some 2× e volta → conclui sem pausar; fora depois das esperas → pausa com código guardado; leitura da variável); **suíte inteira 131/887 verde**.
+**Próximo passo:** P6.
+
+---
+
 ## 20/10/2026 (169) — P4 feito: relatório P12 aceita lista de referências (TR1 3)
 
 **Causa (trilha `8e2f2052`, 40 `EXECUTOR_REPORT_INVALID`):** (a) várias referências num campo (`a.ts:1-2,10-20; b.ts:4`) recusadas pela regra de 1 referência; (b) lista YAML dentro de `arquivo_linha` virava REQ vazio (`inválida para ""`); (c) o mesmo REQ em 1 linha por arquivo dava "Requisito duplicado".

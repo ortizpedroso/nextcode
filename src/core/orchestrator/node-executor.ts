@@ -1047,7 +1047,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   if ((taskDb.attempts || 0) > 0 && taskDb.result) {
     try {
       const prevRes = JSON.parse(taskDb.result);
-      if (prevRes.auditVerdict !== "APPROVED" || prevRes.rejectionReason) {
+      if (!prevRes.pausado && (prevRes.auditVerdict !== "APPROVED" || prevRes.rejectionReason)) {
         const diagLine =
           policy.jevExecucao.diagnosticoFalha === "ativo"
             ? formatFailureDiagnosisFeedbackLine(
@@ -1109,8 +1109,11 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     dispatchMessages.push({
       role: "system",
       content:
-        "CÓDIGO DA TENTATIVA ANTERIOR (já está na quarentena desta etapa — corrija SÓ os defeitos apontados " +
-        "com edit_file; não reescreva do zero nem releia estes arquivos):\n\n" +
+        (/"pausado":true/.test(taskDb.result || "")
+          ? "CÓDIGO DA TENTATIVA ANTERIOR (execução pausada por queda do provedor; já está na quarentena desta etapa — " +
+            "continue a partir dele com edit_file/write_file; não reescreva do zero nem releia estes arquivos):\n\n"
+          : "CÓDIGO DA TENTATIVA ANTERIOR (já está na quarentena desta etapa — corrija SÓ os defeitos apontados " +
+            "com edit_file; não reescreva do zero nem releia estes arquivos):\n\n") +
         Object.entries(previousAttemptCode)
           .map(([f, c]) => `--- ${f} ---\n${c}`)
           .join("\n\n"),
@@ -1318,11 +1321,14 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   // falha de provedor NÃO conta como tentativa da etapa (policy.tentativas.falhaProvedorContaComoTentativa === false).
   // Reverte o nó para "pending" sem incrementar attempts e pausa a sessão (SEM_LLM).
   if (noLlmAvailable && !policy.tentativas.falhaProvedorContaComoTentativa) {
+    // TR1 (1): o que o laço já gravou volta na retomada (mesmo caminho da retentativa, P3).
+    const pausedCode = loopCodeContentMap ? pickAttemptCodeToKeep(loopCodeContentMap) : undefined;
     const revertedTask = await prisma.taskNode.update({
       where: { id: taskDb.id },
       data: {
         status: "pending",
         attempts: taskDb.attempts,
+        ...(pausedCode ? { result: JSON.stringify({ success: false, pausado: true, codigoTentativa: pausedCode }) } : {}),
       },
     });
 
