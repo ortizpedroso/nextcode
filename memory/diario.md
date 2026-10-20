@@ -1,3 +1,12 @@
+## 20/10/2026 (184) — Auditoria da mudança 26 pronta para o Cursor
+
+**Feito (regra §8.1 item 4):** `docs/relatorios/AUDITORIA-E1-producao.md` (testes novos com o que provam, travas T-A…T-K, desvios, dúvidas) + prompt `docs/prompts/AUDITORIA-E1-producao-cursor.md` (commits isolados, HEAD 2×, D41/D42 falham sem a correção, bench P1–P4 até US$ 0,60, conferência dirigida, D1–D42). Referência: ▶ AGORA aponta a auditoria e depois o teste pesado.
+**Onde parou:** mudança 26 implementada e medida; aguardando auditoria.
+**Próximo passo:** fundador entrega o prompt ao Cursor; depois o Claude fecha as ressalvas e o fundador decide o teste pesado (dúvida b do relatório).
+**Pendências do fundador:** (1) rodar a auditoria no Cursor; (2) D23 — aceitar timeout dos e2e?; (3) teste pesado com a Spec do `8e2f2052`?
+
+---
+
 ## 20/10/2026 (183) — Bench P1–P4 completo: meta TR1 atingida; corrigido limite de 120 s do executor
 
 **Bench (fundador liberou):** P1 ENTREGUE 10/10, P3 12/12, P4 12/12; P2 PAUSADA 10/13 duas vezes na etapa de tela. **Causa:** o turno do executor cortava no gateway em 120 s (padrão do `callGateway`) embora a etapa tenha 300 s; `deepseek-v4-pro` passou disso, o FreeLLMAPI deu 429 (rota em espera ~85 s) e as repetições do turno pausaram a sessão.
