@@ -99,6 +99,10 @@ export interface OrchestrationPolicy {
     acaoAoAtingirTeto: string;
     /** false = custo da Spec/elicitador entra na trilha mas não conta para o teto da execução (decisão fundador 16/10). */
     contaElicitadorNoTeto: boolean;
+    /** TR1 (4): custo médio por etapa usado para estimar o teto pelo tamanho do plano. */
+    custoEstimadoPorEtapaUsd: number;
+    /** Margem sobre a estimativa (retentativas, reavaliações). */
+    margemEstimativa: number;
   };
   execucaoParalela: {
     paralelismoMaximo: number;
@@ -287,6 +291,8 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     alertaPercentualTeto: 80,
     acaoAoAtingirTeto: "pausar_orquestracao_e_exigir_autorizacao_humana",
     contaElicitadorNoTeto: false,
+    custoEstimadoPorEtapaUsd: 0.35,
+    margemEstimativa: 1.5,
   },
   execucaoParalela: {
     paralelismoMaximo: 3,
@@ -496,6 +502,16 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
     raw,
     "conta_elicitador_no_teto",
     policy.orcamento.contaElicitadorNoTeto
+  );
+  policy.orcamento.custoEstimadoPorEtapaUsd = extractScalarNumber(
+    raw,
+    "custo_estimado_por_etapa_usd",
+    policy.orcamento.custoEstimadoPorEtapaUsd
+  );
+  policy.orcamento.margemEstimativa = extractScalarNumber(
+    raw,
+    "margem_estimativa",
+    policy.orcamento.margemEstimativa
   );
 
   policy.execucaoParalela.paralelismoMaximo = extractScalarNumber(

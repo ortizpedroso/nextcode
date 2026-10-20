@@ -53,6 +53,8 @@ export interface SessionBudget {
   alertUsd: number;
   status: "ok" | "alerta" | "teto";
   breakdown?: SessionCostBreakdown;
+  estimativaPlanoUsd?: number;
+  sugestaoAutorizacaoUsd?: number;
 }
 
 export function formatUsd(val: number): string {
@@ -288,14 +290,14 @@ export function DagSidebar({
                 onClick={async () => {
                   setAuthorizing(true);
                   try {
-                    await onAuthorizeBudget(AUTHORIZE_STEP_USD);
+                    await onAuthorizeBudget(budget.sugestaoAutorizacaoUsd ?? AUTHORIZE_STEP_USD);
                   } finally {
                     setAuthorizing(false);
                   }
                 }}
                 className="mt-1 w-full rounded-lg bg-rose-600 px-2 py-1.5 font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
               >
-                {authorizing ? "Autorizando..." : `Autorizar mais verba (+US$ ${AUTHORIZE_STEP_USD.toFixed(2)})`}
+                {authorizing ? "Autorizando..." : `Autorizar mais verba (+US$ ${(budget.sugestaoAutorizacaoUsd ?? AUTHORIZE_STEP_USD).toFixed(2)})`}
               </button>
             )}
           </div>

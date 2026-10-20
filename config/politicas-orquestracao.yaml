@@ -151,6 +151,10 @@ orcamento:
   acao_ao_atingir_teto: "pausar_orquestracao_e_exigir_autorizacao_humana"
   # Spec/elicitador (Claude Opus) grava LLM_COST mas não consome o teto da DAG (fundador 16/10).
   conta_elicitador_no_teto: false
+  # TR1 (4): teto = maior entre o teto fixo e (etapas do plano × custo por etapa × margem); 1 autorização
+  # cobre as etapas que faltam. Base: teste real 8e2f2052 = US$ 17,80 de execução / 54 etapas ≈ 0,33.
+  custo_estimado_por_etapa_usd: 0.35
+  margem_estimativa: 1.5
 
 execucao_paralela:
   paralelismo_maximo: 3

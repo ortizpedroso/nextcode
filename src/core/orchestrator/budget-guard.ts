@@ -38,6 +38,27 @@ export interface BudgetState {
   alertUsd: number;
   status: "ok" | "alerta" | "teto";
   breakdown?: SessionCostBreakdown;
+  /** TR1 (4): estimativa pelo plano (etapas × custo por etapa × margem). */
+  estimativaPlanoUsd: number;
+  /** Quanto autorizar de uma vez para terminar as etapas que faltam (nunca menos de US$ 0,50). */
+  sugestaoAutorizacaoUsd: number;
+}
+
+export const MIN_AUTHORIZATION_USD = 0.5;
+
+/** Etapas da versão atual do plano: total e as que ainda não terminaram. */
+async function planStageCounts(sessionId: string): Promise<{ total: number; restantes: number }> {
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { specVersion: true } });
+  const tasks = await prisma.taskNode.findMany({
+    where: { sessionId, specVersion: session?.specVersion ?? 0 },
+    select: { status: true },
+  });
+  const restantes = tasks.filter((t) => !["completed", "superseded"].includes(t.status)).length;
+  return { total: tasks.filter((t) => t.status !== "superseded").length, restantes };
+}
+
+export function estimatePlanCostUsd(etapas: number, policy: OrchestrationPolicy): number {
+  return etapas * policy.orcamento.custoEstimadoPorEtapaUsd * policy.orcamento.margemEstimativa;
 }
 
 function spentUsdForBudgetCeiling(
@@ -52,12 +73,22 @@ function spentUsdForBudgetCeiling(
 
 export async function getSessionBudget(sessionId: string, policy?: OrchestrationPolicy): Promise<BudgetState> {
   const p = policy ?? loadOrchestrationPolicy();
-  const [breakdown, extra] = await Promise.all([sessionCostBreakdown(sessionId), authorizedExtraUsd(sessionId)]);
+  const [breakdown, extra, etapas] = await Promise.all([
+    sessionCostBreakdown(sessionId),
+    authorizedExtraUsd(sessionId),
+    planStageCounts(sessionId),
+  ]);
   const spentUsd = spentUsdForBudgetCeiling(breakdown, p);
-  const limitUsd = p.orcamento.tetoCustoPorProjetoUsd + extra;
+  const estimativaPlanoUsd = estimatePlanCostUsd(etapas.total, p);
+  // TR1 (4): o teto acompanha o tamanho do plano (aprovar a Spec = aceitar a estimativa).
+  const limitUsd = Math.max(p.orcamento.tetoCustoPorProjetoUsd, estimativaPlanoUsd) + extra;
   const alertUsd = limitUsd * (p.orcamento.alertaPercentualTeto / 100);
   const status = spentUsd >= limitUsd ? "teto" : spentUsd >= alertUsd ? "alerta" : "ok";
-  return { spentUsd, limitUsd, alertUsd, status, breakdown };
+  const sugestaoAutorizacaoUsd = Math.max(
+    MIN_AUTHORIZATION_USD,
+    Math.ceil(estimatePlanCostUsd(etapas.restantes, p) * 100) / 100
+  );
+  return { spentUsd, limitUsd, alertUsd, status, breakdown, estimativaPlanoUsd, sugestaoAutorizacaoUsd };
 }
 
 const fmt = (v: number) => `US$ ${v.toFixed(2)}`;
@@ -98,7 +129,7 @@ export async function enforceBudgetBeforeBatch(sessionId: string): Promise<boole
     sessionId,
     BLOCK_MARKER,
     b.limitUsd,
-    `🛑 **${BLOCK_MARKER}:** gasto de ${fmt(b.spentUsd)} para um teto de ${fmt(b.limitUsd)}. A execução parou e nenhuma etapa foi perdida. Para continuar, autorize mais verba (botão "Autorizar mais verba" no painel da execução).`
+    `🛑 **${BLOCK_MARKER}:** gasto de ${fmt(b.spentUsd)} para um teto de ${fmt(b.limitUsd)}. A execução parou e nenhuma etapa foi perdida. Para continuar, autorize ${fmt(b.sugestaoAutorizacaoUsd)} (estimativa das etapas que faltam; botão "Autorizar mais verba" no painel da execução) — uma autorização cobre o resto do plano.`
   );
   return false;
 }

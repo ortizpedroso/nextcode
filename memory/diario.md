@@ -1,3 +1,11 @@
+## 20/10/2026 (175) — P9 feito: teto pelo tamanho do plano e 1 autorização (TR1 4)
+
+**Feito:** `budget-guard.ts` — `estimativaPlanoUsd` e `sugestaoAutorizacaoUsd`; teto = max(fixo, estimativa) + autorizado; mensagem de teto e botão do painel pedem o que falta de uma vez; parâmetros no YAML. Decisões D31–D33.
+**Prova:** tsc 0; 3 testes novos (20 etapas → US$ 10,50; plano pequeno/vazio mantém 0,50; no teto pede US$ 1,05 para 2 etapas restantes); **suíte inteira 132/896 verde**.
+**Próximo passo:** P10 (placar na mensagem de bloqueio) — `session-scoreboard.ts` já escrito, sem commit.
+
+---
+
 ## 20/10/2026 (174) — P8 feito: cache de prompt no avaliador Claude (TR1 9)
 
 **Feito:** `evaluator-models.ts` manda `system` e o Brief com `cache_control` (5 min), código fora do cache; `usage` com leitura/escrita do cache; `cost.ts` cobra escrita a 1,25×. Decisões D27–D30.

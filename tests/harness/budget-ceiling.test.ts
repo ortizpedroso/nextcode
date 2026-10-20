@@ -95,3 +95,61 @@ describe("Teto de custo por projeto (US$ 0,50)", () => {
     expect(await enforceBudgetBeforeBatch(id)).toBe(true);
   });
 });
+
+describe("TR1 (4) — teto pelo tamanho do plano e 1 autorização", () => {
+  afterEach(async () => {
+    await prisma.taskNode.deleteMany({ where: { sessionId: { in: created } } });
+  });
+
+  async function sessionWithStages(total: number, completed: number) {
+    const id = await sessionInExecution();
+    for (let i = 0; i < total; i++) {
+      await prisma.taskNode.create({
+        data: {
+          sessionId: id,
+          title: `Etapa ${i + 1}`,
+          role: "executor",
+          status: i < completed ? "completed" : "pending",
+          specVersion: 0,
+        },
+      });
+    }
+    return id;
+  }
+
+  it("plano de 20 etapas: teto = 20 × 0,35 × 1,5 = US$ 10,50 (maior que o fixo de 0,50)", async () => {
+    const id = await sessionWithStages(20, 0);
+    const b = await getSessionBudget(id);
+    expect(b.estimativaPlanoUsd).toBeCloseTo(10.5, 6);
+    expect(b.limitUsd).toBeCloseTo(10.5, 6);
+  });
+
+  it("plano pequeno: fica o teto fixo; sugestão nunca abaixo de US$ 0,50", async () => {
+    const id = await sessionWithStages(1, 0);
+    const b = await getSessionBudget(id);
+    expect(b.limitUsd).toBeCloseTo(0.525, 6);
+    expect(b.sugestaoAutorizacaoUsd).toBeGreaterThanOrEqual(0.5);
+    const empty = await sessionInExecution();
+    const e = await getSessionBudget(empty);
+    expect(e.limitUsd).toBe(0.5);
+    expect(e.sugestaoAutorizacaoUsd).toBe(0.5);
+  });
+
+  it("no teto, a mensagem pede de uma vez o que falta para as etapas restantes", async () => {
+    const id = await sessionWithStages(4, 2);
+    await recordLlmCost({
+      sessionId: id,
+      papel: "executor",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      usage: { prompt_tokens: 0, completion_tokens: 600_000 },
+    });
+    const b = await getSessionBudget(id);
+    expect(b.status).toBe("teto");
+    expect(b.sugestaoAutorizacaoUsd).toBeCloseTo(1.05, 6);
+    expect(await enforceBudgetBeforeBatch(id)).toBe(false);
+    const msg = await prisma.message.findFirst({ where: { sessionId: id, content: { contains: "Teto de custo atingido" } } });
+    expect(msg?.content).toContain("autorize US$ 1.05");
+    expect(msg?.content).toContain("uma autorização cobre o resto do plano");
+  });
+});
