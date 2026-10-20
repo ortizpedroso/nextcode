@@ -762,6 +762,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
 
     await recordLlmCost({
       sessionId,
+      nodeId,
       papel: "executor",
       provider: String(dispatchRes.providerUsed),
       model: String(dispatchRes.modelUsed || ""),

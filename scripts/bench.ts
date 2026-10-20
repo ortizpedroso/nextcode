@@ -41,6 +41,11 @@ export interface EtapaDetalheBench {
   executorUsd: number;
   avaliadorModelos: string[];
   avaliadorUsd: number;
+  /** P13 (TR1): chamadas ao modelo do executor (turnos do laço) na etapa, somando as tentativas. */
+  executorChamadas: number;
+  /** Ações de ferramenta executadas na etapa (várias por turno desde o P1). */
+  acoesFerramenta: number;
+  tentativas: number;
 }
 
 export interface MetricasExecucao {
@@ -234,12 +239,18 @@ export function formatarRelatorioMarkdown(
   for (const m of metricas) {
     linhas.push(`### ${m.projeto.toUpperCase()} - ${m.variante} (Rep ${m.repeticao})`);
     if (m.etapasDetalhe && m.etapasDetalhe.length > 0) {
-      linhas.push("| Node ID | Título | Cluster | Nível Plan. | Fonte | Exec. Modelos | Tokens In | Tokens Out | Exec. USD | Aval. Modelos | Aval. USD |");
-      linhas.push("|---|---|---|---|---|---|---|---|---|---|---|");
+      linhas.push("| Node ID | Título | Cluster | Nível Plan. | Fonte | Exec. Modelos | Chamadas exec. | Ações | Tentativas | Tokens In | Tokens Out | Exec. USD | Aval. Modelos | Aval. USD |");
+      linhas.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
       for (const ed of m.etapasDetalhe) {
         linhas.push(
-          `| ${ed.nodeId} | ${ed.titulo} | ${ed.cluster} | ${ed.nivelPlanejado} | ${ed.fontePlano} | ${ed.executorModelos.join(", ") || "-"} | ${ed.executorTokensEntrada} | ${ed.executorTokensSaida} | ${ed.executorUsd.toFixed(4)} | ${ed.avaliadorModelos.join(", ") || "-"} | ${ed.avaliadorUsd.toFixed(4)} |`
+          `| ${ed.nodeId} | ${ed.titulo} | ${ed.cluster} | ${ed.nivelPlanejado} | ${ed.fontePlano} | ${ed.executorModelos.join(", ") || "-"} | ${ed.executorChamadas} | ${ed.acoesFerramenta} | ${ed.tentativas} | ${ed.executorTokensEntrada} | ${ed.executorTokensSaida} | ${ed.executorUsd.toFixed(4)} | ${ed.avaliadorModelos.join(", ") || "-"} | ${ed.avaliadorUsd.toFixed(4)} |`
         );
+      }
+      const comIa = m.etapasDetalhe.filter((e) => e.executorChamadas > 0);
+      if (comIa.length > 0) {
+        const media = comIa.reduce((s, e) => s + e.executorChamadas, 0) / comIa.length;
+        linhas.push("");
+        linhas.push(`**Chamadas do executor por etapa (com IA):** média ${media.toFixed(1)} em ${comIa.length} etapa(s) — meta TR1 ≤ 10.`);
       }
     } else {
       linhas.push("*(Sem detalhes de etapa disponíveis)*");
@@ -559,6 +570,7 @@ async function rodarUmaExecucao(
 
   const totalCustoUsd = await sessionCostUsd(session.id);
   const costRows = logs.filter((l) => l.action === "LLM_COST");
+  const toolCallRows = logs.filter((l) => l.action === "EXECUTOR_TOOL_CALL");
   const costByPapel: Record<string, number> = { executor: 0, avaliador: 0, jev: 0, outro: 0 };
   for (const row of costRows) {
     try {
@@ -704,8 +716,20 @@ async function rodarUmaExecucao(
       } catch {}
     }
 
+    const acoesFerramenta = toolCallRows.filter((l) => {
+      try {
+        const d = JSON.parse(l.details || "{}");
+        return d.nodeId === t.id && d.ferramenta !== "invalido";
+      } catch {
+        return false;
+      }
+    }).length;
+
     etapasDetalhe.push({
       nodeId: t.id,
+      executorChamadas: execLogs.length,
+      acoesFerramenta,
+      tentativas: (t.attempts || 0) + (t.status === "completed" ? 1 : 0),
       titulo: t.title,
       cluster,
       nivelPlanejado,

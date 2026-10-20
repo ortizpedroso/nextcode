@@ -1,3 +1,10 @@
+## 20/10/2026 (180) — P13 preparado: bench mede chamadas e ações do executor por etapa
+
+**Achado:** o laço gravava o `LLM_COST` do executor sem `nodeId` — por isso o bench de 16/10 mostrava "0 tokens / US$ 0" do executor por etapa. **Feito:** `nodeId` no custo do executor; `scripts/bench.ts` com colunas Chamadas exec. / Ações / Tentativas e média de chamadas por etapa (meta TR1 ≤ 10). tsc 0; suíte 135/906 verde.
+**Próximo passo:** rodar `npm run bench -- --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1` (pago, ~US$ 0,8 pela rodada de 16/10).
+
+---
+
 ## 20/10/2026 (179) — P12 feito: trava de pasta-mãe ao apagar e ao abrir projeto (PJ2)
 
 **Feito:** `src/core/project/folder-safety.ts` (`checkFolderSafeToDelete`, `checkFolderSafeToOpen`, comparação sem maiúsculas no Windows); DELETE `api/projects/[id]` com `apagarPasta` responde 409 antes de qualquer exclusão; POST `api/projects` recusa pasta-mãe. Decisões D38–D40.
