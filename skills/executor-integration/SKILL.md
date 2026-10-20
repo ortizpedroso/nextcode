@@ -47,7 +47,7 @@ Você implementa os arquivos de integração externa listados em `arquivos_permi
 
 ## Protocolo de ferramentas
 
-Em CADA turno, responda com EXATAMENTE UM bloco:
+Em CADA turno, responda com UM bloco contendo UMA ação ou uma LISTA de até 8 ações independentes `[{...}, {...}]` (executadas na ordem; os resultados voltam juntos no próximo turno). Junte no mesmo turno tudo o que não depende de resultado ainda não visto (várias leituras; várias gravações; gravar e depois `run_check`). `finish` vai SOZINHO, no último turno:
 ```json acao
 {"ferramenta": "<nome>", "args": { ... }}
 ```

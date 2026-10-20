@@ -282,12 +282,12 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P1**.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P2**.
 
 **Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
 
 **Checklist da execução autônoma 2 (mudança 26) — ordem fixa, 1 commit por linha com tsc + vitest:**
-- [ ] **P1** executor: várias ações por turno (TR1 12)
+- [x] **P1** executor: várias ações por turno (TR1 12) — até 8 ações por bloco `json acao` (lista), resultados juntos numa mensagem, teto de 48 mil caracteres por turno (leitura excedente volta "repita"), `finish` só sozinho; telemetria `acoesNoTurno`; 4 skills de executor atualizadas
 - [ ] **P2** executor: contexto fixo no 1º prompt — tsconfig, package.json, schema, contratos (TR1 13)
 - [ ] **P3** executor: retentativa a partir do código anterior + defeitos (TR1 14)
 - [ ] **P4** relatório P12 aceita lista de referências (TR1 3)

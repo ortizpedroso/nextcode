@@ -1,3 +1,11 @@
+## 19/10/2026 (166) — P1 feito: executor com várias ações por turno (TR1 12)
+
+**Feito:** `parseExecutorToolActions` aceita lista de até 8 ações num bloco `json acao` (ou vários blocos somados); o laço executa na ordem e devolve todos os resultados numa mensagem; teto 48 mil caracteres/turno (leitura excedente volta "peça de novo"); `finish` só sozinho (misturado: as outras rodam, ele volta "ignorado"); telemetria `acoesNoTurno`; protocolo atualizado no prompt e nas 4 skills de executor. Decisões D1–D5 em `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md`.
+**Prova:** tsc 0; `executor-tool-loop.test.ts` 25/25 (6 novos: lista de 4 ações conclui em 2 turnos; finish misturado; leitor). Suíte inteira 871/878: as 7 falhas são `Test timed out in 15000ms` em `end-to-end-harness-plan` (6) e `step-4b` (1, caso muda a cada rodada); **sem minhas mudanças (stash) o e2e falha igual (7/11)**; com `--testTimeout=120000` o e2e passa 11/11 com as mudanças (casos de 21 a 40 s). Máquina mais lenta hoje — não é defeito do P1. Pendência anotada: decidir se sobe o `testTimeout` dos testes e2e.
+**Próximo passo:** P2 (contexto fixo no 1º prompt do executor).
+
+---
+
 ## 19/10/2026 (165) — Teste real terminou; mudança 26 (execução autônoma 2, produção)
 
 **Teste `8e2f2052`:** 49/55 concluídas, 6 bloqueadas, 34/54 na 1ª, US$ 18,78; executor 1.724 chamadas; 548 pausas; 35 autorizações de teto; 52 relatórios recusados; limite de 25 passos estourado 3×. Reprovações do avaliador procedentes nas amostras.

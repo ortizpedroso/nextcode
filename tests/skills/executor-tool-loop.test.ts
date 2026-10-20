@@ -20,6 +20,8 @@ import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import {
   defaultRunTypecheckInQuarantine,
   parseExecutorToolAction,
+  parseExecutorToolActions,
+  MAX_ACTIONS_PER_TURN,
 } from "@/core/skills/executor-tool-loop";
 
 const createdSessionIds: string[] = [];
@@ -827,6 +829,137 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
       qm.purgeWorkspace(task2);
       qm.purgeWorkspace(task3);
     }
+  });
+
+  it("TR1 (12) a) lista de 4 ações num turno + finish ⇒ completed em 2 turnos; os 4 resultados voltam juntos", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await setupSingleTaskSession(projectDir);
+    fs.writeFileSync(path.join(projectDir, "src", "greet.ts"), "// rascunho inicial\n", "utf-8");
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+
+    const firstTurn =
+      "```json acao\n" +
+      JSON.stringify([
+        { ferramenta: "list_files", args: { pasta: "src" } },
+        { ferramenta: "read_file", args: { caminho: "src/greet.ts" } },
+        {
+          ferramenta: "write_file",
+          args: {
+            caminho: "src/greet.ts",
+            conteudo: 'export function greet(name: string): string {\n  return `Ola, ${name}!`;\n}\n',
+          },
+        },
+        { ferramenta: "run_check", args: { comando: "typecheck" } },
+      ]) +
+      "\n```";
+    const executorTurns = [firstTurn, toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML })];
+    let turnIdx = 0;
+    let secondTurnLastMessage = "";
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      }
+      if (turnIdx === 1) secondTurnLastMessage = String(opts.messages[opts.messages.length - 1].content);
+      const reply = executorTurns[Math.min(turnIdx, executorTurns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(task);
+    expect(res.success).toBe(true);
+    expect(res.finalStatus).toBe("completed");
+    expect(turnIdx).toBe(2);
+    for (const tool of ["list_files", "read_file", "write_file", "run_check"]) {
+      expect(secondTurnLastMessage).toContain(`[RESULTADO ${tool}]`);
+    }
+    expect(secondTurnLastMessage).toContain("tsc --noEmit: 0 erros.");
+    expect(fs.readFileSync(path.join(projectDir, "src", "greet.ts"), "utf-8")).toContain("export function greet");
+  });
+
+  it("TR1 (12) b) finish junto com outras ações ⇒ as outras rodam, finish é ignorado e pedido sozinho", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await setupSingleTaskSession(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      executionTimeMs: 1,
+    });
+
+    const mixedTurn =
+      "```json acao\n" +
+      JSON.stringify([
+        {
+          ferramenta: "write_file",
+          args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return name;\n}\n" },
+        },
+        { ferramenta: "finish", args: { relatorio_executor: VALID_REPORT_YAML } },
+      ]) +
+      "\n```";
+    const executorTurns = [mixedTurn, toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML })];
+    let turnIdx = 0;
+    let secondTurnLastMessage = "";
+
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) {
+        return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      }
+      if (turnIdx === 1) secondTurnLastMessage = String(opts.messages[opts.messages.length - 1].content);
+      const reply = executorTurns[Math.min(turnIdx, executorTurns.length - 1)];
+      turnIdx++;
+      return makeOkDispatch(reply, "deepseek", "deepseek-chat");
+    });
+
+    const res = await executeTaskNode(task);
+    expect(res.finalStatus).toBe("completed");
+    expect(turnIdx).toBe(2);
+    expect(secondTurnLastMessage).toContain("[RESULTADO write_file]");
+    expect(secondTurnLastMessage).toContain("[RESULTADO finish]");
+    expect(secondTurnLastMessage).toContain("vai SOZINHO");
+  });
+
+  it("parseExecutorToolActions a) lista num bloco ```json acao → todas as ações, na ordem", () => {
+    const res = parseExecutorToolActions(
+      '```json acao\n[{"ferramenta":"read_file","args":{"caminho":"a.ts"}},{"ferramenta":"read_file","args":{"caminho":"b.ts"}}]\n```'
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.actions.map((a) => a.args.caminho)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("parseExecutorToolActions b) dois blocos ```json acao → ações somadas; objeto único continua valendo", () => {
+    const res = parseExecutorToolActions(
+      'texto\n```json acao\n{"ferramenta":"list_files","args":{"pasta":"src"}}\n```\n```json acao\n[{"ferramenta":"grep","args":{"padrao":"x"}}]\n```'
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.actions.map((a) => a.ferramenta)).toEqual(["list_files", "grep"]);
+  });
+
+  it("parseExecutorToolActions c) lista sem rótulo ou resposta que é só a lista → ok", () => {
+    const res1 = parseExecutorToolActions('```json\n[{"ferramenta":"list_files","args":{}}]\n```');
+    const res2 = parseExecutorToolActions('[{"ferramenta":"list_files","args":{}},{"ferramenta":"grep","args":{"padrao":"y"}}]');
+    expect(res1.ok && res1.actions.length).toBe(1);
+    expect(res2.ok && res2.actions.length).toBe(2);
+  });
+
+  it("parseExecutorToolActions d) acima do máximo, item sem ferramenta ou prosa → erro", () => {
+    const tooMany = Array.from({ length: MAX_ACTIONS_PER_TURN + 1 }, () => ({ ferramenta: "list_files", args: {} }));
+    const r1 = parseExecutorToolActions("```json acao\n" + JSON.stringify(tooMany) + "\n```");
+    const r2 = parseExecutorToolActions('```json acao\n[{"ferramenta":"list_files"},{"args":{}}]\n```');
+    const r3 = parseExecutorToolActions("Vou ler o arquivo agora.");
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.error).toContain(`máximo ${MAX_ACTIONS_PER_TURN}`);
+    expect(r2.ok).toBe(false);
+    expect(r3.ok).toBe(false);
   });
 
   it("parseExecutorToolAction a) formato oficial com quebra de linha → ok", () => {

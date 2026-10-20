@@ -17,6 +17,10 @@ export const MAX_LIST_FILES_ENTRIES = 300;
 export const MAX_GREP_MATCHES = 100;
 export const MAX_CONSECUTIVE_INVALID_TURNS = 3;
 export const LOOP_TOTAL_TIMEOUT_MS = 20 * 60 * 1000;
+/** TR1 (12): várias ações independentes por turno (teste real: 1 por turno → 1.724 chamadas). */
+export const MAX_ACTIONS_PER_TURN = 8;
+/** Teto da soma dos resultados de um turno; o que passar disso volta como "repita no próximo turno". */
+export const MAX_TURN_OUTPUT_CHARS = 48_000;
 
 const IGNORED_DIRS = new Set(["node_modules", ".next", ".git", ".nextcode"]);
 
@@ -157,6 +161,78 @@ export function parseExecutorToolAction(text: string): ParseToolActionResult {
   };
 }
 
+export type ParseToolActionsResult =
+  | { ok: true; actions: ParsedToolAction[] }
+  | { ok: false; error: string };
+
+const MULTI_FORMAT_REMINDER =
+  'Responda com UM bloco ```json acao contendo uma ação {"ferramenta": "<nome>", "args": { ... }} ou uma LISTA de até ' +
+  `${MAX_ACTIONS_PER_TURN} ações [{...}, {...}].`;
+
+function collectActionObjects(parsed: unknown): unknown[] {
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+/**
+ * TR1 (12): extrai as ações do turno. Aceita um bloco ```json acao com um objeto OU uma lista de
+ * objetos, e também vários blocos ```json acao (cada um com objeto ou lista). Sem bloco rotulado,
+ * cai nas mesmas regras de `parseExecutorToolAction` (bloco ```json sem rótulo / resposta inteira).
+ */
+export function parseExecutorToolActions(text: string): ParseToolActionsResult {
+  const labeled = Array.from(text.matchAll(/```json[ \t]+acao\s*([\s\S]*?)```/gi)).map((m) => m[1].trim());
+  const raws: unknown[] = [];
+  if (labeled.length > 0) {
+    for (const block of labeled) {
+      try {
+        raws.push(...collectActionObjects(JSON.parse(block)));
+      } catch (err) {
+        return {
+          ok: false,
+          error: `JSON inválido no bloco \`\`\`json acao: ${err instanceof Error ? err.message : String(err)}. ${MULTI_FORMAT_REMINDER}`,
+        };
+      }
+    }
+  } else {
+    const unlabeled = Array.from(text.matchAll(/```(?:json)?(?=[ \t]*[\r\n{[])\s*([\s\S]*?)```/gi)).map((m) =>
+      m[1].trim()
+    );
+    const trimmed = text.trim();
+    const candidates = unlabeled.length > 0 ? unlabeled : /^[[{][\s\S]*[\]}]$/.test(trimmed) ? [trimmed] : [];
+    for (const block of candidates) {
+      try {
+        const objs = collectActionObjects(JSON.parse(block)).filter(
+          (o) =>
+            o &&
+            typeof o === "object" &&
+            !Array.isArray(o) &&
+            typeof (o as Record<string, unknown>).ferramenta === "string" &&
+            ((o as Record<string, unknown>).ferramenta as string).trim().length > 0
+        );
+        raws.push(...objs);
+      } catch {
+        // Ignora bloco sem JSON válido; se nenhum candidato for válido, retorna erro ao final
+      }
+    }
+  }
+
+  if (raws.length === 0) {
+    return { ok: false, error: `Nenhum bloco \`\`\`json acao encontrado. ${MULTI_FORMAT_REMINDER}` };
+  }
+  if (raws.length > MAX_ACTIONS_PER_TURN) {
+    return {
+      ok: false,
+      error: `${raws.length} ações no mesmo turno (máximo ${MAX_ACTIONS_PER_TURN}). ${MULTI_FORMAT_REMINDER}`,
+    };
+  }
+  const actions: ParsedToolAction[] = [];
+  for (const raw of raws) {
+    const one = validateActionObject(raw);
+    if (!one.ok) return { ok: false, error: one.error.replace(OFFICIAL_FORMAT_REMINDER, MULTI_FORMAT_REMINDER) };
+    actions.push(one.action);
+  }
+  return { ok: true, actions };
+}
+
 export function formatToolResultMessage(toolName: string, rawOutput: string): string {
   const truncated =
     rawOutput.length > MAX_TOOL_OUTPUT_CHARS
@@ -168,10 +244,13 @@ export function formatToolResultMessage(toolName: string, rawOutput: string): st
 export function buildExecutorToolProtocolPrompt(): string {
   return [
     "## Protocolo de ferramentas",
-    "Em CADA turno, responda com EXATAMENTE UM bloco:",
+    "Em CADA turno, responda com UM bloco ```json acao contendo UMA ação ou uma LISTA de até " +
+      `${MAX_ACTIONS_PER_TURN} ações independentes (executadas na ordem; os resultados voltam juntos no próximo turno):`,
     "```json acao",
-    '{"ferramenta": "<nome>", "args": { ... }}',
+    '[{"ferramenta": "read_file", "args": {"caminho": "src/a.ts"}}, {"ferramenta": "read_file", "args": {"caminho": "src/b.ts"}}]',
     "```",
+    "Junte no mesmo turno tudo o que não depende de resultado ainda não visto: várias leituras; vários arquivos para gravar; gravar e depois run_check. Cada turno custa uma chamada inteira — poucos turnos é melhor.",
+    "`finish` vai SOZINHO, no último turno, depois de ver o resultado do run_check.",
     "Ferramentas e args (nomes EXATOS):",
     '- read_file  {"caminho": "src/x.ts"}',
     "  Lê da quarentena da etapa se existir lá; senão, do projeto. Devolve até 12000 caracteres, com números de linha.",
@@ -188,9 +267,9 @@ export function buildExecutorToolProtocolPrompt(): string {
     '- finish {"relatorio_executor": "<o MESMO YAML do bloco relatorio_executor atual>"}',
     "  Encerra o laço.",
     "",
-    "Exemplo de 1 turno:",
+    "Exemplo de 1 turno (grava 2 arquivos e confere):",
     "```json acao",
-    '{"ferramenta": "read_file", "args": {"caminho": "src/lib/exemplo.ts"}}',
+    '[{"ferramenta": "write_file", "args": {"caminho": "src/lib/a.ts", "conteudo": "..."}}, {"ferramenta": "write_file", "args": {"caminho": "src/lib/b.ts", "conteudo": "..."}}, {"ferramenta": "run_check", "args": {"comando": "typecheck"}}]',
     "```",
   ].join("\n");
 }
@@ -571,9 +650,8 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
       };
     }
 
-    const toolStartMs = Date.now();
-    const parsedAction = parseExecutorToolAction(turnText);
-    if (!parsedAction.ok) {
+    const parsedTurn = parseExecutorToolActions(turnText);
+    if (!parsedTurn.ok) {
       consecutiveInvalidTurns += 1;
       TelemetryLogger.log({
         sessionId,
@@ -584,7 +662,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           ferramenta: "invalido",
           permitido: false,
           caminho: null,
-          duracaoMs: Date.now() - toolStartMs,
+          duracaoMs: 0,
           amostra: turnText.slice(0, 300),
           tamanho: turnText.length,
         },
@@ -596,26 +674,79 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
           finishReportText: "",
           stepsUsed: currentStep,
-          failureReason: `[PROTOCOL ERROR] ${MAX_CONSECUTIVE_INVALID_TURNS} turnos inválidos seguidos: ${parsedAction.error}`,
+          failureReason: `[PROTOCOL ERROR] ${MAX_CONSECUTIVE_INVALID_TURNS} turnos inválidos seguidos: ${parsedTurn.error}`,
         };
       }
       messages.push({ role: "assistant", content: turnText || "(resposta vazia)" });
       messages.push({
         role: "user",
-        content: formatToolResultMessage("erro_protocolo", parsedAction.error),
+        content: formatToolResultMessage("erro_protocolo", parsedTurn.error),
       });
       continue;
     }
 
     consecutiveInvalidTurns = 0;
-    const { ferramenta, args } = parsedAction.action;
+    const actions = parsedTurn.actions;
+
+    if (actions.length === 1 && actions[0].ferramenta === "finish") {
+      const perm = enforceSkillToolPermission({ skill, toolName: "finish", allowedScopeFiles, currentStep });
+      if (perm.allowed) {
+        TelemetryLogger.log({
+          sessionId,
+          action: "EXECUTOR_TOOL_CALL",
+          details: {
+            nodeId,
+            passo: currentStep,
+            ferramenta: "finish",
+            permitido: true,
+            caminho: null,
+            duracaoMs: 0,
+            acoesNoTurno: 1,
+          },
+        });
+        return {
+          finished: true,
+          noLlmAvailable: false,
+          codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
+          finishReportText: formatFinishReportBlock(actions[0].args.relatorio_executor),
+          stepsUsed: currentStep,
+          lastModelUsed,
+        };
+      }
+    }
+
+    // TR1 (12): executa as ações na ordem e devolve todos os resultados numa só mensagem.
+    const results: string[] = [];
+    let turnOutputChars = 0;
+    for (const action of actions) {
+      if (turnOutputChars >= MAX_TURN_OUTPUT_CHARS && !isWriteAction(action.ferramenta)) {
+        results.push(
+          formatToolResultMessage(
+            action.ferramenta,
+            `Não executada: o turno já devolveu ${turnOutputChars} caracteres (teto ${MAX_TURN_OUTPUT_CHARS}). Peça de novo no próximo turno.`
+          )
+        );
+        continue;
+      }
+      const formatted = formatToolResultMessage(action.ferramenta, await runOneAction(action, actions.length));
+      turnOutputChars += formatted.length;
+      results.push(formatted);
+    }
+
+    messages.push({ role: "assistant", content: turnText });
+    messages.push({ role: "user", content: results.join("\n\n") });
+  }
+
+  async function runOneAction(action: ParsedToolAction, acoesNoTurno: number): Promise<string> {
+    const toolStartMs = Date.now();
+    const { ferramenta, args } = action;
     const rawTargetPath =
       typeof args.caminho === "string"
         ? args.caminho
         : typeof args.pasta === "string"
           ? args.pasta
           : undefined;
-    const isWriteTool = ferramenta === "write_file" || ferramenta === "edit_file";
+    const isWriteTool = isWriteAction(ferramenta);
     const commandArg =
       ferramenta === "run_check"
         ? typeof args.comando === "string"
@@ -654,38 +785,10 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           permitido: false,
           caminho: rawTargetPath ?? null,
           duracaoMs: Date.now() - toolStartMs,
+          acoesNoTurno,
         },
       });
-      messages.push({ role: "assistant", content: turnText });
-      messages.push({
-        role: "user",
-        content: formatToolResultMessage(ferramenta, violationReason),
-      });
-      continue;
-    }
-
-    if (ferramenta === "finish") {
-      const finishReportText = formatFinishReportBlock(args.relatorio_executor);
-      TelemetryLogger.log({
-        sessionId,
-        action: "EXECUTOR_TOOL_CALL",
-        details: {
-          nodeId,
-          passo: currentStep,
-          ferramenta: "finish",
-          permitido: true,
-          caminho: null,
-          duracaoMs: Date.now() - toolStartMs,
-        },
-      });
-      return {
-        finished: true,
-        noLlmAvailable: false,
-        codeContentMap: Object.fromEntries(quarantinedFiles.entries()),
-        finishReportText,
-        stepsUsed: currentStep,
-        lastModelUsed,
-      };
+      return violationReason;
     }
 
     let toolOutput = "";
@@ -812,6 +915,8 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
             quarantinedFiles,
           });
         }
+      } else if (ferramenta === "finish") {
+        toolOutput = "Ignorado: `finish` vai SOZINHO, no turno seguinte, depois de ver estes resultados.";
       } else {
         toolOutput = `Ferramenta "${ferramenta}" desconhecida.`;
       }
@@ -829,13 +934,13 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         permitido: true,
         caminho: rawTargetPath ?? null,
         duracaoMs: Date.now() - toolStartMs,
+        acoesNoTurno,
       },
     });
-
-    messages.push({ role: "assistant", content: turnText });
-    messages.push({
-      role: "user",
-      content: formatToolResultMessage(ferramenta, toolOutput),
-    });
+    return toolOutput;
   }
+}
+
+function isWriteAction(ferramenta: string): boolean {
+  return ferramenta === "write_file" || ferramenta === "edit_file";
 }
