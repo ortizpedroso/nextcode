@@ -1,3 +1,11 @@
+## 19/10/2026 (165) — Teste real terminou; mudança 26 (execução autônoma 2, produção)
+
+**Teste `8e2f2052`:** 49/55 concluídas, 6 bloqueadas, 34/54 na 1ª, US$ 18,78; executor 1.724 chamadas; 548 pausas; 35 autorizações de teto; 52 relatórios recusados; limite de 25 passos estourado 3×. Reprovações do avaliador procedentes nas amostras.
+**Fundador:** pensar macro para subir para produção; Claude implementa, testa, corrige e decide; 2 relatórios no fim. **Registrado:** mudança 26 + checklist P1–P13 na §5.0.
+**Próximo passo:** P1.
+
+---
+
 ## 18/10/2026 (164) — Revisão rigorosa do pstack conferida (interrogate, prove-it-works, blast-radius)
 
 **Fundador:** o material fala de revisão rigorosa, verificar. **Lido (só leitura):** `interrogate` (2+ modelos de famílias diferentes, mesmo pedido; achado dos 2 pesa mais; líder classifica agir/considerar/anotado/descartado; não aplica correção), `principle-prove-it-works` (prova = o artefato real, script determinístico que dá para rodar de novo; compilar não é prova), `blast-radius` (escala de confiança: dito < arquivo:linha < falha descartada < executado < reproduzido; achar o fato único que garante a segurança).

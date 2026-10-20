@@ -282,7 +282,25 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma da E1 pelo Claude (mudança 23), auditoria pelo Cursor. Item atual: **teste pesado real pelo fundador** (pedido real no NextCode; o Claude audita a trilha) (porta da E1) — auditoria do Cursor feita (`f4d0401`, aceito com ressalvas; ressalvas fechadas, diário 150). Erro num passo vira sub-passo do mesmo item (ex.: A2.1b), nunca item novo.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **P1**.
+
+**Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
+
+**Checklist da execução autônoma 2 (mudança 26) — ordem fixa, 1 commit por linha com tsc + vitest:**
+- [ ] **P1** executor: várias ações por turno (TR1 12)
+- [ ] **P2** executor: contexto fixo no 1º prompt — tsconfig, package.json, schema, contratos (TR1 13)
+- [ ] **P3** executor: retentativa a partir do código anterior + defeitos (TR1 14)
+- [ ] **P4** relatório P12 aceita lista de referências (TR1 3)
+- [ ] **P5** chamada lenta/oscilação: repetir o turno com espera antes de pausar (TR1 1)
+- [ ] **P6** negação repetida de ferramenta = dono harness, sem gastar tentativa (TR1 2)
+- [ ] **P7** avaliador: só `critico` bloqueia; `importante` vira ressalva (TR1 11)
+- [ ] **P8** avaliador: cache de prompt da Anthropic (TR1 9)
+- [ ] **P9** teto de custo estimado pelo plano, 1 autorização (TR1 4)
+- [ ] **P10** mensagem de bloqueio com placar e o que fazer (TR1 5)
+- [ ] **P11** aviso M2 desligado + Graphify só com código (mudança 25)
+- [ ] **P12** trava de apagar pasta-mãe / pasta com outros projetos (PJ2, segurança)
+- [ ] **P13** medição: bench P1–P4 com os números de chamadas por etapa e aprovação na 1ª
+- [ ] **Relatórios:** `docs/relatorios/IMPLEMENTADO-E1-producao.md` e `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md`
 
 **Checklist da execução autônoma (mudança 23) — ordem fixa, cada linha = 1 commit com tsc + vitest:**
 - [x] **A2.1** T8b confere arquivo citado no critério × escopo da etapa (ou de etapa da qual depende) e **bloqueia** o plano na aprovação (BLOQUEADA + relatório "dono: analista")
@@ -375,6 +393,7 @@ pedido no chat → **Spec** (elicitação + Jev) → aprovação humana (T2) + *
 23. 17/10 · **Execução autônoma da E1 (fundador: "avaliador claude, pois não pode ser da mesma família… você vai implementar e o cursor vai auditar… quando eu tiver de escolher algo, você vai decidir o que é melhor para o projeto")** · papéis: elicitador Opus; pesquisador Claude (P8, E2); **analista DeepSeek** (plano conferido por código no A2.1); executor DeepSeek; **avaliador Claude** (Sonnet 5.5 1º, Opus 5.5 reserva; DeepSeek fora); skill de cada papel reescrita dentro do item que mexe nele (S3 deixa de ser passo solto); ordem: checklist acima; decisões tomadas pelo Claude ficam em `docs/relatorios/DECISOES-AUTONOMAS-E1.md` · aprovada 17/10
 24. 18/10 · **Avaliador fora do ar: 3 tentativas grátis, depois pausa de 5 min (proposta do fundador + 3 ajustes do auditor; fundador: "pode fazer")** · (1) até **3** reavaliações sem gastar tentativa do executor (antes 2, `MAX_FREE_EVALUATOR_RETRIES`); (2) depois, sessão **PAUSADA** com aviso no chat e nova tentativa a cada **5 min**; a retomada exige uma sonda de poucos tokens **no Claude** (a pausa genérica retoma com qualquer provedor — com o DeepSeek de pé viraria vaivém); (3) limite de **6 pausas seguidas** → BLOQUEADA com relatório "dono: ambiente (avaliador fora do ar)"; (4) chave inválida, sem crédito ou sem chave (401/403/"credit") → BLOQUEADA na hora, sem esperar · motivo: queda da Anthropic no teste pesado gastaria tentativas e bloquearia etapas boas (mudança 10 já pedia PAUSADA) · aprovada 18/10
 25. 18/10 · **Jev na Spec e Graphify — proposta (fundador: "o jev precisa ser ajustado para nos ajudar a deixar a spec redonda… e já apareceu para acionar o graphify")** · evidência (teste real `8e2f2052`): (1) o M2 (`decideSpecClarity`, `jev-decisions.ts` ≈134-215) manda ao Jev só os 22.000 primeiros caracteres de uma Spec de 52.986 — os REQ começam no caractere 29.654, então **o Jev não viu nenhum REQ** e deu clareza 1,29; (2) `escopo_fechado` pergunta pela "seção 7 Dúvidas em aberto", que o formato atual não tem — leitura literal → 0,04; (3) as 3 perguntas são largas (falha conhecida, J1/diário 109); (4) a resposta só vira aviso, ninguém corrige; (5) Graphify sugerido num projeto vazio (`multi_gateway` = `package.json` + `README.md`): `temCodigoExistente` = "a pasta existe" (`chat/route.ts` ≈306) · recomendação do auditor: **já (depois do teste pesado, junto do PJ2):** (a) M2 desligado como aviso até o redesenho (aviso enganoso pior que nenhum); (b) Graphify só com código de verdade na pasta (contagem mecânica de arquivos-fonte, sem Jev). **E2 (J8 + J11 + mudança 7):** Jev por item, estado pequeno e nomeado: por REQ — critério testável? traçado ao pedido do usuário (J11)?; por lacuna da M0 — a Spec cobre? (regras de dinheiro, estorno, chargeback, LGPD…); itens reprovados voltam ao elicitador como lista exata, correção por trecho (1 rodada, cache de prompt), resíduo vira pergunta ao usuário; confiança baixa → pergunta ao usuário, nunca decisão · **aprovada 18/10** (fundador: "concordo"): ordem = teste pesado → (a)+(b) junto do PJ2 → redesenho na E2
+26. 19/10 · **Execução autônoma 2 — subir para produção (fundador: "pense de forma macro a resolver todos os problemas do projeto para que ele suba para produção… implementar, testar, corrigir… o que for para eu decidir, você vai decidir por mim")** · base: números do teste real `8e2f2052` (acima) — o custo e o atraso vêm do harness (1 ferramenta por turno, exploração repetida, pausa que recomeça, relatório recusado, teto que para a cada US$ 0,50), não dos modelos; divisão de papéis mantida (diário 161) · checklist P1–P13 acima · ficam para depois, com motivo no relatório de decisões: JV1 completo e redesenho do Jev na Spec (E2), A1, J3, E5, fechar-com-retomada na tela (PJ2b) · aprovada 19/10
 
 ### 5.0.1 Fases de commit — E1 parcial (16/10, fundador aprova cada fase)
 
