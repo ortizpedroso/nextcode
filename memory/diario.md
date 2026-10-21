@@ -1,3 +1,14 @@
+## 21/10/2026 (197) — Memória da máquina: proxy headroom com 2,6 GB; skill de autoteste nunca rodou
+
+**Fundador:** "libere tudo o que puder de memória… monte um plano" (aviso de bloqueio da `4d019f00`); depois: "verifique o que está acontecendo e resolva, está autorizado"; aceitou as mudanças 35/36 propostas; perguntou se o revisor final é skill, se o autoteste funcionou e pediu checklist.
+**Medido (22:40):** RAM livre 839 MB de 7,9 GB; commit 17,7/24,4 GB. Maior consumo: proxy `headroom` (`python -m headroom.cli proxy --port 8787`, PID 10232) **2.594 MB privados** após 11,5 h no ar; com o `wrap` e o `mcp serve`, ~3,4 GB só de headroom. Economia dele na sessão: US$ 2,83 de US$ 58,72 (4,8%). Outros: VS Code 1,3 GB, Chrome 0,9 GB, WSL/Docker 1,4 GB (teto 2 GB), CCleaner_service 550 MB, LibreOffice (`PROMPT.odt` aberto) 274 MB.
+**Não deu para liberar daqui:** o proxy é o caminho desta própria conversa (`ANTHROPIC_BASE_URL=http://127.0.0.1:8787`) — matar derruba a sessão; CCleaner pede administrador (acesso negado); LibreOffice tem documento aberto do fundador.
+**Aviso de bloqueio analisado:** o texto colado é do 1º bloqueio (19:27, portão cego da mudança 33); o 2º (19:45) teve `FINAL_BUILD_RECHECK {checked:true, ok:false, erros:0}` = processo não abriu (memória). Frase fixa em `human-notice.ts:20` manda revisar a Spec mesmo quando a causa é ambiente → mudanças 35 (reconhecer falha de ambiente) e 36 (aviso manda Retomar) aceitas pelo fundador.
+**Achado autoteste:** `run_check {"comando":"test"}` responde fixo "não disponível neste item" (`executor-tool-loop.ts:976`); os 3 arquivos `tests/*.test.ts` do Gateway foram escritos e **nunca rodados**. O `run_check typecheck` da sessão também estava cego (mesma causa da mudança 33). E5 (autoteste) segue ⬜ na §5.0.
+**Próximo passo:** fundador reinicia o Claude Code (fecha o terminal → libera ~3,4 GB) e decide se mantém o headroom; depois: mudanças 35/36 (com teste), retomada da `4d019f00` com `prisma generate`/`npm install` autorizados, teto de volta a 0,50.
+
+---
+
 ## 21/10/2026 (196) — Teste real do fundador (Gateway): 41/41 etapas; entrega barrada por portão cego → mudanças 33 e 34
 
 **Fundador:** aprovou a Spec do Gateway whitelabel (sessão `4d019f00`) e delegou: "se travar resolva para ir de ponta a ponta, pode aprovar por mim".
