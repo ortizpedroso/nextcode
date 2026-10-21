@@ -129,6 +129,8 @@ async function relatorio(sessionId: string, motivoFim: string, inicio: number): 
     porPapel[k].chamadas += 1;
   }
   const totalUsd = Object.values(porPapel).reduce((a, b) => a + b.usd, 0);
+  // R2 (21/10): chamada paga sem `usage` (corpo cortado pelo prazo) entra com US$ 0 — o total fica subcontado.
+  const semUso = custo.filter((d) => !d.usage);
   const conta = (acao: string) => logs.filter((l) => l.action === acao).length;
   const budget = await getSessionBudget(sessionId).catch(() => null);
 
@@ -175,7 +177,7 @@ async function relatorio(sessionId: string, motivoFim: string, inicio: number): 
     "",
     `- ENTREGUE: **${s.phase === "ENTREGUE" ? "sim" : "não"}**`,
     `- ≤ 10 chamadas do executor em **cada** etapa com IA: **${acimaDaMeta.length === 0 ? "sim" : `não (${acimaDaMeta.length} etapas acima)`}** — média ${comIa.length ? (comIa.reduce((a, e) => a + e.executorChamadas, 0) / comIa.length).toFixed(1) : "—"}, máximo ${comIa.length ? Math.max(...comIa.map((e) => e.executorChamadas)) : "—"}`,
-    `- custo abaixo de US$ ${ORIGINAL.custoUsd.toFixed(2)}: **${totalUsd < ORIGINAL.custoUsd ? "sim" : "não"}**`,
+    `- custo abaixo de US$ ${ORIGINAL.custoUsd.toFixed(2)}: **${totalUsd < ORIGINAL.custoUsd ? (semUso.length ? `sim, mas ${semUso.length} chamadas sem custo medido (${[...new Set(semUso.map((d) => d.papel))].join(", ")}) — conferir` : "sim") : "não"}**`,
     `- aprovadas na 1ª tentativa: ${aprovadas1a}/${concluidas}`,
     "",
     "## Custo por papel",
@@ -184,6 +186,7 @@ async function relatorio(sessionId: string, motivoFim: string, inicio: number): 
     "|---|---|---|",
     ...Object.entries(porPapel).map(([k, v]) => `| ${k} | ${v.chamadas} | ${fmt(v.usd)} |`),
     `| **total** | ${custo.length} | **${fmt(totalUsd)}** |`,
+    semUso.length ? `\n⚠️ ${semUso.length} chamadas sem \`usage\` (gravadas com US$ 0): o total acima é um piso.` : "",
     "",
     budget ? `Teto do sistema (P9): US$ ${budget.limitUsd.toFixed(2)} · gasto contado no teto: US$ ${budget.spentUsd.toFixed(2)}` : "",
     "",

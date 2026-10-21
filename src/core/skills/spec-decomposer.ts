@@ -447,6 +447,7 @@ export class SpecDecomposerSkill {
       let modelUsed = "";
       let finishReason = "";
       let reasoningChars = 0;
+      let semResposta = false;
       try {
         const dispatchRes = await smartRouter.dispatchWithFallback({
           messages,
@@ -460,6 +461,8 @@ export class SpecDecomposerSkill {
           signal: AbortSignal.timeout((Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS) + 10_000),
         });
         const resJson = await dispatchRes.response.json().catch(() => ({}));
+        // R2 (21/10): corpo cortado pelo prazo vira `{}` — sem `choices` e sem `usage`. Não é erro de formato.
+        semResposta = !Array.isArray(resJson.choices);
         content = resJson.choices?.[0]?.message?.content || "";
         finishReason = String(resJson.choices?.[0]?.finish_reason || "");
         reasoningChars = String(resJson.choices?.[0]?.message?.reasoning_content || "").length;
@@ -473,6 +476,17 @@ export class SpecDecomposerSkill {
         });
       } catch (err) {
         return fallback("exception_or_offline", { rodada, error: err instanceof Error ? err.message : String(err) });
+      }
+
+      if (semResposta) {
+        // Repete o mesmo pedido: anexar "(resposta vazia)" + reclamação de formato só alongava o prompt
+        // e enganava a trilha (teste pesado 314176ef: 2 rodadas cortadas em 300 s gravadas como [FORMATO]).
+        TelemetryLogger.log({
+          sessionId,
+          action: "ANALISTA_PLAN_RETRY",
+          details: { rodada, model: modelUsed, motivo: "sem_resposta", custoNaoMedido: true },
+        });
+        continue;
       }
 
       const parsed = parseAnalystPlan(content);
@@ -651,8 +665,10 @@ const ANALISTA_MAX_TOKENS = 32000;
 /**
  * Tempo de cada chamada do analista. Antes: 5 s (nunca dava tempo; 0 `ANALISTA_PLAN_*` no banco).
  * Replay A2.3: 16 mil tokens de saída levaram 90–104 s; com 32 mil o teto fixo de 120 s do gateway cortou.
+ * R2 (21/10): 300 s cortou 2 de 3 rodadas no teste pesado `314176ef` (a 3ª: 26 mil tokens em 222 s);
+ * 32 mil tokens no ritmo das rodadas cortadas passam de 300 s → 600 s.
  */
-const ANALISTA_TIMEOUT_MS = 300_000;
+const ANALISTA_TIMEOUT_MS = 600_000;
 
 const ANALYST_CLUSTERS: ClusterKind[] = ["core", "backend", "integration", "frontend"];
 

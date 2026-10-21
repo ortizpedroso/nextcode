@@ -143,7 +143,33 @@ describe("A2.2 — analista planeja e o código confere", () => {
     await SpecDecomposerSkill.decomposeWithAnalistaSkill({ specText: SPEC, titulo: "Teste A2.2", files: FILES, smartRouter: router });
     expect(router.calls[1].at(-1).content).toContain("[CORTADA]");
     const args = router.dispatchWithFallback.mock.calls[0][0] as any;
-    expect(args.gatewayTimeoutMs).toBe(300_000);
+    expect(args.gatewayTimeoutMs).toBe(600_000);
     expect(args.maxTokens).toBe(32000);
+  });
+  it("R2: corpo cortado pelo prazo (sem choices) → repete o mesmo pedido, trilha 'sem_resposta' (não [FORMATO])", async () => {
+    const calls: any[] = [];
+    let n = 0;
+    const router = {
+      dispatchWithFallback: vi.fn(async (args: any) => {
+        calls.push(JSON.parse(JSON.stringify(args.messages)));
+        n++;
+        return {
+          providerUsed: "deepseek",
+          modelUsed: "deepseek-v4-pro",
+          response: {
+            json: async () => {
+              if (n === 1) throw new Error("This operation was aborted");
+              return { choices: [{ message: { content: planJson(GOOD) }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5 } };
+            },
+          },
+        };
+      }),
+    };
+    await SpecDecomposerSkill.decomposeWithAnalistaSkill({ specText: SPEC, titulo: "Teste A2.2", files: FILES, smartRouter: router });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual(calls[0]);
+    const retry = logSpy.mock.calls.map((c: any) => c[0]).find((e: any) => e.action === "ANALISTA_PLAN_RETRY");
+    expect(retry.details).toMatchObject({ rodada: 1, motivo: "sem_resposta", custoNaoMedido: true });
+    expect(actions()).toContain("ANALISTA_PLAN_APPROVED");
   });
 });
