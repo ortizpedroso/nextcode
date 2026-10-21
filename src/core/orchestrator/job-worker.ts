@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { loadGatewayConfigs, isGatewayAnswering } from "@/core/llm/gateways";
+import { loadGatewayConfigs, isGatewayAnswering, type GatewayConfig } from "@/core/llm/gateways";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import {
   enqueueSessionQueueJob,
@@ -36,14 +36,39 @@ export function getProcessWorkerId(): string {
 const REACHABILITY_CACHE_MS = 30_000;
 let reachabilityCache: { at: number; value: boolean } | null = null;
 
-export async function isAnyLlmGatewayReachable(): Promise<boolean> {
-  if (reachabilityCache && Date.now() - reachabilityCache.at < REACHABILITY_CACHE_MS) {
+/**
+ * SUP1 (mudança 28): só o executor pausa com `SEM_LLM`. Com `somente_pago` ele só sai pelo FreeLLMAPI
+ * (`loadPaidGatewaysForTier`); retomar porque o DeepSeek direto responde fazia a sessão piscar
+ * PAUSADA ↔ EXECUCAO sem avançar (teste pesado `314176ef`: 132 pausas, 1/57 etapas).
+ */
+export function gatewaysToProbeForExecutor(gateways: GatewayConfig[], paidOnly: boolean): GatewayConfig[] {
+  return paidOnly ? gateways.filter((gw) => gw.id === "freellmapi") : gateways;
+}
+
+export interface ReachabilityDeps {
+  loader?: () => Promise<GatewayConfig[]>;
+  probe?: (gw: GatewayConfig) => Promise<boolean>;
+  paidOnly?: () => Promise<boolean>;
+}
+
+async function executorIsPaidOnly(): Promise<boolean> {
+  const { loadOrchestrationPolicy } = await import("@/core/config/orchestration-policy");
+  const { isPaidOnlyRouting } = await import("@/core/orchestrator/node-executor");
+  return isPaidOnlyRouting(loadOrchestrationPolicy());
+}
+
+export async function isAnyLlmGatewayReachable(deps: ReachabilityDeps = {}): Promise<boolean> {
+  const useCache = !deps.loader && !deps.probe && !deps.paidOnly;
+  if (useCache && reachabilityCache && Date.now() - reachabilityCache.at < REACHABILITY_CACHE_MS) {
     return reachabilityCache.value;
   }
-  const gateways = await loadGatewayConfigs().catch(() => []);
-  const checks = await Promise.all(gateways.map((gw) => isGatewayAnswering(gw).catch(() => false)));
+  const gateways = await (deps.loader ?? loadGatewayConfigs)().catch(() => []);
+  const paidOnly = await (deps.paidOnly ?? executorIsPaidOnly)().catch(() => false);
+  const probe = deps.probe ?? ((gw: GatewayConfig) => isGatewayAnswering(gw));
+  const candidates = gatewaysToProbeForExecutor(gateways, paidOnly);
+  const checks = await Promise.all(candidates.map((gw) => probe(gw).catch(() => false)));
   const value = checks.some(Boolean);
-  reachabilityCache = { at: Date.now(), value };
+  if (useCache) reachabilityCache = { at: Date.now(), value };
   return value;
 }
 
