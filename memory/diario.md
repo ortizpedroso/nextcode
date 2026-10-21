@@ -7,7 +7,8 @@
 **Intervenções no projeto gerado (registradas p/ relatório):** schema.prisma completado com ~39 campos da Spec que a etapa 1 omitiu (só aditivo; `prisma validate` OK).
 **Medido:** tsc 0; suíte 139/925 com a política original (6 testes de teto falham só com o teto temporário de US$ 80, não commitado).
 **1ª retomada:** BLOQUEADA de novo, `require is not defined` — `resolveTscBin` usava `require.resolve` como valor padrão do parâmetro, que estoura fora do `try` quando o módulo roda como ESM (tsx). Corrigido (o `require` agora fica dentro do `try`); provado: sem a correção `ReferenceError: require is not defined in ES module scope`, com ela devolve o `tsc` real. tsc 0; suíte 139/925.
-**Próximo passo:** retomar a `4d019f00` de novo, ver o type-check final, corrigir o que for preciso, relatório ao fundador.
+**2ª retomada:** a correção funcionou — o `tsc` real rodou (saída 1, com erros) e o recheck tentou `npm install nodemailer` + `prisma generate`, mas o Windows não abriu os processos (`0xC0000142`, falta de memória); o Claude Code também matou a retomada por memória. Sessão segue BLOQUEADA. Relatório: `docs/relatorios/TESTE-REAL-GATEWAY-4d019f00.md`.
+**Próximo passo:** fundador libera memória e pede a retomada; teto temporário US$ 80 volta a 0,50 no fim.
 
 ---
 
