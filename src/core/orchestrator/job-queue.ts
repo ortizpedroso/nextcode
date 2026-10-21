@@ -9,6 +9,7 @@ import {
   verifyProjectDeliveryT10,
   readProjectFilesContent,
 } from "@/core/orchestrator/node-executor";
+import { recheckFinalBuild } from "@/core/governance/empirical-gate";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -307,6 +308,28 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         // gerar o build e abrir sem erro no celular e no desktop.
         let uiCheck: UiCheckReport | null = null;
         const projectPath = sessionAfterQueue.project?.path;
+        // Mudança 34: build reprovado só por etapas do meio → confere o projeto final de novo.
+        if (!deliveryT10.buildVerified && deliveryT10.specFilesComplete && projectPath) {
+          const recheck = await recheckFinalBuild(projectPath);
+          TelemetryLogger.log({
+            sessionId: job.sessionId,
+            action: "FINAL_BUILD_RECHECK",
+            details: { checked: recheck.checked, ok: recheck.ok, erros: recheck.errors.length, amostra: recheck.errors.slice(0, 5) },
+          });
+          if (recheck.checked) {
+            deliveryT10.gaps = deliveryT10.gaps.filter(
+              (g) => !g.startsWith("Falha na verificação empírica de build") && !g.startsWith("Build do projeto não verificado")
+            );
+            if (recheck.ok) {
+              deliveryT10.buildVerified = true;
+              deliveryT10.passed = deliveryT10.specFilesComplete && deliveryT10.allReqsApproved;
+            } else {
+              deliveryT10.gaps.push(
+                `Type-check do projeto final com ${recheck.errors.length} erro(s); primeiros: ${recheck.errors.slice(0, 5).join(" | ")}`
+              );
+            }
+          }
+        }
         const uiPages = pagesFromSpecFiles(parseSpecDocument(sessionAfterQueue.canonicalSpec || "")?.arquivosAfetados ?? []);
         if (deliveryT10.passed && projectPath && uiPages.length > 0) {
           uiCheck = await runUiCheck(projectPath, uiPages).catch(

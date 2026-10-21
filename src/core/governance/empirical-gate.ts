@@ -88,6 +88,36 @@ export function firstBuildErrorLine(result: CommandResult, newErrors: string[] =
   );
 }
 
+export interface FinalBuildRecheck {
+  /** false = sem tsconfig.json (nada para conferir). */
+  checked: boolean;
+  ok: boolean;
+  errors: string[];
+}
+
+/**
+ * Mudança 34: a entrega (T10) julga o projeto FINAL. Uma etapa do meio marcada com "falha
+ * preexistente" pode ter sido resolvida depois; o tsc roda de novo no projeto inteiro, com o mesmo
+ * conserto de ambiente do portão (pacotes, tipos, `prisma generate`), e só esse resultado decide.
+ */
+export async function recheckFinalBuild(
+  projectRoot: string,
+  deps: {
+    verify?: (root: string) => Promise<CommandResult | null>;
+    repair?: (root: string, output: string) => Promise<{ changed: boolean }>;
+  } = {}
+): Promise<FinalBuildRecheck> {
+  const verify = deps.verify ?? ((root: string) => TerminalExecutionEngine.verifyProjectBuild(root, 120000));
+  const repair = deps.repair ?? ((root: string, output: string) => repairEnvironment(root, output));
+  let result = await verify(projectRoot);
+  if (!result) return { checked: false, ok: false, errors: [] };
+  if (!result.success) {
+    const fixed = await repair(projectRoot, `${result.stdout}\n${result.stderr}`);
+    if (fixed.changed) result = (await verify(projectRoot)) ?? result;
+  }
+  return { checked: true, ok: result.success, errors: result.success ? [] : Array.from(tsErrorKeys(result)) };
+}
+
 /** Rótulo legível da etapa, para mensagens de rejeição. */
 export function empiricalStageLabel(stage: EmpiricalStage | null): string {
   return stage === "lint" ? "ESLint real pós-promoção" : "type-check real pós-promoção";

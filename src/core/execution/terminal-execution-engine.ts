@@ -11,6 +11,25 @@ export interface CommandResult {
   executionTimeMs: number;
 }
 
+/**
+ * Mudança 33: caminho do `tsc` do próprio NextCode. Dentro do `next dev` o `require.resolve` devolve
+ * um caminho do empacotador (`(instrument)\node_modules\...`) que não existe em disco — o portão
+ * empírico rodava um `tsc` inexistente. Só aceita caminho real; senão tenta `<cwd>/node_modules`.
+ */
+export function resolveTscBin(
+  resolve: (id: string) => string = require.resolve,
+  cwd: string = process.cwd()
+): string | null {
+  const candidates: string[] = [];
+  try {
+    candidates.push(path.join(path.dirname(resolve("typescript/package.json")), "bin", "tsc"));
+  } catch {
+    /* segue para o node_modules do cwd */
+  }
+  candidates.push(path.join(cwd, "node_modules", "typescript", "bin", "tsc"));
+  return candidates.find((c) => fs.existsSync(c)) ?? null;
+}
+
 export class TerminalExecutionEngine {
   /**
    * Executa um comando de terminal (PowerShell / Bash) no sistema local com suporte a timeout e captura de logs.
@@ -96,14 +115,8 @@ export class TerminalExecutionEngine {
     // Usa o binário `tsc` do próprio NextCode (via resolução de módulo Node) em vez de
     // `npx tsc`, que tentaria baixar o TypeScript da internet quando o projeto-alvo (ex.: um
     // diretório recém-criado pela IA) ainda não tem node_modules próprio.
-    let tscCommand = "npx tsc --noEmit";
-    try {
-      const tsPackageJsonPath = require.resolve("typescript/package.json");
-      const tscBinPath = path.join(path.dirname(tsPackageJsonPath), "bin", "tsc");
-      tscCommand = `node "${tscBinPath}" --noEmit`;
-    } catch {
-      /* fallback para npx se a resolução local falhar */
-    }
+    const tscBinPath = resolveTscBin();
+    const tscCommand = tscBinPath ? `node "${tscBinPath}" --noEmit` : "npx tsc --noEmit";
 
     return TerminalExecutionEngine.runCommand(tscCommand, projectPath, timeoutMs);
   }

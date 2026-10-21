@@ -1,10 +1,23 @@
+## 21/10/2026 (196) — Teste real do fundador (Gateway): 41/41 etapas; entrega barrada por portão cego → mudanças 33 e 34
+
+**Fundador:** aprovou a Spec do Gateway whitelabel (sessão `4d019f00`) e delegou: "se travar resolva para ir de ponta a ponta, pode aprovar por mim".
+**Execução:** 41/41 etapas concluídas em ~1h15, US$ 12,33 (elicitador US$ 3,07). Sessão foi para BLOQUEADA na entrega: "falha na verificação empírica de build".
+**Causa (mudança 33):** dentro do `next dev`, `require.resolve` do `tsc` devolve `(instrument)\node_modules\...` (não existe) → as 267 chamadas do `tsc` da sessão falharam sem rodar (saída 1 / 0xC0000142); toda etapa virou "falha preexistente", nunca rodou `prisma generate` e a T10 reprovou. Correção `resolveTscBin` (só caminho que existe). Teste falha sem a correção (2 de 3: `expected 'bin	sc' to be ...`).
+**Mudança 34:** T10 reprovava por qualquer etapa com build falho, mesmo resolvido depois; agora `recheckFinalBuild` confere o projeto final (com `repairEnvironment`) e lista os erros reais.
+**Intervenções no projeto gerado (registradas p/ relatório):** schema.prisma completado com ~39 campos da Spec que a etapa 1 omitiu (só aditivo; `prisma validate` OK).
+**Medido:** tsc 0; suíte 139/925 com a política original (6 testes de teto falham só com o teto temporário de US$ 80, não commitado).
+**Próximo passo:** retomar a `4d019f00` com `scripts/retomar-sessao.ts` (app parado), ver o type-check final, corrigir o que for preciso, relatório ao fundador.
+
+---
+
 ## 21/10/2026 (195) — 4ª tentativa do teste pesado interrompida a pedido; Docker com teto de 2 GB; app no host para teste do fundador
 
 **Fundador:** "liberei memória, rode o teste pesado" → rodou ~10 min (0,74 GB livres); depois pediu a opção A (parar o teste para testar ele mesmo com um prompt) e o `.wslconfig`.
 **Feito:** teste pesado parado (3 processos node órfãos mortos à mão; não conta como resultado). Criado `C:\Users\ortiz\.wslconfig` com `[wsl2] memory=2GB`; Docker reiniciado (`docker desktop restart`) — `free -m` no WSL mostra 1902 MB de teto; `nextcode-freellmapi` healthy, `/api/ping` ok, `PROVIDER_TIMEOUT_CUSTOM=300000` mantido.
 **Achado:** o contêiner `nextcode-app` não abre o banco (`Error code 14: Unable open the database file`): o `docker-compose.yml` passa `DATABASE_URL=file:./prisma/dev.db`, que o Prisma resolve a partir de `prisma/` → `/app/prisma/prisma/dev.db` (não existe; o `.env` do host usa `file:./dev.db`). O `dev.db` do contêiner não era escrito desde 20/10 08:52 — já estava quebrado antes. Contêiner parado; app no host com `npm run dev` (porta 3001, HTTP 200).
 **Compose corrigido (mudança 32, pedida pelo fundador):** `DATABASE_URL=file:./dev.db`. Com o `npm run dev` aberto no mesmo banco o contêiner dá `disk I/O error` 4618 (WAL não cruza Windows↔Docker); numa cópia sem outro processo funciona (1891 sessões lidas). Sem tsc/vitest neste commit: só YAML e docs, e a máquina está com 0,6 GB livres durante o teste do fundador.
-**Próximo passo:** fundador testa um prompt real no app (http://localhost:3001); depois, teste pesado do zero.
+**Teste real do fundador (sessão `4d019f00`, Gateway whitelabel sobre Asaas):** Spec pelo elicitador Opus em 2 chamadas, US$ 0,83; cache funcionou de verdade (2ª chamada leu 3.962 tokens da skill). Fundador vai colar ajustes (cartão/taxas/split, limite de taxa, reenvio, nada citando o Asaas) e aprovar. A pedido dele ("vou sair, deixar liberado"), **teto fixo da política subido para US$ 80 TEMPORARIAMENTE** em `config/politicas-orquestracao.yaml` (não commitado; voltar a 0.50 depois do teste). Gravar `BUDGET_AUTHORIZED` direto na trilha foi recusado pelo modo automático (adulteração de trilha) — correto; a rota oficial exige o token do navegador.
+**Próximo passo:** acompanhar a execução da `4d019f00`; ao terminar, voltar o teto a 0.50; corrigir o relatório de incidente que culpa etapa bloqueada só por dependência (`src/app/api/chat/route.ts:141`).
 
 ---
 
