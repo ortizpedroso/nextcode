@@ -1,3 +1,30 @@
+## 21/10/2026 (192) — Retomada pós-reinício: leitura de docs e onde paramos
+
+**Feito (só leitura):** `memory/RETOMADA.md`, `docs/relatorios/PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md`, §5.0 (linha AGORA) e o código citado. Nada commitado desde `19d3bcd`; o commit das decisões da mudança 27 + `scripts/teste-pesado.ts` previsto em RETOMADA §4 **não foi feito** (suíte não rodada).
+**Conferido no código:** `isAnyLlmGatewayReachable` (`job-worker.ts:38-47`) faz `checks.some(Boolean)` sobre todos os gateways — com o DeepSeek direto de pé e o FreeLLMAPI fora, o supervisor solta `LLM_VOLTOU` e a sessão pisca PAUSADA↔EXECUCAO; o `pausadaDesde` do script zera a cada piscada e o limite de 45 min nunca dispara. Confirma o achado do PONTO-DE-RETOMADA; ainda **não está na §5.0**.
+**Achado de processo:** `PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md` é um 2º documento de retomada, paralelo ao `memory/RETOMADA.md` (regra 4 / T-O). Apagar só com aprovação do fundador.
+**Fundador aprovou:** correção entra na §5.0 como **SUP1** (mudança 28), antes do teste pesado; linha AGORA atualizada.
+**Commit da mudança 27 + 28 (só docs e script):** `DECISOES-AUTONOMAS-E1-3.md`, `scripts/teste-pesado.ts`, `memory/RETOMADA.md`, referência, diário 190–192. Medido neste commit: tsc 0; **suíte 136/914 verde** (179 s). Fora do commit: `.claude/.headroom_wrap_marker.json`, `.serena/project.yml` (ferramentas) e `PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md` (documento paralelo, aguarda o fundador).
+**Próximo passo:** implementar SUP1 (teste que falha sem a correção); depois Docker/FreeLLMAPI de pé e teste pesado.
+
+---
+
+## 21/10/2026 (191) — Teste pesado reiniciado (2ª tentativa)
+
+**Feito:** fundador autorizou ("pode reiniciar"). Sonda de 1 chamada antes (`probeGateway("deepseek")` em cópia do banco): alcançável, chave aceita, conversa ok em 603 ms — o provedor estava de pé; os "nenhum provedor respondeu" da 1ª tentativa ficam atribuídos à falta de memória (não provado). Reiniciado do zero: sessão `314176ef`, cópia em `%TEMP%\nc-teste-pesado`. Memória no reinício: 0,7 GB livres de 7,7 GB (Docker e VS Code ainda abertos) — risco de nova interrupção.
+**Próximo passo:** esperar o fim (ENTREGUE/BLOQUEADA/pausa > 45 min/10 h), ler `docs/relatorios/TESTE-PESADO-E1.md`, commitar 190+191 com a suíte; depois J2b + J2.7.
+
+---
+
+## 21/10/2026 (190) — Teste pesado parado por falta de memória da máquina (não reiniciado)
+
+**Feito:** decisões delegadas em `docs/relatorios/DECISOES-AUTONOMAS-E1-3.md` (D23 aceita + TS1; Spec `8e2f2052`; teto do P9; porta ≤ 10 chamadas por etapa; J2b desenhado); mudança 27 e TS1 na referência; `scripts/teste-pesado.ts`. **Ainda sem commit** (suíte não rodada: memória).
+**Teste pesado:** começou 07:46 UTC (sessão `d527f2bc` na cópia `%TEMP%
+c-teste-pesado`); o Claude Code matou o comando por falta de memória; o processo node seguiu órfão e foi parado à mão às 08:14. Até ali: 53 etapas planejadas, 3 concluídas (base, package.json, schema), 3 rodando, US$ 0,60 em 38 chamadas; **24 `SESSION_PAUSED_NO_LLM` e 64 `EXECUTOR_TURN_RETRY` com "nenhum provedor respondeu"** — não dá para separar falta de memória da máquina de provedor fora do ar. `prisma/dev.db` intocado.
+**Próximo passo:** fundador libera memória (0,4 GB livres de 7,7 GB) e manda reiniciar; antes de reiniciar, sonda de 1 chamada ao DeepSeek para separar as duas causas.
+
+---
+
 ## 20/10/2026 (189) — PJ1.5: smoke na tela feito (4/4)
 
 **Feito:** navegador real (Claude no Chrome) contra `npm run dev` na porta 3101 com cópia do banco e executor desligado; projeto de teste em pasta temporária. Arquivar/desarquivar ✅; reabrir a mesma pasta com outro nome não duplica ✅; apagar "só do NextCode" mantém a pasta ✅; sessão sem projeto recusa a aprovação e, vinculada, passa da trava ✅. Gasto US$ 0,0000 (2 Jev). `dev.db` intocado.
