@@ -69,7 +69,7 @@ Olhe: separação de responsabilidades, tratamento de erro, contratos entre etap
 ## 5. Como o veredito é decidido (pelo harness, a partir da sua resposta)
 - Algum REQ `parcial`/`ausente` → **REPROVADO**.
 - Algum problema `critico` → **REPROVADO**. Só `critico` bloqueia.
-- Qualquer número de `importante` → **APROVADO_COM_RESSALVA** (promove; as ressalvas vão para o resumo e viram correção da próxima rodada).
+- Qualquer número de `importante` → **APROVADO_COM_RESSALVA** (promove; as ressalvas ficam no resultado da etapa como correções sugeridas — ainda não há rodada automática de polimento).
 - `menor` só registra. Problema que você considerou e descartou não entra na lista.
 - Diga em `fatoQueGarante` qual fato do código garante a etapa certa e em `nivelProva` como chegou a ele: `dito` < `arquivo_linha` < `falha_descartada` < `executado` < `reproduzido`.
 - REPROVADO volta ao executor com os seus `arquivo:linha` e descrições — escreva a descrição como instrução de correção.

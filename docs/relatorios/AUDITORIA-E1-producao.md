@@ -71,3 +71,20 @@ Seção 3 de `IMPLEMENTADO-E1-producao.md`: P1 10/10, P2 13/13, P3 12/12, P4 12/
 ## 6. Dúvidas abertas para o fundador
 - (a) Aceita D23 (timeout de 2 `describe` e2e) ou prefere um passo próprio para tirar o peso desses testes?
 - (b) Teste pesado (porta da E1, checklist da mudança 23) logo depois desta auditoria — com a Spec real do teste `8e2f2052` (Multi_Gateway) para comparar US$ 18,78 / 1.724 chamadas?
+
+## 7. Fechamento da auditoria do Cursor (`2d5f18b`, 20/10)
+Veredito do Cursor: **aceito com ressalvas**. Conferido pelo Claude antes de aceitar:
+
+**Parte mecânica — confere.** HEAD 2× 136/909; D41 e D42 falham sem a correção; 9 commits isolados em worktree; bench P1–P4 ENTREGUE (10/10, 13/13, 12/12, 12/12, US$ 0,3847); `prisma/dev.db` intocado (`04:52:32.630` antes e depois).
+
+**Parte com erro do auditor (não vale como prova):**
+- **Seção 7 (D1–D42) e parte da seção 8 descrevem decisões e passos que não são os do relatório.** Ex.: D15 real = REQ repetido juntado (P4), o Cursor opinou sobre "lista paga do `pesado`"; D29 real = escrita no cache a 1,25×, o Cursor opinou sobre `estimatePlanCostUsd`; D33 real = sugestão de autorização no teto, o Cursor opinou sobre remover funções do Jev; P4 real = lista de referências, a tabela do Cursor descreve classificação de nível pelo Jev; P10 real = placar, a tabela descreve catálogo do Jev. Só D23, D41 e D42 batem com o que está escrito. **A concordância com D1–D42 fica não auditada.**
+- Ressalva 3: o diagnóstico ("`ZEROENTROPY_API_KEY`") está errado no detalhe — a chave do Jev vem do banco (`jev.ts:68-70`, `typesafeKey`); a ressalva (teste depende do estado local) está certa.
+- Removeu os relatórios do bench `2026-10-20-2129` (leu R1 ao pé da letra): a trilha da etapa abaixo se perdeu.
+
+**Achado que o Cursor não levantou:** no bench dele, P2 etapa 1 (`lib/tarefas.ts`, nível `rapido`) teve **11 chamadas do executor e 3 tentativas**, e 1 avaliação com avaliador indisponível (por isso o bench marcou "INVÁLIDA: rota"). A meta TR1 é por etapa (≤ 10) — a média 5,0 esconde. Nas rodadas do Claude (`1244`, `1314`) todas as etapas passaram na 1ª. Sem a trilha não dá para dizer a causa; fica para o teste pesado medir (porta: ≤ 10 por etapa, não média).
+
+**Ressalvas fechadas:**
+1. **Skill do avaliador prometia rodada que não existe** — `skills/avaliador/SKILL.md:72` agora diz que as ressalvas ficam no resultado da etapa como correções sugeridas, sem rodada automática (a rodada é o J2b).
+2. **Teste dependente do ambiente local** — `tests/intake/mega-stress-e1-e5.test.ts` (TESTE PESADO 3) com chave do Jev sintética. Prova: num worktree limpo, sem `.env`, falha sem a correção (`expected false to be true`) e passa com ela. Suíte inteira 136/909.
+3. **D23 (timeout dos 2 `describe` e2e)** — **aguarda o fundador.** O Cursor está certo na letra da T-B. Recomendação do Claude: aceitar como está **e** registrar passo próprio para tirar o peso desses 2 testes (o tempo vem de carga da máquina, não de defeito escondido: passam isolados).

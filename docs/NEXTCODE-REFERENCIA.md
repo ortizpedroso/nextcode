@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; item atual: **auditoria do Cursor da mudança 26** (`docs/prompts/AUDITORIA-E1-producao-cursor.md`; relatório `docs/relatorios/AUDITORIA-E1-producao.md`); depois, **teste pesado** (porta da E1). P1–P13 feitos; bench 20/10 P1–P4 entregues.
+**▶ AGORA (atualizar a cada passo):** execução autônoma 2 (mudança 26), Claude implementa e decide; auditoria do Cursor da mudança 26 feita (`2d5f18b`, aceito com ressalvas; fechamento em `docs/relatorios/AUDITORIA-E1-producao.md` §7 — D23 aguarda o fundador); item atual: **teste pesado** (porta da E1). P1–P13 feitos; bench 20/10 P1–P4 entregues.
 
 **Resultado do teste real `8e2f2052` (Multi_Gateway, 18/10, base da mudança 26):** 49/55 etapas concluídas, 6 bloqueadas (5 com 3 tentativas + 1 dependente); 34/54 aprovadas na 1ª; **US$ 18,78** (executor 13,91 em **1.724 chamadas**, avaliador 3,89 em 78, Spec 0,83, analista 0,13, Jev 0,01); 548 pausas `SEM_LLM`; 35 autorizações de teto; 52 relatórios recusados; `[SKILL STEP LIMIT]` (25 passos) estourado em 3 etapas; reprovações do avaliador procedentes nas amostras (mapeamento de status do webhook, ambiente TEST × LIVE, projeção sem `dataCreditoPrevista`).
 

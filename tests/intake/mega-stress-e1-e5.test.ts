@@ -4,6 +4,7 @@ import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
 import { POST as postChat } from "@/app/api/chat/route";
 import { POST as postDag } from "@/app/api/dag/route";
 import { decideGraphifyEligibilityWithJev } from "@/core/decision/jev-decisions";
+import { writeSecret } from "@/core/security/crypto";
 import { NextRequest } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
@@ -160,6 +161,17 @@ requisitos:
   it("TESTE PESADO 3: Boundary de Probabilidade do JEV no Graphify (E4) — limiar estrito de 0.65", async () => {
     const mockJev = vi.fn();
     vi.stubGlobal("fetch", mockJev);
+    // Chave do Jev sintética: sem isto o teste dependia da chave salva no banco local de testes
+    // e do .env (falhava num worktree limpo — auditoria do Cursor 20/10).
+    const prevMasterKey = process.env.NEXTCODE_MASTER_KEY;
+    process.env.NEXTCODE_MASTER_KEY = prevMasterKey || Buffer.alloc(32, 21).toString("base64");
+    // O delegate do Prisma é um proxy: mockRestore deixa findUnique indefinido para os testes
+    // seguintes, então a volta é pela implementação original guardada.
+    const originalFindUnique = prisma.setting.findUnique.bind(prisma.setting);
+    const settingSpy = vi
+      .spyOn(prisma.setting, "findUnique")
+      .mockResolvedValue({ id: "default", typesafeKey: writeSecret("ts-test-key") } as any);
+    try {
 
     // Caso A: probabilidade 0.64 (abaixo do limiar de 0.65) -> NÃO deve ser elegível
     mockJev.mockResolvedValueOnce({
@@ -215,6 +227,11 @@ requisitos:
     });
     expect(decB.elegivel).toBe(true);
     expect(decB.motivo).toContain("Mapear arquitetura");
+    } finally {
+      settingSpy.mockImplementation(originalFindUnique as any);
+      if (prevMasterKey === undefined) delete process.env.NEXTCODE_MASTER_KEY;
+      else process.env.NEXTCODE_MASTER_KEY = prevMasterKey;
+    }
   });
 
   it("TESTE PESADO 4: Passivação Total da UI (E5) — tentativas espúrias de create_dag em sessão já iniciada são idempotentes e seguras", async () => {

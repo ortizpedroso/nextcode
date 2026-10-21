@@ -1,3 +1,13 @@
+## 20/10/2026 (188) — Auditoria do Cursor da mudança 26 conferida e fechada
+
+**Cursor (`2d5f18b`):** aceito com ressalvas. Parte mecânica confere (HEAD 2× 136/909, D41/D42 falham sem a correção, bench P1–P4 ENTREGUE US$ 0,3847, `dev.db` intocado).
+**Erro do auditor:** seção 7 (D1–D42) e parte da 8 descrevem decisões/passos que não são os do relatório (D15, D29, D33, P4, P10…) — concordância com D1–D42 fica **não auditada**. Apagou os relatórios do bench `2129` (trilha perdida).
+**Achado que ele não levantou:** P2 etapa 1 com 11 chamadas e 3 tentativas + 1 avaliador indisponível ("INVÁLIDA: rota"); meta é por etapa, a média 5,0 esconde. Fica para o teste pesado medir por etapa.
+**Fechado:** skill `avaliador` não promete mais rodada de polimento inexistente; TESTE PESADO 3 com chave sintética do Jev (falhava em worktree sem `.env`; prova: falha sem / passa com). tsc 0; suíte 136/909.
+**Aguarda o fundador:** D23 (recomendação: aceitar + passo para aliviar os 2 testes e2e); Spec do teste pesado. Branch `tr1-6` (TR1 6) a juntar ao main.
+
+---
+
 ## 20/10/2026 (186) — Prompt do Cursor alinhado ao HEAD
 
 **Feito:** `docs/prompts/AUDITORIA-E1-producao-cursor.md` — a trava T-A exigia o commit (184) como último; depois do (185) o Cursor pararia na largada. Agora T-A aponta este commit (186) e o prompt avisa que `917c364`, `dfe3d70` e (186) são só de docs. Prompt entregue ao fundador.
