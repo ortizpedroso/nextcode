@@ -49,7 +49,10 @@ describe("P5c.1 / P5c.3 — Elicitador Claude direto para a Spec (streaming)", (
       capturedBody = JSON.parse(init?.body || "{}");
 
       return sseResponse([
-        { type: "message_start", message: { usage: { input_tokens: 100, output_tokens: 1 } } },
+        {
+          type: "message_start",
+          message: { usage: { input_tokens: 100, output_tokens: 1, cache_read_input_tokens: 9000, cache_creation_input_tokens: 700 } },
+        },
         { type: "ping" },
         { type: "content_block_start", index: 0, content_block: { type: "thinking" } },
         {
@@ -87,7 +90,7 @@ describe("P5c.1 / P5c.3 — Elicitador Claude direto para a Spec (streaming)", (
 
     expect(res.text).toBe("---\nSpec");
     expect(res.model).toBe("claude-opus-5-5");
-    expect(res.usage).toMatchObject({ input_tokens: 100, output_tokens: 50 });
+    expect(res.usage).toMatchObject({ input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 9000, cache_creation_input_tokens: 700 });
     expect(res.stopReason).toBe("end_turn");
     expect(res.ms).toBeGreaterThanOrEqual(0);
 
@@ -95,7 +98,9 @@ describe("P5c.1 / P5c.3 — Elicitador Claude direto para a Spec (streaming)", (
     expect(capturedHeaders["x-api-key"]).toBe(fakeClaudeKey);
     expect(capturedBody.max_tokens).toBe(48000);
     expect(capturedBody.stream).toBe(true);
-    expect(capturedBody.system).toBe("S1\n\nS2");
+    // Mudança 29: corte explícito na skill + cache automático no topo (o corte anda com a conversa).
+    expect(capturedBody.cache_control).toEqual({ type: "ephemeral" });
+    expect(capturedBody.system).toEqual([{ type: "text", text: "S1\n\nS2", cache_control: { type: "ephemeral" } }]);
     expect(capturedBody.messages).toEqual([
       { role: "user", content: "U1\n\nU2" },
       { role: "assistant", content: "A1" },

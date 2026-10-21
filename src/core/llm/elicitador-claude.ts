@@ -120,6 +120,27 @@ async function readAnthropicMessageStream(
   return { ok: true, text, usage, stopReason };
 }
 
+/**
+ * Mudança 29 (cache de prompt, resto do TR1 (9)): a skill no `system` é igual em todos os turnos → corte
+ * explícito nela; o `cache_control` no topo (cache automático) põe o 2º corte no fim da conversa e o
+ * avança a cada turno. TTL de 5 min (o padrão); 1 h só se a trilha mostrar turnos com mais de 5 min.
+ */
+export function buildElicitadorBody(opts: {
+  model: string;
+  maxTokens: number;
+  system: string;
+  messages: Array<{ role: string; content: string }>;
+}): Record<string, unknown> {
+  return {
+    model: opts.model,
+    max_tokens: opts.maxTokens,
+    stream: true,
+    cache_control: { type: "ephemeral" },
+    ...(opts.system ? { system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }] } : {}),
+    messages: opts.messages,
+  };
+}
+
 export async function callElicitadorClaude(opts: {
   messages: ReadonlyArray<{ role: string; content: string }>;
   claudeKey: string;
@@ -177,15 +198,12 @@ export async function callElicitadorClaude(opts: {
       return { ok: false, detail: "sem mensagem do usuário" };
     }
 
-    const bodyObj: Record<string, unknown> = {
+    const bodyObj = buildElicitadorBody({
       model,
-      max_tokens: opts.maxTokens ?? ELICITADOR_CLAUDE_MAX_TOKENS,
-      stream: true,
+      maxTokens: opts.maxTokens ?? ELICITADOR_CLAUDE_MAX_TOKENS,
+      system,
       messages: coalesced,
-    };
-    if (system) {
-      bodyObj.system = system;
-    }
+    });
 
     const startMs = Date.now();
     const timeoutMs =
