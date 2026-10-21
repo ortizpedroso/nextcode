@@ -1,3 +1,14 @@
+## 21/10/2026 (193) — SUP1, cache no elicitador (mudança 29) e R2 do analista (mudança 30)
+
+**Fundador:** "pode começar o SUP1 e implementar tudo o que precisar… tome a decisão por mim"; no meio, colou a doc de cache de prompt (PT) e pediu "implemente a utilização do cache assim que puder".
+**SUP1 ✅:** `gatewaysToProbeForExecutor` + `isAnyLlmGatewayReachable(deps)` em `job-worker.ts` — com `somente_pago` a sonda de retomada só olha o FreeLLMAPI. `tests/orchestrator/sup1-sonda-retomada.test.ts` 4/4; **3 falham sem a correção** (`expected true to be false`; `expected 1 to be +0`).
+**Cache (mudança 29):** avaliador já tinha (mudança 26). Elicitador Opus: `buildElicitadorBody` — skill no `system` com corte explícito + `cache_control` automático no topo. **Medido de verdade (2 chamadas Opus, US$ 0,0089):** 1ª `cache_creation_input_tokens: 1001` (US$ 0,0076); 2ª `cache_read_input_tokens: 1001` (US$ 0,0013).
+**R2 (mudança 30):** causa achada na trilha `314176ef`: rodadas 1–2 do analista cortadas em 300 s → `usage: null`, US$ 0, rotuladas `[FORMATO]`. Prazo 600 s; corpo sem `choices` → retry `sem_resposta` com o mesmo pedido; relatório do teste pesado avisa chamadas sem `usage`. Testes do analista: **2 falham sem a correção**, 10/10 com.
+**Medido:** tsc 0; **suíte 137/919** verde. Ambiente agora: Docker de pé (`nextcode-freellmapi` healthy, `/api/ping` ok); 0,8 GB livres de 7,7 GB.
+**Próximo passo:** teste pesado.
+
+---
+
 ## 21/10/2026 (192) — Retomada pós-reinício: leitura de docs e onde paramos
 
 **Feito (só leitura):** `memory/RETOMADA.md`, `docs/relatorios/PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md`, §5.0 (linha AGORA) e o código citado. Nada commitado desde `19d3bcd`; o commit das decisões da mudança 27 + `scripts/teste-pesado.ts` previsto em RETOMADA §4 **não foi feito** (suíte não rodada).
