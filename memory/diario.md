@@ -1,3 +1,13 @@
+## 21/10/2026 (195) — 4ª tentativa do teste pesado interrompida a pedido; Docker com teto de 2 GB; app no host para teste do fundador
+
+**Fundador:** "liberei memória, rode o teste pesado" → rodou ~10 min (0,74 GB livres); depois pediu a opção A (parar o teste para testar ele mesmo com um prompt) e o `.wslconfig`.
+**Feito:** teste pesado parado (3 processos node órfãos mortos à mão; não conta como resultado). Criado `C:\Users\ortiz\.wslconfig` com `[wsl2] memory=2GB`; Docker reiniciado (`docker desktop restart`) — `free -m` no WSL mostra 1902 MB de teto; `nextcode-freellmapi` healthy, `/api/ping` ok, `PROVIDER_TIMEOUT_CUSTOM=300000` mantido.
+**Achado:** o contêiner `nextcode-app` não abre o banco (`Error code 14: Unable open the database file`): o `docker-compose.yml` passa `DATABASE_URL=file:./prisma/dev.db`, que o Prisma resolve a partir de `prisma/` → `/app/prisma/prisma/dev.db` (não existe; o `.env` do host usa `file:./dev.db`). O `dev.db` do contêiner não era escrito desde 20/10 08:52 — já estava quebrado antes. Contêiner parado; app no host com `npm run dev` (porta 3001, HTTP 200).
+**Compose corrigido (mudança 32, pedida pelo fundador):** `DATABASE_URL=file:./dev.db`. Com o `npm run dev` aberto no mesmo banco o contêiner dá `disk I/O error` 4618 (WAL não cruza Windows↔Docker); numa cópia sem outro processo funciona (1891 sessões lidas). Sem tsc/vitest neste commit: só YAML e docs, e a máquina está com 0,6 GB livres durante o teste do fundador.
+**Próximo passo:** fundador testa um prompt real no app (http://localhost:3001); depois, teste pesado do zero.
+
+---
+
 ## 21/10/2026 (194) — Teste pesado, 3ª tentativa: parada por falta de memória (não reiniciado)
 
 **Rodou:** sessão `6897a372` (cópia em `%TEMP%\nc-teste-pesado`), ~0,4 h. Até a parada: **6/56 etapas concluídas** (5 na 1ª tentativa), 3 rodando; executor **22 chamadas, máx. 6 por etapa** (média 3,1); **US$ 0,71** (analista 0,21; executor 0,34; avaliador 0,15); 28 `SESSION_PAUSED_NO_LLM`. Relatório parcial: `docs/relatorios/TESTE-PESADO-E1.md` (`--relatorio`, fase EXECUCAO).
