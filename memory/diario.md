@@ -1,3 +1,12 @@
+## 21/10/2026 (200) — Leitura de onde estamos (pós-reinício)
+
+**Fundador:** "analise a pasta docs e veja onde estamos".
+**Conferido:** proxy :8787 fechado e `ANTHROPIC_BASE_URL=https://api.anthropic.com` (reinício sem headroom deu certo). Pendências no disco: teto US$ 80 temporário em `config/politicas-orquestracao.yaml` (não commitado); `docs/relatorios/PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md` não rastreado, de 06:52, desatualizado (cita HEAD `19d3bcd`; não tem 190–199) e paralelo à referência (regra 4) — fundador decide. Mudanças 35/36 aceitas (197) mas ainda fora da §5.0 da referência.
+**2ª leitura (direção):** RAM 1,81 GB livres de 7,73; **Docker desligado** (sem FreeLLMAPI = executor sem rota); `C:\projetos\gateway` sem `prisma generate`. §5.0 fora de sincronia: a `4d019f00` (Gateway real, 41 etapas) já é mais pesada que o teste pesado sintético e é, na prática, o P10 Gate 1 da E3. Execução autônoma 3 (mudanças 27–34) sem relatório de auditoria (regra 2). Proposta ao fundador: a entrega da `4d019f00` vira a porta da E1 (mudança nova), achados do relatório do Gateway viram linhas da §5.0.
+**Próximo passo:** registrar 35/36 na referência → implementar com teste → retomar `4d019f00` → teto de volta a 0,50 → teste pesado (porta da E1) → J2b+J2.7.
+
+---
+
 ## 21/10/2026 (199) — Headroom e 9router removidos (fundador: "pode remover o headroom todo… tire o 9router")
 
 **Removido:** 9router (`npm -g 9router@0.5.50` + 9 skills `~/.claude/skills/9router*`, cópia no scratchpad); headroom 0.31.0 do pip (Python 3.14); contêiner `headroom-default` e imagem (888 MB); plugin `headroom@headroom-marketplace` (configs + pastas); 7 variáveis de usuário do Windows (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` → 9router; `HEADROOM_*`); `.claude/.headroom_wrap_marker.json` do repositório. O NextCode não usa essas variáveis (conferido; o `src/core/headroom/context-pruner.ts` é código próprio e fica).
