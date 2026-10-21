@@ -1,3 +1,13 @@
+## 21/10/2026 (198) — Headroom desligado na raiz (falta o proxy desta conversa)
+
+**Fundador:** "verifique novamente e derrube na raiz… mate tudo o que puder"; quer testes por projeto (não fixos), revisão final cega como skill e autoteste como skill; pediu recomendações justificadas do checklist.
+**Eram 3 headroom:** proxy nativo (`wrap claude` → `proxy :8787`, 2,6 GB), contêiner Docker `headroom-default` (347 MB, `restart unless-stopped`, ninguém usa — o NextCode usa só `src/core/headroom/context-pruner.ts`, código próprio) e `mcp serve` (416 MB).
+**Feito:** contêiner parado e sem reinício automático; MCP morto e removido do `~/.claude.json`; hooks `headroom init`/`wrap selfheal` e plugin `headroom@headroom-marketplace` desligados; `ANTHROPIC_BASE_URL` → `https://api.anthropic.com` (global) e removido do projeto. Cópias em scratchpad (`settings.global.bak.json`, `settings.local.bak.json`, `claude.json.bak`). Achado: variável de usuário do Windows `ANTHROPIC_BASE_URL=http://127.0.0.1:20128/v1` (9router, porta fechada) — o settings global agora sobrepõe.
+**Não matado:** proxy PID 10232 (e o `wrap` 3460) — esta conversa passa por ele. Some quando o fundador fechar o terminal e abrir `claude` puro.
+**Próximo passo:** fundador reinicia o Claude; então mudanças 35/36 e retomada da `4d019f00`.
+
+---
+
 ## 21/10/2026 (197) — Memória da máquina: proxy headroom com 2,6 GB; skill de autoteste nunca rodou
 
 **Fundador:** "libere tudo o que puder de memória… monte um plano" (aviso de bloqueio da `4d019f00`); depois: "verifique o que está acontecendo e resolva, está autorizado"; aceitou as mudanças 35/36 propostas; perguntou se o revisor final é skill, se o autoteste funcionou e pediu checklist.
