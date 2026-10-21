@@ -1,3 +1,13 @@
+## 21/10/2026 (194) — Teste pesado, 3ª tentativa: parada por falta de memória (não reiniciado)
+
+**Rodou:** sessão `6897a372` (cópia em `%TEMP%\nc-teste-pesado`), ~0,4 h. Até a parada: **6/56 etapas concluídas** (5 na 1ª tentativa), 3 rodando; executor **22 chamadas, máx. 6 por etapa** (média 3,1); **US$ 0,71** (analista 0,21; executor 0,34; avaliador 0,15); 28 `SESSION_PAUSED_NO_LLM`. Relatório parcial: `docs/relatorios/TESTE-PESADO-E1.md` (`--relatorio`, fase EXECUCAO).
+**Causa das pausas (achada e corrigida):** o FreeLLMAPI cortava a rota `custom/deepseek-v4-pro` em 120 s (padrão da imagem) e punha a chave em espera; latências medidas de 80–101 s. `PROVIDER_TIMEOUT_CUSTOM=300000` no `.env.freellmapi` (mudança 31); contêiner reiniciado; a sessão retomou sozinha (SUP1 funcionando).
+**Parada:** o Claude Code parou o comando por falta de memória (0,5 GB livres de 7,7 GB); os processos node seguiram órfãos e foram parados à mão (regra: não continuar/reiniciar sem o fundador). Maiores consumidores: Memory Compression 1,2 GB, WSL/Docker 0,8 GB (headroom 658 MB, nextcode-app 265 MB), Claude 317 MB, python 299 MB, VS Code ~260 MB.
+**Não feito, por decisão:** J2b + J2.7 e TS1 ficam depois do teste pesado (J8 da `DECISOES-AUTONOMAS-E1-3.md`: os números do teste podem mudar o desenho do J2b).
+**Próximo passo:** fundador libera memória (fechar VS Code, `docker stop nextcode-app` se não usar o app, fechar o que estiver em python) e manda rodar; o teste começa do zero.
+
+---
+
 ## 21/10/2026 (193) — SUP1, cache no elicitador (mudança 29) e R2 do analista (mudança 30)
 
 **Fundador:** "pode começar o SUP1 e implementar tudo o que precisar… tome a decisão por mim"; no meio, colou a doc de cache de prompt (PT) e pediu "implemente a utilização do cache assim que puder".
