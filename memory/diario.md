@@ -1,3 +1,10 @@
+## 21/10/2026 (199) — Headroom e 9router removidos (fundador: "pode remover o headroom todo… tire o 9router")
+
+**Removido:** 9router (`npm -g 9router@0.5.50` + 9 skills `~/.claude/skills/9router*`, cópia no scratchpad); headroom 0.31.0 do pip (Python 3.14); contêiner `headroom-default` e imagem (888 MB); plugin `headroom@headroom-marketplace` (configs + pastas); 7 variáveis de usuário do Windows (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` → 9router; `HEADROOM_*`); `.claude/.headroom_wrap_marker.json` do repositório. O NextCode não usa essas variáveis (conferido; o `src/core/headroom/context-pruner.ts` é código próprio e fica).
+**Falta (em uso por esta conversa):** headroom 0.36.5 do `uv`, `~/.local/bin/headroom.exe`, `~/.headroom` (123 MB) e o proxy :8787 → script `C:\Users\ortiz\limpar-headroom.cmd` para o fundador rodar depois de fechar o terminal; depois abrir só `claude`.
+
+---
+
 ## 21/10/2026 (198) — Headroom desligado na raiz (falta o proxy desta conversa)
 
 **Fundador:** "verifique novamente e derrube na raiz… mate tudo o que puder"; quer testes por projeto (não fixos), revisão final cega como skill e autoteste como skill; pediu recomendações justificadas do checklist.
