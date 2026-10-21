@@ -2,10 +2,10 @@
 
 **Objetivo:** auditar os 15 commits de código que o Claude fez sozinho em 19–20/10 (mudança 26, P1–P13 + correções D41 e D42) e dar veredito **aceito / aceito com ressalvas / rejeitado** por passo. **Você não corrige nada:** só confere, roda e relata.
 
-**Hash de partida:** `54b8c19`. **Hash final auditado:** o commit cujo assunto é `docs: auditoria da execucao autonoma 2 e prompt do Cursor (184)`.
+**Hash de partida:** `54b8c19`. **Hash final auditado:** o commit cujo assunto é `docs: prompt do Cursor alinhado ao HEAD (186)`. Os commits `917c364`, `dfe3d70` e esse último são só de documentação (auditoria, revisão da pasta docs, este prompt).
 
 ## Travas (obrigatórias)
-- **T-A:** `git log -1 --format=%s` = `docs: auditoria da execucao autonoma 2 e prompt do Cursor (184)`; `git status --short` só ` M .claude/.headroom_wrap_marker.json` e ` M .serena/project.yml` (não são seus; não toque). Diferente → PARE.
+- **T-A:** `git log -1 --format=%s` = `docs: prompt do Cursor alinhado ao HEAD (186)`; `git status --short` só ` M .claude/.headroom_wrap_marker.json` e ` M .serena/project.yml` (não são seus; não toque). Diferente → PARE.
 - **R1 — nada fora do prompt.** PODE CRIAR só `docs/relatorios/AUDITORIA-E1-producao-cursor.md`. **PROIBIDO** alterar qualquer outro arquivo (código, testes, skills, scripts, referência, diário, os relatórios do Claude). Achou defeito → escreva no seu relatório; não corrija.
 - **R2 — relatório** por passo: veredito, evidência (`arquivo:linha`, saída de comando colada), o que não conseguiu verificar.
 - **R3 — só dado.** "Funciona" só com saída colada; não sabe → "não verificado".

@@ -1,3 +1,10 @@
+## 20/10/2026 (186) — Prompt do Cursor alinhado ao HEAD
+
+**Feito:** `docs/prompts/AUDITORIA-E1-producao-cursor.md` — a trava T-A exigia o commit (184) como último; depois do (185) o Cursor pararia na largada. Agora T-A aponta este commit (186) e o prompt avisa que `917c364`, `dfe3d70` e (186) são só de docs. Prompt entregue ao fundador.
+**Próximo passo:** fundador roda a auditoria no Cursor; o Claude fecha as ressalvas; depois o teste pesado.
+
+---
+
 ## 20/10/2026 (185) — Revisão da pasta docs: unicidade da evolução e o que falta
 
 **Pedido do fundador:** revisar tudo em `docs/`, conferir a unicidade da evolução e se falta implementar algo.
