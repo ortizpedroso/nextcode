@@ -224,7 +224,8 @@ export default function DashboardOrchestrator() {
         setMessages([]);
         setConsoleLogs((prev) => [
           ...prev,
-          `[PROJETO] Projeto "${resData.project.name}" ${resData.project.path ? `(Pasta: ${resData.project.path})` : ""} cadastrado!`,
+          // PJ1.5 (smoke): abrir uma pasta já cadastrada reabre o mesmo projeto (`reopened`), não cria outro.
+          `[PROJETO] Projeto "${resData.project.name}" ${resData.project.path ? `(Pasta: ${resData.project.path})` : ""} ${resData.reopened ? "reaberto (já estava cadastrado)." : "cadastrado!"}`,
         ]);
       }
     } catch (err) {

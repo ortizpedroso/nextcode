@@ -1,3 +1,13 @@
+## 20/10/2026 (189) — PJ1.5: smoke na tela feito (4/4)
+
+**Feito:** navegador real (Claude no Chrome) contra `npm run dev` na porta 3101 com cópia do banco e executor desligado; projeto de teste em pasta temporária. Arquivar/desarquivar ✅; reabrir a mesma pasta com outro nome não duplica ✅; apagar "só do NextCode" mantém a pasta ✅; sessão sem projeto recusa a aprovação e, vinculada, passa da trava ✅. Gasto US$ 0,0000 (2 Jev). `dev.db` intocado.
+**Defeito corrigido:** painel dizia "cadastrado!" ao reabrir pasta (`page.tsx` ignorava `reopened`).
+**Não feito:** início da execução com Spec real depois de vincular (precisaria Spec paga; o bench cobre).
+**Lição de ambiente:** token local sai 1× por processo — abrir `localhost` e `127.0.0.1` no mesmo servidor deixa a 2ª aba sem acesso.
+**Próximo passo:** fila da §5.0 — teste pesado (aguarda Spec e D23 do fundador); depois J2b + J2.7.
+
+---
+
 ## 20/10/2026 (188) — Auditoria do Cursor da mudança 26 conferida e fechada
 
 **Cursor (`2d5f18b`):** aceito com ressalvas. Parte mecânica confere (HEAD 2× 136/909, D41/D42 falham sem a correção, bench P1–P4 ENTREGUE US$ 0,3847, `dev.db` intocado).

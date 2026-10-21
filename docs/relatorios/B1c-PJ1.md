@@ -133,3 +133,19 @@ Testes: `tests/intake/aprovacao-sem-projeto.test.ts`.
 **Próximo passo sugerido:** B1b (reordenar `EVALUATOR_CHAIN` em produção) após auditoria deste relatório.
 
 ---
+
+## PASSO PJ1.5 — Smoke na tela (feito 20/10 pelo Claude, navegador real)
+
+Ambiente: `npm run dev` na porta 3101 com **cópia** do banco na pasta temporária (`prisma/dev.db` intocado: mtime `2026-10-20 04:52:32` antes e depois), `NEXTCODE_WORKER_DISABLED=1` (nada executa), projeto de teste numa pasta temporária. Gasto: 2 chamadas ao Jev, US$ 0,0000.
+
+| # | Ação na tela | O que apareceu | Resultado |
+|---|---|---|---|
+| 1 | Criar `smoke-pj15` → menu → Arquivar → abrir "Arquivados" → Desarquivar | Projetos 3→2, Arquivados 1→2, `smoke-pj15` na lista de arquivados com "Desarquivar"; depois Projetos 2→3, Arquivados 2→1 | ✅ |
+| 2 | "Abrir Pasta Local" na pasta do `smoke-pj15` com **outro nome** (`nome-diferente`) | `POST /api/projects 200`; continua Projetos (3), nome antigo mantido; disco sem `smoke-pj15/nome-diferente` | ✅ (ver defeito a) |
+| 3 | Menu → Apagar projeto → "Remover só do NextCode" | Janela com as 2 opções e o caminho da pasta; `DELETE 200`; projeto some; pasta continua no disco com `package.json`, `README.md`, `.gitignore` | ✅ |
+| 4 | Sessão nova sem projeto → "Aprovo a spec" | "⚠️ Para executar, vincule esta sessão a um projeto com pasta…"; fase não muda | ✅ |
+| 4b | Sessão → "Anexar a um projeto" → `smoke-pj15` → "Aprovo a spec" | `PATCH 200`; sessão aparece dentro do projeto; a recusa do vínculo some e vem a próxima ("A Spec Canônica precisa ser revisada…") — a sessão de teste não tinha Spec | ✅ trava do vínculo; **início da execução com Spec real não feito aqui** (precisaria gerar Spec paga); coberto pelo bench, que sempre roda vinculado |
+
+**Defeitos achados:**
+- (a) o registro do painel dizia "cadastrado!" também ao **reabrir** uma pasta já cadastrada — `src/app/page.tsx` ignorava o `reopened: true` da API. Corrigido no mesmo commit ("reaberto (já estava cadastrado).").
+- (b) não é defeito do PJ1: o token de acesso local é entregue **uma vez por processo** (`/api/auth/session`); abrir o app em `localhost` e depois em `127.0.0.1` deixa a 2ª aba sem acesso (formulários fecham sem fazer nada, API responde 401). Comportamento de segurança já documentado na rota; registrado para quem for testar.
