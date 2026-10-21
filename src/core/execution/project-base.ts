@@ -279,3 +279,45 @@ export async function repairEnvironment(
   }
   return { changed: actions.length > 0, actions };
 }
+
+/** Versão que pode ir ao npm: faixa semver ou tag — nada de URL, git, `file:`, `npm:` ou "dono/repo". */
+export function isSafeVersionSpec(spec: unknown): boolean {
+  return typeof spec === "string" && spec.length > 0 && spec.length <= 64 && /^[\w.\-+^~<>=*| ]+$/.test(spec);
+}
+
+/**
+ * TR1 (6) — `package.json` com um dono só para cada coisa: o CONTEÚDO é da etapa do plano (a Spec
+ * decide scripts e pacotes; a base sem IA só cria o ponto de partida) e a INSTALAÇÃO é do harness.
+ * Teste real `8e2f2052`: a etapa 2 declarou `bullmq`, `vitest` e `tsx` e nada os instalou (a base
+ * já tinha rodado; `repairEnvironment` só vê o que o tsc acusa). Roda depois de toda promoção que
+ * mexe no package.json. Nome ou versão fora do padrão recusa a instalação inteira, porque
+ * `npm install` sem argumentos instala tudo o que está declarado.
+ */
+export async function installDeclaredDependencies(
+  projectRoot: string,
+  install: Installer = npmInstaller
+): Promise<{ installed: string[]; rejected: string[]; actions: string[] }> {
+  let pkg: Record<string, any>;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  } catch {
+    return { installed: [], rejected: [], actions: [] };
+  }
+  const declared: Record<string, unknown> = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+  const rejected = Object.entries(declared)
+    .filter(([name, spec]) => !isValidPackageName(name) || !isSafeVersionSpec(spec))
+    .map(([name]) => name);
+  if (rejected.length > 0) {
+    return { installed: [], rejected, actions: [`instalação recusada (nome ou versão fora do padrão): ${rejected.join(", ")}`] };
+  }
+  const missing = Object.keys(declared).filter(
+    (name) => !fs.existsSync(path.join(projectRoot, "node_modules", ...name.split("/"), "package.json"))
+  );
+  if (missing.length === 0) return { installed: [], rejected, actions: [] };
+  const r = await install(projectRoot, [], false);
+  return {
+    installed: r.success ? missing : [],
+    rejected,
+    actions: [`${r.success ? "instalado do package.json" : "falha ao instalar do package.json"}: ${missing.join(", ")}`],
+  };
+}

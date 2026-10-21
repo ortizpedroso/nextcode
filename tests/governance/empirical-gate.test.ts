@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -6,6 +6,7 @@ import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { promoteWithEmpiricalGate } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
+import type { Installer } from "@/core/execution/project-base";
 
 function makeProject(): { root: string; qm: QuarantineManager; cleanup: () => void } {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-gate-"));
@@ -160,6 +161,37 @@ describe("Trava T5/T4 — ESLint do projeto no portão empírico", () => {
       expect(await TerminalExecutionEngine.verifyProjectLint(base, ["x.ts"])).toBeNull();
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("TR1 (6) — promoção que mexe no package.json instala o que a etapa declarou", () => {
+  it("package.json promovido → instalador chamado; promoção sem package.json → não", async () => {
+    const build = vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue(null);
+    const lint = vi.spyOn(TerminalExecutionEngine, "verifyProjectLint").mockResolvedValue(null);
+    const { root, qm, cleanup } = makeProject();
+    const calls: string[][] = [];
+    const install: Installer = async (_cwd, packages) => {
+      calls.push(packages);
+      return { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 };
+    };
+    try {
+      qm.extractAndWriteCodeBlocks(
+        "T-PKG",
+        '```json\n// file: package.json\n{ "dependencies": { "bullmq": "^5" }, "scripts": { "worker": "tsx src/worker/index.ts" } }\n```',
+        ["package.json"]
+      );
+      const gate = await promoteWithEmpiricalGate(qm, "T-PKG", root, ["package.json"], { install });
+      expect(gate.passed).toBe(true);
+      expect(calls).toEqual([[]]);
+
+      qm.extractAndWriteCodeBlocks("T-SRC", "```typescript\n// file: c.ts\nexport const c = 3;\n```", ["c.ts"]);
+      await promoteWithEmpiricalGate(qm, "T-SRC", root, ["c.ts"], { install });
+      expect(calls).toHaveLength(1);
+    } finally {
+      build.mockRestore();
+      lint.mockRestore();
+      cleanup();
     }
   });
 });

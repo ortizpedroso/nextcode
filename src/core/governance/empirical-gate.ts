@@ -16,7 +16,7 @@
 import * as path from "path";
 import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
-import { repairEnvironment } from "../execution/project-base";
+import { installDeclaredDependencies, repairEnvironment, type Installer } from "../execution/project-base";
 
 export type EmpiricalStage = "typecheck" | "lint";
 
@@ -98,10 +98,10 @@ export async function promoteWithEmpiricalGate(
   taskId: string,
   projectRoot: string,
   filesScope: string[],
-  opts: { checkOnly?: boolean } = {}
+  opts: { checkOnly?: boolean; install?: Installer } = {}
 ): Promise<EmpiricalGateResult> {
   return withProjectBuildLock(projectRoot, async () => {
-    const result = await runEmpiricalGate(qm, taskId, projectRoot, filesScope);
+    const result = await runEmpiricalGate(qm, taskId, projectRoot, filesScope, opts.install);
     // AV1.4 (porteiro): no modo "só conferir", o projeto volta ao estado de antes mesmo quando passa —
     // a promoção de verdade só acontece depois da aprovação do avaliador.
     if (opts.checkOnly && !result.rolledBack) qm.rollbackPromotion(taskId);
@@ -113,7 +113,8 @@ async function runEmpiricalGate(
   qm: QuarantineManager,
   taskId: string,
   projectRoot: string,
-  filesScope: string[]
+  filesScope: string[],
+  install?: Installer
 ): Promise<EmpiricalGateResult> {
   {
     let promotedFiles = qm.promoteToMainRepo(taskId, projectRoot, filesScope) ? qm.lastPromotedFiles(taskId) : [];
@@ -124,6 +125,11 @@ async function runEmpiricalGate(
       promotedFiles = qm.lastPromotedFiles(taskId);
     }
     let preexistingFailure = false;
+
+    // TR1 (6): a etapa é dona do conteúdo do package.json; o harness instala o que ela declarou.
+    if (promotedFiles.some((f) => f.replace(/\\/g, "/") === "package.json")) {
+      await installDeclaredDependencies(projectRoot, install);
+    }
 
     // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
     // ambiente é corrigido (nunca o código) e o tsc roda mais uma vez antes de julgar.

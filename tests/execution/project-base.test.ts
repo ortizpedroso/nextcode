@@ -5,6 +5,8 @@ import path from "path";
 import {
   buildBaseManifest,
   ensureProjectBase,
+  installDeclaredDependencies,
+  isSafeVersionSpec,
   isValidPackageName,
   missingPackagesFromTsc,
   repairEnvironment,
@@ -110,5 +112,53 @@ describe("M1 — correção do ambiente a partir do tsc (nunca do código)", () 
       { packages: ["axios", "@scope/pkg"], dev: false },
       { packages: ["@types/pg"], dev: true },
     ]);
+  });
+});
+
+describe("TR1 (6) — package.json: conteúdo da etapa, instalação do harness", () => {
+  const writePkg = (dir: string, pkg: unknown) => fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify(pkg));
+  const fakeModule = (dir: string, name: string) => {
+    fs.mkdirSync(path.join(dir, "node_modules", ...name.split("/")), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules", ...name.split("/"), "package.json"), "{}");
+  };
+
+  it("caso do teste real 8e2f2052: etapa declarou bullmq, vitest e tsx → o harness instala os 3", async () => {
+    const dir = tmp();
+    writePkg(dir, {
+      dependencies: { next: "^15", bullmq: "^5" },
+      devDependencies: { typescript: "^5", vitest: "^2", tsx: "^4" },
+    });
+    for (const m of ["next", "typescript"]) fakeModule(dir, m);
+    const { calls, install } = fakeInstaller();
+    const res = await installDeclaredDependencies(dir, install);
+    expect(res.installed).toEqual(["bullmq", "vitest", "tsx"]);
+    expect(calls).toEqual([{ packages: [], dev: false }]);
+  });
+
+  it("tudo já instalado (inclusive com escopo) → não chama o npm", async () => {
+    const dir = tmp();
+    writePkg(dir, { dependencies: { "@prisma/client": "^5" } });
+    fakeModule(dir, "@prisma/client");
+    const { calls, install } = fakeInstaller();
+    expect((await installDeclaredDependencies(dir, install)).installed).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("versão por URL, git, file:, npm: ou dono/repo recusa a instalação inteira", async () => {
+    for (const spec of ["git+https://x/y.git", "file:../x", "npm:lodash@4", "dono/repo", "https://evil/x.tgz"]) {
+      const dir = tmp();
+      writePkg(dir, { dependencies: { bullmq: "^5", ruim: spec } });
+      const { calls, install } = fakeInstaller();
+      const res = await installDeclaredDependencies(dir, install);
+      expect(res.rejected).toEqual(["ruim"]);
+      expect(calls).toHaveLength(0);
+    }
+    expect(["^5", "~1.2.3", "1.2.3", ">=1 <2", "*", "latest", "5.x"].every(isSafeVersionSpec)).toBe(true);
+  });
+
+  it("sem package.json legível → não faz nada", async () => {
+    const { calls, install } = fakeInstaller();
+    expect((await installDeclaredDependencies(tmp(), install)).actions).toEqual([]);
+    expect(calls).toHaveLength(0);
   });
 });
