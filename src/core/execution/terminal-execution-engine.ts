@@ -17,12 +17,14 @@ export interface CommandResult {
  * empírico rodava um `tsc` inexistente. Só aceita caminho real; senão tenta `<cwd>/node_modules`.
  */
 export function resolveTscBin(
-  resolve: (id: string) => string = require.resolve,
+  resolve?: (id: string) => string,
   cwd: string = process.cwd()
 ): string | null {
   const candidates: string[] = [];
   try {
-    candidates.push(path.join(path.dirname(resolve("typescript/package.json")), "bin", "tsc"));
+    // `require` não existe quando o módulo roda como ESM (tsx): o ReferenceError cai no catch.
+    const doResolve = resolve ?? require.resolve;
+    candidates.push(path.join(path.dirname(doResolve("typescript/package.json")), "bin", "tsc"));
   } catch {
     /* segue para o node_modules do cwd */
   }

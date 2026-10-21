@@ -6,7 +6,8 @@
 **Mudança 34:** T10 reprovava por qualquer etapa com build falho, mesmo resolvido depois; agora `recheckFinalBuild` confere o projeto final (com `repairEnvironment`) e lista os erros reais.
 **Intervenções no projeto gerado (registradas p/ relatório):** schema.prisma completado com ~39 campos da Spec que a etapa 1 omitiu (só aditivo; `prisma validate` OK).
 **Medido:** tsc 0; suíte 139/925 com a política original (6 testes de teto falham só com o teto temporário de US$ 80, não commitado).
-**Próximo passo:** retomar a `4d019f00` com `scripts/retomar-sessao.ts` (app parado), ver o type-check final, corrigir o que for preciso, relatório ao fundador.
+**1ª retomada:** BLOQUEADA de novo, `require is not defined` — `resolveTscBin` usava `require.resolve` como valor padrão do parâmetro, que estoura fora do `try` quando o módulo roda como ESM (tsx). Corrigido (o `require` agora fica dentro do `try`); provado: sem a correção `ReferenceError: require is not defined in ES module scope`, com ela devolve o `tsc` real. tsc 0; suíte 139/925.
+**Próximo passo:** retomar a `4d019f00` de novo, ver o type-check final, corrigir o que for preciso, relatório ao fundador.
 
 ---
 
