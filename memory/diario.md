@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ## 20/10/2026 (188) — Auditoria do Cursor da mudança 26 conferida e fechada
 
 **Cursor (`2d5f18b`):** aceito com ressalvas. Parte mecânica confere (HEAD 2× 136/909, D41/D42 falham sem a correção, bench P1–P4 ENTREGUE US$ 0,3847, `dev.db` intocado).
@@ -6,16 +5,16 @@
 **Achado que ele não levantou:** P2 etapa 1 com 11 chamadas e 3 tentativas + 1 avaliador indisponível ("INVÁLIDA: rota"); meta é por etapa, a média 5,0 esconde. Fica para o teste pesado medir por etapa.
 **Fechado:** skill `avaliador` não promete mais rodada de polimento inexistente; TESTE PESADO 3 com chave sintética do Jev (falhava em worktree sem `.env`; prova: falha sem / passa com). tsc 0; suíte 136/909.
 **Aguarda o fundador:** D23 (recomendação: aceitar + passo para aliviar os 2 testes e2e); Spec do teste pesado. Branch `tr1-6` (TR1 6) a juntar ao main.
-=======
+
+---
+
 ## 20/10/2026 (187) — TR1 (6): package.json com um dono para cada coisa (branch tr1-6)
 
-**Por que numa branch:** o Cursor está auditando o main (a T-A dele exige o commit 186 no topo). Trabalho no worktree `C:projetos
-c-tr1-6`, branch `tr1-6`; entra no main só depois da auditoria.
-**Causa conferida (não suposta):** no projeto do teste real (`C:projetosmulti_gateway`), a etapa 2 (REQ-001, dona de package.json/tsconfig) declarou `bullmq`, `vitest` e `tsx`; nenhum dos 3 está em `node_modules` — a base sem IA já tinha instalado e o `repairEnvironment` só instala o que o tsc acusa.
+**Por que numa branch:** o Cursor estava auditando o main (a T-A dele exige o commit 186 no topo). Trabalho no worktree `C:/projetos/nc-tr1-6`, branch `tr1-6`; entra no main depois da auditoria.
+**Causa conferida (não suposta):** no projeto do teste real (`C:/projetos/multi_gateway`), a etapa 2 (REQ-001, dona de package.json/tsconfig) declarou `bullmq`, `vitest` e `tsx`; nenhum dos 3 está em `node_modules` — a base sem IA já tinha instalado e o `repairEnvironment` só instala o que o tsc acusa.
 **Feito:** `installDeclaredDependencies` (`project-base.ts`) chamada pelo portão (`empirical-gate.ts`) quando a promoção inclui `package.json`; `--ignore-scripts`; nome ou versão fora do padrão recusa a instalação inteira. Regra: conteúdo = etapa do plano; instalação = harness. Referência: TR1 (6) ✅.
-**Medido:** tsc 0; `project-base` + `empirical-gate` 19/19; o teste do portão **falha sem a correção** (`expected [] to deeply equal [ [] ]`). **Suíte inteira não rodada** (o Cursor pode estar rodando a dele; a máquina já ficou sem memória 3×) — rodar antes de juntar ao main.
-**Próximo passo:** depois da auditoria do Cursor: suíte inteira no branch, merge no main.
->>>>>>> a88f4b7 (fix(tr1-6): package.json com um dono para cada coisa; harness instala o que a etapa declarou (187))
+**Medido:** tsc 0; `project-base` + `empirical-gate` 19/19; o teste do portão **falha sem a correção** (`expected [] to deeply equal [ [] ]`).
+**Suíte inteira na branch (rebaseada sobre o 188):** tsc 0; **136/914** (909 + 5 novos). Juntado ao main (fast-forward).
 
 ---
 
