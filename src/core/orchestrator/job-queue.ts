@@ -17,7 +17,7 @@ import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckRep
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
-import { buildDeliveryDiagnosis, buildDeliveryReport, splitDefectsByEvidence } from "@/core/orchestrator/delivery-diagnosis";
+import { buildDeliveryDiagnosis, buildDeliveryReport, importantProblemsAsDefects, splitDefectsByEvidence } from "@/core/orchestrator/delivery-diagnosis";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
@@ -94,6 +94,9 @@ export async function enqueueSessionQueueJob(sessionId: string): Promise<string>
  */
 export async function claimJob(jobId: string, workerId: string): Promise<boolean> {
   const now = new Date();
+  // PJ2b: job de projeto fechado espera na fila até o projeto ser reaberto.
+  const owner = await prisma.job.findUnique({ where: { id: jobId }, select: { session: { select: { project: { select: { isArchived: true } } } } } });
+  if (owner?.session?.project?.isArchived) return false;
   const leaseMs = getJobLeaseMs();
   const lockedUntil = new Date(now.getTime() + leaseMs);
 
@@ -435,11 +438,17 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           };
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
           finalReviewVerdicts = review.reqVerdicts.map((v) => `${v.id}=${v.status}`);
+          if (revisaoFinalModo === "ativo" && review.executado && review.aprovado) {
+            deliveryRessalvas = importantProblemsAsDefects(review.problemas, review.defeitos);
+          }
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
             finalReviewQuestions = review.perguntasSpec ?? [];
             // Mudança 44: só o que tem prova (teste que falha, crítico, ou sem bancada para provar) reprova;
             // o resto acompanha o reparo, ou vira ressalva da entrega se for tudo o que sobrou.
-            const { bloqueiam, leitura } = splitDefectsByEvidence(review.defeitos);
+            const { bloqueiam, leitura: leituraDefeitos } = splitDefectsByEvidence(review.defeitos);
+            // Problemas "importante" (bug real que não chega a reprovar: ex.: 500 num cadastro) acompanham o
+            // reparo quando há rodada aberta e, na entrega, viram ressalva — antes ficavam só na trilha.
+            const leitura = [...leituraDefeitos, ...importantProblemsAsDefects(review.problemas, review.defeitos)];
             if (bloqueiam.length === 0) {
               deliveryRessalvas = leitura;
               TelemetryLogger.log({

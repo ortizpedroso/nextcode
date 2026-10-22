@@ -898,6 +898,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     const dispatchPromise = params.paidGateways
       ? smartRouter.dispatchWithFallback({
           messages,
+          sessionId: params.sessionId,
           tier: "heavy",
           gateways: params.paidGateways,
           allowedRoutedViaPrefixes: params.allowedRoutedViaPrefixes,
@@ -908,6 +909,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         })
       : smartRouter.dispatchWithFallback({
           messages,
+          sessionId: params.sessionId,
           tier: executorTier === "rapido" ? "fast" : "heavy",
           maxTokens,
           geminiKey: routerKeys.geminiKey ?? undefined,

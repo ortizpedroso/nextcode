@@ -1,4 +1,4 @@
-import type { FinalDefect } from "@/core/governance/final-reviewer";
+import { fileOfRef, type FinalDefect } from "@/core/governance/final-reviewer";
 
 /**
  * Mudança 43.4 — o aviso de entrega reprovada é montado com o diagnóstico (não com frase fixa). Fundador
@@ -47,6 +47,21 @@ export function splitDefectsByEvidence(defeitos: FinalDefect[]): { bloqueiam: Fi
   );
   const leitura = defeitos.filter((d) => d.prova !== "spec" && !bloqueiam.includes(d));
   return { bloqueiam, leitura, spec };
+}
+
+/** Problemas `importante` da revisão final como defeitos de leitura (sem repetir o que já é defeito). */
+export function importantProblemsAsDefects(
+  problemas: Array<{ severidade: string; arquivoLinha: string; descricao: string; req?: string }>,
+  defeitos: FinalDefect[]
+): FinalDefect[] {
+  return problemas
+    .filter((p) => p.severidade === "importante" && !defeitos.some((d) => d.defeito.includes(p.arquivoLinha)))
+    .map((p) => ({
+      ...(p.req ? { req: p.req } : {}),
+      arquivo: fileOfRef(p.arquivoLinha),
+      defeito: `revisão final [importante] ${p.arquivoLinha}: ${p.descricao}`,
+      prova: "sem_prova" as const,
+    }));
 }
 
 export interface DeliveryReportInput {

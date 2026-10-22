@@ -143,3 +143,25 @@ describe("44 — entrega decidida pela prova", () => {
     expect(buildDeliveryReport({ reqs: ["REQ-001"], ressalvas: [], perguntasSpec: [] })).not.toContain("Ressalvas");
   });
 });
+
+describe("44 — problema importante acompanha o reparo e vira ressalva", () => {
+  it("vira defeito de leitura sem repetir defeito já listado; sem etapa dona, não trava o plano", async () => {
+    const { importantProblemsAsDefects } = await import("../../src/core/orchestrator/delivery-diagnosis.js");
+    const { planDeliveryRepair } = await import("../../src/core/orchestrator/delivery-repair.js");
+    const imp = importantProblemsAsDefects(
+      [
+        { severidade: "importante", arquivoLinha: "src/app/api/produtos/route.ts:7", descricao: "CARTAO não existe no enum → 500" },
+        { severidade: "importante", arquivoLinha: "src/lib/cobrancas-service.ts:197", descricao: "já é defeito" },
+        { severidade: "importante", arquivoLinha: "src/fora-do-plano.ts:1", descricao: "sem dona" },
+        { severidade: "menor", arquivoLinha: "src/a.ts:1", descricao: "estilo" },
+      ],
+      [provado, { ...provado, defeito: "revisão final: REQ-052 parcial (src/lib/cobrancas-service.ts:197)" }]
+    );
+    expect(imp.map((d) => d.arquivo)).toEqual(["src/app/api/produtos/route.ts", "src/fora-do-plano.ts"]);
+    expect(imp[0].prova).toBe("sem_prova");
+    const dona = { id: "n1", title: "Etapa 1", role: "worker", status: "completed", filesScope: JSON.stringify(["src/app/api/produtos/route.ts"]), payload: "{}", createdAt: new Date() };
+    const plan = planDeliveryRepair([dona as never], { missingFiles: [], unapprovedReqs: [], buildErrorLines: [], buildGapWithoutDetail: false, otherGaps: [], fileDefects: imp });
+    expect(plan.semDono).toEqual([]);
+    expect(plan.itens[0].defeitos).toHaveLength(1);
+  });
+});

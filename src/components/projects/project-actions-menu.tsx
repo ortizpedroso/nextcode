@@ -97,7 +97,7 @@ export function ProjectActionsMenu({
 
 
 
-          {/* Arquivar / Desarquivar */}
+          {/* PJ2b: fechar (guarda onde parou; a fila para) / reabrir (continua de onde parou) */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -107,7 +107,7 @@ export function ProjectActionsMenu({
             className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
           >
             <Archive className="w-3.5 h-3.5 text-slate-400" />
-            <span>{project.isArchived ? "Desarquivar" : "Arquivar"}</span>
+            <span>{project.isArchived ? "Reabrir projeto" : "Fechar projeto"}</span>
           </button>
 
           <div className="border-t border-slate-100 dark:border-slate-800 my-1" />

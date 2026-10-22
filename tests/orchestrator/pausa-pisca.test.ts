@@ -51,4 +51,20 @@ describe("mudança 42 — pausa que pisca vira bloqueio com aviso", () => {
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
     expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(1);
   });
+
+  it("F10: o aviso traz o erro do gateway da própria sessão, não o de outra", async () => {
+    const outra = await prisma.session.create({ data: { title: "Outra", phase: "EXECUCAO" } });
+    created.push(outra.id);
+    const s = await pausedWith(PAUSE_FLAP_LIMIT);
+    await prisma.telemetryLog.create({
+      data: { sessionId: s.id, action: "llm.gateway_failure", details: JSON.stringify({ gateway: "freellmapi", kind: "quota", status: 402, detail: "out_of_credits da minha sessao" }) },
+    });
+    await prisma.telemetryLog.create({
+      data: { sessionId: outra.id, action: "llm.gateway_failure", details: JSON.stringify({ gateway: "freellmapi", kind: "timeout", detail: "erro da outra sessao" }) },
+    });
+    await supervisePausedSessions(async () => true);
+    const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
+    expect(msg).toContain("out_of_credits da minha sessao");
+    expect(msg).not.toContain("erro da outra sessao");
+  });
 });

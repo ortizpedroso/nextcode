@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import { IncidentReporter } from "@/core/governance/incident-reporter";
 import {
@@ -111,7 +112,14 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
   while (isProcessing) {
     const currentSession = await prisma.session.findUnique({
       where: { id: sessionId },
+      include: { project: { select: { isArchived: true } } },
     });
+    // PJ2b: projeto fechado no meio da execução → para depois do lote atual; reabrir põe na fila de novo.
+    if (currentSession?.project?.isArchived) {
+      TelemetryLogger.log({ sessionId, action: "PROJECT_CLOSED_QUEUE_STOPPED", details: { processedCount } });
+      isProcessing = false;
+      break;
+    }
     if (
       !currentSession ||
       (currentSession.phase !== "EXECUCAO" &&

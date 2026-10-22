@@ -21,7 +21,13 @@ export async function PATCH(
     if (description !== undefined) dataToUpdate.description = description ? String(description).trim() : null;
     if (path !== undefined) dataToUpdate.path = path ? String(path).trim() : null;
     if (isPinned !== undefined) dataToUpdate.isPinned = Boolean(isPinned);
-    if (isArchived !== undefined) dataToUpdate.isArchived = Boolean(isArchived);
+    // PJ2b: arquivar = fechar (a fila para; guarda onde parou); desarquivar = reabrir e continuar.
+    if (isArchived !== undefined) {
+      const before = await prisma.project.findUnique({ where: { id }, select: { isArchived: true } });
+      const { closeProject, reopenProject } = await import("@/core/orchestrator/project-lifecycle");
+      if (Boolean(isArchived) && !before?.isArchived) await closeProject(id);
+      else if (!isArchived && before?.isArchived) await reopenProject(id);
+    }
 
     const project = await prisma.project.update({
       where: { id },

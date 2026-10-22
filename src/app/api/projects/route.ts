@@ -97,6 +97,11 @@ export async function POST(request: NextRequest) {
     }
     if (reopenedProject) {
       // PJ1.6b: reabrir só desarquiva — nome, descrição e fixado ficam como estavam.
+      // PJ2b: se estava fechado, reabre de verdade (onde parou no chat; execução volta à fila).
+      if (reopenedProject.isArchived) {
+        const { reopenProject } = await import("@/core/orchestrator/project-lifecycle");
+        await reopenProject(reopenedProject.id);
+      }
       const project = await prisma.project.update({
         where: { id: reopenedProject.id },
         data: { isArchived: false },

@@ -1294,6 +1294,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       const dispatchPromise = paidGateways
         ? smartRouter.dispatchWithFallback({
             messages: finalDispatchMessages,
+            sessionId: taskDb.sessionId,
             tier: "heavy",
             gateways: paidGateways,
             allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga,
@@ -1303,6 +1304,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           })
         : smartRouter.dispatchWithFallback({
             messages: finalDispatchMessages,
+            sessionId: taskDb.sessionId,
             // Nível escolhido pelo Jev no planejamento, com escalada a cada nova tentativa
             // (rápido → médio → pesado). rápido = FreeLLMAPI gratuito; médio/pesado = DeepSeek.
             tier: executorTier === "rapido" ? "fast" : "heavy",
@@ -1572,6 +1574,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           const retryRes = await (paidGateways
             ? smartRouter.dispatchWithFallback({
                 messages: retryMessages,
+                sessionId: taskDb.sessionId,
                 tier: "heavy",
                 gateways: paidGateways,
                 allowedRoutedViaPrefixes: policy.roteamentoPapeisCriticos.prefixosRotaPaga,

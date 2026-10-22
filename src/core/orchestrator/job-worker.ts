@@ -24,6 +24,9 @@ export function getWorkerPollMs(): number {
 
 const defaultProcessWorkerId = `worker-${crypto.randomUUID()}`;
 
+/** PJ2b: projeto fechado (arquivado) não é retomado, vigiado nem posto na fila pelo supervisor. */
+export const OPEN_PROJECT_SESSION = { OR: [{ projectId: null }, { project: { is: { isArchived: false } } }] };
+
 export function getProcessWorkerId(): string {
   return defaultProcessWorkerId;
 }
@@ -96,7 +99,7 @@ export async function superviseEvaluatorPauses(
   now: Date = new Date()
 ): Promise<number> {
   const sessions = await prisma.session.findMany({
-    where: { phase: "PAUSADA", phaseContext: { contains: "pausaAvaliador" } },
+    where: { phase: "PAUSADA", phaseContext: { contains: "pausaAvaliador" }, ...OPEN_PROJECT_SESSION },
     select: { id: true, phaseContext: true },
   });
   let resumed = 0;
@@ -179,6 +182,7 @@ export async function supervisePausedSessions(
         contains: "faseAntesDaPausa",
       },
       NOT: { phaseContext: { contains: "pausaAvaliador" } },
+      ...OPEN_PROJECT_SESSION,
     },
     select: { id: true },
   });
@@ -246,11 +250,19 @@ export async function supervisePausedSessions(
     // (Gateway 22/10: DeepSeek out_of_credits; a sessão piscava a cada 25 s). Bloqueia em vez de retomar.
     const flap = await countRecentNoLlmPauses(session.id, now);
     if (flap >= PAUSE_FLAP_LIMIT) {
-      const lastFailure = await prisma.telemetryLog.findFirst({
-        where: { action: "llm.gateway_failure", createdAt: { gte: new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS) } },
-        orderBy: { createdAt: "desc" },
-        select: { details: true },
-      });
+      // F10: o erro da própria sessão; o global (sem sessão, registros antigos) só na falta dele.
+      const since = new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS);
+      const lastFailure =
+        (await prisma.telemetryLog.findFirst({
+          where: { action: "llm.gateway_failure", sessionId: session.id, createdAt: { gte: since } },
+          orderBy: { createdAt: "desc" },
+          select: { details: true },
+        })) ??
+        (await prisma.telemetryLog.findFirst({
+          where: { action: "llm.gateway_failure", sessionId: null, createdAt: { gte: since } },
+          orderBy: { createdAt: "desc" },
+          select: { details: true },
+        }));
       let detalhe = "";
       try {
         const d = lastFailure?.details ? JSON.parse(lastFailure.details) : null;
@@ -283,6 +295,7 @@ export async function recoverOrphanExecutionSessions(): Promise<number> {
   const orphanSessions = await prisma.session.findMany({
     where: {
       phase: "EXECUCAO",
+      ...OPEN_PROJECT_SESSION,
       tasks: {
         some: {
           status: { in: ["pending", "failed", "running"] },
@@ -337,6 +350,7 @@ export async function superviseExecutionQueue(options?: {
   const orphanSessions = await prisma.session.findMany({
     where: {
       phase: "EXECUCAO",
+      ...OPEN_PROJECT_SESSION,
       tasks: {
         some: {
           status: { in: ["pending", "failed", "running"] },
@@ -436,7 +450,9 @@ export async function superviseSilentSessions(options?: {
     jobs: { none: { status: { in: string[] } } };
     tasks: { none: { status: string } };
     id?: { in: string[] };
+    OR: typeof OPEN_PROJECT_SESSION.OR;
   } = {
+    ...OPEN_PROJECT_SESSION,
     phase: { in: ["PLANEJAMENTO", "EXECUCAO", "VERIFICACAO"] },
     jobs: {
       none: {

@@ -322,7 +322,7 @@ export function Sidebar({
               onClick={() => setArchivedSectionOpen((v) => !v)}
               className="w-full flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider hover:text-slate-500"
             >
-              <span>Arquivados ({archivedProjects.length})</span>
+              <span>Fechados ({archivedProjects.length})</span>
               {archivedSectionOpen ? (
                 <ChevronDown className="w-3.5 h-3.5" />
               ) : (

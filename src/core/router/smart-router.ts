@@ -244,6 +244,8 @@ export interface DispatchOptions {
   allowedRoutedViaPrefixes?: string[];
   /** Tempo máximo de cada chamada aos gateways (padrão do `callGateway`: 120 s). A2.3b: o analista precisa de mais. */
   gatewayTimeoutMs?: number;
+  /** F10: sessão que pediu a chamada — a falha do gateway fica na trilha dela (o worker lê o erro certo). */
+  sessionId?: string;
 }
 
 export interface DispatchResult {
@@ -797,7 +799,8 @@ export class SmartRouter {
     signal?: AbortSignal,
     maxTokens?: number,
     allowedRoutedViaPrefixes?: string[],
-    timeoutMs?: number
+    timeoutMs?: number,
+    sessionId?: string
   ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
@@ -817,6 +820,7 @@ export class SmartRouter {
       ) {
         await attempt.response.body?.cancel().catch(() => {});
         TelemetryLogger.log({
+          sessionId,
           action: "llm.gateway_failure",
           details: {
             gateway: gw.id,
@@ -845,6 +849,7 @@ export class SmartRouter {
     lastGatewayFailure = `${label}: ${attempt.kind}${attempt.status ? ` HTTP ${attempt.status}` : ""} — ${attempt.detail}`;
     console.warn(`[ROUTER] ${lastGatewayFailure}. Tentando a próxima rota.`);
     TelemetryLogger.log({
+      sessionId,
       action: "llm.gateway_failure",
       details: { gateway: gw.id, requestedModel: model, kind: attempt.kind, status: attempt.status ?? null, detail: attempt.detail },
     });
@@ -1147,7 +1152,7 @@ export class SmartRouter {
         if (omniResult) return omniResult;
         continue;
       }
-      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes, options.gatewayTimeoutMs);
+      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes, options.gatewayTimeoutMs, options.sessionId);
       if ("response" in gatewayResult) return gatewayResult;
       // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
       // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.

@@ -190,7 +190,10 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   }
   for (const d of gaps.fileDefects ?? []) {
     const teste = d.teste ? { caminho: d.teste.caminho, conteudo: d.teste.conteudo, existente: d.teste.existente, saida: d.saida } : undefined;
-    const item = add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito, undefined, teste);
+    const owner = d.arquivo ? ownerOfFile(d.arquivo) : undefined;
+    // Mudança 44: problema "importante" só acompanha o reparo; sem etapa dona, fica de fora (não vira "sem dono").
+    if (!owner && d.defeito.startsWith("revisão final [importante]")) continue;
+    const item = add(owner, d.defeito, undefined, teste);
     if (!item) continue;
     for (const f of extraScopeFor(item.dona, [d.defeito], ownerOfFile)) {
       if (!item.escopoExtra.some((x) => norm(x) === norm(f))) item.escopoExtra.push(f);
