@@ -1,3 +1,12 @@
+## 22/10/2026 (213) — Execução autônoma 5 continua: provas re-rodadas, JV1, S3, P8 (T7 ligado)
+
+**Feito (commits):** `4971077` 44.2c prova anterior roda em toda verificação + importante na bancada + Docker fora reprova · `bb8b4a3` 44.7 JV1 (M3 em lotes; J23 e J2 desligados por medição; `docs/relatorios/JV1-revisao-jev.md`) · `151a35f` 44.9 S3 (elicitador reescrito, protocolo do executor só no código, `project-memory` → docs, papel desconhecido falha fechado, memória sem corte calado, M1/M4 removidos, bancada `clearMocks` — imagem `:2`) · `ed6a249` 44.10a P8 (pesquisa oficial T7 no elicitador; limiar de injeção 0,15 → 0,80 medido). Suíte 156/1017, tsc 0.
+**Gateway `4d019f00`:** rodada 5 entregou com o REQ-018 aberto (leitura variou) → causa corrigida (44.2c) → reaberto → 7 defeitos provados → contrato da etapa 14 estava errado (mock sem zerar) → `clearMocks` → passou → nova revisão: 7 provados (inclui `asaas-access-token` e regressão do comprovante 2×). Rodada 6 autorizada por delegação (log `scratchpad/g48.log`). Custo da sessão US$ 29,87.
+**Onde parou:** rodada 6 em segundo plano; próximo item E2: J11 (origem de cada REQ no pedido), J8 (lacunas obrigatórias), TR1 (7) correção por trecho, P5.4 (com dado).
+**Pendências do fundador:** pergunta de Spec do Gateway REQ-061 (regras exatas de ConfigTaxa: limite de parcelas, teto de taxa, obrigatoriedade).
+
+---
+
 ## 22/10/2026 (212) — Execução autônoma 5 (mudança 44): 44.1, 44.2, 44.4, 44.5, 44.8 feitos; Gateway na rodada 5
 
 **Fundador:** "não quero ajuste para passar nos testes… se está rígido, ajustar… continue e decida por mim… implemente tudo… dois relatórios no fim".
