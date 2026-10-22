@@ -80,3 +80,16 @@ Detalhe técnico, commits e provas: `AUDITORIA-E1-4.md`. Decisões que tomei por
 2. Clicar em **Retomar**: a rodada 3 termina e a verificação final roda de novo. Se ainda reprovar, a sessão para com o histórico das 3 rodadas (limite de tentativas automáticas).
 3. **Desligar as rotas de revenda no FreeLLMAPI:** `router9` (o 9router) e `electronhub` continuam ligadas lá dentro, e um pedido chegou a sair para elas. O modo automático não me deixou mudar o banco do FreeLLMAPI. Caminho: painel `http://localhost:3100`, em Chaves.
 
+## Retomada final do Gateway (22/10, depois da recarga)
+
+- A rodada 3 terminou: **5/5 reparos aprovados**, type-check **0 erros**, as **10 telas abriram**.
+- A revisão final caiu de **15 para 5 requisitos parciais**. O grave foi corrigido: com a chave própria do Asaas, a cobrança já funciona.
+- Os 5 que sobraram:
+  - falta o campo `destino` nas notificações;
+  - a cobrança aceita pagador sem e-mail e sem WhatsApp;
+  - o link de valor livre não tem campo para digitar o valor;
+  - dois arquivos de teste desatualizados.
+- A sessão parou porque as **3 rodadas automáticas acabaram** (a sua regra). O aviso diz "ajustar a Spec", mas os defeitos são de código.
+- Proposta (mudança 43): um botão **Autorizar mais uma rodada**, como o de verba. Custo estimado ~US$ 1,5. Não fiz sozinho porque muda a regra das 3 tentativas.
+- Custo desta retomada: US$ 1,48. Total da sessão: US$ 19,28.
+

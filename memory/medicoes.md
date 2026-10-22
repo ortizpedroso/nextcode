@@ -222,3 +222,7 @@ P1 ENTREGUE 10/10 US$ 0,0675 · P2 ENTREGUE 13/13 US$ 0,2134 (depois do `835e98f
 - Rodada 3: 7 reparos, 2 aprovados antes do DeepSeek `out_of_credits` (FreeLLMAPI 429 "All models exhausted").
 - Custo desde a reabertura US$ 3,56 (executor 2,06; avaliador 1,49; Jev 0,002).
 
+## 22/10 08:22 — Retomada final do Gateway (rodada 3)
+- 5/5 reparos aprovados; tsc 0; UI 10/10; revisão final 5 parciais (eram 15 → 14). US$ 1,48; sessão US$ 19,28.
+- FreeLLMAPI: falta de crédito põe pausa de 24 h na chave (`rate_limit_cooldowns`, `source: credit`), que fica depois da recarga até alguém limpar no painel.
+

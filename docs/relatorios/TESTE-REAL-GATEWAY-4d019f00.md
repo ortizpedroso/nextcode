@@ -85,3 +85,7 @@ Detalhe: `docs/relatorios/AUDITORIA-E1-4.md` §4 e §5.
 
 Detalhe: `docs/relatorios/AUDITORIA-E1-4.md` §9. Reaberta às 01:35 UTC → revisão final dentro do fluxo → **rodada 2: 13 reparos, 13 aprovados** → client do Prisma velho escondia 16 erros (mudança 41) → **rodada 3: 7 reparos, 2 aprovados** → DeepSeek `out_of_credits` → **BLOQUEADA com Retomar** (mudança 42) às 02:28. 59 etapas concluídas, 5 na fila. Custo desde a reabertura US$ 3,56; sessão ≈ US$ 17,8. **Próximo:** recarregar o crédito e Retomar.
 
+## Retomada final de 22/10 (08:22 UTC) — 5 REQ parciais depois de 3 rodadas
+
+Rodada 3: 5/5 aprovados; tsc 0; tela 10/10; revisão final **15 → 14 → 5 parciais** (REQ-003, 026, 033, 052, 055). BLOQUEADA por limite de 3 rodadas. Custo US$ 1,48; sessão US$ 19,28. Detalhe e proposta de rodada extra (mudança 43): `docs/relatorios/AUDITORIA-E1-4.md` §9.4–9.5.
+

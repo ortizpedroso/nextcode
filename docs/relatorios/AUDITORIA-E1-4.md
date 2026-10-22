@@ -163,3 +163,36 @@ Custo desde a reabertura: **US$ 3,56** (executor 2,06; avaliador 1,49; Jev 0,002
 1. **Crédito do DeepSeek** (pagamento): recarregar a conta usada pelo FreeLLMAPI (`custom` → `api.deepseek.com`) e clicar **Retomar** na sessão do Gateway.
 2. **Rotas de revenda ainda ligadas no FreeLLMAPI:** `router9` (o 9router que você mandou tirar em 21/10) e `electronhub` estão `enabled = 1`; o pedido do executor chegou a sair para `router9/deepseek` (a resposta foi recusada pelo NextCode, mas o envio aconteceu). Desligar foi **recusado pelo modo automático** (recurso compartilhado). Passo: painel do FreeLLMAPI (`http://localhost:3100`) → Chaves → desligar `router9` e `electronhub`.
 3. Entregar `docs/prompts/TESTE-E1-4.md` a outro LLM.
+
+### 9.4 Retomada final (22/10, 08:22–08:35 UTC) — depois da recarga do DeepSeek
+
+O fundador recarregou o DeepSeek, desligou `router9` e `electronhub` e liberou a pausa de 24 h que o FreeLLMAPI tinha posto na chave (tabela `rate_limit_cooldowns`, `source: credit`). Antes disso, uma retomada às 08:14 bloqueou em 1,5 min pela mudança 42 (comportamento certo).
+
+| Hora (UTC) | Evento | O que diz |
+|---|---|---|
+| 08:22:16 | `DESBLOQUEIO_HUMANO` → EXECUCAO | rodada 3: os 5 reparos que estavam na fila |
+| 08:24–08:30 | 5 × `NODE_EXECUTION_COMPLETED` | **5/5 aprovados** (etapas 26, 38, 31, 9, 27) |
+| 08:31:04 | `FINAL_BUILD_RECHECK` (client regerado) | **0 erros** |
+| 08:32:44 | `UI_CHECK_PASSED` | 10 páginas abertas no navegador |
+| 08:35:05 | `FINAL_REVIEW` (Sonnet) | **5 REQ parciais** (eram 15 na 1ª revisão e 14 na 2ª) |
+| 08:35:05 | `DELIVERY_REPAIR_EXHAUSTED` → BLOQUEADA | limite de 3 rodadas atingido |
+
+**Evolução da revisão final no Gateway:** 15 parciais (01:04) → 14 (01:38, depois da rodada 1 de tipos) → **5** (08:35, depois das rodadas 2 e 3). Corrigidos, entre outros: REQ-017 (chave própria do Asaas sem subconta: toda cobrança falhava), REQ-018 (webhook com status que regredia e cabeçalho errado), REQ-054/061 (taxas), REQ-059 (serializador), REQ-043 (URL do provedor exposta).
+
+**Os 5 que sobraram** (todos com arquivo e etapa dona):
+
+| REQ | Arquivo | Defeito |
+|---|---|---|
+| 003 | `prisma/schema.prisma:301-327` | `Notificacao` sem o campo `destino` da Spec |
+| 026 | `src/lib/cobrancas-service.ts:197-199` | cobrança aceita pagador sem e-mail e sem WhatsApp válidos |
+| 033 | `src/app/pagar/[slug]/page.tsx:429-433` | link de valor livre sem campo para o pagador digitar o valor (POST volta 400) |
+| 052 | `tests/cobrancas-service.test.ts:145-181` | o teste espera o erro do REQ-026 |
+| 055 | `tests/taxas.test.ts:83-153` | mocks usam campos antigos da `ConfigTaxa` (valores viram NaN) |
+
+Custo desta retomada: **US$ 1,48**. Total da sessão registrado: **US$ 19,28**.
+
+**Estado final:** BLOQUEADA, 64/64 etapas concluídas, 3 rodadas de reparo gastas. O aviso diz "ajustar a Spec", mas os 5 defeitos são de código, não da Spec. O caminho que não refaz o projeto é **autorizar mais uma rodada** (mudança 43, proposta, §9.5).
+
+### 9.5 Proposta — mudança 43 (aguarda o fundador)
+**Rodada extra autorizada pelo fundador.** Depois de 3 rodadas, o reparo para (regra das 3 tentativas). Hoje a única saída é ajustar a Spec, que gera uma versão nova e refaz o plano: caro, e errado quando o defeito é de código. Proposta: uma ação `authorize_repair_round` (como a `authorize_budget`), registrada na trilha (`REPAIR_ROUND_AUTHORIZED`). Ela libera **uma** rodada a mais por autorização, e o aviso de "3 rodadas gastas" passa a oferecer os dois caminhos. Estimativa para o Gateway: ~US$ 1,5 (5 reparos + revisão final). Não fiz sozinho porque muda a sua regra das 3 tentativas.
+
