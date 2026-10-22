@@ -309,6 +309,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         // Verificação de tela (decisão do fundador, 07/10): com páginas, só entrega se o site
         // gerar o build e abrir sem erro no celular e no desktop.
         let uiCheck: UiCheckReport | null = null;
+        let uiBuildDefects: Array<{ arquivo: string | null; defeito: string }> = [];
         const projectPath = sessionAfterQueue.project?.path;
         let finalBuildErrorLines: string[] = [];
         // Mudança 34: build reprovado só por etapas do meio → confere o projeto final de novo.
@@ -368,6 +369,11 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           if (!uiCheck.ok) {
             deliveryT10.passed = false;
             deliveryT10.gaps.push(`Verificação de tela reprovada (${uiCheck.stage}).`);
+            // Erro do next build com arquivo → defeito da etapa dona (J2b), em vez de lacuna sem dono.
+            uiBuildDefects = (uiCheck.buildErrors ?? []).map((e) => ({
+              arquivo: e.arquivo,
+              defeito: `verificação de tela (next build): ${e.arquivo}:${e.linha}: ${e.mensagem}`,
+            }));
             await prisma.message.create({
               data: { sessionId: job.sessionId, role: "assistant", content: describeUiCheckFailure(uiCheck) },
             });
@@ -492,9 +498,10 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 !g.startsWith("Requisitos não aprovados") &&
                 !g.startsWith("Type-check do projeto final") &&
                 !g.startsWith("Falha na verificação empírica de build") &&
-                !g.startsWith("revisão final")
+                !g.startsWith("revisão final") &&
+                !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
             ),
-            fileDefects: finalReviewDefects,
+            fileDefects: [...finalReviewDefects, ...uiBuildDefects],
           });
           if (!repair.started) {
             await applyPhaseEvent(

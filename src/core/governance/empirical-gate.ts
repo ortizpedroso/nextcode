@@ -16,7 +16,14 @@
 import * as path from "path";
 import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
-import { installDeclaredDependencies, repairEnvironment, type Installer } from "../execution/project-base";
+import {
+  installDeclaredDependencies,
+  repairEnvironment,
+  regeneratePrismaClient,
+  touchesPrismaSchema,
+  type Installer,
+  type PrismaRegenerator,
+} from "../execution/project-base";
 
 export type EmpiricalStage = "typecheck" | "lint";
 
@@ -135,10 +142,13 @@ export async function recheckFinalBuild(
   deps: {
     verify?: (root: string) => Promise<CommandResult | null>;
     repair?: (root: string, output: string) => Promise<{ changed: boolean }>;
+    regenerate?: PrismaRegenerator;
   } = {}
 ): Promise<FinalBuildRecheck> {
   const verify = deps.verify ?? ((root: string) => TerminalExecutionEngine.verifyProjectBuild(root, 120000));
   const repair = deps.repair ?? ((root: string, output: string) => repairEnvironment(root, output));
+  // O client do Prisma pode estar velho (schema mudado por uma etapa): a entrega julga com ele regerado.
+  await (deps.regenerate ?? regeneratePrismaClient)(projectRoot);
   let result = await verify(projectRoot);
   if (!result) return { checked: false, ok: false, errors: [] };
   if (!result.success) {
@@ -168,6 +178,8 @@ export async function promoteWithEmpiricalGate(
     // AV1.4 (porteiro): no modo "só conferir", o projeto volta ao estado de antes mesmo quando passa —
     // a promoção de verdade só acontece depois da aprovação do avaliador.
     if (opts.checkOnly && !result.rolledBack) qm.rollbackPromotion(taskId);
+    // O projeto voltou ao schema de antes (porteiro ou reprovação): o client volta junto.
+    if ((opts.checkOnly || result.rolledBack) && touchesPrismaSchema(filesScope)) await regeneratePrismaClient(projectRoot);
     return result;
   });
 }
@@ -194,6 +206,12 @@ async function runEmpiricalGate(
     if (promotedFiles.some((f) => f.replace(/\\/g, "/") === "package.json")) {
       await installDeclaredDependencies(projectRoot, install);
     }
+    // Schema do Prisma mudou → regera o client antes de cada tsc (e de novo a cada volta do arquivo).
+    const schemaTouched = touchesPrismaSchema(promotedFiles);
+    const regen = async () => {
+      if (schemaTouched) await regeneratePrismaClient(projectRoot);
+    };
+    await regen();
 
     // Etapa 1: type-check do projeto inteiro. Se faltar pacote/tipos ou o client do Prisma, o
     // ambiente é corrigido (nunca o código) e o tsc roda mais uma vez antes de julgar.
@@ -204,6 +222,7 @@ async function runEmpiricalGate(
     }
     if (after && !after.success) {
       qm.rollbackPromotion(taskId);
+      await regen();
       const baseline = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
       const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
       const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
@@ -224,6 +243,7 @@ async function runEmpiricalGate(
         };
       }
       qm.reapplyPromotion(taskId);
+      await regen();
       preexistingFailure = true;
       typecheckEnvironmentFailure = environmentFailure;
     }

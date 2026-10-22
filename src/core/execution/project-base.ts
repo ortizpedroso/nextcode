@@ -280,6 +280,24 @@ export async function repairEnvironment(
   return { changed: actions.length > 0, actions };
 }
 
+export type PrismaRegenerator = (projectRoot: string) => Promise<string | null>;
+
+/**
+ * Gateway real (22/10, reparo rodada 2): uma etapa mudou o `prisma/schema.prisma` e o client gerado
+ * ficou velho — o `tsc` conferiu contra o client antigo e passou, e o `next build` da verificação de
+ * tela (que gera do zero) reprovou. Toda mudança no schema regera o client antes do `tsc`.
+ */
+export const regeneratePrismaClient: PrismaRegenerator = async (projectRoot) => {
+  if (!fs.existsSync(path.join(projectRoot, "prisma", "schema.prisma"))) return null;
+  const r = await TerminalExecutionEngine.runCommand("npx prisma generate", projectRoot, 180000);
+  return r.success ? "prisma generate" : `prisma generate falhou: ${r.stderr.slice(-300)}`;
+};
+
+/** O caminho promovido é o schema do Prisma? */
+export function touchesPrismaSchema(files: string[]): boolean {
+  return files.some((f) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "") === "prisma/schema.prisma");
+}
+
 /** Versão que pode ir ao npm: faixa semver ou tag — nada de URL, git, `file:`, `npm:` ou "dono/repo". */
 export function isSafeVersionSpec(spec: unknown): boolean {
   return typeof spec === "string" && spec.length > 0 && spec.length <= 64 && /^[\w.\-+^~<>=*| ]+$/.test(spec);

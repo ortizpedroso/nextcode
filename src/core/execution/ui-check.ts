@@ -22,6 +22,29 @@ export interface UiCheckReport {
   /** Pasta com prints e logs. */
   outDir?: string;
   skipped?: boolean;
+  /** Erros do `next build` com arquivo e linha (para o reparo J2b achar a etapa dona). */
+  buildErrors?: NextBuildError[];
+}
+
+export interface NextBuildError {
+  arquivo: string;
+  linha: number;
+  mensagem: string;
+}
+
+/**
+ * Lê os erros do `next build` no run.log: "./src/app/admin/page.tsx:197:50" seguido de
+ * "Type error: …" (ou "Error: …"). Gateway real 22/10: o tsc passou com o client do Prisma velho
+ * e só o build da tela pegou o erro — sem arquivo, o reparo não achava dona e a sessão bloqueava.
+ */
+export function parseNextBuildErrors(log: string): NextBuildError[] {
+  const out: NextBuildError[] = [];
+  const clean = log.replace(/\u001b\[[0-9;]*m/g, "");
+  const re = /^\.?\/?((?:src|app|pages|lib|components|prisma)\/[^\s:]+):(\d+):\d+\s*\r?\n\s*((?:Type error|Error):[^\r\n]+)/gm;
+  for (const m of clean.matchAll(re)) {
+    out.push({ arquivo: m[1], linha: Number(m[2]), mensagem: m[3].trim().slice(0, 400) });
+  }
+  return out;
 }
 
 export type UiCheckRunner = (projectPath: string, pages: string[]) => Promise<UiCheckReport>;
@@ -96,6 +119,11 @@ export const dockerUiCheckRunner: UiCheckRunner = async (projectPath, pages) => 
   );
   try {
     const report = JSON.parse(fs.readFileSync(path.join(outDir, "report.json"), "utf8")) as UiCheckReport;
+    if (report.stage === "build" && !report.ok) {
+      const log = fs.existsSync(path.join(outDir, "run.log")) ? fs.readFileSync(path.join(outDir, "run.log"), "utf8") : "";
+      const buildErrors = parseNextBuildErrors(log);
+      if (buildErrors.length > 0) return { ...report, outDir, buildErrors };
+    }
     return { ...report, outDir };
   } catch {
     return {

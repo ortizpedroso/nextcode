@@ -4,6 +4,7 @@ import type { DispatchMessage, SmartRouter } from "@/core/router/smart-router";
 import { enforceSkillToolPermission, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
 import type { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { QuarantineManager as QuarantineManagerClass } from "@/core/governance/quarantine-manager";
+import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
 import { withProjectBuildLock } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
@@ -557,7 +558,9 @@ export async function defaultRunTypecheckInQuarantine(params: {
     const snapshot = new Map<string, string>(quarantinedFiles);
 
     qm.promoteToMainRepo(taskId, projectRoot, allowedScopeFiles);
+    const schemaTouched = touchesPrismaSchema(Array.from(quarantinedFiles.keys()));
     try {
+      if (schemaTouched) await regeneratePrismaClient(projectRoot);
       const buildRes = await TerminalExecutionEngine.verifyProjectBuild(projectRoot);
       if (!buildRes) {
         return "Verificação de tipos indisponível (tsconfig.json ausente).";
@@ -582,6 +585,7 @@ export async function defaultRunTypecheckInQuarantine(params: {
       ].join("\n");
     } finally {
       qm.rollbackPromotion(taskId);
+      if (schemaTouched) await regeneratePrismaClient(projectRoot);
       qm.prepareWorkspace(taskId);
       for (const [relPath, content] of snapshot.entries()) {
         qm.writeFile(taskId, relPath, content);
