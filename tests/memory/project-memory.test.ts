@@ -293,3 +293,14 @@ Descrição completa.`;
     });
   });
 });
+
+describe("S3 (mudança 44) — memória sem corte calado", () => {
+  it("seções longas: as 3 seções aparecem, cada uma com '(+N omitido(s))'; o documento cabe no teto", () => {
+    const muitos = (p: string) => Array.from({ length: 30 }, (_, i) => `${p} ${i + 1}`);
+    const doc = renderProjectMemoryDocument({ projectName: "X", sections: { diretrizes: muitos("d"), arquitetura: muitos("a"), licoes: muitos("l") } });
+    expect(doc).toContain("## 3. Armadilhas e Lições Aprendidas");
+    expect(doc).toContain("- l 1");
+    expect(doc.match(/omitido\(s\)/g)).toHaveLength(3);
+    expect(doc.split("\n").length).toBeLessThanOrEqual(MAX_MEMORY_LINES);
+  });
+});

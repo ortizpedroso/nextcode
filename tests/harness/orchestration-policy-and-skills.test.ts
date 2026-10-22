@@ -447,10 +447,8 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     for (const name of skillNames) {
       const skill = loadRoleSkill(name);
       expect(skill.name).toBe(name);
-      if (
-        name.startsWith("executor-") ||
-        name === "elicitador"
-      ) {
+      // S3 (mudança 44): só o executor tem ferramentas de verdade (laço); o chat do elicitador não dá nenhuma.
+      if (name.startsWith("executor-")) {
         expect(skill.ferramentas.length).toBeGreaterThan(0);
       } else {
         expect(skill.ferramentas.length).toBe(0);

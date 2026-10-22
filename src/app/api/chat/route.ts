@@ -23,7 +23,6 @@ import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { callElicitadorClaude } from "@/core/llm/elicitador-claude";
 import { recordLlmCost } from "@/core/llm/cost";
 import {
-  decideSpecReviewMessageIntent,
   decideSpecClarity,
   decideGraphifyEligibilityWithJev,
   evaluateChatFanOutWithJev,

@@ -44,7 +44,7 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
    - Proibido usar emojis como ícones funcionais.
 4. **Estilo: Tailwind CSS v4 já configurado pela base do projeto** (`postcss.config.mjs`, `globals.css` com `@import "tailwindcss";` importado no layout raiz). Use classes utilitárias do Tailwind; não instale outro framework de CSS nem crie `tailwind.config.js` (o v4 não precisa).
 5. **Performance (`react-best-practices`):** Evite waterfalls de fetch (`Promise.all` para buscas independentes) e nunca guarde estado de requisição em variável mutável de módulo.
-6. **Relatório no template do Microbrief (P12):** Depois dos blocos de código, escreva UM bloco `relatorio_executor` listando cada `REQ-xxx` do seu Microbrief com linhas reais do arquivo entregue:
+6. **Relatório no template do Microbrief (P12):** No `finish`, entregue UM bloco `relatorio_executor` listando cada `REQ-xxx` do seu Microbrief com linhas reais do arquivo entregue:
    ```yaml relatorio_executor
    reqs:
      - id: REQ-001
@@ -54,24 +54,3 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
    ```
    Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.
 
-## Protocolo de ferramentas
-
-Em CADA turno, responda com UM bloco contendo UMA ação ou uma LISTA de até 8 ações independentes `[{...}, {...}]` (executadas na ordem; os resultados voltam juntos no próximo turno). Junte no mesmo turno tudo o que não depende de resultado ainda não visto (várias leituras; várias gravações; gravar e depois `run_check`). `finish` vai SOZINHO, no último turno:
-```json acao
-{"ferramenta": "<nome>", "args": { ... }}
-```
-Ferramentas e args (nomes EXATOS):
-- `read_file`  `{"caminho": "src/x.ts"}`
-  Lê da quarentena da etapa se existir lá; senão, do projeto. Devolve até 12000 caracteres, com números de linha.
-- `list_files` `{"pasta": "src"}`
-  Lista recursiva no projeto, até 300 entradas, ignorando `node_modules`, `.next`, `.git` e `.nextcode`.
-- `grep` `{"padrao": "texto", "pasta": "src"}`
-  Busca literal (não regex), até 100 linhas no formato `arquivo:linha: trecho`.
-- `write_file` `{"caminho": "...", "conteudo": "..."}`
-  Grava UM arquivo inteiro NA QUARENTENA (`qm.writeFile`). Nunca no projeto.
-- `edit_file`  `{"caminho": "...", "trecho_antigo": "...", "trecho_novo": "..."}`
-  Edita NA QUARENTENA. O `trecho_antigo` precisa aparecer EXATAMENTE 1 vez. 0 ou 2+ ocorrências devolvem erro e não mudam nada. Se o arquivo ainda não está na quarentena e existe no projeto, copie para a quarentena antes de editar.
-- `run_check`  `{"comando": "typecheck"}`
-  Só `"typecheck"` neste item; `"test"` devolve `"não disponível neste item"`.
-- `finish` `{"relatorio_executor": "<o MESMO YAML do bloco relatorio_executor atual>"}`
-  Encerra o laço.

@@ -183,9 +183,11 @@ export function loadRoleSkill(
   const { frontmatter: fm, body } = split;
   const name = extractStringField(fm, "name") || path.basename(path.dirname(fullPath));
   const papelRaw = extractStringField(fm, "papel") || "executor";
-  const papel = (["elicitador", "analista", "executor", "avaliador"].includes(papelRaw)
-    ? papelRaw
-    : "executor") as SkillRoleKind;
+  // S3 (mudança 44): papel desconhecido falha fechado — antes virava "executor" calado, com escrita no escopo.
+  if (!["elicitador", "analista", "executor", "avaliador"].includes(papelRaw)) {
+    throw new Error(`skill "${name}": papel "${papelRaw}" não é um papel do harness (elicitador, analista, executor, avaliador)`);
+  }
+  const papel = papelRaw as SkillRoleKind;
 
   const clusterRaw = extractStringField(fm, "cluster");
   const cluster = (

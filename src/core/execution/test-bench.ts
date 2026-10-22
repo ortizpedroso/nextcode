@@ -10,7 +10,8 @@ import * as path from "path";
  * Usada pela revisão final para PROVAR um defeito (teste de reprodução que falha) e pelo reparo para
  * conferir que o defeito saiu (o mesmo teste passa). Imagem: `docker/test-bench`.
  */
-export const TEST_BENCH_IMAGE = "nextcode-test-bench:1";
+/** A versão sobe quando o conteúdo de docker/test-bench muda (a imagem nova é construída na 1ª execução). */
+export const TEST_BENCH_IMAGE = "nextcode-test-bench:2";
 const INSTALL_TIMEOUT_MS = Number(process.env.TEST_BENCH_INSTALL_TIMEOUT_MS) || 15 * 60_000;
 const RUN_TIMEOUT_MS = Number(process.env.TEST_BENCH_RUN_TIMEOUT_MS) || 5 * 60_000;
 /** Mesma versão do vitest do NextCode (instalada no cache quando o projeto não tem). */

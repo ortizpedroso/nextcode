@@ -10,6 +10,10 @@ export default {
     environment: "node",
     include: [".nextcode-repro/**/*.test.{ts,tsx,js,mjs}", "tests/**/*.test.{ts,tsx,js,mjs}", "src/**/*.test.{ts,tsx,js,mjs}"],
     exclude: ["**/node_modules/**"],
+    // Mudança 44: zera as chamadas registradas dos mocks entre casos (a implementação fica). Gateway 22/10:
+    // um contrato de reparo contava no 2º caso a chamada do 1º ("esperado 1, veio 2") e travava a etapa,
+    // porque o executor não pode mexer no teste. É o isolamento padrão de um teste bem escrito.
+    clearMocks: true,
     testTimeout: 10000,
     hookTimeout: 10000,
     pool: "forks",

@@ -15,6 +15,10 @@ describe("Trava T6 — relatório ao humano direcionado ao erro", () => {
     expect(classifyFailure("Auditoria cega (Tipo 2) indisponível — o auditor LLM não respondeu").key).toBe("auditor_unavailable");
     expect(classifyFailure("Falha no Validador Tipo 1: [MISSING MODULE ERROR] ...").key).toBe("missing_module");
     expect(classifyFailure("Timeout de resposta excedido na etapa da DAG").key).toBe("runtime");
+    // Mudança 44 (Gateway 22/10): o contrato do reparo falhando dizia "type-check reprovado, abra os erros TS".
+    expect(
+      classifyFailure("Verificação empírica (teste do contrato do reparo (bancada)) falhou — promoção desfeita: teste do contrato ainda falha — x.test.ts").key
+    ).toBe("repair_contract");
   });
 
   it("aponta erro persistente, erro exato, ação específica e dependentes bloqueados", () => {

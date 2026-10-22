@@ -8,7 +8,7 @@ Roda testes **vitest** do projeto gerado dentro de um contêiner. O código gera
 Ambiente `node` (sem navegador); alias `@/` = `src/`. Resultado em `<projeto>/.nextcode/test-bench/out/vitest.json`.
 
 ```bash
-docker build -t nextcode-test-bench:1 docker/test-bench
+docker build -t nextcode-test-bench:2 docker/test-bench
 npx tsx scripts/bancada-testes.ts C:/projetos/gateway --malicioso tests/taxas.test.ts
 ```
 

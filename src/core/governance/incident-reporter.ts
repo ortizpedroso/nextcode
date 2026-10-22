@@ -80,6 +80,16 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     },
   },
   {
+    // Mudança 43.3/44: a etapa de reparo só promove com o teste que prova o defeito passando.
+    match: /teste do contrato do reparo|teste do contrato ainda falha/i,
+    category: {
+      key: "repair_contract",
+      label: "Teste que prova o defeito ainda falha (contrato do reparo)",
+      humanAction:
+        "O código compila, mas o teste que prova o defeito continua falhando (a saída está abaixo). Confira primeiro se o próprio teste está certo (mock que não zera entre casos, expectativa diferente da Spec): se estiver errado, a revisão final escreve outro na próxima verificação — clique em **Retomar**. Se o teste estiver certo, o defeito é de código fora do alcance desta etapa: clique em **Re-tentar** (o escopo do reparo é recalculado pelos arquivos citados no defeito).",
+    },
+  },
+  {
     match: /Verifica[cç][aã]o emp[ií]rica|error TS/i,
     category: {
       key: "build",

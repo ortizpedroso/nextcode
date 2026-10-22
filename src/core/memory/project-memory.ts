@@ -62,8 +62,14 @@ export function writeProjectMemory(projectPath: string, content: string): boolea
 
     // Teto estrito de linhas (máx 50 linhas)
     const rawLines = content.trim().split(/\r?\n/);
-    const lines = rawLines.slice(0, MAX_MEMORY_LINES);
-    let sanitized = lines.join("\n").slice(0, MAX_MEMORY_BYTES).trimEnd() + "\n";
+    // S3 (mudança 44): corte nunca calado — a última linha diz quantas ficaram de fora.
+    const cortadas = Math.max(0, rawLines.length - MAX_MEMORY_LINES);
+    const lines = cortadas > 0 ? [...rawLines.slice(0, MAX_MEMORY_LINES - 1), `<!-- ${cortadas + 1} linha(s) cortada(s) pelo teto de ${MAX_MEMORY_LINES} -->`] : rawLines;
+    let sanitized = lines.join("\n");
+    if (Buffer.byteLength(sanitized, "utf8") > MAX_MEMORY_BYTES) {
+      sanitized = sanitized.slice(0, MAX_MEMORY_BYTES - 60).trimEnd() + "\n<!-- cortado pelo teto de bytes -->";
+    }
+    sanitized = sanitized.trimEnd() + "\n";
 
     fs.writeFileSync(memoryFilePath, sanitized, "utf8");
     return true;
@@ -79,6 +85,16 @@ export function renderProjectMemoryDocument(params: {
   projectName: string;
   sections: ProjectMemorySections;
 }): string {
+  // S3 (mudança 44): o teto de linhas é dividido entre as 3 seções; antes as do fim ("Armadilhas") sumiam
+  // caladas quando as primeiras eram longas (teste real: 66 linhas geradas, 41 gravadas).
+  const porSecao = Math.floor((MAX_MEMORY_LINES - 8) / 3) - 1;
+  const limitar = (itens: string[]) =>
+    itens.length > porSecao ? [...itens.slice(0, porSecao), `(+${itens.length - porSecao} omitido(s) — ver a Spec)`] : itens;
+  const sections = {
+    diretrizes: limitar(params.sections.diretrizes),
+    arquitetura: limitar(params.sections.arquitetura),
+    licoes: limitar(params.sections.licoes),
+  };
   const lines: string[] = [
     `# Memória do Projeto: ${params.projectName}`,
     `<!-- Atualizado automaticamente pelo NextCode. Máx: ${MAX_MEMORY_LINES} linhas -->`,
@@ -86,22 +102,22 @@ export function renderProjectMemoryDocument(params: {
     "## 1. Diretrizes e Regras do Fundador",
   ];
 
-  if (params.sections.diretrizes.length > 0) {
-    for (const d of params.sections.diretrizes) lines.push(`- ${d}`);
+  if (sections.diretrizes.length > 0) {
+    for (const d of sections.diretrizes) lines.push(`- ${d}`);
   } else {
     lines.push("- (Nenhuma restrição adicional registrada)");
   }
 
   lines.push("", "## 2. Decisões de Arquitetura e Contratos");
-  if (params.sections.arquitetura.length > 0) {
-    for (const a of params.sections.arquitetura) lines.push(`- ${a}`);
+  if (sections.arquitetura.length > 0) {
+    for (const a of sections.arquitetura) lines.push(`- ${a}`);
   } else {
     lines.push("- (Arquitetura inicial em definição)");
   }
 
   lines.push("", "## 3. Armadilhas e Lições Aprendidas");
-  if (params.sections.licoes.length > 0) {
-    for (const l of params.sections.licoes) lines.push(`- ${l}`);
+  if (sections.licoes.length > 0) {
+    for (const l of sections.licoes) lines.push(`- ${l}`);
   } else {
     lines.push("- (Nenhum bug recorrente ou armadilha reportada)");
   }

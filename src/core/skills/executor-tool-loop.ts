@@ -414,7 +414,8 @@ export function buildExecutorToolProtocolPrompt(): string {
     '- edit_file  {"caminho": "...", "trecho_antigo": "...", "trecho_novo": "..."}',
     "  Edita NA QUARENTENA. O trecho_antigo precisa aparecer EXATAMENTE 1 vez. 0 ou 2+ ocorrências devolvem erro e não mudam nada. Se o arquivo ainda não está na quarentena e existe no projeto, copie para a quarentena antes de editar.",
     '- run_check  {"comando": "typecheck"}',
-    '  Roda a verificação de tipos (tsc) do projeto com os arquivos da quarentena aplicados temporariamente. Só "typecheck" neste item; "test" devolve "não disponível neste item".',
+    '  "typecheck": verificação de tipos (tsc) do projeto com os arquivos da quarentena aplicados temporariamente.',
+    '  {"comando": "test"} só em etapa de reparo: roda na bancada isolada os testes que provam os defeitos (o contrato — não altere esses testes), até 4 vezes por etapa.',
     '- finish {"relatorio_executor": "<o MESMO YAML do bloco relatorio_executor atual>"}',
     "  Encerra o laço.",
     "",
@@ -1167,7 +1168,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         const comando = typeof args.comando === "string" ? args.comando.trim() : "";
         if (comando === "test") {
           if (!contractTests || contractTests.length === 0) {
-            toolOutput = "não disponível neste item";
+            toolOutput = "não disponível nesta etapa: \"test\" só existe em etapa de reparo (roda os testes que provam os defeitos)";
           } else if (contractTestRuns >= MAX_CONTRACT_TEST_RUNS) {
             toolOutput = `Limite de ${MAX_CONTRACT_TEST_RUNS} execuções de teste nesta etapa atingido. Corrija pelo que já viu e encerre com finish.`;
           } else {

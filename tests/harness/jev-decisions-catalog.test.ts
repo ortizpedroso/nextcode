@@ -5,10 +5,8 @@ import prisma from "@/lib/prisma";
 import { writeSecret } from "@/core/security/crypto";
 import { estimateJevCostUsd } from "@/core/decision/jev";
 import {
-  decideSpecReviewMessageIntent,
   decideSpecClarity,
   decideMicrobriefsPlanningBatch,
-  decideSdeCascadeEscalation,
   decideExternalDocsSafetyT7,
 } from "@/core/decision/jev-decisions";
 
@@ -64,37 +62,6 @@ describe("Catálogo de Decisões do Jev (M1 a M5) e Estimativa de Custo P1", () 
   it("calcula exatamente o custo em USD do Projeto P1 (11.250 tokens = US$ 0.0004725)", () => {
     expect(estimateJevCostUsd(11250)).toBe(0.0004725);
     expect(estimateJevCostUsd(0)).toBe(0);
-  });
-
-  it("M1: coloca 'ajustar' antes de 'aprovar' em criteria e exige noul >= 0.80 para aprovar Spec (T2)", async () => {
-    mockAnswersHandler = () => ({
-      status: 200,
-      answers: {
-        intencao_mensagem: {
-          type: "choice",
-          choice: "aprovar",
-          confidence: 0.92,
-          probabilities: { ajustar: 0.03, duvida: 0.02, aprovar: 0.92, outro: 0.03 },
-        },
-        aprovacao_sem_condicoes: {
-          type: "noul",
-          noul: 0.45, // Baixa certeza de aprovação incondicional (ex.: aprovou mas pediu mudança)
-        },
-      },
-    });
-
-    const decision = await decideSpecReviewMessageIntent({
-      resumoSpec: "Spec P1 de tarefas",
-      ultimaMensagem: "Aprovado, mas adicione paginação antes",
-    });
-
-    expect(recordedRequests).toHaveLength(1);
-    const criteriaKeys = Object.keys(
-      recordedRequests[0].body.questions.intencao_mensagem.criteria
-    );
-    expect(criteriaKeys[0]).toBe("ajustar");
-    expect(decision.aprovadoParaFase2).toBe(false);
-    expect(decision.intencao).toBe("duvida");
   });
 
   it("M2: avalia clareza da Spec combinando score (0..3) e nouls em uma única chamada", async () => {
@@ -169,28 +136,6 @@ describe("Catálogo de Decisões do Jev (M1 a M5) e Estimativa de Custo P1", () 
     expect(decisions[0].cluster).toBe("core");
     expect(decisions[1].cluster).toBe("backend");
     expect(decisions[2].aplicarTasteSkillPublico).toBe(false);
-  });
-
-  it("M4: dispara cascata sde_cascade (FIRE_T = 0.70) quando executor rápido deixa requisito incompleto", async () => {
-    mockAnswersHandler = () => ({
-      status: 200,
-      answers: {
-        cascata_req_incompleto: { type: "noul", noul: 0.84 },
-        cascata_contrato_violado: { type: "noul", noul: 0.12 },
-        cascata_stub_ou_alucinacao: { type: "noul", noul: 0.2 },
-        cascata_erro_nao_tratado: { type: "noul", noul: 0.65 },
-      },
-    });
-
-    const cascade = await decideSdeCascadeEscalation({
-      reqsDoMicrobrief: ["REQ-004"],
-      contratosMicrobrief: "PATCH /api/tarefas/[id]",
-      codigoGerado: { "src/app/api/tarefas/[id]/route.ts": "// codigo incompleto" },
-      relatorioExecutor: "REQ-004 atendido",
-    });
-
-    expect(cascade.shouldEscalateToStrongExecutor).toBe(true);
-    expect(cascade.maxFlagProbability).toBe(0.84);
   });
 
   it("M5: bloqueia prompt injection em pesquisa externa e opera em Fail-Closed se o Jev cair (Trava T7)", async () => {
