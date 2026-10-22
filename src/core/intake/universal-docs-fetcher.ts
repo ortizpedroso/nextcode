@@ -7,6 +7,7 @@
 
 import { safeFetch } from "@/core/security/safe-fetch";
 import { decideExternalDocsSafetyT7 } from "@/core/decision/jev-decisions";
+import { hasInjectionMarker } from "@/core/governance/injection-scan";
 
 export interface DocSearchResult {
   url: string;
@@ -294,10 +295,8 @@ export class UniversalDocsFetcher {
       budget.pagesUsed += 1;
       const truncatedContent = this.sanitizeDocHtml(candidate.content).slice(0, budget.maxCharsPerPage);
       const auth = this.scoreUrlAuthority(candidate.url);
-      const hasDeterministicInjection =
-        /ignore\s+(all\s+)?previous\s+instructions|system\s+prompt|you\s+must\s+now\s+act\s+as|disregard\s+all\s+rules/i.test(
-          truncatedContent
-        );
+      // J20 (mudança 44): a mesma lista de padrões do executor (uma fonte só), também em português.
+      const hasDeterministicInjection = hasInjectionMarker(truncatedContent);
 
       if (hasDeterministicInjection) {
         rejectedSources.push({ url: candidate.url, reason: "prompt_injection" });

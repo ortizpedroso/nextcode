@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { findInjectionMarkers, injectionWarningHeader } from "@/core/governance/injection-scan";
 import * as path from "path";
 import type { DispatchMessage, SmartRouter } from "@/core/router/smart-router";
 import { enforceSkillToolPermission, type LoadedRoleSkill } from "@/core/skills/skill-runtime";
@@ -1072,6 +1073,12 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
             } else {
               toolOutput = addLineNumbers(fs.readFileSync(abs, "utf8"));
             }
+          }
+          // J20 (mudança 44): texto que parece instrução para IA dentro do arquivo vai marcado como dado.
+          const marcadores = findInjectionMarkers(toolOutput);
+          if (marcadores.length > 0) {
+            toolOutput = injectionWarningHeader(caminho, marcadores) + toolOutput;
+            TelemetryLogger.log({ sessionId, action: "EXECUTOR_FILE_INJECTION_SUSPECT", details: { nodeId, caminho, marcadores } });
           }
         }
       } else if (ferramenta === "list_files") {
