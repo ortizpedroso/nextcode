@@ -542,6 +542,16 @@ async function rodarUmaExecucao(
   }
 
   await executeClaimedJob(startRes.jobId, workerId);
+  // Mudança 44: a entrega reprovada abre reparo (J2b) num job novo — o bench executava um job só e parava em
+  // EXECUCAO com as etapas de reparo na fila (22/10: P2 sem-jev, P3). Segue a fila até uma fase final.
+  for (let n = 0; n < 12; n++) {
+    const s = await prisma.session.findUniqueOrThrow({ where: { id: session.id }, select: { phase: true } });
+    if (["ENTREGUE", "BLOQUEADA", "PAUSADA"].includes(s.phase)) break;
+    const next = await prisma.job.findFirst({ where: { sessionId: session.id, status: "queued" }, orderBy: { createdAt: "asc" } });
+    if (!next) break;
+    if (!(await claimJob(next.id, workerId))) break;
+    await executeClaimedJob(next.id, workerId);
+  }
   // Esperar TelemetryLogger assíncrono
   await new Promise((r) => setTimeout(r, 1500));
 
@@ -744,7 +754,8 @@ async function rodarUmaExecucao(
   }
 
   await prisma.$disconnect().catch(() => {});
-  if (finalSession.phase !== "PAUSADA" && finalSession.phase !== "BLOQUEADA") {
+  // Mudança 44: preserva a pasta de qualquer iteração não entregue (EXECUCAO incluída) — a evidência sumia.
+  if (finalSession.phase === "ENTREGUE") {
     try {
       fs.rmSync(runRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     } catch {}
