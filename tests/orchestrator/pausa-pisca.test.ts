@@ -36,7 +36,7 @@ async function pausedWith(pauses: number) {
 describe("mudança 42 — pausa que pisca vira bloqueio com aviso", () => {
   it(`${PAUSE_FLAP_LIMIT} pausas por SEM_LLM em 10 min com o gateway de pé → BLOQUEADA, aviso com Retomar`, async () => {
     const s = await pausedWith(PAUSE_FLAP_LIMIT);
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("BLOQUEADA");
     const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
     expect(msg).toContain("responde mas não atende");
@@ -47,7 +47,7 @@ describe("mudança 42 — pausa que pisca vira bloqueio com aviso", () => {
 
   it("menos pausas → retoma como antes (LLM_VOLTOU + fila)", async () => {
     const s = await pausedWith(PAUSE_FLAP_LIMIT - 1);
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
     expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(1);
   });
@@ -62,7 +62,7 @@ describe("mudança 42 — pausa que pisca vira bloqueio com aviso", () => {
     await prisma.telemetryLog.create({
       data: { sessionId: outra.id, action: "llm.gateway_failure", details: JSON.stringify({ gateway: "freellmapi", kind: "timeout", detail: "erro da outra sessao" }) },
     });
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
     expect(msg).toContain("out_of_credits da minha sessao");
     expect(msg).not.toContain("erro da outra sessao");

@@ -97,7 +97,7 @@ describe("Mudança 24 — avaliador fora do ar: pausa de 5 min, limite e bloquei
 
   it("a pausa genérica (algum gateway responde) NÃO retoma sessão pausada pelo avaliador", async () => {
     const s = await pausedSession(new Date("2099-01-01T00:00:00.000Z"));
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     expect((await prisma.session.findUniqueOrThrow({ where: { id: s.id } })).phase).toBe("PAUSADA");
   });
 });

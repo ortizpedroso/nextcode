@@ -50,10 +50,10 @@ describe("PJ2b — fechar e reabrir projeto", () => {
   it("fechado e pausado: o supervisor não retoma a sessão", async () => {
     const { p, s } = await projectWith("PAUSADA", { rodadasSemClareza: 0, voltasConferencia: 0, faseAntesDaPausa: "EXECUCAO" });
     await closeProject(p.id);
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("PAUSADA");
     await reopenProject(p.id);
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
   });
 });

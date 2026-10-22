@@ -307,18 +307,18 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     ).toBe(true);
 
     // Enquanto o gateway continua fora, o supervisor não retoma
-    const resumedWhileDown = await supervisePausedSessions(async () => false);
+    const resumedWhileDown = await supervisePausedSessions(async () => false, new Date(), { onlySessionIds: [session.id] });
     expect(resumedWhileDown).toBe(0);
 
     // Gateway volta a responder -> supervisor detecta, emite LLM_VOLTOU e reenfileira o Job
     gatewayOnline = true;
-    const resumedWhenUp = await supervisePausedSessions(async () => true);
+    const resumedWhenUp = await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [session.id] });
     expect(resumedWhenUp).toBeGreaterThanOrEqual(1);
 
     const sessionResumed = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
     expect(sessionResumed.phase).toBe("EXECUCAO");
 
-    const executedJobs = await runOnce("worker-recovered-1");
+    const executedJobs = await runOnce("worker-recovered-1", { onlySessionIds: [session.id] });
     expect(executedJobs).toBe(1);
 
     const sessionFinal = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
@@ -953,7 +953,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
 
     const startRes = await approveSpecAndStart(session.id, gatewaySpec);
     expect(startRes.ok).toBe(true);
-    await runOnce("worker-gateway-t10");
+    await runOnce("worker-gateway-t10", { onlySessionIds: [session.id] });
 
     const finalSession = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
     expect(finalSession.phase).toBe("ENTREGUE");

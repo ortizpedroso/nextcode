@@ -171,7 +171,9 @@ export async function countRecentNoLlmPauses(sessionId: string, now: Date = new 
  */
 export async function supervisePausedSessions(
   probeGatewayFn: () => Promise<boolean> = isAnyLlmGatewayReachable,
-  now: Date = new Date()
+  now: Date = new Date(),
+  /** Restringe às sessões dadas (testes em paralelo no mesmo banco não retomam a sessão um do outro). */
+  options?: { onlySessionIds?: string[] }
 ): Promise<number> {
   // Pausas por avaliador fora do ar têm supervisor próprio (superviseEvaluatorPauses): a sonda genérica
   // de "algum gateway responde" as retomaria na hora com o DeepSeek de pé.
@@ -183,6 +185,7 @@ export async function supervisePausedSessions(
       },
       NOT: { phaseContext: { contains: "pausaAvaliador" } },
       ...OPEN_PROJECT_SESSION,
+      ...(options?.onlySessionIds?.length ? { id: { in: options.onlySessionIds } } : {}),
     },
     select: { id: true },
   });
@@ -529,11 +532,16 @@ export async function superviseSilentSessions(options?: {
  * e executa até NEXTCODE_WORKER_CONCURRENCY (padrão 2) simultaneamente.
  * Retorna quantos jobs foram reservados e executados neste ciclo.
  */
-export async function runOnce(workerId: string = defaultProcessWorkerId): Promise<number> {
-  await supervisePausedSessions().catch(() => 0);
-  await superviseEvaluatorPauses().catch(() => 0);
-  await superviseExecutionQueue().catch(() => ({ orphanSessionsResumed: 0, stuckNodesReset: 0 }));
-  await superviseSilentSessions().catch(() => 0);
+export async function runOnce(
+  workerId: string = defaultProcessWorkerId,
+  /** Restringe supervisores e fila às sessões dadas (testes em paralelo no mesmo banco). */
+  options?: { onlySessionIds?: string[] }
+): Promise<number> {
+  const only = options?.onlySessionIds?.length ? options.onlySessionIds : undefined;
+  await supervisePausedSessions(undefined, undefined, only ? { onlySessionIds: only } : undefined).catch(() => 0);
+  if (!only) await superviseEvaluatorPauses().catch(() => 0);
+  if (!only) await superviseExecutionQueue().catch(() => ({ orphanSessionsResumed: 0, stuckNodesReset: 0 }));
+  await superviseSilentSessions(only ? { onlySessionIds: only } : undefined).catch(() => 0);
 
   const concurrency = getWorkerConcurrency();
   const now = new Date();
@@ -544,6 +552,7 @@ export async function runOnce(workerId: string = defaultProcessWorkerId): Promis
         { status: "queued" },
         { status: "running", lockedUntil: { lt: now } },
       ],
+      ...(only ? { sessionId: { in: only } } : {}),
     },
     orderBy: { createdAt: "asc" },
   });

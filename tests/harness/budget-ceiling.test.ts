@@ -56,7 +56,7 @@ describe("Teto de custo por projeto (US$ 0,50)", () => {
     expect(await prisma.message.count({ where: { sessionId: id, content: { contains: "Teto de custo atingido" } } })).toBe(1);
 
     // O supervisor da pausa por falta de IA NÃO retoma um bloqueio de teto.
-    await supervisePausedSessions(async () => true);
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [id] });
     s = await prisma.session.findUniqueOrThrow({ where: { id } });
     expect(s.phase).toBe("BLOQUEADA");
 
