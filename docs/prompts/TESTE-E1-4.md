@@ -6,10 +6,10 @@ Copie tudo entre as marcas `=== INÍCIO ===` e `=== FIM ===` para o outro LLM (C
 
 **Objetivo:** testar, de forma independente, o que o Claude implementou sozinho em 21–22/10/2026 (mudanças 39 a 42 da referência: 35 e 36, G1, G2, G3, J2b + J2.7, J3, TS1, 40 reabrir entrega, 41 client do Prisma e erro do next build, 42 pausa que pisca) e dar veredito **aceito / aceito com ressalvas / rejeitado** por item. **Você não corrige nada:** só confere, roda e relata.
 
-**Hash de partida:** `e5e1b76^` (o pai de `e5e1b76`). **Hash final testado:** o commit mais recente cujo assunto começa com `docs(relatorios): execucao autonoma 4`.
+**Hash de partida:** `e5e1b76^` (o pai de `e5e1b76`). **Hash final testado:** o commit mais recente cujo assunto começa com `docs(relatorios): execucao autonoma 4` (`4dee7d9`); os commits `docs(diario)`/`docs(prompts)` depois dele não mudam código.
 
 ## Travas (obrigatórias)
-- **T-A:** `git log -1 --format=%s` começa com `docs(relatorios): execucao autonoma 4`; `git status --short` vazio. Diferente → PARE e relate.
+- **T-A:** o último commit cujo assunto começa com `docs(relatorios): execucao autonoma 4` é o **hash final testado** (em 22/10: `4dee7d9`); **depois dele só pode haver** commits `docs(diario)` e `docs(prompts)` (o gancho do diário e ajustes deste prompt) — confira com `git log --format="%h %s" 4dee7d9..HEAD`; `git status --short` vazio. Diferente → PARE e relate.
 - **R1 — nada fora do prompt.** PODE CRIAR só `docs/relatorios/TESTE-E1-4-<seu-nome>.md`. **PROIBIDO** alterar qualquer outro arquivo (código, testes, skills, scripts, configuração, referência, diário, relatórios do Claude). Achou defeito → escreva no relatório; não corrija.
 - **R2 — relatório por item:** veredito, evidência (`arquivo:linha` e saída de comando **colada**), o que não conseguiu verificar.
 - **R3 — só dado.** "Funciona" só com saída colada; não sabe → "não verificado".
