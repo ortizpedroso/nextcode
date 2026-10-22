@@ -11,8 +11,7 @@ import {
 } from "@/core/orchestrator/node-executor";
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
 import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
-import type { PriorProof } from "@/core/governance/defect-reproducer";
-import { readRepairPayload } from "@/core/orchestrator/repair-payload";
+import { loadPriorProofs } from "@/core/orchestrator/prior-proofs";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -54,47 +53,7 @@ export function getJobLeaseMs(): number {
  * Enfileira um Job "session_queue" em status "queued" com activeKey = sessionId.
  * Se já houver um job ativo para a sessão (P2002 em activeKey), devolve o id do job existente.
  */
-/**
- * Mudança 44: provas anteriores da sessão — testes que reproduziram defeitos na revisão final
- * (`FINAL_REVIEW_PROOFS`) e contratos das etapas de reparo. Sem repetir conteúdo; as 20 mais recentes.
- */
-export async function loadPriorProofs(sessionId: string): Promise<PriorProof[]> {
-  const out: PriorProof[] = [];
-  const seen = new Set<string>();
-  const push = (p: PriorProof) => {
-    if (!p.conteudo || seen.has(p.conteudo)) return;
-    seen.add(p.conteudo);
-    out.push(p);
-  };
-  const logs = await prisma.telemetryLog.findMany({
-    where: { sessionId, action: "FINAL_REVIEW_PROOFS" },
-    orderBy: { createdAt: "desc" },
-    select: { details: true },
-  });
-  for (const l of logs) {
-    try {
-      for (const p of (JSON.parse(l.details || "{}").provas ?? []) as PriorProof[]) push(p);
-    } catch {
-      // registro ilegível: ignora
-    }
-  }
-  const nodes = await prisma.taskNode.findMany({ where: { sessionId }, orderBy: { createdAt: "desc" }, select: { title: true, payload: true, filesScope: true } });
-  for (const n of nodes) {
-    const rep = readRepairPayload(n.payload);
-    for (const t of rep?.testesReproducao ?? []) {
-      if (t.existente) continue;
-      const escopo = (() => {
-        try {
-          return (JSON.parse(n.filesScope || "[]") as string[]).filter((f) => !/(^|\/)(tests?|__tests__)\//.test(f));
-        } catch {
-          return [];
-        }
-      })();
-      push({ caminho: t.caminho, conteudo: t.conteudo, arquivo: escopo[0] ?? null, defeito: `contrato do "${n.title}" (${rep!.defeitos[0]?.slice(0, 200) ?? ""})` });
-    }
-  }
-  return out.slice(0, 20);
-}
+export { loadPriorProofs } from "@/core/orchestrator/prior-proofs";
 
 export async function enqueueSessionQueueJob(sessionId: string): Promise<string> {
   try {
@@ -639,6 +598,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 (g) =>
                   !g.startsWith("revisão final") &&
                   !g.startsWith("teste do projeto falha") &&
+                  // Mudança 44: todo defeito da revisão final (inclusive "prova anterior ainda falha") já aparece acima.
+                  !finalReviewGaps.has(g) &&
                   !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
               ),
               progresso,

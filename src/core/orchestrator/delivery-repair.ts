@@ -207,6 +207,30 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   return { itens: Array.from(byOwner.values()), semDono };
 }
 
+const MAX_REGRESSION_PROOFS_PER_STAGE = 6;
+
+/**
+ * Mudança 44: cada etapa de reparo leva, como regressão, as provas anteriores da sessão que tocam o seu
+ * escopo e que NÃO estão abertas nesta rodada (as que ainda falham já são defeito de alguma etapa — como
+ * regressão de outra, travariam essa outra para sempre).
+ */
+export async function attachRegressionProofs(sessionId: string, itens: RepairPlanItem[]): Promise<void> {
+  const { loadPriorProofs } = await import("@/core/orchestrator/prior-proofs");
+  const provas = await loadPriorProofs(sessionId).catch(() => []);
+  const abertas = new Set(itens.flatMap((i) => i.testes.map((t) => t.conteudo)));
+  provas.forEach((p, n) => {
+    if (!p.arquivo || abertas.has(p.conteudo)) return;
+    for (const item of itens) {
+      const escopo = repairScopeOf(item).map(norm);
+      if (!escopo.includes(norm(p.arquivo))) continue;
+      if (item.testes.filter((t) => t.regressao).length >= MAX_REGRESSION_PROOFS_PER_STAGE) continue;
+      if (item.testes.some((t) => t.conteudo === p.conteudo)) continue;
+      const base = p.caminho.replace(/^.*\//, "").replace(/(\.test)?\.(ts|tsx|js|mjs)$/, "").replace(/[^A-Za-z0-9_.-]+/g, "-").slice(0, 40);
+      item.testes.push({ caminho: `regressao-${n + 1}-${base}.test.ts`, conteudo: p.conteudo, regressao: true });
+    }
+  });
+}
+
 /** Escopo da etapa de reparo: o da dona + os arquivos citados nos defeitos (mudança 44). */
 export function repairScopeOf(item: RepairPlanItem): string[] {
   const base = scopeOf(item.dona);
@@ -321,6 +345,7 @@ export async function tryStartDeliveryRepair(
   if (!toPlanning.ok) return { started: false, tipo: "erro", motivo: `não foi possível abrir o reparo: ${toPlanning.reason}` };
 
   const idProjeto = session?.title || sessionId;
+  await attachRegressionProofs(sessionId, plan.itens);
   const repairId = (i: RepairPlanItem) => `${i.origemId}-reparo${rodada}`;
   const deps = repairDependencies(plan.itens, repairId);
   for (const item of plan.itens) {

@@ -21,6 +21,12 @@ export interface RepairContractTest {
   /** Saída da falha quando o defeito foi provado. */
   saida?: string;
   existente?: boolean;
+  /**
+   * Mudança 44: prova de rodada anterior que já passa e toca o escopo desta etapa — tem de continuar
+   * passando (o portão roda junto com o contrato). Gateway 22/10: a rodada 6 quebrou o reprocessamento do
+   * webhook consertado na 5 e só a verificação final viu.
+   */
+  regressao?: boolean;
 }
 
 /** Pedido à bancada para rodar só os testes do contrato. */

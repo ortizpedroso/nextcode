@@ -1169,6 +1169,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             repairPayload.testesReproducao
               .map(
                 (t) =>
+                  (t.regressao ? "[REGRESSÃO — já passava; tem de continuar passando] " : "") +
                   `--- ${t.existente ? t.caminho : `.nextcode-repro/${t.caminho}`}${t.existente ? " (teste do projeto)" : ""} ---\n${t.conteudo}` +
                   (t.saida ? `\n\nSaída da falha:\n${t.saida.slice(0, 2000)}` : "")
               )
