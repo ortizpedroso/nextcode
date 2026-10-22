@@ -1,3 +1,14 @@
+## 23/10/2026 (217) — Crédito de volta; mudança 45; bench P3/P4 com as correções
+
+**Fundador:** "tem crédito"; perguntas do Gateway (REQ-061/064) "têm que pegar da documentação do Asaas… o gateway é somente um teste, temos que testar o nextcode".
+**Feito (commit):** `89b47cf` mudança 45 — a dúvida de Spec da revisão final passa pela documentação oficial (T7) antes de virar pergunta; só é pergunta a regra do negócio que nem a Spec nem a documentação decidem; `REPAIR_ROUND_AUTHORIZED` gravado esperando (estado do limite de rodadas). Suíte 162/1045, tsc 0.
+**Bench com as correções de `71c258a`:** P3 com Jev ENTREGUE 12/12 US$ 0,31 (antes 0/12); P3 sem Jev ENTREGUE 12/12 US$ 0,18; P4 com Jev ENTREGUE 12/12 US$ 0,09; P4 sem Jev rodando.
+**Onde parou:** esperando o P4 sem Jev (log `scratchpad/bench-j4d.log`).
+**Próximo passo:** fechar o J4 (P1–P4, com × sem Jev) → Gateway `4d019f00` rodada 8 (revisão já consulta a doc do Asaas) → aceite do Gateway → atualizar AUDITORIA/IMPLEMENTADO-E5.
+**Pendências do fundador:** nenhuma bloqueante (as perguntas REQ-061/064 passam a ser respondidas pela documentação); publicar o CI quando quiser; apagar a pasta vazia `C:/projetos/nextcode-43` pelo Explorer.
+
+---
+
 ## 22/10/2026 (216) — Execução autônoma 5 fechada até o limite do crédito da Anthropic
 
 **Feito (commits):** `71c258a` testador não presume tecnologia + revisão final que não rodou bloqueia (Retomar) · `bacbd2e` produção sem vulnerabilidade (npm audit --omit=dev 0; postcss 8.5.31 via overrides; `next build` ok) · `736b3d0` pasta de trabalho da bancada fora do projeto (testes escondidos fora do alcance do executor) · `95ec13c` relatórios finais `AUDITORIA-E5.md`, `IMPLEMENTADO-E5.md`, `DECISOES-AUTONOMAS-E5.md` (E5-D1…D35), referência §9.8 e ▶ AGORA. Suíte 162/1044, tsc 0. Cópia de trabalho `../nextcode-43` desregistrada e branch `mudanca-43` apagada.
