@@ -45,11 +45,13 @@ services:
     # "FATAL ERROR: Reached heap limit" (OOM) exatamente no padrão de uso do NextCode
     # (contextos longos via /v1/chat/completions). Fonte: README "Docker" e
     # docs/reference/ENVIRONMENT.md (OMNIROUTE_MEMORY_MB).
-    image: diegosouzapw/omniroute:latest
+    # E6 (mudança 44): versão fixa por digest (consultado no registro em 22/10/2026); trocar só de propósito.
+    image: diegosouzapw/omniroute@sha256:b08a12e876baa8a5ccadd1ebbe346fe7267dba3b1c9f4fd6bb02070fae41ab6c
     container_name: nextcode-omniroute
     stop_grace_period: 40s
     ports:
-      - "20128:20128"
+      # E6 (mudança 44): só loopback, como os outros serviços (antes publicava em todas as interfaces).
+      - "127.0.0.1:20128:20128"
     environment:
       - PORT=20128
       - OMNIROUTE_MEMORY_MB=8192
@@ -70,7 +72,8 @@ services:
     # Gateway de LLM gratuito (34 provedores, fallback com cooldown e cota por chave).
     # Rota primária do NextCode; o OmniRoute é a segunda rota (ver docs/LLM-GATEWAYS.md).
     # Porta 3100 no host: a 3001 (padrão da imagem) é a do NextCode.
-    image: ghcr.io/tashfeenahmed/freellmapi:latest
+    # E6 (mudança 44): versão fixa — o digest da imagem em uso nesta máquina em 22/10/2026.
+    image: ghcr.io/tashfeenahmed/freellmapi@sha256:7d0334cb683aa693d3743549da914bf8500aaf3cdc091c73b5b508c21c7b4aab
     container_name: nextcode-freellmapi
     env_file:
       - .env.freellmapi

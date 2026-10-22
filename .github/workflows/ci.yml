@@ -1,0 +1,39 @@
+# E6 (mudança 44): verificação do NextCode a cada push/PR — os mesmos passos rodados localmente em cada commit
+# (tsc + vitest), mais a checagem de segredos e o npm audit das dependências de produção.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dependências
+        run: npm ci
+
+      - name: Nenhum segredo em texto puro
+        run: npm run check:secrets
+
+      - name: Tipos (tsc)
+        run: npx tsc --noEmit -p .
+
+      - name: Banco de teste (prisma/test.db)
+        run: npx prisma db push --skip-generate
+        env:
+          DATABASE_URL: file:./test.db
+
+      - name: Testes (vitest)
+        run: npx vitest run
+
+      - name: Vulnerabilidades das dependências de produção
+        run: npm audit --omit=dev --audit-level=high
