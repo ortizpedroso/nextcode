@@ -1,3 +1,13 @@
+## 23/10/2026 (219) — Prompt do teste independente (Antigravity) e §5.0 com status reais
+
+**Fundador:** "ainda tem dúvida em algum ponto? o objetivo é testar o nextcode, ver os bugs e vulnerabilidades e corrigir… o gateway é somente um teste… me dê o prompt para rodar no Antigravity".
+**Feito (commit):** `faa1f59` — `docs/prompts/TESTE-E5.md` (teste adversarial das mudanças 43–45: falha sem a correção em 12 itens, caça a vulnerabilidades em 9 frentes, revisão das decisões E5-D1…D35, controles com LLM até US$ 1,00; só cria `docs/relatorios/TESTE-E5-<nome>.md`); tabela §5.0 com os status reais (11 linhas estavam ⬜ apesar de entregues na 44).
+**Onde parou:** Gateway `4d019f00` rodada 8 em segundo plano (teste de carga); Antigravity pode começar já (hash final testado `faa1f59`).
+**Próximo passo:** enquanto o Antigravity testa, nada de commit no `main` (T-A); trabalho seguinte numa cópia (`git worktree`): P5.4 com dado, HTTPS local e Trivy no CI, troca das versões principais de desenvolvimento (vitest 5, tailwind 4). Depois: auditar o relatório dele (§8.5) e corrigir o que proceder.
+**Pendências do fundador:** colar o prompt no Antigravity; publicar o CI quando quiser; apagar a pasta vazia `C:/projetos/nextcode-43` pelo Explorer.
+
+---
+
 ## 23/10/2026 (218) — J4 e bench final fechados; Gateway rodada 8
 
 **Feito (commit):** `063eb9f` J4/bench final registrados (referência 44.6 e 44.14 [x], AUDITORIA-E5, IMPLEMENTADO-E5, medicoes): 8/8 ENTREGUE, aceite 47/47; com Jev US$ 0,75 × sem US$ 1,00 (qualidade igual; P3 inverteu; 1 repetição = indicativo).
