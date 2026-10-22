@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import prisma from "@/lib/prisma";
 import type { TaskNode } from "@prisma/client";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
@@ -214,10 +216,29 @@ const MAX_REGRESSION_PROOFS_PER_STAGE = 6;
  * escopo e que NÃO estão abertas nesta rodada (as que ainda falham já são defeito de alguma etapa — como
  * regressão de outra, travariam essa outra para sempre).
  */
-export async function attachRegressionProofs(sessionId: string, itens: RepairPlanItem[]): Promise<void> {
+export async function attachRegressionProofs(sessionId: string, itens: RepairPlanItem[], projectPath?: string | null): Promise<void> {
   const { loadPriorProofs } = await import("@/core/orchestrator/prior-proofs");
   const provas = await loadPriorProofs(sessionId).catch(() => []);
   const abertas = new Set(itens.flatMap((i) => i.testes.map((t) => t.conteudo)));
+  const caminhosAbertos = new Set(itens.flatMap((i) => i.testes.map((t) => norm(t.caminho))));
+  // Testes do PRÓPRIO projeto que importam um arquivo do escopo (Gateway rodadas 5–7: tests/webhook-asaas.test.ts
+  // quebrou e só a revisão final via). Os que falham agora já são defeito de alguma etapa e ficam de fora.
+  if (projectPath) {
+    for (const t of projectTestFiles(projectPath)) {
+      if (caminhosAbertos.has(norm(t.caminho))) continue;
+      for (const item of itens) {
+        if (item.testes.filter((x) => x.regressao).length >= MAX_REGRESSION_PROOFS_PER_STAGE) continue;
+        const usa = repairScopeOf(item).some((f) => {
+          const semExt = f.replace(/\\/g, "/").replace(/\.(ts|tsx|js|jsx|mjs)$/, "");
+          const alvo = semExt.replace(/^src\//, "");
+          return !/(^|\/)(tests?|__tests__)\//.test(f) && (t.conteudo.includes(`@/${alvo}`) || t.conteudo.includes(alvo));
+        });
+        if (usa && !item.testes.some((x) => norm(x.caminho) === norm(t.caminho))) {
+          item.testes.push({ caminho: t.caminho, conteudo: t.conteudo, existente: true, regressao: true });
+        }
+      }
+    }
+  }
   provas.forEach((p, n) => {
     if (!p.arquivo || abertas.has(p.conteudo)) return;
     for (const item of itens) {
@@ -229,6 +250,35 @@ export async function attachRegressionProofs(sessionId: string, itens: RepairPla
       item.testes.push({ caminho: `regressao-${n + 1}-${base}.test.ts`, conteudo: p.conteudo, regressao: true });
     }
   });
+}
+
+/** Testes do próprio projeto (tests/ e src/), sem node_modules; no máximo 60. */
+function projectTestFiles(root: string): Array<{ caminho: string; conteudo: string }> {
+  const out: Array<{ caminho: string; conteudo: string }> = [];
+  const walk = (rel: string, depth: number) => {
+    if (depth > 6 || out.length >= 60) return;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(r, depth + 1);
+      else if (/\.test\.(ts|tsx|js|mjs)$/.test(e.name)) {
+        try {
+          out.push({ caminho: r, conteudo: fs.readFileSync(path.join(root, r), "utf8") });
+        } catch {
+          // ilegível: ignora
+        }
+      }
+    }
+  };
+  walk("tests", 0);
+  walk("src", 0);
+  return out;
 }
 
 /** Escopo da etapa de reparo: o da dona + os arquivos citados nos defeitos (mudança 44). */
@@ -301,7 +351,7 @@ export async function tryStartDeliveryRepair(
   gaps: DeliveryGaps,
   opts: { perguntasSpec?: string[] } = {}
 ): Promise<DeliveryRepairOutcome> {
-  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { specVersion: true, title: true } });
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { specVersion: true, title: true, project: { select: { path: true } } } });
   const specVersion = session?.specVersion ?? 0;
   const tasks = await prisma.taskNode.findMany({ where: { sessionId, specVersion } });
   const rodadaAnterior = currentRepairRound(tasks);
@@ -345,7 +395,7 @@ export async function tryStartDeliveryRepair(
   if (!toPlanning.ok) return { started: false, tipo: "erro", motivo: `não foi possível abrir o reparo: ${toPlanning.reason}` };
 
   const idProjeto = session?.title || sessionId;
-  await attachRegressionProofs(sessionId, plan.itens);
+  await attachRegressionProofs(sessionId, plan.itens, session?.project?.path);
   const repairId = (i: RepairPlanItem) => `${i.origemId}-reparo${rodada}`;
   const deps = repairDependencies(plan.itens, repairId);
   for (const item of plan.itens) {

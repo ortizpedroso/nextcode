@@ -78,3 +78,27 @@ describe("44 — regressão: a etapa de reparo leva as provas anteriores do seu 
     ]);
   });
 });
+
+describe("44 — regressão inclui os testes do próprio projeto que importam o escopo", () => {
+  it("teste do projeto que importa o webhook entra como regressão (existente); o que está aberto nesta rodada não", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const { attachRegressionProofs } = await import("../../src/core/orchestrator/delivery-repair.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nc-regr-"));
+    fs.mkdirSync(path.join(dir, "tests"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "tests", "webhook-asaas.test.ts"), "import { POST } from '@/app/api/webhooks/asaas/route';\nit('x', () => {});");
+    fs.writeFileSync(path.join(dir, "tests", "taxas.test.ts"), "import { taxa } from '@/lib/taxas';\nit('y', () => {});");
+    fs.writeFileSync(path.join(dir, "tests", "aberto.test.ts"), "import { POST } from '@/app/api/webhooks/asaas/route';\nit('z', () => {});");
+    const s = await prisma.session.create({ data: { title: "RegrProj", phase: "VERIFICACAO" } });
+    created.push(s.id);
+    const dona = { id: "n14", title: "Etapa 14/40", role: "worker", status: "completed", filesScope: JSON.stringify(["src/app/api/webhooks/asaas/route.ts"]), payload: "{}", createdAt: new Date() };
+    const itens = [{ dona: dona as never, origemId: "n14", defeitos: ["d"], reqs: [], testes: [{ caminho: "tests/aberto.test.ts", conteudo: "c", existente: true }], escopoExtra: [] }];
+    await attachRegressionProofs(s.id, itens, dir);
+    expect(itens[0].testes.map((t) => [t.caminho, Boolean((t as { regressao?: boolean }).regressao), Boolean((t as { existente?: boolean }).existente)])).toEqual([
+      ["tests/aberto.test.ts", false, true],
+      ["tests/webhook-asaas.test.ts", true, true],
+    ]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
