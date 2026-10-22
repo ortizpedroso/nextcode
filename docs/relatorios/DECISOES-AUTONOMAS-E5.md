@@ -59,3 +59,8 @@ Regra que segui em todas: **decidir com dado medido**; quando a decisão afrouxa
 | E5-D29 | Testes isolados por sessão (`onlySessionIds`) | a suíte falhava às vezes porque supervisores de um arquivo retomavam a sessão de outro |
 | E5-D30 | §6 item 3 (privacidade do Jev): **aceito para o seu NextCode**, como proposto; as peças novas evitam mandar conversa (J11 mecânico, T7 manda só o nome do serviço) | rever antes de outros usuários |
 | E5-D31 | §6 item 4 (stack do Gateway): **Next.js**, já provado no Gateway real | — |
+| E5-D32 | Dependências: só correções **compatíveis** + `postcss` forçado para 8.5.31 dentro do Next; **não** troquei vitest 5 / tailwind 4 / Next 16 | produção ficou com 0 vulnerabilidades e o build passa; as trocas de versão principal mudam o executor de testes e o CSS inteiros — mudança própria, com benchmark |
+| E5-D33 | Revisão final que **não rodou** (sem modelo/crédito ou respostas descartadas) **bloqueia** com Retomar, em vez de "não reprova sozinha" | bench 22/10: o P3 saiu entregue com a régua 0/12 quando o crédito acabou |
+| E5-D34 | Testador **não presume tecnologia** que o Microbrief não pede (trava mecânica para cookies/`next/headers`, JWT, bcrypt) | o teste com cookies levou o executor a importar `next/headers` e quebrou a régua do P3 |
+| E5-D35 | Parei de gastar quando o crédito da Anthropic acabou (benchmark interrompido) e **não** recarreguei | comprar crédito ou ligar recarga automática é ação de cobrança na sua conta — fica com você |
+

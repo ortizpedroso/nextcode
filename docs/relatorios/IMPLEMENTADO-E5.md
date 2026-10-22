@@ -43,8 +43,27 @@ A Spec ficou mais completa: documentação oficial das APIs, origem de cada requ
 ## 6. Gateway (seu projeto real)
 Rodadas 4 a 7 de reparo. Os defeitos **provados** por revisão caíram de 8 para 5, e nada que foi consertado voltou a quebrar depois da proteção de regressão.
 
-RESULTADO_FINAL_GATEWAY
+- Rodadas 4–7, autorizadas por mim: os contratos das últimas duas passaram 100%.
+- O Gateway **ainda não foi entregue**. Está bloqueado com 5 defeitos provados (papéis de usuário, painel admin, comprovante enviado 2×).
+- Continua quando houver crédito na Anthropic: o avaliador e a revisão final usam o Claude, e o crédito acabou às ~20:23 UTC de 22/10.
+- Custo da sessão até aqui: US$ 37,07.
 
 ## 7. Medição com e sem Jev (J4) e teste final
 
-RESULTADO_BENCH
+| Projeto | Com Jev | Sem Jev |
+|---|---|---|
+| P1 | entregue, 10/10, US$ 0,115 | entregue, 10/10, US$ 0,146 |
+| P2 | entregue, 13/13, US$ 0,23–0,26 | entregue, 13/13, US$ 0,56 (precisou de uma rodada de reparo) |
+| P3 / P4 | inconclusivo | inconclusivo |
+
+**Com Jev, o mesmo resultado sai mais barato** (P1 −21%, P2 −55%), porque ele escolhe o modelo certo por etapa.
+
+O P3 revelou dois problemas, ambos corrigidos:
+- um teste de aceite exigiu cookies que a Spec não pede, e o código passou a não carregar fora do Next;
+- a revisão final não rodou por falta de crédito e a entrega saiu sem conferência. Agora isso **bloqueia** com o motivo e o botão Retomar.
+
+P3 e P4 precisam rodar de novo com crédito para fechar a medição.
+
+## 8. Dependências
+- **Produção:** 0 vulnerabilidades (eram 3 críticas, inclusive no Next.js). O build de produção passa.
+- **Desenvolvimento:** sobram 13, que exigem trocar o executor de testes (vitest 5) e o CSS (tailwind 4). Ficaram para uma mudança própria.
