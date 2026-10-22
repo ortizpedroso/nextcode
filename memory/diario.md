@@ -1,3 +1,11 @@
+## 22/10/2026 (209) — Diagnóstico do aviso genérico depois das 3 rodadas (fundador pediu antes de mexer)
+
+**Fundador:** melhorar a análise do revisor (ou usar o Jev) para a decisão certa; o aviso genérico "ajuste a Spec" invalida a Spec e o trabalho; aceita outra rodada se a resposta melhorar; quer o diagnóstico primeiro.
+**Achados (trilha `4d019f00`):** (1) o motivo e a ação de `VERIFICACAO_COM_LACUNAS` são fixos (`ajustar_spec`), sem olhar a causa nem o progresso (15 → 14 → 5); (2) a revisão final não diz ONDE corrigir nem a causa (código/teste/Spec): o defeito do REQ-052 (validação do pagador em `cobrancas-service.ts:197-199`) foi para a etapa 40 (dona do teste, que não pode editar o serviço) porque a citação era do teste → nunca foi corrigido; (3) avaliador da etapa aprova o REQ no escopo dela e a revisão final reprova o mesmo REQ, sem a divergência voltar ao reparo; (4) a rodada 3 nasceu só dos erros de tipo (a revisão final não rodou para planejá-la).
+**Próximo passo:** fundador aprova o plano (mudança 43 ampliada) → implementar → rodada extra no Gateway.
+
+---
+
 ## 22/10/2026 (208) — Prompt do Antigravity pronto
 
 **Feito:** `docs/prompts/TESTE-E1-4.md` com hash final `b3ddae6` (último código `b6b5077`) e a retomada final do Gateway no passo 7 (`d0a7c6b`).
