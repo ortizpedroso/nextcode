@@ -37,6 +37,7 @@ import {
 } from "@/core/orchestrator/node-executor";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { isResumeCommand, resumeBlockedSession } from "@/core/orchestrator/session-resume";
+import { pickBlockedCulprit } from "@/core/orchestrator/blocked-culprit";
 import {
   classifyMessage,
   parseInterventionChoice,
@@ -140,13 +141,14 @@ async function buildDeterministicStatusResponse(sessionId: string): Promise<stri
  * Monta o relatório de incidente mais recente e as opções para a fase BLOQUEADA (§3, regras 7 e 8 / 4b.2).
  */
 async function buildBlockedIncidentSection(sessionId: string): Promise<string> {
+  const sessionVersion = await prisma.session.findUnique({ where: { id: sessionId }, select: { specVersion: true } });
   const blockedTasks = await prisma.taskNode.findMany({
-    where: { sessionId, status: "blocked" },
+    where: { sessionId, status: "blocked", specVersion: sessionVersion?.specVersion ?? 0 },
     orderBy: { updatedAt: "desc" },
   });
 
   let reportText = "";
-  const latestBlocked = blockedTasks[0];
+  const latestBlocked = pickBlockedCulprit(blockedTasks);
   if (latestBlocked) {
     let history: FailureAttemptRecord[] = [];
     try {
@@ -179,7 +181,9 @@ async function buildBlockedIncidentSection(sessionId: string): Promise<string> {
     "🛑 **Sessão em fase `BLOQUEADA` — intervenção humana necessária.**",
     reportText ? `\n${reportText}` : "",
     "\n### Opções disponíveis:",
-    "1. **Retry (Re-tentar):** use o botão **Re-tentar** no painel da DAG para liberar o nó bloqueado mantendo a Spec atual (regra 7).",
+    latestBlocked
+      ? "1. **Retry (Re-tentar):** use o botão **Re-tentar** no painel da DAG para liberar o nó bloqueado mantendo a Spec atual (regra 7)."
+      : "1. **Retomar:** se a causa foi de ambiente, erro interno ou avaliador fora, clique em **Retomar** no painel da DAG ou escreva `retomar` (nada muda na Spec).",
     "2. **Ajuste da Spec:** envie no chat o ajuste desejado na Spec para suspender os executores pendentes e revisar uma nova versão da Spec (regra 8).",
   ]
     .filter(Boolean)
