@@ -287,8 +287,8 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 **Checklist da execução autônoma 4 (mudança 39) — ordem fixa, 1 commit por linha com tsc + vitest:**
 - [x] **35** falha de ambiente reconhecida (verificação final e portão da etapa) — `describeEnvironmentFailure` (`empirical-gate.ts`): falha sem `error TS` = ambiente; `recheckFinalBuild` devolve `ambiente`; evento `FALHA_AMBIENTE` (VERIFICACAO → BLOQUEADA, Retomar); portão da etapa registra `EMPIRICAL_BUILD_ENV_FAILURE`
 - [x] **36** aviso por causa + Retomar — `AVISAR_HUMANO` com `acao` (`retomar`/`autorizar_verba`/`retentar_etapa`/`ajustar_spec`), texto em `humanActionText`; `resumeBlockedSession` (`session-resume.ts`) pela ação `resume_session`, botão **Retomar** no Monitor da DAG e "retomar" no chat (recusa se houver etapa bloqueada → Re-tentar)
-- [ ] **G3** relatório de incidente aponta a etapa que falhou, não a bloqueada por dependência
-- [ ] **G2** descarte da resposta do avaliador registrado com o motivo
+- [x] **G3** relatório de incidente aponta a etapa que falhou, não a bloqueada por dependência — `pickBlockedCulprit` (`blocked-culprit.ts`): a bloqueada com tentativas próprias; só da versão atual da Spec; sem etapa bloqueada a opção 1 vira **Retomar**
+- [x] **G2** descarte da resposta do avaliador registrado com o motivo — `runBlindLens` devolve `{discard}` com o motivo (REQ faltando, citação inexistente, sem JSON…); trilha `EVALUATOR_RESPONSE_DISCARDED`; a 2ª chamada recebe o motivo (no fim da mensagem, sem quebrar o cache do Brief); `descartes` no `EVALUATOR_UNAVAILABLE` e na reprovação
 - [ ] **G1** leitor de ação do executor tolerante (variações reais da etapa 23) e erro que diz o que está errado
 - [ ] **J2b + J2.7** reparo automático da entrega reprovada (desenho `DECISOES-AUTONOMAS-E1-3.md` J1–J8) + teste estrutural com as listas do código
 - [ ] **Porta da E1** (mudança 37): retomada da `4d019f00` → `ENTREGUE`, ou `BLOQUEADA` só com lacuna real relatada

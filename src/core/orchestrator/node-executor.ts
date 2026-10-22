@@ -1657,7 +1657,13 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       TelemetryLogger.log({
         sessionId: taskDb.sessionId,
         action: "EVALUATOR_UNAVAILABLE",
-        details: { nodeId: taskDb.id, streak: evaluatorOutageStreak, attemptConsumed: false, falhas: blindAuditDispatch.lastFailures.slice(0, 6) },
+        details: {
+          nodeId: taskDb.id,
+          streak: evaluatorOutageStreak,
+          attemptConsumed: false,
+          falhas: blindAuditDispatch.lastFailures.slice(0, 6),
+          descartes: (type2Res.descartes ?? []).slice(0, 6),
+        },
       });
 
       // Mudança 24: passadas as 3 reavaliações grátis, a etapa NÃO gasta tentativa — volta para a fila e a

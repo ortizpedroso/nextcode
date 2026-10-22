@@ -71,6 +71,8 @@ export interface ValidationType2Result {
    * "limite_tamanho": algum arquivo não cabe inteiro no que o avaliador lê (AV1.2) — reprovado sem chamar o LLM.
    */
   method: "llm_blind" | "heuristic_fallback" | "n/a" | "limite_tamanho";
+  /** G2: por que cada resposta do avaliador foi descartada (só no heuristic_fallback). */
+  descartes?: string[];
   /**
    * true quando a alegação do worker (claimedSuccess ou tabela por REQ) diverge do veredito independente da
    * Lente Cega (blindVerdict.implemented / reqVerdicts) — só é calculável no método "llm_blind".
@@ -553,8 +555,9 @@ export class DualLensAuditor {
     briefMarkdown: string,
     codeContentMap: Record<string, string>,
     dispatchFn: LLMDispatchFn,
-    options?: ValidateType2Options
-  ): Promise<{ verdict: BlindAuditVerdict; skillUsed: string } | null> {
+    options?: ValidateType2Options,
+    previousDiscard?: string
+  ): Promise<{ verdict: BlindAuditVerdict; skillUsed: string } | { discard: string }> {
     // AV1.2: o avaliador recebe cada arquivo INTEIRO. Quem não cabe já foi reprovado antes
     // (`oversizedFilesForBlindLens` em validateType2) — nunca há trecho omitido aprovado.
     const fileBlocks: string[] = Object.entries(codeContentMap).map(
@@ -627,17 +630,22 @@ export class DualLensAuditor {
       },
       {
         role: "user",
-        content: `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}`,
+        content:
+          `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}` +
+          // G2: a nova chamada sabe por que a anterior foi descartada (no fim: o cache do Brief continua valendo).
+          (previousDiscard
+            ? `\n\n[SUA RESPOSTA ANTERIOR FOI DESCARTADA] Motivo: ${previousDiscard}. Responda de novo no formato pedido, corrigindo isso.`
+            : ""),
       },
     ];
 
     try {
       const raw = await dispatchFn(messages);
-      if (!raw) return null;
+      if (!raw) return { discard: "avaliador sem resposta" };
       const match = raw.match(/\{[\s\S]*?"implemented"\s*:\s*(?:true|false)[\s\S]*\}/i);
-      if (!match) return null;
+      if (!match) return { discard: 'resposta sem o JSON pedido (campo "implemented")' };
       const parsed = JSON.parse(match[0]);
-      if (typeof parsed.implemented !== "boolean") return null;
+      if (typeof parsed.implemented !== "boolean") return { discard: '"implemented" não é true/false' };
 
       let reqVerdicts: ReqBlindVerdictItem[] | undefined = Array.isArray(parsed.reqVerdicts || parsed.veredito_por_req)
         ? (parsed.reqVerdicts || parsed.veredito_por_req).map((r: any) => ({
@@ -652,7 +660,8 @@ export class DualLensAuditor {
       const expected = options?.expectedReqs ?? [];
       if (expected.length > 0) {
         const got = new Set((reqVerdicts ?? []).map((r) => r.id));
-        if (!expected.every((id) => got.has(id))) return null;
+        const faltando = expected.filter((id) => !got.has(id));
+        if (faltando.length > 0) return { discard: `faltou o veredito de ${faltando.join(", ")} em "reqVerdicts"` };
         reqVerdicts = (reqVerdicts ?? []).filter((r) => expected.includes(r.id));
       }
 
@@ -676,10 +685,14 @@ export class DualLensAuditor {
       // têm de citar arquivo:linha desta etapa que existe. Citação inventada → resposta descartada
       // (o auditor pergunta de novo; persistindo, a etapa NÃO é aprovada).
       for (const rv of reqVerdicts ?? []) {
-        if (rv.status === "implementado" && !fileLineRefExists(rv.evidencia, codeContentMap)) return null;
+        if (rv.status === "implementado" && !fileLineRefExists(rv.evidencia, codeContentMap)) {
+          return { discard: `${rv.id} "implementado" cita "${rv.evidencia.slice(0, 120)}", que não existe no código desta etapa` };
+        }
       }
       for (const p of problemas) {
-        if (p.severidade !== "menor" && !fileLineRefExists(p.arquivoLinha, codeContentMap)) return null;
+        if (p.severidade !== "menor" && !fileLineRefExists(p.arquivoLinha, codeContentMap)) {
+          return { discard: `problema ${p.severidade} cita "${p.arquivoLinha.slice(0, 120)}", que não existe no código desta etapa` };
+        }
       }
 
       const criticos = problemas.filter((p) => p.severidade === "critico");
@@ -727,8 +740,8 @@ export class DualLensAuditor {
             : undefined,
         },
       };
-    } catch {
-      return null;
+    } catch (err) {
+      return { discard: `JSON inválido ou erro ao ler a resposta (${String(err).slice(0, 120)})` };
     }
   }
 
@@ -780,12 +793,30 @@ export class DualLensAuditor {
       };
     }
 
+    const discards: string[] = [];
     if (dispatchFn) {
       let blindOutcome: { verdict: BlindAuditVerdict; skillUsed: string } | null = null;
       for (let call = 1; call <= DualLensAuditor.BLIND_LENS_MAX_CALLS && !blindOutcome; call++) {
-        blindOutcome = await DualLensAuditor.runBlindLens(briefMarkdown, codeContentMap, dispatchFn, options).catch(
-          () => null
-        );
+        const out = await DualLensAuditor.runBlindLens(
+          briefMarkdown,
+          codeContentMap,
+          dispatchFn,
+          options,
+          discards[discards.length - 1]
+        ).catch((err): { discard: string } => ({ discard: `exceção na chamada (${String(err).slice(0, 120)})` }));
+        if ("discard" in out) {
+          // G2: o descarte fica na trilha com o motivo (antes: EVALUATOR_UNAVAILABLE com falhas: []).
+          discards.push(out.discard);
+          if (options?.sessionId) {
+            TelemetryLogger.log({
+              sessionId: options.sessionId,
+              action: "EVALUATOR_RESPONSE_DISCARDED",
+              details: { nodeId: options.nodeId ?? null, chamada: call, motivo: out.discard },
+            });
+          }
+        } else {
+          blindOutcome = out;
+        }
       }
 
       if (blindOutcome) {
@@ -966,6 +997,9 @@ export class DualLensAuditor {
       }
     }
 
-    return DualLensAuditor.heuristicFallback(workerExecutionReport, filesInScope);
+    const fallback = DualLensAuditor.heuristicFallback(workerExecutionReport, filesInScope);
+    return discards.length > 0
+      ? { ...fallback, descartes: discards, rejectionReason: `${fallback.rejectionReason} Descartes: ${discards.join(" | ")}` }
+      : fallback;
   }
 }
