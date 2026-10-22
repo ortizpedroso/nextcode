@@ -223,6 +223,8 @@ export async function reviewFinalDelivery(input: {
    * suspeitas: o escritor da revisão (que vê o código) prova ou descarta com o próprio teste.
    */
   suspeitasExtras?: Array<{ arquivo: string | null; defeito: string }>;
+  /** Mudança 45: documentação oficial (T7) da sessão para o escritor dos testes de reprodução. */
+  docsOficiais?: string | null;
 }): Promise<FinalReviewResult> {
   const empty = (motivo: string): FinalReviewResult => ({
     executado: false,
@@ -344,6 +346,7 @@ export async function reviewFinalDelivery(input: {
         defects: toReproduce,
         dispatch: input.reproDispatch,
         bench: input.bench,
+        docsOficiais: input.docsOficiais,
       });
       const kept: FinalDefect[] = [];
       defeitos.forEach((d, i) => {

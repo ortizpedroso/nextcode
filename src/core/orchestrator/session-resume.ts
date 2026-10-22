@@ -170,7 +170,8 @@ export async function authorizeRepairRound(sessionId: string, via: "painel" | "c
         "Rodada extra só vale quando a sessão parou porque as rodadas de reparo acabaram com defeitos de código. Este bloqueio tem outra causa — veja o aviso no chat (Retomar, Re-tentar ou ajuste da Spec).",
     };
   }
-  TelemetryLogger.log({ sessionId, action: "REPAIR_ROUND_AUTHORIZED", details: { via } });
+  // Estado lido depois (authorizedExtraRounds soma ao limite): grava esperando, não em segundo plano.
+  await TelemetryLogger.logAndWait({ sessionId, action: "REPAIR_ROUND_AUTHORIZED", details: { via } });
   const res = await applyPhaseEvent(sessionId, { type: "DESBLOQUEIO_HUMANO" });
   if (!res.ok) return { ok: false, message: `Não foi possível retomar: ${res.reason}.` };
   if (res.effects.some((e) => e.type === "RETOMAR_EXECUCAO")) await enqueueSessionQueueJob(sessionId);

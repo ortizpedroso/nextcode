@@ -12,6 +12,7 @@ import {
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
 import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
 import { loadPriorProofs } from "@/core/orchestrator/prior-proofs";
+import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -447,6 +448,11 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             // Mudança 44: o que já foi provado nesta sessão roda de novo (a leitura varia, o teste não).
             priorProofs: await loadPriorProofs(job.sessionId),
             suspeitasExtras: await acceptanceDisagreements(job.sessionId),
+            // Mudança 45: dúvida de integração é decidida pela documentação oficial antes de virar pergunta.
+            docsOficiais: await officialDocsBlockForSession(
+              job.sessionId,
+              `${sessionAfterQueue.canonicalSpec ?? ""}\n${(await prisma.message.findMany({ where: { sessionId: job.sessionId, role: "user" }, select: { content: true } })).map((m) => m.content).join("\n")}`
+            ).catch(() => null),
           });
           const novasProvas = review.defeitos
             .filter((d) => d.prova === "reproduzido" && d.teste && !d.teste.existente)
