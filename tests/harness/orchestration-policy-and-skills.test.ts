@@ -271,7 +271,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       },
       segurancaPesquisaT7: {
         probabilidadeMinimaFonteOficialNoul: 0.8,
-        probabilidadeMaximaPromptInjectionNoul: 0.15,
+        probabilidadeMaximaPromptInjectionNoul: 0.8,
         acaoViolacaoOuErroJev: "bloquear_trecho_fail_closed",
       },
     });

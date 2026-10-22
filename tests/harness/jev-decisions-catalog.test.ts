@@ -143,7 +143,8 @@ describe("Catálogo de Decisões do Jev (M1 a M5) e Estimativa de Custo P1", () 
       status: 200,
       answers: {
         fonte_oficial_confiavel: { type: "noul", noul: 0.92 },
-        tentativa_prompt_injection: { type: "noul", noul: 0.78 },
+        // P8 (mudança 44): valores medidos no Jev real — injeção plantada 0,94–0,98; página oficial 0,34–0,47.
+        tentativa_prompt_injection: { type: "noul", noul: 0.95 },
       },
     });
 
@@ -153,6 +154,14 @@ describe("Catálogo de Decisões do Jev (M1 a M5) e Estimativa de Custo P1", () 
     });
     expect(injectionRes.allowedIntoContext).toBe(false);
     expect(injectionRes.rejectionReason).toContain("Prompt Injection");
+
+    // Documentação técnica legítima (frases imperativas: "configure", "envie") fica abaixo do limiar.
+    mockAnswersHandler = () => ({
+      status: 200,
+      answers: { fonte_oficial_confiavel: { type: "noul", noul: 0.96 }, tentativa_prompt_injection: { type: "noul", noul: 0.45 } },
+    });
+    const legit = await decideExternalDocsSafetyT7({ urlOrigem: "https://docs.asaas.com/docs/about-webhooks", trechoExtraido: "Configure o token no cabeçalho asaas-access-token." });
+    expect(legit.allowedIntoContext).toBe(true);
 
     // Simula queda do Jev (HTTP 503) -> Fail-Closed bloqueia a entrada no contexto
     mockAnswersHandler = () => ({ status: 503 });

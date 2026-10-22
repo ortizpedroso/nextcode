@@ -98,7 +98,7 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
 }
 
 /** S2: skill elicitador + contrato YAML/canônico do harness (sem prompt genérico de governança). */
-export function buildElicitadorSpecSystemPrompt(funnelBrief?: string): string {
+export function buildElicitadorSpecSystemPrompt(funnelBrief?: string, officialDocsBlock?: string | null): string {
   const skillBlock = buildSkillSystemPrompt(loadRoleSkill("elicitador"));
   const formatBlock = buildSpecWriterSystemPrompt(funnelBrief);
   return [
@@ -106,6 +106,8 @@ export function buildElicitadorSpecSystemPrompt(funnelBrief?: string): string {
     "",
     "--- FORMATO CANÔNICO DA SPEC (contrato do harness; obedeça junto com a skill elicitador) ---",
     formatBlock,
+    // P8 (mudança 44): documentação oficial pesquisada pela trava T7, por último (dados de terceiros).
+    ...(officialDocsBlock ? ["", officialDocsBlock] : []),
   ].join("\n");
 }
 

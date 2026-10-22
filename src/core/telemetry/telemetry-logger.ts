@@ -36,6 +36,21 @@ export class TelemetryLogger {
   }
 
   /**
+   * Mudança 44: para registro que é ESTADO lido depois (pesquisa T7 da sessão, provas da revisão final),
+   * espera a gravação — o `log` em plano de fundo pode ainda não estar no banco na próxima leitura.
+   */
+  public static async logAndWait(event: TelemetryEvent): Promise<void> {
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: event.sessionId || null,
+        action: event.action,
+        details: event.details ? JSON.stringify(event.details) : null,
+        durationMs: event.durationMs || 0,
+      },
+    });
+  }
+
+  /**
    * Recupera histórico de eventos recentes para análise de padrões
    */
   public static async getRecentLogs(limit: number = 100) {

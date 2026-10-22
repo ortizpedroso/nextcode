@@ -29,6 +29,7 @@ import {
   type ChatFanOutDecision,
 } from "@/core/decision/jev-decisions";
 import { runUniversalIntakeFunnel, formatIntakeFunnelBrief } from "@/core/intake/universal-funnel";
+import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
 import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
 import {
   checkSpecCompletenessOnDisk,
@@ -634,6 +635,7 @@ export async function POST(request: NextRequest) {
         resultingPhase === "SPEC_REVISAO");
 
     let funnelBrief: string | undefined;
+    let officialDocsBlock: string | null = null;
     if (isSpecDraftingPhase && !isQuestionWithoutPhaseChange) {
       try {
         const userMessages = await prisma.message.findMany({
@@ -655,6 +657,8 @@ export async function POST(request: NextRequest) {
           sessionId: activeSessionId,
         });
         funnelBrief = formatIntakeFunnelBrief(funnel);
+        // P8 (mudança 44): serviço externo citado na conversa → documentação oficial pela trava T7.
+        officialDocsBlock = await officialDocsBlockForSession(activeSessionId, fullUserConversation).catch(() => null);
       } catch {
         /* ignora falha do funnel */
       }
@@ -666,7 +670,7 @@ export async function POST(request: NextRequest) {
         `Responda apenas com explicação clara e objetiva. ` +
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : isSpecDraftingPhase
-        ? buildElicitadorSpecSystemPrompt(funnelBrief)
+        ? buildElicitadorSpecSystemPrompt(funnelBrief, officialDocsBlock)
         : IntakeEngine.getGovernanceSystemPrompt();
 
     const dispatchMessages: DispatchMessage[] = [

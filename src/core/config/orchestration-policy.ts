@@ -265,7 +265,8 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     },
     segurancaPesquisaT7: {
       probabilidadeMinimaFonteOficialNoul: 0.8,
-      probabilidadeMaximaPromptInjectionNoul: 0.15,
+      // P8 (mudança 44): medido — páginas oficiais 0,34–0,47; injeção plantada 0,94–0,98.
+      probabilidadeMaximaPromptInjectionNoul: 0.8,
       acaoViolacaoOuErroJev: "bloquear_trecho_fail_closed",
     },
   },

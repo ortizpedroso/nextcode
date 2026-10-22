@@ -11,6 +11,7 @@
 import { askJevBatch, type JevQuestionSpec } from "@/core/decision/jev";
 import {
   DEFAULT_ORCHESTRATION_POLICY,
+  loadOrchestrationPolicy,
   type ClusterKind,
   type OrchestrationPolicy,
 } from "@/core/config/orchestration-policy";
@@ -321,7 +322,8 @@ export async function decideExternalDocsSafetyT7(params: {
   sessionId?: string | null;
   policy?: OrchestrationPolicy;
 }): Promise<ExternalDocsSafetyDecision> {
-  const policy = params.policy ?? DEFAULT_ORCHESTRATION_POLICY;
+  // P8 (mudança 44): sem política explícita, vale o YAML (antes: o padrão do código, e o YAML nunca era lido aqui).
+  const policy = params.policy ?? loadOrchestrationPolicy();
   const lim = policy.jevLimiares.segurancaPesquisaT7;
 
   const questions: Record<string, JevQuestionSpec> = {

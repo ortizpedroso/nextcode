@@ -471,7 +471,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             .filter((d) => d.prova === "reproduzido" && d.teste && !d.teste.existente)
             .map((d) => ({ caminho: d.teste!.caminho, conteudo: d.teste!.conteudo, req: d.req, arquivo: d.arquivo, defeito: d.defeito }));
           if (novasProvas.length > 0) {
-            TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW_PROOFS", details: { provas: novasProvas } });
+            await TelemetryLogger.logAndWait({ sessionId: job.sessionId, action: "FINAL_REVIEW_PROOFS", details: { provas: novasProvas } }).catch(() => {});
           }
           finalReviewSummary = {
             modo: revisaoFinalModo,

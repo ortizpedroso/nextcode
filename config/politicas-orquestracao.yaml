@@ -124,7 +124,7 @@ jev_limiares:
 
   seguranca_pesquisa_t7:
     probabilidade_minima_fonte_oficial_noul: 0.80
-    probabilidade_maxima_prompt_injection_noul: 0.15
+    probabilidade_maxima_prompt_injection_noul: 0.80   # P8 22/10 medido: páginas oficiais do Asaas 0,34–0,47; injeção plantada 0,94–0,98 (0,15 recusava toda documentação)
     acao_violacao_ou_erro_jev: "bloquear_trecho_fail_closed"
 
 tentativas:
