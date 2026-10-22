@@ -65,6 +65,7 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
     "  - id: REQ-001",
     '    titulo: "<título curto do requisito>"',
     '    criterio: "<critério verificável citando o caminho do arquivo de arquivos_afetados que o implementa>"',
+    '    origem: "<trecho LITERAL do pedido do usuário que justifica este REQ | premissa: <o que você decidiu> | derivado: REQ-xxx>"',
     "notas_implementacao:",
     '  - "<aviso técnico não óbvio>"',
     "---",
@@ -86,6 +87,7 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
     "  - id: REQ-002",
     '    titulo: "Listar e criar tarefas (route.ts)"',
     '    criterio: "src/app/api/tarefas/route.ts: GET devolve 200 com a lista; POST com titulo não vazio devolve 201, caso contrário 400."',
+    "Todo requisito tem `origem` (J11): copie o trecho do pedido do usuário EXATAMENTE como ele escreveu (o harness confere que o trecho existe na conversa); se o REQ é decisão sua, escreva `premissa: …`; se é consequência de outro REQ, `derivado: REQ-xxx`. REQ sem origem verificável aparece para o usuário como possível invenção.",
     "O parágrafo de objetivo após o título é obrigatório.",
     "IDIOMA: Todo o documento da Spec (título, resumos dos módulos, descrições das rotas, critérios dos requisitos, notas e objetivo) DEVE ser estritamente em Português do Brasil (pt-BR), independentemente do idioma em que a solicitação ou o prompt de contexto foi feito.",
   ];

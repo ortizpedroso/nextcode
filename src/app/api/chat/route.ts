@@ -30,6 +30,7 @@ import {
 } from "@/core/decision/jev-decisions";
 import { runUniversalIntakeFunnel, formatIntakeFunnelBrief } from "@/core/intake/universal-funnel";
 import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
+import { checkReqOrigins, renderReqOriginNotice } from "@/core/intake/req-origin-check";
 import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
 import {
   checkSpecCompletenessOnDisk,
@@ -947,7 +948,19 @@ export async function POST(request: NextRequest) {
                 ? `\n\n🛠️ Correções automáticas do NextCode (${healed.fixesApplied.length}):\n` +
                   healed.fixesApplied.slice(0, 10).map((f) => `- ${f}`).join("\n")
                 : "";
-            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}`;
+            // J11 (mudança 44): REQ sem origem no pedido do usuário aparece para ele conferir.
+            const pedidoDoUsuario = (
+              await prisma.message.findMany({ where: { sessionId: activeSessionId, role: "user" }, select: { content: true } })
+            )
+              .map((m) => m.content)
+              .join("\n");
+            const origens = checkReqOrigins(healed.parsed.requisitos ?? [], `${pedidoDoUsuario}\n${targetPrompt}`);
+            TelemetryLogger.log({
+              sessionId: activeSessionId,
+              action: "SPEC_REQ_ORIGINS",
+              details: { contagem: origens.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.status]: (acc[r.status] ?? 0) + 1 }), {}), suspeitos: origens.filter((r) => r.status === "nao_encontrado" || r.status === "sem_origem").map((r) => r.id) },
+            });
+            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}${renderReqOriginNotice(origens)}`;
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)

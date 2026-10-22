@@ -31,6 +31,11 @@ export interface SpecRequirementItem {
   id: string;
   titulo: string;
   criterio: string;
+  /**
+   * J11 (E2, mudança 44): de onde o REQ vem — trecho literal do pedido do usuário, "premissa: …" (decisão do
+   * elicitador registrada) ou "derivado: REQ-xxx". Opcional (Specs antigas não têm); conferido por código.
+   */
+  origem?: string;
 }
 
 export interface SpecFrontmatterInput {
@@ -139,6 +144,7 @@ export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string 
       lines.push(`  - id: ${req.id}`);
       lines.push(`    titulo: ${yamlEscape(req.titulo)}`);
       lines.push(`    criterio: ${yamlEscape(req.criterio)}`);
+      if (req.origem) lines.push(`    origem: ${yamlEscape(req.origem)}`);
     });
   }
   lines.push("---");
@@ -411,6 +417,7 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
         id: typeof req.id === "string" ? req.id : "",
         titulo: typeof req.titulo === "string" ? req.titulo : "",
         criterio: typeof req.criterio === "string" ? req.criterio : "",
+        ...(typeof req.origem === "string" && req.origem.trim() ? { origem: req.origem.trim() } : {}),
       }))
     : [];
 
