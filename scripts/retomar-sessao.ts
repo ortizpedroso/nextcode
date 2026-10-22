@@ -42,26 +42,19 @@ async function main(): Promise<void> {
 
   const session = await prisma.session.findFirstOrThrow({ where: { id: { startsWith: prefixo } } });
 
+  // Mesmo caminho do botão "Re-tentar" (mudança 44: etapa de reparo tem o escopo recalculado).
+  const { retryNodeAndCascade } = await import("@/core/orchestrator/session-resume");
   for (const nodeId of refazer) {
     const t = await prisma.taskNode.findUniqueOrThrow({ where: { id: nodeId } });
     if (t.sessionId !== session.id) throw new Error(`etapa ${nodeId} não é da sessão ${session.id}`);
-    TelemetryLogger.log({
-      sessionId: t.sessionId,
-      action: "NODE_UNBLOCKED_BY_HUMAN",
-      details: {
-        nodeId: t.id,
-        title: t.title,
-        previousStatus: t.status,
-        previousAttempts: t.attempts,
-        discardedFailureHistory: t.failureHistory || "[]",
-        unblockedVia: `scripts/retomar-sessao.ts — ${motivo}`,
-      },
-    });
-    await prisma.taskNode.update({ where: { id: t.id }, data: { status: "pending", attempts: 0, failureHistory: "[]" } });
-    console.log(`[retomar] etapa liberada: ${t.title}`);
+    TelemetryLogger.log({ sessionId: t.sessionId, action: "SESSION_RESUME_CLI", details: { nodeId, motivo } });
+    const retried = await retryNodeAndCascade(nodeId, "linha_de_comando");
+    console.log(`[retomar] ${retried.message}`);
   }
 
-  if (process.argv.includes("--rodada-extra")) {
+  if (refazer.length > 0) {
+    // retryNodeAndCascade já desbloqueou a sessão e pôs na fila.
+  } else if (process.argv.includes("--rodada-extra")) {
     // Mudança 43.4: mais uma rodada de reparo, autorizada pelo fundador.
     const { authorizeRepairRound } = await import("@/core/orchestrator/session-resume");
     const authorized = await authorizeRepairRound(session.id, "linha_de_comando");

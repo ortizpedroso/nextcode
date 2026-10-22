@@ -383,66 +383,16 @@ export async function POST(request: NextRequest) {
 
     // Ação 4: Desbloqueio e re-tentativa manual de um nó com falha/bloqueado
     if (action === "retry_node" && nodeId) {
-      const targetTask = await prisma.taskNode.findUnique({ where: { id: nodeId } });
-      if (!targetTask) {
-        return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
-      }
-
-      const sessionBeforeUnblock = await prisma.session.findUnique({
-        where: { id: targetTask.sessionId },
-        select: { phase: true, specVersion: true },
-      });
-      const currentSpecVersion = sessionBeforeUnblock?.specVersion ?? targetTask.specVersion;
-
-      const logHumanUnblock = (t: typeof targetTask, cascade: boolean) =>
-        TelemetryLogger.log({
-          sessionId: t.sessionId,
-          action: "NODE_UNBLOCKED_BY_HUMAN",
-          details: {
-            nodeId: t.id,
-            title: t.title,
-            previousStatus: t.status,
-            previousAttempts: t.attempts,
-            discardedFailureHistory: t.failureHistory || "[]",
-            unblockedVia: cascade ? `cascata de ${nodeId}` : "retry_node",
-          },
-        });
-      logHumanUnblock(targetTask, false);
-
-      await prisma.taskNode.update({
-        where: { id: nodeId },
-        data: { status: "pending", attempts: 0, failureHistory: "[]" },
-      });
-
-      const sessionTasks = await prisma.taskNode.findMany({
-        where: { sessionId: targetTask.sessionId, specVersion: currentSpecVersion },
-      });
-
-      for (const task of sessionTasks) {
-        if (task.status === "blocked") {
-          logHumanUnblock(task, true);
-          await prisma.taskNode.update({
-            where: { id: task.id },
-            data: { status: "pending", attempts: 0, failureHistory: "[]" },
-          });
-        }
-      }
-
-      if (sessionBeforeUnblock?.phase === "BLOQUEADA") {
-        await applyPhaseEvent(targetTask.sessionId, { type: "DESBLOQUEIO_HUMANO" });
-      }
-      await enqueueSessionQueueJob(targetTask.sessionId);
-
+      const { retryNodeAndCascade } = await import("@/core/orchestrator/session-resume");
+      const retried = await retryNodeAndCascade(nodeId, "painel");
+      if (!retried.ok) return NextResponse.json({ error: retried.message }, { status: 404 });
+      const targetTask = await prisma.taskNode.findUnique({ where: { id: nodeId }, select: { sessionId: true, specVersion: true } });
       const updatedTasks = await prisma.taskNode.findMany({
-        where: { sessionId: targetTask.sessionId, specVersion: currentSpecVersion },
+        where: { sessionId: targetTask!.sessionId, specVersion: targetTask!.specVersion },
         orderBy: { createdAt: "asc" },
       });
 
-      return NextResponse.json({
-        success: true,
-        message: `Nó "${targetTask.title}" e nós bloqueados em cascata foram liberados para re-tentativa.`,
-        tasks: updatedTasks,
-      });
+      return NextResponse.json({ success: true, message: retried.message, tasks: updatedTasks });
     }
 
     return NextResponse.json({ error: "Ação não suportada" }, { status: 400 });

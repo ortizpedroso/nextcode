@@ -83,6 +83,64 @@ export async function reopenDeliveredSession(
 }
 
 
+/**
+ * Re-tentar uma etapa (painel "Re-tentar" ou linha de comando): zera as tentativas dela e das bloqueadas em
+ * cascata, desbloqueia a sessão e põe na fila. Mudança 44: etapa de reparo tem o escopo recalculado pela
+ * regra atual (arquivos de código citados nos defeitos) antes de voltar à fila.
+ */
+export async function retryNodeAndCascade(
+  nodeId: string,
+  via: "painel" | "linha_de_comando"
+): Promise<ResumeResult & { escopoAmpliado?: string[] }> {
+  const targetTask = await prisma.taskNode.findUnique({ where: { id: nodeId } });
+  if (!targetTask) return { ok: false, message: "Nó não encontrado" };
+  const sessionBeforeUnblock = await prisma.session.findUnique({
+    where: { id: targetTask.sessionId },
+    select: { phase: true, specVersion: true },
+  });
+  const currentSpecVersion = sessionBeforeUnblock?.specVersion ?? targetTask.specVersion;
+
+  const logHumanUnblock = (t: typeof targetTask, cascade: boolean) =>
+    TelemetryLogger.log({
+      sessionId: t.sessionId,
+      action: "NODE_UNBLOCKED_BY_HUMAN",
+      details: {
+        nodeId: t.id,
+        title: t.title,
+        previousStatus: t.status,
+        previousAttempts: t.attempts,
+        discardedFailureHistory: t.failureHistory || "[]",
+        unblockedVia: cascade ? `cascata de ${nodeId}` : via === "painel" ? "retry_node" : "retry_node_cli",
+      },
+    });
+  logHumanUnblock(targetTask, false);
+
+  const { rescopeRepairNode } = await import("@/core/orchestrator/delivery-repair");
+  const escopoAmpliado = await rescopeRepairNode(nodeId);
+  await prisma.taskNode.update({ where: { id: nodeId }, data: { status: "pending", attempts: 0, failureHistory: "[]" } });
+
+  const sessionTasks = await prisma.taskNode.findMany({
+    where: { sessionId: targetTask.sessionId, specVersion: currentSpecVersion },
+  });
+  for (const task of sessionTasks) {
+    if (task.status === "blocked") {
+      logHumanUnblock(task, true);
+      await prisma.taskNode.update({ where: { id: task.id }, data: { status: "pending", attempts: 0, failureHistory: "[]" } });
+    }
+  }
+  if (sessionBeforeUnblock?.phase === "BLOQUEADA") {
+    await applyPhaseEvent(targetTask.sessionId, { type: "DESBLOQUEIO_HUMANO" });
+  }
+  await enqueueSessionQueueJob(targetTask.sessionId);
+  return {
+    ok: true,
+    escopoAmpliado,
+    message:
+      `Nó "${targetTask.title}" e nós bloqueados em cascata foram liberados para re-tentativa.` +
+      (escopoAmpliado.length ? ` Escopo do reparo ampliado com ${escopoAmpliado.join(", ")} (citados nos defeitos).` : ""),
+  };
+}
+
 /** Mudança 43.4: "autorizar rodada" digitado sozinho no chat. */
 export function isAuthorizeRoundCommand(text: string): boolean {
   return /^\s*autorizar\s+(mais\s+uma\s+)?rodada\s*[.!]?\s*$/i.test(text);

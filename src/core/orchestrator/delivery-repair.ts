@@ -44,6 +44,11 @@ export interface RepairPlanItem {
   reqs: string[];
   /** Mudança 43.3: testes que provam os defeitos desta dona. */
   testes: RepairContractTest[];
+  /**
+   * Mudança 44: outros arquivos de código citados nos defeitos desta dona (ex.: "o mesmo ocorre em
+   * src/middleware.ts:4"). Entram no escopo do reparo — sem eles o contrato não tem como passar.
+   */
+  escopoExtra: string[];
 }
 
 export interface RepairPlan {
@@ -54,6 +59,18 @@ export interface RepairPlan {
 type TaskLike = Pick<TaskNode, "id" | "title" | "role" | "status" | "filesScope" | "payload" | "createdAt">;
 
 const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").toLowerCase();
+
+/** Caminhos de código citados num texto (`src/a.ts:5`, `` `lib/b.tsx` ``), sem arquivos de teste. */
+const CODE_REF_RE = /(?:^|[\s`'"(\[])((?:[\w.@-]+\/)*[\w.@\[\]()-]+\.(?:ts|tsx|js|jsx|mjs|prisma))\b/g;
+export function codeFilesCitedIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(CODE_REF_RE)) {
+    const f = m[1].replace(/^\(+/, "");
+    if (/(^|\/)(tests?|__tests__)\//.test(f) || /\.test\.[jt]sx?$/.test(f) || f.startsWith(".nextcode-repro/")) continue;
+    if (!out.some((o) => norm(o) === norm(f))) out.push(f);
+  }
+  return out;
+}
 
 /** Arquivo de uma linha `error TS` (`src/a.ts(54,7): error TS…` ou `src/a.ts:54:7 - error TS…`). */
 export function fileOfTsErrorLine(line: string): string | null {
@@ -75,6 +92,68 @@ function reqsOf(t: TaskLike): string[] {
   return mb?.reqsCobertos ?? readNodePayload(t.payload).reqsCobertos ?? [];
 }
 
+/** Outros arquivos de código citados nos defeitos, que pertencem ao plano e não estão no escopo da dona. */
+function extraScopeFor(dona: TaskLike, defeitos: string[], ownerOfFile: (f: string) => TaskLike | undefined): string[] {
+  const escopo = scopeOf(dona).map(norm);
+  const out: string[] = [];
+  for (const f of defeitos.flatMap(codeFilesCitedIn)) {
+    const dono = ownerOfFile(f);
+    if (!dono || escopo.includes(norm(f))) continue;
+    const real = scopeOf(dono).find((x) => norm(x) === norm(f)) ?? f;
+    if (!out.some((x) => norm(x) === norm(real))) out.push(real);
+  }
+  return out;
+}
+
+function ownerFinder(tasks: TaskLike[]) {
+  const candidates = tasks
+    .filter((t) => t.role !== "scaffold" && t.status === "completed")
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return (file: string) => candidates.find((t) => scopeOf(t).some((f) => norm(f) === norm(file)));
+}
+
+/** Acrescenta arquivos ao escopo de uma etapa (filesScope, Microbrief "modificar" e Microbrief de reparo). */
+function widenNodeScope(filesScope: string | null, payload: Record<string, unknown>, extra: string[]) {
+  const base = (() => {
+    try {
+      const arr = JSON.parse(filesScope || "[]");
+      return Array.isArray(arr) ? (arr as string[]) : [];
+    } catch {
+      return [];
+    }
+  })();
+  const novos = extra.filter((f) => !base.some((b) => norm(b) === norm(f)));
+  const mb = payload.microbrief as { arquivosPermitidos?: { criar?: string[]; modificar?: string[] } } | undefined;
+  if (mb?.arquivosPermitidos) {
+    const atuais = [...(mb.arquivosPermitidos.criar ?? []), ...(mb.arquivosPermitidos.modificar ?? [])].map(norm);
+    mb.arquivosPermitidos.modificar = [...(mb.arquivosPermitidos.modificar ?? []), ...extra.filter((f) => !atuais.includes(norm(f)))];
+  }
+  const rep = (payload.reparoEntrega as DeliveryRepairPayload | undefined)?.microbriefReparo;
+  if (rep && Array.isArray(rep.filesScope)) {
+    rep.filesScope = [...rep.filesScope, ...extra.filter((f) => !rep.filesScope.some((b) => norm(b) === norm(f)))];
+  }
+  return { filesScope: JSON.stringify([...base, ...novos]), payload, novos };
+}
+
+/**
+ * Mudança 44: no Re-tentar de uma etapa de reparo, o escopo é recalculado pela regra atual a partir dos
+ * defeitos que ela carrega (etapa criada antes da regra, ou cujo defeito cita arquivo de outra etapa).
+ * Devolve os arquivos acrescentados (vazio = nada mudou ou não é reparo).
+ */
+export async function rescopeRepairNode(nodeId: string): Promise<string[]> {
+  const node = await prisma.taskNode.findUnique({ where: { id: nodeId } });
+  const rep = node ? readRepairPayload(node.payload) : null;
+  if (!node || !rep) return [];
+  const tasks = await prisma.taskNode.findMany({ where: { sessionId: node.sessionId, specVersion: node.specVersion } });
+  const extra = extraScopeFor(node, rep.defeitos, ownerFinder(tasks.filter((t) => t.id !== node.id)));
+  if (extra.length === 0) return [];
+  const widened = widenNodeScope(node.filesScope, JSON.parse(node.payload || "{}") as Record<string, unknown>, extra);
+  if (widened.novos.length === 0) return [];
+  await prisma.taskNode.update({ where: { id: nodeId }, data: { filesScope: widened.filesScope, payload: JSON.stringify(widened.payload) } });
+  TelemetryLogger.log({ sessionId: node.sessionId, action: "REPAIR_SCOPE_WIDENED", details: { nodeId, arquivos: widened.novos } });
+  return widened.novos;
+}
+
 /**
  * Liga cada lacuna à etapa dona. Dona = a etapa mais recente (o reparo mais novo vence a original) que
  * não é a base sem IA e que tem o arquivo no escopo, ou o REQ entre os seus.
@@ -83,7 +162,7 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   const candidates = tasks
     .filter((t) => t.role !== "scaffold" && t.status === "completed")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const ownerOfFile = (file: string) => candidates.find((t) => scopeOf(t).some((f) => norm(f) === norm(file)));
+  const ownerOfFile = ownerFinder(tasks);
   const ownerOfReq = (req: string) => candidates.find((t) => reqsOf(t).includes(req));
 
   const byOwner = new Map<string, RepairPlanItem>();
@@ -96,11 +175,12 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
     const full = owner as TaskNode;
     const item =
       byOwner.get(owner.id) ??
-      ({ dona: full, origemId: readRepairPayload(owner.payload)?.origemId ?? owner.id, defeitos: [], reqs: [], testes: [] } as RepairPlanItem);
+      ({ dona: full, origemId: readRepairPayload(owner.payload)?.origemId ?? owner.id, defeitos: [], reqs: [], testes: [], escopoExtra: [] } as RepairPlanItem);
     if (!item.defeitos.includes(defeito)) item.defeitos.push(defeito);
     if (teste && !item.testes.some((t) => t.caminho === teste.caminho)) item.testes.push(teste);
     if (req && !item.reqs.includes(req)) item.reqs.push(req);
     byOwner.set(owner.id, item);
+    return item;
   };
 
   for (const file of gaps.missingFiles) add(ownerOfFile(file), `arquivo da Spec ausente no disco: ${file}`);
@@ -110,7 +190,11 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   }
   for (const d of gaps.fileDefects ?? []) {
     const teste = d.teste ? { caminho: d.teste.caminho, conteudo: d.teste.conteudo, existente: d.teste.existente, saida: d.saida } : undefined;
-    add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito, undefined, teste);
+    const item = add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito, undefined, teste);
+    if (!item) continue;
+    for (const f of extraScopeFor(item.dona, [d.defeito], ownerOfFile)) {
+      if (!item.escopoExtra.some((x) => norm(x) === norm(f))) item.escopoExtra.push(f);
+    }
   }
   for (const req of gaps.unapprovedReqs) add(ownerOfReq(req), `${req} não aprovado (veredito do avaliador abaixo de "implementado")`, req);
   // Sem detalhe do build: só é lacuna sem dono se não houver outra coisa a reparar (a próxima verificação mostra).
@@ -118,6 +202,32 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   semDono.push(...gaps.otherGaps);
 
   return { itens: Array.from(byOwner.values()), semDono };
+}
+
+/** Escopo da etapa de reparo: o da dona + os arquivos citados nos defeitos (mudança 44). */
+export function repairScopeOf(item: RepairPlanItem): string[] {
+  const base = scopeOf(item.dona);
+  return [...base, ...item.escopoExtra.filter((f) => !base.some((b) => norm(b) === norm(f)))];
+}
+
+/**
+ * Mudança 44: duas etapas da mesma rodada que editam o mesmo arquivo rodam uma depois da outra
+ * (a que tem o arquivo no escopo próprio vai primeiro); sem ciclo.
+ */
+export function repairDependencies(itens: RepairPlanItem[], idOf: (i: RepairPlanItem) => string): Map<string, string[]> {
+  const deps = new Map<string, string[]>(itens.map((i) => [idOf(i), []]));
+  for (const item of itens) {
+    for (const f of item.escopoExtra) {
+      for (const other of itens) {
+        if (other === item || !scopeOf(other.dona).some((x) => norm(x) === norm(f))) continue;
+        const a = idOf(item);
+        const b = idOf(other);
+        if (deps.get(b)!.includes(a) || deps.get(a)!.includes(b)) continue;
+        deps.get(a)!.push(b);
+      }
+    }
+  }
+  return deps;
 }
 
 function microbriefReparoFor(item: RepairPlanItem, rodada: number, idProjeto: string): MicrobriefReparoDocument {
@@ -129,7 +239,7 @@ function microbriefReparoFor(item: RepairPlanItem, rodada: number, idProjeto: st
     referenciaEtapaOriginal: item.origemId,
     versaoReparo: rodada,
     idProjeto,
-    filesScope: scopeOf(item.dona),
+    filesScope: repairScopeOf(item),
     reqsAlvo: item.reqs.length > 0 ? item.reqs : reqsOf(item.dona),
     diretrizCirurgica:
       "A verificação final do projeto inteiro reprovou a entrega com os defeitos abaixo, nos arquivos desta etapa. " +
@@ -208,6 +318,8 @@ export async function tryStartDeliveryRepair(
   if (!toPlanning.ok) return { started: false, tipo: "erro", motivo: `não foi possível abrir o reparo: ${toPlanning.reason}` };
 
   const idProjeto = session?.title || sessionId;
+  const repairId = (i: RepairPlanItem) => `${i.origemId}-reparo${rodada}`;
+  const deps = repairDependencies(plan.itens, repairId);
   for (const item of plan.itens) {
     const base = (() => {
       try {
@@ -216,6 +328,8 @@ export async function tryStartDeliveryRepair(
         return {};
       }
     })();
+    // Mudança 44: o executor só grava o que o Microbrief permite — os arquivos citados nos defeitos entram em "modificar".
+    if (item.escopoExtra.length > 0) widenNodeScope(item.dona.filesScope, base, item.escopoExtra);
     const reparoEntrega: DeliveryRepairPayload = {
       rodada,
       origemId: item.origemId,
@@ -227,15 +341,15 @@ export async function tryStartDeliveryRepair(
     const originalTitle = item.dona.title.replace(/^Reparo \d+\/\d+ — /, "");
     await prisma.taskNode.create({
       data: {
-        id: `${item.origemId}-reparo${rodada}`,
+        id: repairId(item),
         sessionId,
         specVersion,
         title: `Reparo ${rodada}/${limite} — ${originalTitle}`,
         role: item.dona.role,
         cluster: item.dona.cluster,
         status: "pending",
-        dependencies: "[]",
-        filesScope: item.dona.filesScope,
+        dependencies: JSON.stringify(deps.get(repairId(item)) ?? []),
+        filesScope: JSON.stringify(repairScopeOf(item)),
         mcpScope: item.dona.mcpScope,
         payload: JSON.stringify({ ...base, reparoEntrega }),
       },

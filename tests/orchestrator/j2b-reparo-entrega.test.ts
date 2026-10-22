@@ -210,6 +210,73 @@ describe("43.3 — o teste que prova o defeito vai junto para a etapa dona", () 
   });
 });
 
+describe("44 — defeito que cita outro arquivo de código leva esse arquivo ao escopo do reparo", () => {
+  it("caso real do Gateway: segredo fixo em auth.ts e middleware.ts → o reparo da dona de auth.ts pode editar o middleware", async () => {
+    const { codeFilesCitedIn, repairScopeOf, repairDependencies } = await import("../../src/core/orchestrator/delivery-repair.js");
+    expect(codeFilesCitedIn("src/lib/auth.ts:5: segredo fixo (o mesmo ocorre em src/middleware.ts:4); ver tests/auth.test.ts")).toEqual([
+      "src/lib/auth.ts",
+      "src/middleware.ts",
+    ]);
+    const n4 = node({ id: "n4", filesScope: JSON.stringify(["src/lib/auth.ts", "src/lib/tenant.ts"]) });
+    const n20 = node({ id: "n20", title: "Etapa 20/40", filesScope: JSON.stringify(["src/middleware.ts"]) });
+    const plan = planDeliveryRepair([n4, n20], {
+      ...noGaps,
+      fileDefects: [
+        { arquivo: "src/lib/auth.ts", defeito: "src/lib/auth.ts:5: SEGREDO_SESSAO cai para string fixa (o mesmo ocorre em src/middleware.ts:4)" },
+        { arquivo: "src/middleware.ts", defeito: "src/middleware.ts:10: rota /admin sem checar papel" },
+        { arquivo: "src/lib/auth.ts", defeito: "src/lib/auth.ts:9: cita src/nao-existe.ts, que não é do plano" },
+      ],
+    });
+    const i4 = plan.itens.find((i) => i.dona.id === "n4")!;
+    expect(i4.escopoExtra).toEqual(["src/middleware.ts"]);
+    expect(repairScopeOf(i4)).toEqual(["src/lib/auth.ts", "src/lib/tenant.ts", "src/middleware.ts"]);
+    // A dona do middleware também repara nesta rodada → o reparo de auth espera por ela (mesmo arquivo).
+    const deps = repairDependencies(plan.itens, (i) => `${i.dona.id}-r`);
+    expect(deps.get("n4-r")).toEqual(["n20-r"]);
+    expect(deps.get("n20-r")).toEqual([]);
+  });
+});
+
+describe("44 — Re-tentar uma etapa de reparo recalcula o escopo", () => {
+  afterAll(cleanup);
+
+  it("reparo criado antes da regra ganha o middleware no escopo, no Microbrief e no Microbrief de reparo", async () => {
+    const { retryNodeAndCascade } = await import("../../src/core/orchestrator/session-resume.js");
+    vi.spyOn(await import("../../src/core/orchestrator/job-queue.js"), "enqueueSessionQueueJob").mockResolvedValue(undefined as never);
+    const session = await prisma.session.create({ data: { title: "J2b-44", phase: "EXECUCAO" } });
+    created.push(session.id);
+    const id = (s: string) => `${session.id}-${s}`;
+    await prisma.taskNode.create({ data: { id: id("n20"), sessionId: session.id, title: "Etapa 20/40", status: "completed", filesScope: JSON.stringify(["src/middleware.ts"]), payload: "{}" } });
+    const defeito = "src/lib/auth.ts:5: segredo fixo (o mesmo ocorre em src/middleware.ts:4)";
+    await prisma.taskNode.create({
+      data: {
+        id: id("n4-reparo4"),
+        sessionId: session.id,
+        title: "Reparo 4/4 — Etapa 4/40",
+        status: "blocked",
+        attempts: 3,
+        filesScope: JSON.stringify(["src/lib/auth.ts"]),
+        payload: JSON.stringify({
+          microbrief: { documento: "microbrief", reqsCobertos: ["REQ-007"], arquivosPermitidos: { criar: [], modificar: ["src/lib/auth.ts"] } },
+          reparoEntrega: { rodada: 4, origemId: id("n4"), etapaAnterior: id("n4"), defeitos: [defeito], microbriefReparo: { filesScope: ["src/lib/auth.ts"] } },
+        }),
+      },
+    });
+    const res = await retryNodeAndCascade(id("n4-reparo4"), "linha_de_comando");
+    expect(res.ok).toBe(true);
+    expect(res.escopoAmpliado).toEqual(["src/middleware.ts"]);
+    const n = await prisma.taskNode.findUniqueOrThrow({ where: { id: id("n4-reparo4") } });
+    expect(n.status).toBe("pending");
+    expect(n.attempts).toBe(0);
+    expect(JSON.parse(n.filesScope!)).toEqual(["src/lib/auth.ts", "src/middleware.ts"]);
+    const p = JSON.parse(n.payload!);
+    expect(p.microbrief.arquivosPermitidos.modificar).toEqual(["src/lib/auth.ts", "src/middleware.ts"]);
+    expect(p.reparoEntrega.microbriefReparo.filesScope).toEqual(["src/lib/auth.ts", "src/middleware.ts"]);
+    // 2ª vez: nada a acrescentar.
+    expect((await retryNodeAndCascade(id("n4-reparo4"), "linha_de_comando")).escopoAmpliado).toEqual([]);
+  });
+});
+
 describe("43.4 — rodada autorizada soma 1 ao limite", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
