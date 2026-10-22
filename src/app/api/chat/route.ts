@@ -28,7 +28,8 @@ import {
   evaluateChatFanOutWithJev,
   type ChatFanOutDecision,
 } from "@/core/decision/jev-decisions";
-import { runUniversalIntakeFunnel, formatIntakeFunnelBrief } from "@/core/intake/universal-funnel";
+import { runUniversalIntakeFunnel, formatIntakeFunnelBrief, type IntakeFunnelResult } from "@/core/intake/universal-funnel";
+import { checkMandatoryGaps, renderMandatoryGapsNotice } from "@/core/intake/mandatory-gaps";
 import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
 import { checkReqOrigins, renderReqOriginNotice } from "@/core/intake/req-origin-check";
 import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
@@ -637,6 +638,7 @@ export async function POST(request: NextRequest) {
 
     let funnelBrief: string | undefined;
     let officialDocsBlock: string | null = null;
+    let funnelResult: IntakeFunnelResult | null = null;
     if (isSpecDraftingPhase && !isQuestionWithoutPhaseChange) {
       try {
         const userMessages = await prisma.message.findMany({
@@ -658,6 +660,7 @@ export async function POST(request: NextRequest) {
           sessionId: activeSessionId,
         });
         funnelBrief = formatIntakeFunnelBrief(funnel);
+        funnelResult = funnel;
         // P8 (mudança 44): serviço externo citado na conversa → documentação oficial pela trava T7.
         officialDocsBlock = await officialDocsBlockForSession(activeSessionId, fullUserConversation).catch(() => null);
       } catch {
@@ -960,7 +963,25 @@ export async function POST(request: NextRequest) {
               action: "SPEC_REQ_ORIGINS",
               details: { contagem: origens.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.status]: (acc[r.status] ?? 0) + 1 }), {}), suspeitos: origens.filter((r) => r.status === "nao_encontrado" || r.status === "sem_origem").map((r) => r.id) },
             });
-            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}${renderReqOriginNotice(origens)}`;
+            // J8 (mudança 44): o que o tipo de projeto exige (pagamento, login, vários clientes…) e a Spec não diz.
+            let gapsNotice = "";
+            if (funnelResult) {
+              const gaps = await checkMandatoryGaps({
+                funnel: funnelResult,
+                requisitos: healed.parsed.requisitos ?? [],
+                notas: healed.parsed.notasImplementacao,
+                sessionId: activeSessionId,
+              }).catch(() => null);
+              if (gaps) {
+                TelemetryLogger.log({
+                  sessionId: activeSessionId,
+                  action: "SPEC_MANDATORY_GAPS",
+                  details: { aplicaveis: gaps.aplicaveis, porChave: gaps.cobertosPorChave, peloJev: gaps.cobertosPeloJev, faltando: gaps.faltando.map((i) => i.id), jev: gaps.jevDisponivel },
+                });
+                gapsNotice = renderMandatoryGapsNotice(gaps);
+              }
+            }
+            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}${renderReqOriginNotice(origens)}${gapsNotice}`;
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)
