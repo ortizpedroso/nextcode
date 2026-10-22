@@ -154,8 +154,18 @@ export function classifyRun(
   const cases = report.cases.filter((c) => c.file === file);
   if (cases.length === 0) return { status: "nao_carregou", saida: "nenhum caso de teste" };
   const failed = cases.filter((c) => c.status === "failed");
-  if (failed.length > 0) return { status: "falhou", saida: failed.map((c) => `${c.name}: ${c.failure ?? ""}`).join("\n").slice(0, 3000) };
-  return { status: "passou" };
+  if (failed.length === 0) return { status: "passou" };
+  const saida = failed.map((c) => `${c.name}: ${c.failure ?? ""}`).join("\n").slice(0, 3000);
+  // Gateway 22/10: "ReferenceError: React is not defined" é erro do PRÓPRIO teste (faltou importar), não prova
+  // do defeito. Só conta como reproduzido se ao menos uma falha for de asserção (esperado × recebido).
+  if (!failed.some((c) => isAssertionFailure(c.failure ?? ""))) return { status: "nao_carregou", saida };
+  return { status: "falhou", saida };
+}
+
+/** Falha de asserção (o comportamento difere do esperado) × erro do próprio teste (referência, sintaxe, tipo). */
+export function isAssertionFailure(failure: string): boolean {
+  if (/AssertionError|expected .+ (to|not)|instead of (rejecting|resolving)|toThrow|toEqual|toBe\b/i.test(failure)) return true;
+  return !/^\s*(ReferenceError|SyntaxError|TypeError: (Cannot read|.* is not a function|.* is not a constructor))/m.test(failure);
 }
 
 export async function reproduceDefects(input: {

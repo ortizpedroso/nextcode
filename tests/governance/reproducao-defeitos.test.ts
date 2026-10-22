@@ -211,3 +211,16 @@ describe("43.2 — revisão final com reprodução", () => {
     if (p.ok) expect(p.problemas[0]).toMatchObject({ severidade: "critico", semCitacao: true });
   });
 });
+
+describe("43.2 — erro do próprio teste não é prova", () => {
+  it("ReferenceError no teste (Gateway: 'React is not defined') vira 'não carregou'; asserção conta como prova", async () => {
+    const { isAssertionFailure } = await import("@/core/governance/defect-reproducer");
+    const base = { ok: true, stage: "run", durationMs: 1, files: [{ file: ".nextcode-repro/a.test.ts", status: "failed" as const }] };
+    const refErr = classifyRun({ ...base, cases: [{ file: ".nextcode-repro/a.test.ts", name: "n", status: "failed", failure: "ReferenceError: React is not defined\n at a.test.ts:3" }] }, "a.test.ts");
+    expect(refErr.status).toBe("nao_carregou");
+    const asser = classifyRun({ ...base, cases: [{ file: ".nextcode-repro/a.test.ts", name: "n", status: "failed", failure: "AssertionError: expected 401 to be 200" }] }, "a.test.ts");
+    expect(asser.status).toBe("falhou");
+    expect(isAssertionFailure("Error: promise resolved \"{ id: 'cob_1' }\" instead of rejecting")).toBe(true);
+    expect(isAssertionFailure("ErroTaxaNaoConfigurada: sem configuração ativa")).toBe(true);
+  });
+});
