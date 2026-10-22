@@ -1,3 +1,14 @@
+## 22/10/2026 (206) — Retomada do Gateway barrada pela pausa de 24 h do FreeLLMAPI
+
+**Fundador:** DeepSeek recarregado, 9router e electronhub desligados, Antigravity parado.
+**Conferido (só leitura):** FreeLLMAPI só com a chave `custom` (DeepSeek oficial) ligada.
+**Retomada `4d019f00` 08:14 UTC:** 3 pausas SEM_LLM em 1,5 min → `SEM_LLM_PERSISTENTE` → BLOQUEADA (mudança 42 funcionando). Causa: o FreeLLMAPI guardou na tabela `rate_limit_cooldowns` uma pausa de 24 h por crédito na chave 21 (`deepseek-v4-pro` e `deepseek-flash`, criada 02:19, vence ~02:19 de 23/10) — ele não sabe da recarga. Erro: `429 All models exhausted… Soonest reset ~18h`.
+**Não fiz:** limpar a pausa — as rotas oficiais (`DELETE /api/keys/21/cooldowns`, `POST /api/health/check/21`) exigem o login do painel do FreeLLMAPI; mexer no banco dele já foi recusado.
+**Próximo passo:** fundador limpa a pausa da chave DeepSeek no painel → "retome o Gateway" → rodada 3 → verificação final → então responder ao Antigravity.
+**Pendências do fundador:** limpar a pausa da chave `custom` (DeepSeek) no painel do FreeLLMAPI; depois pedir a retomada.
+
+---
+
 ## 22/10/2026 (205) — Antigravity parou na T-A; prompt corrigido
 
 **Fundador:** DeepSeek recarregado, 9router desligado, prompt colado no Antigravity → ele parou na T-A (HEAD era `be2ed05 docs(diario)`, criado pelo gancho do diário depois do último `docs(relatorios)`). Parada correta; erro do prompt.
