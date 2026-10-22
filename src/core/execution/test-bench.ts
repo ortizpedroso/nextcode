@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 /**
@@ -144,7 +145,9 @@ export const dockerTestBenchRunner: TestBenchRunner = async (projectPath, req) =
   if (imageError) return empty("image", imageError);
 
   const root = path.resolve(projectPath);
-  const base = path.join(root, ".nextcode", "test-bench");
+  // Mudança 44: a pasta de trabalho (testes de reprodução e de aceite — inclusive os ESCONDIDOS) fica fora do
+  // projeto: dentro dele o executor poderia ler os escondidos com read_file, e o repositório ficava sujo.
+  const base = path.join(os.tmpdir(), "nextcode-test-bench", crypto.createHash("sha256").update(root.toLowerCase()).digest("hex").slice(0, 12));
   const outDir = path.join(base, "out");
   const reproDir = path.join(base, "repro");
   fs.rmSync(outDir, { recursive: true, force: true });

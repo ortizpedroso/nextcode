@@ -5,7 +5,7 @@ Roda testes **vitest** do projeto gerado dentro de um contêiner. O código gera
 1. `install.sh` (**com** rede): copia o projeto (sem `node_modules`/`.next`/`.nextcode`), `npm install --ignore-scripts`, instala `vitest@2.1.9` se faltar, `prisma generate`; guarda `node_modules` no volume de cache `/deps` (um por projeto; refeito só quando muda `package.json`, `package-lock.json` ou o schema).
 2. `run.sh` (**sem** rede, `--network none`, projeto só leitura): copia o projeto, liga o cache, junta os testes de reprodução (`/repro` → `.nextcode-repro/`) e roda `vitest run --reporter=json`.
 
-Ambiente `node` (sem navegador); alias `@/` = `src/`. Resultado em `<projeto>/.nextcode/test-bench/out/vitest.json`.
+Ambiente `node` (sem navegador); alias `@/` = `src/`. Resultado em `<tmp>/nextcode-test-bench/<hash do projeto>/out/vitest.json` (fora do projeto desde a mudança 44: os testes escondidos não ficam ao alcance do executor).
 
 ```bash
 docker build -t nextcode-test-bench:2 docker/test-bench
