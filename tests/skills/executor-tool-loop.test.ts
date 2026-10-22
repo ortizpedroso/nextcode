@@ -172,13 +172,15 @@ async function setupSingleTaskSession(projectDir: string) {
   return { project, session, task: microbriefTask!, jobId: startRes.jobId! };
 }
 
-async function waitForTelemetryLogs(sessionId: string, action: string) {
-  for (let i = 0; i < 30; i++) {
+// A trilha é gravada sem esperar (TelemetryLogger): sob carga da suíte inteira o 2º registro chegava
+// depois do 1º e o teste via só 1 — espera até a quantidade pedida (ou o prazo).
+async function waitForTelemetryLogs(sessionId: string, action: string, min = 1) {
+  for (let i = 0; i < 60; i++) {
     const rows = await prisma.telemetryLog.findMany({
       where: { sessionId, action },
       orderBy: { createdAt: "asc" },
     });
-    if (rows.length > 0) return rows;
+    if (rows.length >= min) return rows;
     await new Promise((r) => setTimeout(r, 30));
   }
   return prisma.telemetryLog.findMany({
@@ -1117,7 +1119,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     const res = await executeTaskNode(task);
     expect(res.finalStatus).toBe("completed");
     expect(calls).toBe(4);
-    const retries = await waitForTelemetryLogs(session.id, "EXECUTOR_TURN_RETRY");
+    const retries = await waitForTelemetryLogs(session.id, "EXECUTOR_TURN_RETRY", 2);
     expect(retries).toHaveLength(2);
     const s = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
     expect(s.phase).not.toBe("PAUSADA");
@@ -1372,7 +1374,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     const res = await executeTaskNode(task);
     expect(res.success).toBe(false);
 
-    const toolLogs = await waitForTelemetryLogs(session.id, "EXECUTOR_TOOL_CALL");
+    const toolLogs = await waitForTelemetryLogs(session.id, "EXECUTOR_TOOL_CALL", 3);
     const invalidLogs = toolLogs
       .map((l) => JSON.parse(l.details!))
       .filter((d) => d.ferramenta === "invalido");
