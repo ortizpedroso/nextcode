@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** **execução autônoma 5 (mudança 44)** — checklist abaixo, na ordem; o fundador delegou as decisões (22/10: "continue com a implementação e pode escolher e tomar decisões por mim… implemente tudo… ao final dois relatórios"). Item em curso: **44.3 Gateway `4d019f00` até o fim**.
+**▶ AGORA (atualizar a cada passo):** **execução autônoma 5 (mudança 44)** — checklist abaixo, na ordem; o fundador delegou as decisões (22/10: "continue com a implementação e pode escolher e tomar decisões por mim… implemente tudo… ao final dois relatórios"). Item em curso: **44.3 Gateway `4d019f00`** (rodada 5 autorizada por delegação: 1 defeito provado REQ-018 + importantes) e **44.7 JV1** (mapa de usos do Jev começado).
 
 **Checklist da mudança 43 — revisor com bancada de testes (ordem fixa; cada fase com porta medida, 1 commit por fase com tsc + vitest):**
 - [x] **43.1 Bancada** (`docker/test-bench`, `src/core/execution/test-bench.ts`, `scripts/bancada-testes.ts`) — **porta medida 22/10:** os 11 testes do Gateway rodaram pela 1ª vez: 9 passam, 2 falham ("rejeita pagador sem e-mail e sem WhatsApp" resolveu em vez de rejeitar → REQ-026/052; "opções de parcelamento" `NaN` → REQ-055 — os mesmos que a revisão final achou lendo); teste malicioso: `fetch` sem rede e escrita em `/project` recusada (nenhum arquivo criado); 5 s com o cache
@@ -295,11 +295,11 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **44.1 Reparo alcança todos os arquivos do defeito** — `codeFilesCitedIn` + `escopoExtra` (`delivery-repair.ts`): outro arquivo de código citado no defeito (e do plano) entra no escopo da etapa de reparo, no Microbrief (`modificar`) e no Microbrief de reparo; duas etapas da rodada com o mesmo arquivo rodam em sequência (`repairDependencies`); **Re-tentar** de etapa de reparo recalcula o escopo (`rescopeRepairNode`, trilha `REPAIR_SCOPE_WIDENED`), pelo painel e por `retomar-sessao.ts --refazer` (mesma função `retryNodeAndCascade`). Prova do defeito: trilha 22/10 11:11 e 11:16, `REPAIR_CONTRACT_FAILED` 3× no middleware fora do escopo
 - [x] **44.2 Entrega decidida pela prova** (fundador: "não quero ajuste para passar nos testes… se está muito rígido, vamos ajustar") — `splitDefectsByEvidence`: reprova só defeito com teste que falha, `critico`, ou sem bancada para provar; defeito só de leitura acompanha o reparo e, sozinho, vira **ressalva da entrega**; pergunta de Spec nunca trava o código; **mensagem de entrega** no chat (antes: nenhuma) com o que foi conferido, ressalvas e perguntas (`buildDeliveryReport`); defeito da revisão nunca vira "lacuna sem dono" (achado: `teste do projeto falha:` caía em `otherGaps`)
 - [ ] **44.3 Gateway `4d019f00` até o fim** (porta real de 44.1–44.2) + aceite escrito pelo auditor = **E3 P10 Gate 1**
-- [ ] **44.4 F10** — último erro do gateway filtrado por sessão (ressalva do Antigravity)
-- [ ] **44.5 TR1 (10) esforço medido** — controles do J3 e do avaliador de etapa com `effort` medium × high; fica o mais barato que acerta todos
+- [x] **44.4 F10** (`0698c78`) — último erro do gateway filtrado por sessão (ressalva do Antigravity)
+- [x] **44.5 TR1 (10) esforço medido** (`f18ad95`: J3 Sonnet medium/low 8/8, avaliador medium 7/7 = high; controles fáceis não separam → padrão mantido) — controles do J3 e do avaliador de etapa com `effort` medium × high; fica o mais barato que acerta todos
 - [ ] **44.6 J4** — com × sem Jev medido no bench; auditoria final do Jev ativa só se 0 falso negativo
 - [ ] **44.7 JV1** — tabela uso × pergunta × ação × medição; uso do Jev sem efeito sai; A3 decidido com os diagnósticos reais
-- [ ] **44.8 PJ2b** — fechar projeto e retomar onde parou
+- [x] **44.8 PJ2b** (`0698c78`: Fechar = fila parada; Reabrir = onde parou no chat + volta à fila) — fechar projeto e retomar onde parou
 - [ ] **44.9 S3 + fora da ordem** — conformidade skills × código (achados de `AUDITORIA-SKILLS.md`), código morto M1/M4, `verificacao_evidencia` coerente com o código
 - [ ] **44.10 E2** — P5.4 ativo (com dado), J11, J7/J8/J9 (laço Jev → elicitador, mudança 7/25), TR1 (7) correção da Spec por trecho, P8 + O1/O4 (T7)
 - [ ] **44.11 E5 autoteste** (antes da E4: usa a bancada da mudança 43 e ataca o defeito que o Gate 1 mostrou — integração) — casos de aceite no Microbrief, testes visíveis + escondidos (§6 item 6: sim), teste × avaliador discordam → para e reporta (§6 item 7: sim)
