@@ -78,10 +78,12 @@ const CASOS = [
 
 async function main() {
   const reps = Number(process.argv[2] || 1);
+  // TR1 (10): 3º argumento opcional = modelo@esforço (ex.: claude-sonnet-5-5@medium); omitido = cadeia padrão.
+  const candidato = process.argv[3];
   const { TelemetryLogger } = await import("@/core/telemetry/telemetry-logger");
   TelemetryLogger.log = () => {};
   const { DualLensAuditor } = await import("@/core/governance/dual-lens-auditor");
-  const { dispatchStrongEvaluator } = await import("@/core/llm/evaluator-models");
+  const { dispatchStrongEvaluator, claudeCandidate } = await import("@/core/llm/evaluator-models");
   const { costFromUsage } = await import("@/core/llm/cost");
 
   const rows: any[] = [];
@@ -92,7 +94,7 @@ async function main() {
       let modelo = "—";
       let usd = 0;
       const dispatchFn = async (messages: any[]) => {
-        const r = await dispatchStrongEvaluator(messages, { executorFamily: "deepseek" });
+        const r = await dispatchStrongEvaluator(messages, { executorFamily: "deepseek", ...(candidato ? { chain: [claudeCandidate(candidato)] } : {}) });
         if (r.model) {
           modelo = r.model;
           usd += costFromUsage(r.model, r.usage);

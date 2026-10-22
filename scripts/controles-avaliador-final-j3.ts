@@ -4,6 +4,7 @@
  * fica o mais barato que passar (§5.0, linha J3).
  * Lê a chave da Anthropic de uma CÓPIA do banco; telemetria desligada; nada é escrito em prisma/dev.db.
  * Uso: npx tsx scripts/controles-avaliador-final-j3.ts [repeticoesDoCorreto=5] [modelos=claude-opus-5-5,claude-sonnet-5-5]
+ * Esforço por modelo (TR1 10): `claude-sonnet-5-5@medium` (low | medium | high | xhigh | max).
  */
 import fs from "fs";
 import os from "os";
@@ -25,7 +26,7 @@ async function main() {
   const { TelemetryLogger } = await import("@/core/telemetry/telemetry-logger");
   TelemetryLogger.log = () => {};
   const { reviewFinalDelivery } = await import("@/core/governance/final-reviewer");
-  const { dispatchStrongEvaluator } = await import("@/core/llm/evaluator-models");
+  const { dispatchStrongEvaluator, claudeCandidate } = await import("@/core/llm/evaluator-models");
   const { costFromUsage } = await import("@/core/llm/cost");
   const { renderCanonicalSpecDocument } = await import("@/core/intake/spec-format");
   const { P1_SPEC } = await import("../bench/specs/p1");
@@ -74,7 +75,7 @@ async function main() {
         files: c.files,
         dispatch: async (messages) => {
           const res = await dispatchStrongEvaluator(messages, {
-            chain: [{ provider: "claude", model: modelo, routedPrefixes: ["anthropic/"] }],
+            chain: [claudeCandidate(modelo)],
             timeoutMs: 300_000,
             executorFamily: "deepseek",
           });

@@ -16,6 +16,21 @@ export interface EvaluatorCandidate {
   provider: EvaluatorProvider;
   model: string;
   routedPrefixes: string[];
+  /**
+   * TR1 (10): esforço da Anthropic (`output_config.effort`). Omitido = padrão do modelo (Sonnet 5.5 `high`,
+   * Opus 5.5 `medium`). Só muda com medição nos controles (scripts/controles-avaliador-*.ts).
+   */
+  effort?: AnthropicEffort;
+}
+
+export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export const ANTHROPIC_EFFORTS: readonly AnthropicEffort[] = ["low", "medium", "high", "xhigh", "max"];
+
+/** "claude-sonnet-5-5@medium" → candidato Claude com esforço (usado pelos scripts de controle). */
+export function claudeCandidate(spec: string): EvaluatorCandidate {
+  const [model, effort] = spec.split("@");
+  if (effort && !ANTHROPIC_EFFORTS.includes(effort as AnthropicEffort)) throw new Error(`esforço inválido: ${effort}`);
+  return { provider: "claude", model, routedPrefixes: ["anthropic/"], ...(effort ? { effort: effort as AnthropicEffort } : {}) };
 }
 
 /** Lida a cada chamada (o bench troca o modelo por variável de ambiente antes de rodar). */
@@ -208,6 +223,7 @@ export async function dispatchStrongEvaluator(
           body: JSON.stringify({
             model: c.model,
             max_tokens: maxTokens,
+            ...(c.effort ? { output_config: { effort: c.effort } } : {}),
             ...buildAnthropicCachedBody(messages),
           }),
           signal: AbortSignal.timeout(timeoutMs),
