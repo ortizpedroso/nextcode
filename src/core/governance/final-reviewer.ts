@@ -218,6 +218,11 @@ export async function reviewFinalDelivery(input: {
   bench?: (projectPath: string, req: TestBenchRequest) => Promise<TestBenchReport>;
   /** Mudança 44: testes que já provaram defeitos nesta sessão — rodam de novo, sem LLM, e reprovam se falharem. */
   priorProofs?: PriorProof[];
+  /**
+   * E5: etapas promovidas com o teste de aceite falhando e o avaliador aprovando (§6 item 7). Entram como
+   * suspeitas: o escritor da revisão (que vê o código) prova ou descarta com o próprio teste.
+   */
+  suspeitasExtras?: Array<{ arquivo: string | null; defeito: string }>;
 }): Promise<FinalReviewResult> {
   const empty = (motivo: string): FinalReviewResult => ({
     executado: false,
@@ -293,6 +298,9 @@ export async function reviewFinalDelivery(input: {
         arquivo: fileOfRef(v.evidencia),
         defeito: `revisão final: ${v.id} ${v.status} (${v.evidencia || "sem evidência"})${ligados.length ? ` — ${ligados.join("; ")}` : ""}`,
       });
+    }
+    for (const s of input.suspeitasExtras ?? []) {
+      if (!defeitos.some((d) => d.defeito === s.defeito)) defeitos.push({ arquivo: s.arquivo, defeito: s.defeito });
     }
     for (const p of parsed.problemas.filter((x) => x.severidade === "critico")) {
       if (p.req && defeitos.some((d) => d.defeito.includes(`${p.req} `))) continue;

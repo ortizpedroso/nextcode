@@ -38,6 +38,23 @@ export function contractBenchRequest(testes: RepairContractTest[]): { reproTests
   };
 }
 
+/** E5: testes de aceite da etapa (gerados uma vez e reaproveitados nas tentativas). */
+export interface AcceptancePayload {
+  testes: Array<RepairContractTest & { req: string; visivel: boolean }>;
+  julgamento: string[];
+  /** Bancada fora ou testador sem resposta na geração: a etapa segue como antes. */
+  indisponivel?: boolean;
+}
+
+export function readAcceptancePayload(payload?: string | null): AcceptancePayload | null {
+  try {
+    const a = payload ? JSON.parse(payload)?.testesAceite : null;
+    return a && Array.isArray(a.testes) ? (a as AcceptancePayload) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readRepairPayload(payload?: string | null): DeliveryRepairPayload | null {
   try {
     const r = payload ? JSON.parse(payload)?.reparoEntrega : null;

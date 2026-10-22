@@ -1490,3 +1490,113 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
   });
 });
 
+describe("E5 — testes de aceite da etapa (testador cego ao código) no prompt e no portão", () => {
+  const VISIVEL = "import { it, expect } from 'vitest';\nit('REQ-001 saúda pelo nome', () => expect(1).toBe(1));";
+  const ESCONDIDO = "import { it, expect } from 'vitest';\nit('REQ-001 saúda nome com acento', () => expect(2).toBe(2));";
+
+  async function makeStageWithAcceptance(projectDir: string, attempts = 0) {
+    const ctx = await setupSingleTaskSession(projectDir);
+    const payload = JSON.parse(ctx.task.payload || "{}");
+    payload.testesAceite = {
+      testes: [
+        { req: "REQ-001", caminho: "aceite-1-saudacao.test.ts", conteudo: VISIVEL, visivel: true },
+        { req: "REQ-001", caminho: "aceite-2-acento.test.ts", conteudo: ESCONDIDO, visivel: false },
+      ],
+      julgamento: [],
+    };
+    await prisma.taskNode.update({ where: { id: ctx.task.id }, data: { payload: JSON.stringify(payload), attempts } });
+    const task = await prisma.taskNode.findUniqueOrThrow({ where: { id: ctx.task.id }, include: { session: { include: { project: true } } } });
+    return { ...ctx, task };
+  }
+
+  function mockStage(prompts: string[]) {
+    let calls = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      calls++;
+      prompts.push(sys);
+      if (calls === 1) {
+        return makeOkDispatch(
+          "```json acao\n" +
+            JSON.stringify([
+              { ferramenta: "write_file", args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return `Olá, ${name}`;\n}\n" } },
+              { ferramenta: "run_check", args: { comando: "test" } },
+            ]) +
+            "\n```",
+          "deepseek",
+          "deepseek-chat"
+        );
+      }
+      return makeOkDispatch(toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }), "deepseek", "deepseek-chat");
+    });
+  }
+
+  const bench = (falhaEscondido: boolean, calls: TestBenchRequest[]) =>
+    setTestBenchRunnerForTests(async (_p, req) => {
+      calls.push(req);
+      const files = (req.files ?? []).map((f) => ({ file: f, status: (falhaEscondido && f.includes("acento") ? "failed" : "passed") as "failed" | "passed" }));
+      return {
+        ok: true,
+        stage: "run",
+        durationMs: 1,
+        files,
+        cases: files.map((f) => ({ file: f.file, name: f.file.includes("acento") ? "REQ-001 saúda nome com acento" : "REQ-001 saúda pelo nome", status: f.status, ...(f.status === "failed" ? { failure: "AssertionError: expected 'Ola, José' to be 'Olá, José'" } : {}) })),
+      };
+    });
+
+  it("E5 a) visível no prompt e no run_check; escondido só no portão; tudo passando → etapa aceita", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await makeStageWithAcceptance(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
+    const calls: TestBenchRequest[] = [];
+    bench(false, calls);
+    const prompts: string[] = [];
+    mockStage(prompts);
+    try {
+      const res = await executeTaskNode(task);
+      expect(res.finalStatus).toBe("completed");
+      expect(prompts[0]).toContain("Testes de aceite desta etapa");
+      expect(prompts[0]).toContain("REQ-001 saúda pelo nome");
+      expect(prompts.join("\n")).not.toContain("saúda nome com acento");
+      expect(calls[0].files).toEqual([".nextcode-repro/aceite-1-saudacao.test.ts"]);
+      expect(calls[calls.length - 1].files).toEqual([".nextcode-repro/aceite-1-saudacao.test.ts", ".nextcode-repro/aceite-2-acento.test.ts"]);
+      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_TESTS_PASSED")).toHaveLength(1);
+    } finally {
+      setTestBenchRunnerForTests(null);
+    }
+  });
+
+  it("E5 b) escondido falhando antes da última tentativa → promoção desfeita, etapa reprovada pelo teste de aceite", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await makeStageWithAcceptance(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
+    bench(true, []);
+    mockStage([]);
+    try {
+      const res = await executeTaskNode(task);
+      expect(res.finalStatus).not.toBe("completed");
+      const after = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
+      expect(after.result ?? "").toContain("teste de aceite falha");
+      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(false);
+    } finally {
+      setTestBenchRunnerForTests(null);
+    }
+  });
+
+  it("E5 c) §6 item 7: na última tentativa, avaliador aprovando e só o teste cego falhando → etapa segue com a discordância registrada", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await makeStageWithAcceptance(projectDir, 2);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
+    bench(true, []);
+    mockStage([]);
+    try {
+      const res = await executeTaskNode(task);
+      expect(res.finalStatus).toBe("completed");
+      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(true);
+      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT")).toHaveLength(1);
+    } finally {
+      setTestBenchRunnerForTests(null);
+    }
+  });
+});

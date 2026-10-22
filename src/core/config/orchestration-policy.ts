@@ -114,6 +114,8 @@ export interface OrchestrationPolicy {
     revisaoFinal: "ativo" | "sombra" | "desligado";
     /** TR1 (7): ajuste de Spec existente por trecho (bloco patch_spec) ou reescrita inteira (como antes). */
     correcaoSpec: "trecho" | "inteira";
+    /** E5: testes de aceite por etapa escritos pela skill `testador` (cegos ao código) e rodados no portão. */
+    autoteste: "ativo" | "desligado";
   };
   jevExecucao: {
     diagnosticoFalha: "ativo" | "desligado";
@@ -307,6 +309,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     modoExecutor: "laco",
     revisaoFinal: "sombra",
     correcaoSpec: "trecho",
+    autoteste: "desligado",
   },
   jevExecucao: {
     diagnosticoFalha: "ativo",
@@ -575,6 +578,8 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
 
   const correcaoSpecRaw = extractScalarString(raw, "correcao_spec", policy.execucao.correcaoSpec);
   if (correcaoSpecRaw === "trecho" || correcaoSpecRaw === "inteira") policy.execucao.correcaoSpec = correcaoSpecRaw;
+  const autotesteRaw = extractScalarString(raw, "autoteste", policy.execucao.autoteste);
+  if (autotesteRaw === "ativo" || autotesteRaw === "desligado") policy.execucao.autoteste = autotesteRaw;
 
   const revisaoFinalRaw = extractScalarString(raw, "revisao_final", policy.execucao.revisaoFinal);
   if (revisaoFinalRaw === "ativo" || revisaoFinalRaw === "sombra" || revisaoFinalRaw === "desligado") {

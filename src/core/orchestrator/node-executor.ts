@@ -53,8 +53,9 @@ import { checkSecretsInCodeWithJev } from "@/core/governance/secret-guard";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
-import { readRepairPayload, supersededByRepair, contractBenchRequest } from "@/core/orchestrator/repair-payload";
+import { readRepairPayload, readAcceptancePayload, supersededByRepair, contractBenchRequest } from "@/core/orchestrator/repair-payload";
 import { runTestBench } from "@/core/execution/test-bench";
+import { generateAcceptanceTests } from "@/core/governance/acceptance-tests";
 import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
 
 /**
@@ -1178,6 +1179,45 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     });
   }
 
+  // E5 (mudança 44): testes de aceite da etapa, escritos pela skill `testador` só pelo Microbrief (cegos ao
+  // código), gerados uma vez e guardados no payload. Visíveis vão ao executor; escondidos só ao portão.
+  let acceptance = readAcceptancePayload(taskDb.payload);
+  if (!repairPayload && !acceptance && nodeMicrobrief && taskDb.session.project?.path && policy.execucao.autoteste === "ativo") {
+    const root = taskDb.session.project.path;
+    const arquivos = Array.from(new Set([...(nodeMicrobrief.arquivosPermitidos.criar ?? []), ...(nodeMicrobrief.arquivosPermitidos.modificar ?? [])]));
+    const set = await generateAcceptanceTests({
+      sessionId: taskDb.sessionId,
+      projectPath: root,
+      input: {
+        microbriefId: nodeMicrobrief.idMicrobrief || taskDb.id,
+        arquivos,
+        arquivosExistentes: arquivos.filter((f) => fs.existsSync(path.join(root, f))),
+        criteriosPorReq: nodeMicrobrief.criteriosAceitePorReq ?? {},
+        contrato: nodeMicrobrief.interfacesProduz,
+      },
+    }).catch(() => null);
+    acceptance = set && !set.bancadaFora ? { testes: set.testes, julgamento: set.julgamento } : { testes: [], julgamento: [], indisponivel: true };
+    try {
+      const base = JSON.parse(taskDb.payload || "{}") as Record<string, unknown>;
+      await prisma.taskNode.update({ where: { id: taskDb.id }, data: { payload: JSON.stringify({ ...base, testesAceite: acceptance }) } });
+    } catch {
+      // payload ilegível: os testes valem só nesta tentativa
+    }
+  }
+  const acceptanceVisible = (acceptance?.testes ?? []).filter((t) => t.visivel);
+  if (acceptanceVisible.length > 0) {
+    dispatchMessages.push({
+      role: "system",
+      content:
+        "## Testes de aceite desta etapa (escritos pelo testador sem ver o seu código)\n\n" +
+        "NÃO dá para alterar estes testes (eles ficam fora do projeto). A etapa só é aceita com eles passando — e com outros, escondidos, " +
+        'que só o portão roda. Rode `run_check` com `{"comando": "test"}` antes do finish. Implemente o comportamento pedido; não programe para o teste.\n\n' +
+        acceptanceVisible
+          .map((t) => (t.regressao ? "[REGRESSÃO — já passava; tem de continuar passando] " : "") + `--- .nextcode-repro/${t.caminho} (${t.req}) ---\n${t.conteudo}`)
+          .join("\n\n"),
+    });
+  }
+
   dispatchMessages.push({
     role: "user",
     content: useToolLoop
@@ -1246,7 +1286,11 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       paidGateways,
       allowedRoutedViaPrefixes: paidGateways ? policy.roteamentoPapeisCriticos.prefixosRotaPaga : undefined,
       // Mudança 43.3: com testes do contrato, o executor roda `run_check test` na bancada.
-      contractTests: repairPayload?.testesReproducao,
+      // E5: e os testes de aceite visíveis da etapa.
+      contractTests:
+        (repairPayload?.testesReproducao?.length ?? 0) + acceptanceVisible.length > 0
+          ? [...(repairPayload?.testesReproducao ?? []), ...acceptanceVisible]
+          : undefined,
       routerKeys: {
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -1818,28 +1862,47 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         });
       }
       // Mudança 43.3: reparo com testes do contrato só é aceito com todos passando (o defeito saiu).
-      if (gate.passed && !gate.rolledBack && repairPayload?.testesReproducao?.length) {
-        const contract = await runTestBench(targetProjectRoot, contractBenchRequest(repairPayload.testesReproducao));
+      // E5: o portão roda também os testes de aceite da etapa (visíveis e escondidos).
+      const gateTests = [...(repairPayload?.testesReproducao ?? []), ...(acceptance?.testes ?? [])];
+      const acceptancePaths = new Set((acceptance?.testes ?? []).map((t) => `.nextcode-repro/${t.caminho}`));
+      if (gate.passed && !gate.rolledBack && gateTests.length) {
+        const contract = await runTestBench(targetProjectRoot, contractBenchRequest(gateTests));
         if (!contract.ok) {
           // Bancada fora (Docker parado): não trava a etapa; fica o veredito do avaliador e a verificação final.
           TelemetryLogger.log({ sessionId: taskDb.sessionId, action: "REPAIR_CONTRACT_UNAVAILABLE", details: { nodeId: taskDb.id, stage: contract.stage, error: contract.error } });
         } else {
-          const falhas = [
-            ...contract.files.filter((f) => f.loadError).map((f) => `${f.file} não carregou: ${f.loadError}`),
-            ...contract.cases.filter((c) => c.status === "failed").map((c) => `${c.file} › ${c.name}: ${c.failure ?? ""}`),
+          const todas = [
+            ...contract.files.filter((f) => f.loadError).map((f) => ({ file: f.file, txt: `${f.file} não carregou: ${f.loadError}` })),
+            ...contract.cases.filter((c) => c.status === "failed").map((c) => ({ file: c.file, txt: `${c.file} › ${c.name}: ${c.failure ?? ""}` })),
           ];
-          TelemetryLogger.log({
-            sessionId: taskDb.sessionId,
-            action: falhas.length ? "REPAIR_CONTRACT_FAILED" : "REPAIR_CONTRACT_PASSED",
-            details: { nodeId: taskDb.id, casos: contract.cases.length, falhas: falhas.slice(0, 10).map((f) => f.slice(0, 300)) },
-          });
+          const falhasAceite = todas.filter((f) => acceptancePaths.has(f.file)).map((f) => f.txt);
+          let falhas = todas.filter((f) => !acceptancePaths.has(f.file)).map((f) => f.txt);
+          if (falhasAceite.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: wouldReachBlockThreshold && falhas.length === 0 ? "ACCEPTANCE_DISAGREEMENT" : "ACCEPTANCE_TESTS_FAILED",
+              details: { nodeId: taskDb.id, falhas: falhasAceite.slice(0, 10).map((f) => f.slice(0, 300)) },
+            });
+            // §6 item 7 (decidido com dado, 22/10): na ÚLTIMA tentativa, avaliador aprovando e só o teste cego
+            // falhando, a etapa não trava — vai com ressalva e a revisão final (com código e bancada) decide.
+            if (!(wouldReachBlockThreshold && falhas.length === 0)) falhas = [...falhas, ...falhasAceite.map((f) => `teste de aceite falha — ${f}`)];
+          } else if ((acceptance?.testes ?? []).length) {
+            TelemetryLogger.log({ sessionId: taskDb.sessionId, action: "ACCEPTANCE_TESTS_PASSED", details: { nodeId: taskDb.id, casos: contract.cases.length } });
+          }
+          if (repairPayload?.testesReproducao?.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: falhas.some((f) => !f.startsWith("teste de aceite falha")) ? "REPAIR_CONTRACT_FAILED" : "REPAIR_CONTRACT_PASSED",
+              details: { nodeId: taskDb.id, casos: contract.cases.length, falhas: falhas.slice(0, 10).map((f) => f.slice(0, 300)) },
+            });
+          }
           if (falhas.length) {
             qm.rollbackPromotion(taskDb.id);
             if (touchesPrismaSchema(filesScopeArr)) await regeneratePrismaClient(targetProjectRoot);
             promotionTarget = null;
             gate.passed = false;
             gate.failedStage = "teste";
-            gate.failureLine = `teste do contrato ainda falha — ${falhas[0].slice(0, 600)}`;
+            gate.failureLine = falhas[0].startsWith("teste de aceite falha") ? falhas[0].slice(0, 700) : `teste do contrato ainda falha — ${falhas[0].slice(0, 600)}`;
             gate.newErrors = falhas.slice(1, 10).map((f) => f.slice(0, 400));
           }
         }

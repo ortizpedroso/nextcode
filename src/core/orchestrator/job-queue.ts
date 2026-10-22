@@ -55,6 +55,27 @@ export function getJobLeaseMs(): number {
  */
 export { loadPriorProofs } from "@/core/orchestrator/prior-proofs";
 
+/** E5: discordâncias teste de aceite × avaliador (etapas que seguiram com ressalva) viram suspeitas da revisão final. */
+export async function acceptanceDisagreements(sessionId: string): Promise<Array<{ arquivo: string | null; defeito: string }>> {
+  const logs = await prisma.telemetryLog.findMany({ where: { sessionId, action: "ACCEPTANCE_DISAGREEMENT" }, select: { details: true } });
+  const out: Array<{ arquivo: string | null; defeito: string }> = [];
+  for (const l of logs) {
+    try {
+      const d = JSON.parse(l.details || "{}") as { nodeId?: string; falhas?: string[] };
+      if (!d.nodeId) continue;
+      const node = await prisma.taskNode.findUnique({ where: { id: d.nodeId }, select: { title: true, filesScope: true } });
+      const escopo = (JSON.parse(node?.filesScope || "[]") as string[]).filter((f) => !/(^|\/)(tests?|__tests__)\//.test(f));
+      out.push({
+        arquivo: escopo[0] ?? null,
+        defeito: `teste de aceite discordou do avaliador em "${node?.title ?? d.nodeId}": ${(d.falhas ?? [])[0]?.slice(0, 400) ?? ""}`,
+      });
+    } catch {
+      // registro ilegível: ignora
+    }
+  }
+  return out.slice(0, 5);
+}
+
 export async function enqueueSessionQueueJob(sessionId: string): Promise<string> {
   try {
     const job = await prisma.job.create({
@@ -425,6 +446,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             projectPath,
             // Mudança 44: o que já foi provado nesta sessão roda de novo (a leitura varia, o teste não).
             priorProofs: await loadPriorProofs(job.sessionId),
+            suspeitasExtras: await acceptanceDisagreements(job.sessionId),
           });
           const novasProvas = review.defeitos
             .filter((d) => d.prova === "reproduzido" && d.teste && !d.teste.existente)

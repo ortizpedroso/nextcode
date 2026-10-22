@@ -162,6 +162,7 @@ execucao_paralela:
 
 execucao:
   modo_executor: laco
+  autoteste: ativo                   # ativo | desligado (E5: testador escreve os testes de aceite da etapa sem ver o código; controles 22/10: P1 ref 9/9, P4 pega os 2 defeitos, preservação vira regressão)
   correcao_spec: trecho              # trecho | inteira (TR1 7: ajuste de Spec existente por bloco patch_spec; inteira = reescrita como antes)
   revisao_final: ativo               # ativo | sombra | desligado (J3: avaliador-final cego antes de ENTREGUE; controles 21/10 8/8 no Sonnet e no Opus)
 

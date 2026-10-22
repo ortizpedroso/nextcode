@@ -442,6 +442,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       "executor-integration",
       "analista",
       "elicitador",
+      "testador",
     ];
 
     for (const name of skillNames) {

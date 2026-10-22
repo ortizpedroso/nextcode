@@ -80,6 +80,16 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     },
   },
   {
+    // E5 (mudança 44): a etapa só promove com os testes de aceite (do testador, cegos ao código) passando.
+    match: /teste de aceite falha/i,
+    category: {
+      key: "acceptance",
+      label: "Teste de aceite da etapa falhando",
+      humanAction:
+        "O código compila e o avaliador pode até ter aprovado, mas o teste de aceite (escrito pelo testador só a partir do Microbrief, sem ver o código) falha — a saída está abaixo. Confira se o teste pede o que a Spec diz: se pede, o defeito é do código (clique em **Re-tentar**); se o teste exige algo que a Spec não pede, ajuste o critério do REQ na Spec.",
+    },
+  },
+  {
     // Mudança 43.3/44: a etapa de reparo só promove com o teste que prova o defeito passando.
     match: /teste do contrato do reparo|teste do contrato ainda falha/i,
     category: {
