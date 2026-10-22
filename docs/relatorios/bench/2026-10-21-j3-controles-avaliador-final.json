@@ -1,0 +1,260 @@
+{
+  "porModelo": {
+    "claude-opus-5-5": {
+      "acertos": 8,
+      "total": 8,
+      "usd": 0.2592464
+    },
+    "claude-sonnet-5-5": {
+      "acertos": 8,
+      "total": 8,
+      "usd": 0.1178497
+    }
+  },
+  "rows": [
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "1 P1 correto (1/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0398,
+      "s": 11,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "1 P1 correto (2/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0263,
+      "s": 10,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "1 P1 correto (3/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0259,
+      "s": 10,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "1 P1 correto (4/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.026,
+      "s": 10,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "1 P1 correto (5/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0283,
+      "s": 11,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "2 integração: rota valida `titulo` mas passa `body.title` ao store",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=parcial REQ-003=implementado",
+      "defeitos": [
+        "revisão final: REQ-002 parcial (src/app/api/tarefas/route.ts:8-12) — src/app/api/tarefas/route.ts:12: criarTarefa recebe (body as any)?.title, que é undefined quando o cliente envia 'titulo', e a tare"
+      ],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0268,
+      "s": 11,
+      "defeitoPlantado": "REQ-002 / integração rota × store"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "3 stub: removerTarefa com TODO e sempre false",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=parcial REQ-002=implementado REQ-003=parcial",
+      "defeitos": [
+        "revisão final: REQ-001 parcial (src/lib/tarefas.ts:29-32) — src/lib/tarefas.ts:29-32: removerTarefa é stub (TODO, sempre retorna false). Implementar: localizar o índice com tarefas.findIndex(x => x.id",
+        "revisão final: REQ-003 parcial (src/app/api/tarefas/[id]/route.ts:14-18) — src/app/api/tarefas/[id]/route.ts:16: DELETE depende de removerTarefa, que hoje sempre retorna false; com isso a rota sempre "
+      ],
+      "descartes": [],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0366,
+      "s": 16,
+      "defeitoPlantado": "REQ-001/REQ-003 remoção"
+    },
+    {
+      "modelo": "claude-opus-5-5",
+      "caso": "4 P4 base (3 bugs da régua do auditor)",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=ausente REQ-002=ausente REQ-003=implementado",
+      "defeitos": [
+        "revisão final: REQ-001 ausente (src/app/api/tarefas/route.ts:8-12) — src/app/api/tarefas/route.ts:10-11: O POST converte titulo ausente ou não-texto em string vazia e cria a tarefa com 201. Corrigir: ",
+        "revisão final: REQ-002 ausente (src/app/api/tarefas/[id]/route.ts:13-18) — src/app/api/tarefas/[id]/route.ts:16-17: O PATCH responde 200 com {} quando atualizarTarefa não encontra o id. Corrigir: se o"
+      ],
+      "descartes": [
+        "JSON inválido (SyntaxError: Expected ',' or '}' after property value in JSON at position 578 (line 1 column 579))"
+      ],
+      "servido": "claude-opus-5-5",
+      "usd": 0.0496,
+      "s": 17,
+      "defeitoPlantado": "REQ-001..003 do P4"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "1 P1 correto (1/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.02,
+      "s": 9,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "1 P1 correto (2/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0129,
+      "s": 7,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "1 P1 correto (3/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0138,
+      "s": 8,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "1 P1 correto (4/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0145,
+      "s": 8,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "1 P1 correto (5/5)",
+      "esperado": "aprovado",
+      "obtido": "aprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=implementado REQ-003=implementado",
+      "defeitos": [],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.014,
+      "s": 8,
+      "defeitoPlantado": "—"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "2 integração: rota valida `titulo` mas passa `body.title` ao store",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=implementado REQ-002=parcial REQ-003=implementado",
+      "defeitos": [
+        "revisão final: REQ-002 parcial (src/app/api/tarefas/route.ts:12) — src/app/api/tarefas/route.ts:12: POST valida body.titulo e guarda o valor em `titulo`, mas chama criarTarefa((body as any)?.title), q"
+      ],
+      "descartes": [
+        "REQ-003 \"implementado\" cita \"src/app/api/tarefas/[id]/route.ts:6-22\", que não existe nos arquivos mostrados"
+      ],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0232,
+      "s": 13,
+      "defeitoPlantado": "REQ-002 / integração rota × store"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "3 stub: removerTarefa com TODO e sempre false",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=parcial REQ-002=implementado REQ-003=parcial",
+      "defeitos": [
+        "revisão final: REQ-001 parcial (src/lib/tarefas.ts:30-33) — src/lib/tarefas.ts:30-33: removerTarefa é um stub (TODO) que sempre retorna false. Implementar: localizar o índice da tarefa com tarefas.fin",
+        "revisão final: REQ-003 parcial (src/app/api/tarefas/[id]/route.ts:17-21) — src/app/api/tarefas/[id]/route.ts:19: DELETE sempre devolve 404 porque removerTarefa (src/lib/tarefas.ts:30-33) nunca remove."
+      ],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0096,
+      "s": 5,
+      "defeitoPlantado": "REQ-001/REQ-003 remoção"
+    },
+    {
+      "modelo": "claude-sonnet-5-5",
+      "caso": "4 P4 base (3 bugs da régua do auditor)",
+      "esperado": "reprovado",
+      "obtido": "reprovado",
+      "acertou": "sim",
+      "reqs": "REQ-001=ausente REQ-002=ausente REQ-003=implementado",
+      "defeitos": [
+        "revisão final: REQ-001 ausente (src/app/api/tarefas/route.ts:10-11) — src/app/api/tarefas/route.ts:10-11: POST não valida o título: se ausente ou não for texto, vira \"\" e cria a tarefa com 201. Valida",
+        "revisão final: REQ-002 ausente (src/app/api/tarefas/[id]/route.ts:17-18) — src/app/api/tarefas/[id]/route.ts:17-18: PATCH responde 200 com {} quando atualizarTarefa retorna nulo (id inexistente). Se !"
+      ],
+      "descartes": [],
+      "servido": "claude-sonnet-5-5",
+      "usd": 0.0101,
+      "s": 5,
+      "defeitoPlantado": "REQ-001..003 do P4"
+    }
+  ]
+}

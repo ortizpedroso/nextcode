@@ -110,6 +110,8 @@ export interface OrchestrationPolicy {
   };
   execucao: {
     modoExecutor: "laco" | "chamada_unica";
+    /** J3: revisão final cega (`avaliador-final`) antes de ENTREGUE. */
+    revisaoFinal: "ativo" | "sombra" | "desligado";
   };
   jevExecucao: {
     diagnosticoFalha: "ativo" | "desligado";
@@ -300,6 +302,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
   },
   execucao: {
     modoExecutor: "laco",
+    revisaoFinal: "sombra",
   },
   jevExecucao: {
     diagnosticoFalha: "ativo",
@@ -564,6 +567,11 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   );
   if (verifEvidRaw === "ativo" || verifEvidRaw === "sombra" || verifEvidRaw === "desligado") {
     policy.jevExecucao.verificacaoEvidencia = verifEvidRaw;
+  }
+
+  const revisaoFinalRaw = extractScalarString(raw, "revisao_final", policy.execucao.revisaoFinal);
+  if (revisaoFinalRaw === "ativo" || revisaoFinalRaw === "sombra" || revisaoFinalRaw === "desligado") {
+    policy.execucao.revisaoFinal = revisaoFinalRaw;
   }
 
   const auditEntrRaw = extractScalarString(

@@ -162,6 +162,7 @@ execucao_paralela:
 
 execucao:
   modo_executor: laco
+  revisao_final: ativo               # ativo | sombra | desligado (J3: avaliador-final cego antes de ENTREGUE; controles 21/10 8/8 no Sonnet e no Opus)
 
 jev_execucao:
   diagnostico_falha: ativo            # ativo | desligado

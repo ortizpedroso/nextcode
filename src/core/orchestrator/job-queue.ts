@@ -10,6 +10,7 @@ import {
   readProjectFilesContent,
 } from "@/core/orchestrator/node-executor";
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
+import { reviewFinalDelivery } from "@/core/governance/final-reviewer";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -373,6 +374,36 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           }
         }
 
+        // J3: revisão final cega (avaliador-final) — Spec inteira × todos os arquivos entregues.
+        let finalReviewDefects: Array<{ arquivo: string | null; defeito: string }> = [];
+        let finalReviewSummary: Record<string, unknown> | null = null;
+        const revisaoFinalModo = loadOrchestrationPolicy().execucao.revisaoFinal;
+        if (revisaoFinalModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
+          const specFiles = parseSpecDocument(sessionAfterQueue.canonicalSpec)?.arquivosAfetados ?? [];
+          const review = await reviewFinalDelivery({
+            sessionId: job.sessionId,
+            spec: sessionAfterQueue.canonicalSpec,
+            files: readProjectFilesContent(specFiles, projectPath),
+          });
+          finalReviewSummary = {
+            modo: revisaoFinalModo,
+            executado: review.executado,
+            motivoNaoExecutado: review.motivoNaoExecutado,
+            aprovado: review.aprovado,
+            modelo: review.modelo,
+            reqs: review.reqVerdicts.map((v) => `${v.id}=${v.status}`),
+            defeitos: review.defeitos.map((d) => d.defeito).slice(0, 30),
+            ressalvas: review.ressalvas.slice(0, 30),
+            descartes: review.descartes,
+          };
+          TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
+          if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
+            deliveryT10.passed = false;
+            finalReviewDefects = review.defeitos;
+            deliveryT10.gaps.push(...review.defeitos.map((d) => d.defeito));
+          }
+        }
+
         // Auditoria Final do JEV (Spec Canônica × Código Real no Disco)
         const auditoriaEntregaModo = loadOrchestrationPolicy().jevExecucao.auditoriaEntrega;
         if (auditoriaEntregaModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
@@ -442,7 +473,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           await applyPhaseEvent(
             job.sessionId,
             { type: "VERIFICACAO_OK" },
-            { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 } }
+            { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, revisaoFinal: finalReviewSummary } }
           );
         } else {
           // J2b: com dono para cada lacuna (e rodada disponível), volta ao planejamento com etapas de reparo.
@@ -458,8 +489,10 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 !g.startsWith("Arquivos da Spec ausentes") &&
                 !g.startsWith("Requisitos não aprovados") &&
                 !g.startsWith("Type-check do projeto final") &&
-                !g.startsWith("Falha na verificação empírica de build")
+                !g.startsWith("Falha na verificação empírica de build") &&
+                !g.startsWith("revisão final")
             ),
+            fileDefects: finalReviewDefects,
           });
           if (!repair.started) {
             await applyPhaseEvent(

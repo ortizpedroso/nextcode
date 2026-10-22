@@ -32,6 +32,8 @@ export interface DeliveryGaps {
   buildGapWithoutDetail: boolean;
   /** Lacunas que não ligam a arquivo nem a REQ (tela, auditoria do Jev, build não verificável…). */
   otherGaps: string[];
+  /** J3: defeitos da revisão final, com o arquivo citado (null = sem dono). */
+  fileDefects?: Array<{ arquivo: string | null; defeito: string }>;
 }
 
 export interface RepairPlanItem {
@@ -102,6 +104,7 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
     const file = fileOfTsErrorLine(line);
     add(file ? ownerOfFile(file) : undefined, `type-check do projeto final: ${line}`);
   }
+  for (const d of gaps.fileDefects ?? []) add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito);
   for (const req of gaps.unapprovedReqs) add(ownerOfReq(req), `${req} não aprovado (veredito do avaliador abaixo de "implementado")`, req);
   // Sem detalhe do build: só é lacuna sem dono se não houver outra coisa a reparar (a próxima verificação mostra).
   if (gaps.buildGapWithoutDetail && byOwner.size === 0) semDono.push("falha de build sem a lista de erros");
