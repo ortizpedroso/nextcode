@@ -68,6 +68,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "FALHA_AMBIENTE" },
   { type: "REPARO_NECESSARIO" },
   { type: "REABRIR_ENTREGA" },
+  { type: "SEM_LLM_PERSISTENTE" },
   { type: "FALHA_REPETIDA" },
   { type: "SILENCIO_DETECTADO" },
   { type: "NOVO_PEDIDO" },

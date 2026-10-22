@@ -68,6 +68,7 @@ export type PhaseEvent =
   | { type: 'FALHA_AMBIENTE' }
   | { type: 'REPARO_NECESSARIO' }
   | { type: 'REABRIR_ENTREGA' }
+  | { type: 'SEM_LLM_PERSISTENTE' }
   | { type: 'FALHA_REPETIDA' }
   | { type: 'SILENCIO_DETECTADO' }
   | { type: 'NOVO_PEDIDO' };
@@ -96,6 +97,7 @@ export const PHASE_EVENT_TYPES = [
   'FALHA_AMBIENTE',
   'REPARO_NECESSARIO',
   'REABRIR_ENTREGA',
+  'SEM_LLM_PERSISTENTE',
   'FALHA_REPETIDA',
   'SILENCIO_DETECTADO',
   'NOVO_PEDIDO',
@@ -580,9 +582,20 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   PAUSADA: {
-    allowedEvents: ['LLM_VOLTOU', 'AVALIADOR_FORA', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['LLM_VOLTOU', 'AVALIADOR_FORA', 'SEM_LLM_PERSISTENTE', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
+      // Mudança 42: o gateway responde à sonda mas não atende o executor (crédito, cota, chave) —
+      // retomar faria a sessão piscar PAUSADA ↔ EXECUCAO sem fim; para e avisa.
+      if (event.type === 'SEM_LLM_PERSISTENTE') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: ctx.faseAntesDaPausa ?? 'EXECUCAO', faseAntesDaPausa: undefined },
+          effects: [
+            { type: 'AVISAR_HUMANO', motivo: 'o provedor do executor responde mas não atende (crédito, cota ou chave)', acao: 'retomar' },
+          ],
+        };
+      }
       // Mudança 24: o supervisor sondou o Claude e ele continua fora → estende a pausa (ou bloqueia no limite)
       if (event.type === 'AVALIADOR_FORA') {
         return handleAvaliadorFora(ctx, event);

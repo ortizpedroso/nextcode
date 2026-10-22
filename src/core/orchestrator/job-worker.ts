@@ -145,6 +145,21 @@ export async function superviseEvaluatorPauses(
   return resumed;
 }
 
+export const PAUSE_FLAP_WINDOW_MS = 10 * 60_000;
+export const PAUSE_FLAP_LIMIT = 3;
+
+/** Quantas vezes a sessão foi para PAUSADA por `SEM_LLM` na janela. */
+export async function countRecentNoLlmPauses(sessionId: string, now: Date = new Date()): Promise<number> {
+  return prisma.telemetryLog.count({
+    where: {
+      sessionId,
+      action: "PHASE_TRANSITION",
+      createdAt: { gte: new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS) },
+      AND: [{ details: { contains: '"to":"PAUSADA"' } }, { details: { contains: '"type":"SEM_LLM"' } }],
+    },
+  });
+}
+
 /**
  * Supervisor periódico da fila (Item 1 do PLANO-DE-ACAO):
  * Verifica sessões em `PAUSADA` (que possuem `faseAntesDaPausa` registrada por `SEM_LLM`).
@@ -227,6 +242,30 @@ export async function supervisePausedSessions(
 
   let resumedCount = 0;
   for (const session of pausedSessions) {
+    // Mudança 42: pausou por falta de LLM 3× em 10 min com o gateway "de pé" → o provedor não atende
+    // (Gateway 22/10: DeepSeek out_of_credits; a sessão piscava a cada 25 s). Bloqueia em vez de retomar.
+    const flap = await countRecentNoLlmPauses(session.id, now);
+    if (flap >= PAUSE_FLAP_LIMIT) {
+      const lastFailure = await prisma.telemetryLog.findFirst({
+        where: { action: "llm.gateway_failure", createdAt: { gte: new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS) } },
+        orderBy: { createdAt: "desc" },
+        select: { details: true },
+      });
+      let detalhe = "";
+      try {
+        const d = lastFailure?.details ? JSON.parse(lastFailure.details) : null;
+        if (d) detalhe = `${d.gateway ?? "gateway"}: ${d.kind ?? ""}${d.status ? ` HTTP ${d.status}` : ""} — ${String(d.detail ?? "").slice(0, 400)}`;
+      } catch {
+        detalhe = "";
+      }
+      await applyPhaseEvent(session.id, { type: "SEM_LLM_PERSISTENTE" }, {
+        detalheAviso:
+          `A sessão pausou ${flap} vezes em ${PAUSE_FLAP_WINDOW_MS / 60_000} minutos: o gateway responde à sonda, mas nenhum modelo do executor atendeu.` +
+          (detalhe ? `\n\n**Último erro do gateway:** \`${detalhe}\`` : "") +
+          "\n\nConfira crédito, cota e chaves do provedor do executor (ex.: DeepSeek no FreeLLMAPI).",
+      });
+      continue;
+    }
     const res = await applyPhaseEvent(session.id, { type: "LLM_VOLTOU" });
     if (res.ok && res.ctx.phase === "EXECUCAO") {
       await enqueueSessionQueueJob(session.id);
