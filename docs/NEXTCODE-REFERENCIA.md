@@ -298,7 +298,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 - [x] **44.4 F10** (`0698c78`) — último erro do gateway filtrado por sessão (ressalva do Antigravity)
 - [x] **44.5 TR1 (10) esforço medido** (`f18ad95`: J3 Sonnet medium/low 8/8, avaliador medium 7/7 = high; controles fáceis não separam → padrão mantido) — controles do J3 e do avaliador de etapa com `effort` medium × high; fica o mais barato que acerta todos
 - [ ] **44.6 J4** — com × sem Jev medido no bench; auditoria final do Jev ativa só se 0 falso negativo
-- [ ] **44.7 JV1** — tabela uso × pergunta × ação × medição; uso do Jev sem efeito sai; A3 decidido com os diagnósticos reais
+- [x] **44.7 JV1** (`docs/relatorios/JV1-revisao-jev.md`: M3 em lotes — antes as 40 etapas do Gateway caíam na reserva; J23 desligado (15/15 divergências falsas); J2 desligado (estado nunca coube); A3 segue sombra (errou o dono no caso conferido)) — — tabela uso × pergunta × ação × medição; uso do Jev sem efeito sai; A3 decidido com os diagnósticos reais
 - [x] **44.8 PJ2b** (`0698c78`: Fechar = fila parada; Reabrir = onde parou no chat + volta à fila) — fechar projeto e retomar onde parou
 - [ ] **44.9 S3 + fora da ordem** — conformidade skills × código (achados de `AUDITORIA-SKILLS.md`), código morto M1/M4, `verificacao_evidencia` coerente com o código
 - [ ] **44.10 E2** — P5.4 ativo (com dado), J11, J7/J8/J9 (laço Jev → elicitador, mudança 7/25), TR1 (7) correção da Spec por trecho, P8 + O1/O4 (T7)

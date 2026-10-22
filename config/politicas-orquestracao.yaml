@@ -168,8 +168,8 @@ jev_execucao:
   diagnostico_falha: ativo            # ativo | desligado
   bloqueio_spec_ambigua: ativo        # ativo | sombra | desligado
   roteamento_falha: sombra            # ativo | sombra | desligado
-  verificacao_evidencia: ativo        # ativo | sombra | desligado
-  auditoria_entrega: sombra          # ativo | sombra | desligado (J2, 13/10: sombra até J3/J4 provarem as perguntas)
+  verificacao_evidencia: desligado    # ativo | sombra | desligado (JV1 22/10: 15/15 divergências na trilha real eram falsas — REQ provados implementados pela bancada)
+  auditoria_entrega: desligado       # ativo | sombra | desligado (JV1 22/10: estado de 284 mil caracteres nunca cabe nos 28 mil do Jev; a revisão final com bancada (J3) faz este papel)
   conferencia_entrada: sombra         # ativo | sombra | desligado (P5, 14/10: sombra até medir com Specs reais — Specs no formato antigo seriam recusadas)
   guarda_segredos_codigo: ativo       # ativo | desligado
   guarda_segredos_chat: ativo         # ativo | desligado

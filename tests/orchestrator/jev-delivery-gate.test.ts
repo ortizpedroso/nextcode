@@ -57,6 +57,12 @@ describe("Portão Final de Entrega com JEV no job-queue (Spec Canônica × Códi
   });
 
   it("deve concluir em ENTREGUE (VERIFICACAO_OK) quando o JEV aprovar a auditoria final", async () => {
+    // JV1 (mudança 44): o YAML real desligou a auditoria do Jev; este teste prova o modo sombra.
+    const polSombra = orchestrationPolicyModule.loadOrchestrationPolicy();
+    vi.spyOn(orchestrationPolicyModule, "loadOrchestrationPolicy").mockReturnValue({
+      ...polSombra,
+      jevExecucao: { ...polSombra.jevExecucao, auditoriaEntrega: "sombra" },
+    });
     // 1. Cria sessão em fase EXECUCAO
     const session = await prisma.session.create({
       data: {
@@ -125,6 +131,12 @@ describe("Portão Final de Entrega com JEV no job-queue (Spec Canônica × Códi
   it("não deve bloquear a entrega nem emitir laudo no chat quando o JEV reprovar no modo padrão (sombra), apenas emitindo telemetria", async () => {
     const teleSpy = vi.spyOn(TelemetryLogger, "log").mockReturnValue();
 
+    // JV1 (mudança 44): o YAML real desligou a auditoria do Jev; este teste prova o modo sombra.
+    const polSombra = orchestrationPolicyModule.loadOrchestrationPolicy();
+    vi.spyOn(orchestrationPolicyModule, "loadOrchestrationPolicy").mockReturnValue({
+      ...polSombra,
+      jevExecucao: { ...polSombra.jevExecucao, auditoriaEntrega: "sombra" },
+    });
     // 1. Cria sessão em fase EXECUCAO
     const session = await prisma.session.create({
       data: {

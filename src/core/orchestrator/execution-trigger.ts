@@ -520,13 +520,33 @@ async function planNodeTiers(nodes: DecomposedNode[], sessionId: string): Promis
   }
   const out = new Map<string, MicrobriefPlanningDecision>();
   if (inputs.length === 0) return out;
-  const decisions = await decideMicrobriefsPlanningBatch({
-    microbriefs: inputs,
-    sessionId,
-    policy: loadOrchestrationPolicy(),
-  }).catch(() => []);
-  for (const d of decisions) out.set(d.id, d);
+  // JV1 (mudança 44): o lote inteiro do Gateway (40 etapas, 30 mil caracteres) estourava o estado do Jev
+  // (24 mil) e TODAS as etapas caíam no nível de reserva — a pergunta existia, a resposta nunca chegava.
+  const policy = loadOrchestrationPolicy();
+  for (const lote of chunkPlanningInputs(inputs)) {
+    const decisions = await decideMicrobriefsPlanningBatch({ microbriefs: lote, sessionId, policy }).catch(() => []);
+    for (const d of decisions) out.set(d.id, d);
+  }
   return out;
+}
+
+/** Lotes de Microbriefs que cabem no estado do Jev: até `maxItens` e `maxChars` de resumo + arquivos por lote. */
+export function chunkPlanningInputs(inputs: MicrobriefPlanningInput[], maxChars = 12_000, maxItens = 8): MicrobriefPlanningInput[][] {
+  const lotes: MicrobriefPlanningInput[][] = [];
+  let atual: MicrobriefPlanningInput[] = [];
+  let tamanho = 0;
+  for (const mb of inputs) {
+    const t = mb.resumo.length + mb.arquivos.join(",").length + 200;
+    if (atual.length > 0 && (atual.length >= maxItens || tamanho + t > maxChars)) {
+      lotes.push(atual);
+      atual = [];
+      tamanho = 0;
+    }
+    atual.push(mb);
+    tamanho += t;
+  }
+  if (atual.length > 0) lotes.push(atual);
+  return lotes;
 }
 
 /** Grava a decisão no Microbrief (nivel_modelo) e em payload.jevPlan para o executor e a trilha. */

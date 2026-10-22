@@ -585,10 +585,11 @@ export async function verifyStageEvidenceWithJev(params: {
     return null;
   }
 
-  // TODO: aguardando dados do modo sombra
+  // JV1 (22/10): "ativo" nunca bloqueia — na trilha real, 15 de 15 divergências apontavam REQ que a bancada
+  // provou implementados; o modo ativo continua registrando como sombra até uma medição dizer o contrário.
   const warningActiveMode =
     params.modo === "ativo"
-      ? "TODO: aguardando dados do modo sombra — executando em modo sombra"
+      ? "ativo registra como sombra (JV1: 15/15 divergências reais eram falsas)"
       : undefined;
 
   const execByReq = new Map(

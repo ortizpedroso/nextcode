@@ -48,8 +48,9 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       diagnosticoFalha: "ativo",
       bloqueioSpecAmbigua: "ativo",
       roteamentoFalha: "sombra",
-      verificacaoEvidencia: "ativo",
-      auditoriaEntrega: "sombra",
+      // JV1 (mudança 44): desligados com medição na trilha real do Gateway.
+      verificacaoEvidencia: "desligado",
+      auditoriaEntrega: "desligado",
       conferenciaEntrada: "sombra",
       guardaSegredosCodigo: "ativo",
       guardaSegredosChat: "ativo",

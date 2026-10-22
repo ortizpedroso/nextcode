@@ -29,7 +29,9 @@ describe("mudança 40 — reabrir a entrega para a verificação final rodar de 
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
     expect((await prisma.message.findMany({ where: { sessionId: s.id } }))[0].content).toContain("Entrega reaberta");
     expect(await prisma.telemetryLog.count({ where: { sessionId: s.id, action: "DELIVERY_REOPENED_BY_HUMAN" } })).toBe(1);
-    expect(await prisma.job.count({ where: { sessionId: s.id, status: "queued" } })).toBe(1);
+    // O job foi criado; outro arquivo de teste com worker global (runOnce) pode já tê-lo pegado — por isso
+    // não se exige "queued" (a falha intermitente da suíte de 22/10 era isso).
+    expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(1);
   });
 
   it("sessão que não está ENTREGUE é recusada sem mexer em nada", async () => {
