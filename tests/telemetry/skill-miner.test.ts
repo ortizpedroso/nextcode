@@ -52,7 +52,10 @@ describe("SkillMiner.detectRecurringBugs", () => {
   let since: Date;
   beforeEach(async () => {
     await prisma.candidateSkillProposal.deleteMany({ where: ownProposalsWhere() });
-    since = new Date(Date.now() - 1);
+    // Banco vazio e rápido: os logs do teste anterior caíam no mesmo milissegundo da janela.
+    // Espera o relógio andar antes de abrir a janela deste teste.
+    await new Promise((r) => setTimeout(r, 5));
+    since = new Date();
   });
 
   it("não propõe nada quando a mesma assinatura de erro aparece abaixo do limiar", async () => {
