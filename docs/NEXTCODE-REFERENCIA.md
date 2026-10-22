@@ -285,14 +285,14 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 **▶ AGORA (atualizar a cada passo):** execução autônoma 4 (mudança 39) — fechar a E1: 35 → 36 → G3 → G2 → G1 → J2b + J2.7 → retomada da `4d019f00` (porta da E1 pela mudança 37: o teste real do Gateway substitui o teste pesado sintético) → teto US$ 0,50 → J3 → TS1. Antes: execuções autônomas 1–3 (mudanças 23, 26, 27), P1–P13 feitos, bench 20/10 P1–P4 entregues; teste real `4d019f00` 41/41 etapas, US$ 12,33, BLOQUEADA na entrega por ambiente (mudanças 33–35).
 
 **Checklist da execução autônoma 4 (mudança 39) — ordem fixa, 1 commit por linha com tsc + vitest:**
-- [ ] **35** falha de ambiente reconhecida (verificação final e portão da etapa)
-- [ ] **36** aviso por causa + Retomar (`resume_session`, botão no painel, "retomar" no chat)
+- [x] **35** falha de ambiente reconhecida (verificação final e portão da etapa) — `describeEnvironmentFailure` (`empirical-gate.ts`): falha sem `error TS` = ambiente; `recheckFinalBuild` devolve `ambiente`; evento `FALHA_AMBIENTE` (VERIFICACAO → BLOQUEADA, Retomar); portão da etapa registra `EMPIRICAL_BUILD_ENV_FAILURE`
+- [x] **36** aviso por causa + Retomar — `AVISAR_HUMANO` com `acao` (`retomar`/`autorizar_verba`/`retentar_etapa`/`ajustar_spec`), texto em `humanActionText`; `resumeBlockedSession` (`session-resume.ts`) pela ação `resume_session`, botão **Retomar** no Monitor da DAG e "retomar" no chat (recusa se houver etapa bloqueada → Re-tentar)
 - [ ] **G3** relatório de incidente aponta a etapa que falhou, não a bloqueada por dependência
 - [ ] **G2** descarte da resposta do avaliador registrado com o motivo
 - [ ] **G1** leitor de ação do executor tolerante (variações reais da etapa 23) e erro que diz o que está errado
 - [ ] **J2b + J2.7** reparo automático da entrega reprovada (desenho `DECISOES-AUTONOMAS-E1-3.md` J1–J8) + teste estrutural com as listas do código
 - [ ] **Porta da E1** (mudança 37): retomada da `4d019f00` → `ENTREGUE`, ou `BLOQUEADA` só com lacuna real relatada
-- [ ] teto fixo de volta a US$ 0,50
+- [x] teto fixo de volta a US$ 0,50 (alteração temporária desfeita; nunca foi commitada)
 - [ ] **J3** `avaliador-final`
 - [ ] **TS1**
 - [ ] **Relatórios:** `IMPLEMENTADO-E1-4.md`, `DECISOES-AUTONOMAS-E1-4.md`, prompt `docs/prompts/TESTE-E1-4.md`

@@ -36,6 +36,7 @@ import {
   describeUnverifiedBuild,
 } from "@/core/orchestrator/node-executor";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { isResumeCommand, resumeBlockedSession } from "@/core/orchestrator/session-resume";
 import {
   classifyMessage,
   parseInterventionChoice,
@@ -296,6 +297,12 @@ export async function POST(request: NextRequest) {
         projectContextInjected: false,
       });
     };
+
+    // Mudança 36: "retomar" em BLOQUEADA retoma sem mexer na Spec (sem LLM e sem Jev).
+    if (phaseBefore === "BLOQUEADA" && isResumeCommand(targetPrompt)) {
+      const resumed = await resumeBlockedSession(activeSessionId, "chat");
+      return respondDeterministically(resumed.ok ? `▶️ ${resumed.message}` : `⚠️ ${resumed.message}`);
+    }
 
     // 4. Pacote P4: Fan-Out Especulativo Unificado do Jev na Entrada do Chat (~100ms)
     const chatPolicy = loadOrchestrationPolicy();

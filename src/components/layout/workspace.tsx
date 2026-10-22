@@ -80,6 +80,8 @@ interface WorkspaceProps {
   onRetryNode?: (nodeId: string) => Promise<void>;
   budget?: SessionBudget | null;
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
+  sessionPhase?: string | null;
+  onResumeSession?: () => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: (content?: string) => void;
@@ -137,6 +139,8 @@ export function Workspace({
   onRetryNode,
   budget,
   onAuthorizeBudget,
+  sessionPhase,
+  onResumeSession,
   onInspectQuarantine,
   onExportAuditReport,
   onOpenSpecModal,
@@ -569,6 +573,8 @@ export function Workspace({
                 onExportAuditReport={onExportAuditReport}
                 budget={budget}
                 onAuthorizeBudget={onAuthorizeBudget}
+                sessionPhase={sessionPhase}
+                onResumeSession={onResumeSession}
               />
             )}
           </div>

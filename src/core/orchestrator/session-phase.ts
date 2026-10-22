@@ -182,7 +182,7 @@ export async function applyPhaseEvent(
 
       for (const effect of result.effects) {
         if (effect.type === "AVISAR_HUMANO" && options?.avisoJaPostado !== true) {
-          await postHumanNotice(sessionId, effect.motivo, options?.detalheAviso);
+          await postHumanNotice(sessionId, effect.motivo, options?.detalheAviso, effect.acao);
         }
       }
 

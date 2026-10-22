@@ -16,6 +16,7 @@ import {
 } from "@/core/orchestrator/job-queue";
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { resumeBlockedSession } from "@/core/orchestrator/session-resume";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 import { getSessionBudget, BUDGET_AUTHORIZED_ACTION } from "@/core/orchestrator/budget-guard";
 
@@ -348,6 +349,16 @@ export async function POST(request: NextRequest) {
         success: true,
         message: `Teto do projeto ampliado para US$ ${budget.limitUsd.toFixed(2)}. Execução retomada.`,
         budget,
+      });
+    }
+
+    // Ação 6 (mudança 36): Retomar a sessão BLOQUEADA sem mexer na Spec nem nas etapas
+    // (ambiente, erro interno, silêncio, avaliador fora) — o mesmo caminho do scripts/retomar-sessao.ts.
+    if (action === "resume_session" && (sessionId || body.sessionId)) {
+      const targetSessionId: string = sessionId || body.sessionId;
+      const result = await resumeBlockedSession(targetSessionId, "painel");
+      return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
+        status: result.ok ? 200 : 409,
       });
     }
 

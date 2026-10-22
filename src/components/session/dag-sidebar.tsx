@@ -33,6 +33,9 @@ interface DagSidebarProps {
   onExportAuditReport?: () => void;
   budget?: SessionBudget | null;
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
+  /** Mudança 36: fase da sessão e Retomar (sessão BLOQUEADA sem mexer na Spec). */
+  sessionPhase?: string | null;
+  onResumeSession?: () => Promise<void>;
 }
 
 export interface SessionCostBreakdown {
@@ -77,8 +80,11 @@ export function DagSidebar({
   onExportAuditReport,
   budget,
   onAuthorizeBudget,
+  sessionPhase,
+  onResumeSession,
 }: DagSidebarProps) {
   const [authorizing, setAuthorizing] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
@@ -303,6 +309,25 @@ export function DagSidebar({
           </div>
         );
       })()}
+
+      {sessionPhase === "BLOQUEADA" && onResumeSession && (
+        <button
+          type="button"
+          disabled={resuming}
+          onClick={async () => {
+            setResuming(true);
+            try {
+              await onResumeSession();
+            } finally {
+              setResuming(false);
+            }
+          }}
+          title="Retoma a sessão de onde parou, sem mexer na Spec (use quando a causa foi ambiente, erro interno ou avaliador fora)"
+          className="w-full rounded-lg bg-amber-600 px-2 py-1.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1"
+        >
+          <RotateCcw className="w-3 h-3" /> {resuming ? "Retomando..." : "Retomar"}
+        </button>
+      )}
 
       {/* Lista ou Grafo da DAG */}
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">

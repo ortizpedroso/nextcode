@@ -30,3 +30,28 @@ describe("recheckFinalBuild — type-check do projeto final na entrega", () => {
     expect(r).toEqual({ checked: false, ok: false, errors: [] });
   });
 });
+
+// Mudança 35: tsc que nem rodou (Windows 0xC0000142) não é reprovação de código.
+describe("recheckFinalBuild — falha de ambiente", () => {
+  it("saída de falha sem nenhum error TS → ambiente, sem erros de código", async () => {
+    const naoAbriu: CommandResult = { success: false, exitCode: 3221225794, stdout: "", stderr: "", executionTimeMs: 1 };
+    const verify = vi.fn().mockResolvedValue(naoAbriu);
+    const repair = vi.fn().mockResolvedValue({ changed: true });
+    const r = await recheckFinalBuild("C:/p", { verify, repair });
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.errors).toEqual([]);
+    expect(r.ambiente).toMatch(/não rodou/);
+    expect(r.ambiente).toContain("0xC0000142");
+  });
+
+  it("erro real de código traz as linhas com posição (para o reparo J2b)", async () => {
+    const out = "src/m.ts(54,7): error TS2345: Argument of type 'A' is not assignable to parameter of type 'B'.";
+    const r = await recheckFinalBuild("C:/p", {
+      verify: vi.fn().mockResolvedValue(fail(out)),
+      repair: vi.fn().mockResolvedValue({ changed: false }),
+    });
+    expect(r.ambiente).toBeUndefined();
+    expect(r.linhas).toEqual([out]);
+  });
+});

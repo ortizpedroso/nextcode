@@ -53,6 +53,8 @@ export type PhaseEvent =
   | { type: 'DESBLOQUEIO_HUMANO' }
   | { type: 'VERIFICACAO_COM_LACUNAS' }
   | { type: 'VERIFICACAO_OK' }
+  | { type: 'FALHA_AMBIENTE' }
+  | { type: 'REPARO_NECESSARIO' }
   | { type: 'FALHA_REPETIDA' }
   | { type: 'SILENCIO_DETECTADO' }
   | { type: 'NOVO_PEDIDO' };
@@ -63,11 +65,18 @@ export type PhaseEffect =
   | { type: 'OFERECER_TRES_CAMINHOS' }
   | { type: 'SUSPENDER_EXECUTORES_PENDENTES' }
   | { type: 'INICIAR_EXECUCAO' }
-  | { type: 'AVISAR_HUMANO'; motivo: string }
+  | { type: 'AVISAR_HUMANO'; motivo: string; acao: HumanAction }
   | { type: 'RETOMAR_EXECUCAO' }
   | { type: 'CONTINUAR_ELICITACAO' }
   | { type: 'RETOMAR_FASE'; fase: Phase }
   | { type: 'SEM_MODELO_DISPONIVEL' };
+
+/**
+ * Mudança 36: o que o aviso de bloqueio manda o humano fazer, conforme a causa.
+ * retomar = nada a mudar na Spec (ambiente, erro interno, silêncio, avaliador fora);
+ * autorizar_verba = teto; retentar_etapa = etapa com 3 tentativas; ajustar_spec = o pedido precisa mudar.
+ */
+export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec';
 
 export interface PhaseContext {
   phase: Phase;
@@ -96,6 +105,7 @@ function handleAvaliadorFora(
           motivo: event.definitivo
             ? `avaliador sem acesso (${event.motivo})`
             : `avaliador fora do ar há ${MAX_PAUSAS_AVALIADOR} pausas seguidas (${event.motivo})`,
+          acao: 'retomar',
         },
       ],
     };
@@ -415,7 +425,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
               faseAntesDoBloqueio: 'CONFERENCIA',
             },
             effects: [
-              { type: 'AVISAR_HUMANO', motivo: 'analista e elicitador sem acordo' },
+              { type: 'AVISAR_HUMANO', motivo: 'analista e elicitador sem acordo', acao: 'ajustar_spec' },
             ],
           };
         }
@@ -441,7 +451,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos', acao: 'retomar' }],
         };
       }
       // A2.1: plano reprovado na T8b não executa; desbloquear volta à revisão da Spec (replanejar).
@@ -449,7 +459,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)', acao: 'ajustar_spec' }],
         };
       }
       if (event.type === 'PLANO_PRONTO') {
@@ -484,7 +494,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas', acao: 'retentar_etapa' }],
         };
       }
       // Teto de custo: só sai com autorização humana (DESBLOQUEIO_HUMANO), nunca sozinho.
@@ -492,21 +502,21 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'teto de custo do projeto atingido' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'teto de custo do projeto atingido', acao: 'autorizar_verba' }],
         };
       }
       if (event.type === 'FALHA_REPETIDA') {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução', acao: 'retomar' }],
         };
       }
       if (event.type === 'SILENCIO_DETECTADO') {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos', acao: 'retomar' }],
         };
       }
       if (
@@ -605,31 +615,48 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   VERIFICACAO: {
-    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'FALHA_AMBIENTE', 'REPARO_NECESSARIO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
         return handleSemLlm(ctx);
       }
+      // J2b: entrega reprovada com dono para cada lacuna → volta ao planejamento com etapas de reparo.
+      if (event.type === 'REPARO_NECESSARIO') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'PLANEJAMENTO' },
+          effects: [],
+        };
+      }
+      // J2b: lacuna sem dono ou 3 rodadas de reparo gastas → o pedido precisa mudar.
       if (event.type === 'VERIFICACAO_COM_LACUNAS') {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'entrega reprovada na verificação final' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'entrega reprovada na verificação final', acao: 'ajustar_spec' }],
+        };
+      }
+      // Mudança 35: a verificação não julgou o código (processo não abriu) → Retomar, sem mexer na Spec.
+      if (event.type === 'FALHA_AMBIENTE') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'falha de ambiente na verificação final', acao: 'retomar' }],
         };
       }
       if (event.type === 'FALHA_REPETIDA') {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'erro interno repetido na execução', acao: 'retomar' }],
         };
       }
       if (event.type === 'SILENCIO_DETECTADO') {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos', acao: 'retomar' }],
         };
       }
       if (event.type === 'VERIFICACAO_OK') {

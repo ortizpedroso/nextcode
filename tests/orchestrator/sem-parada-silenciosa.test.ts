@@ -171,7 +171,8 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
     expect(messages.length).toBe(1);
     expect(messages[0].role).toBe("assistant");
     expect(messages[0].content).toContain("🛑 **Sessão bloqueada — executor esgotou 3 tentativas.**");
-    expect(messages[0].content).toContain("Para continuar, responda aqui no chat");
+    // Mudança 36: etapa com 3 tentativas → Re-tentar a etapa (ou ajustar a Spec).
+    expect(messages[0].content).toContain("**Re-tentar**");
   });
 
   it("applyPhaseEvent de EXECUCAO com EXECUTOR_BLOQUEADO com avisoJaPostado: true não gera mensagem duplicada", async () => {

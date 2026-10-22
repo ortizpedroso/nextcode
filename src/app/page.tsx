@@ -30,6 +30,7 @@ export default function DashboardOrchestrator() {
   const [activeView, setActiveView] = useState<"dag" | "settings" | "docs">("dag");
   const [tasks, setTasks] = useState<TaskNode[]>([]);
   const [budget, setBudget] = useState<SessionBudget | null>(null);
+  const [sessionPhase, setSessionPhase] = useState<string | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   /** Enquanto /api/chat bloqueia (~minutos na Spec), mostra o pedido e o indicador antes da resposta. */
   const [optimisticChat, setOptimisticChat] = useState<{
@@ -145,6 +146,7 @@ export default function DashboardOrchestrator() {
         setApprovedSpec(data.session.specApproved ? data.session.canonicalSpec || null : null);
         setTasks(data.tasks || []);
         setBudget(data.budget || null);
+        setSessionPhase(data.session.phase || null);
         // Filtra estritamente para que APENAS mensagens do Usuário e do Assistente sejam exibidas
         const cleanMsgs = (data.messages || []).filter(
           (m: SessionMessage) => m.role === "user" || m.role === "assistant"
@@ -615,6 +617,23 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  // Mudança 36: Retomar a sessão BLOQUEADA sem mexer na Spec nem nas etapas.
+  const handleResumeSession = async () => {
+    if (!activeSessionId) return;
+    try {
+      const res = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resume_session", sessionId: activeSessionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setConsoleLogs((prev) => [...prev, `[RETOMAR] ${data.message || data.error || "Resposta sem mensagem"}`]);
+      await fetchSessionDetails(activeSessionId);
+    } catch (err) {
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao retomar a sessão: ${String(err)}`]);
+    }
+  };
+
   const handleRetryNode = async (nodeId: string) => {
     setConsoleLogs((prev) => [...prev, `[RETRY] Desbloqueando etapa e liberando fila no servidor...`]);
     try {
@@ -781,6 +800,8 @@ export default function DashboardOrchestrator() {
         onRetryNode={handleRetryNode}
         budget={budget}
         onAuthorizeBudget={handleAuthorizeBudget}
+        sessionPhase={sessionPhase}
+        onResumeSession={handleResumeSession}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}

@@ -67,6 +67,8 @@ export interface EmpiricalGateResult {
   failedStage: EmpiricalStage | null;
   /** Primeiro erro novo, pronto para relatório/feedback (undefined quando passou). */
   failureLine?: string;
+  /** Mudança 35: nenhum dos `tsc` rodou de verdade (saída de falha sem `error TS`) — ambiente, não código. */
+  environmentFailure?: boolean;
 }
 
 /** Extrai as linhas "error TS" sem posição (linha/coluna), para comparar antes vs. depois. */
@@ -93,6 +95,34 @@ export interface FinalBuildRecheck {
   checked: boolean;
   ok: boolean;
   errors: string[];
+  /** Linhas `error TS` com a posição (arquivo(linha,coluna)), para o reparo da entrega (J2b). */
+  linhas?: string[];
+  /** Mudança 35: o `tsc` falhou sem nenhum `error TS` (processo não abriu, memória…): o código não foi julgado. */
+  ambiente?: string;
+}
+
+/**
+ * Mudança 35: `tsc` que termina com falha sem nenhuma linha `error TS` não julgou o código — o
+ * processo não abriu (Windows 0xC0000142 por falta de memória), caiu ou não achou o compilador.
+ * Devolve a descrição do que aconteceu, ou null quando houve erro de TypeScript de verdade.
+ */
+export function describeEnvironmentFailure(result: CommandResult): string | null {
+  if (result.success) return null;
+  const output = `${result.stdout}\n${result.stderr}`;
+  if (output.includes("error TS")) return null;
+  const code = result.exitCode;
+  const hex =
+    typeof code === "number" && (code < 0 || code > 0xffff) ? ` (0x${(code >>> 0).toString(16).toUpperCase()})` : "";
+  const trecho = output.replace(/\s+/g, " ").trim().slice(0, 300);
+  return `o type-check não rodou (saída ${code ?? "sem código"}${hex}${trecho ? `: ${trecho}` : ", sem mensagem"})`;
+}
+
+/** Linhas `error TS` completas (com posição), na ordem da saída. */
+export function tsErrorLines(result: CommandResult): string[] {
+  return `${result.stdout}\n${result.stderr}`
+    .split("\n")
+    .filter((l) => l.includes("error TS"))
+    .map((l) => l.trim());
 }
 
 /**
@@ -115,7 +145,10 @@ export async function recheckFinalBuild(
     const fixed = await repair(projectRoot, `${result.stdout}\n${result.stderr}`);
     if (fixed.changed) result = (await verify(projectRoot)) ?? result;
   }
-  return { checked: true, ok: result.success, errors: result.success ? [] : Array.from(tsErrorKeys(result)) };
+  if (result.success) return { checked: true, ok: true, errors: [] };
+  const ambiente = describeEnvironmentFailure(result);
+  if (ambiente) return { checked: true, ok: false, errors: [], ambiente };
+  return { checked: true, ok: false, errors: Array.from(tsErrorKeys(result)), linhas: tsErrorLines(result) };
 }
 
 /** Rótulo legível da etapa, para mensagens de rejeição. */
@@ -155,6 +188,7 @@ async function runEmpiricalGate(
       promotedFiles = qm.lastPromotedFiles(taskId);
     }
     let preexistingFailure = false;
+    let typecheckEnvironmentFailure = false;
 
     // TR1 (6): a etapa é dona do conteúdo do package.json; o harness instala o que ela declarou.
     if (promotedFiles.some((f) => f.replace(/\\/g, "/") === "package.json")) {
@@ -174,6 +208,9 @@ async function runEmpiricalGate(
       const baselineKeys = baseline && !baseline.success ? tsErrorKeys(baseline) : new Set<string>();
       const newErrors = Array.from(tsErrorKeys(after)).filter((k) => !baselineKeys.has(k));
 
+      const environmentFailure = Boolean(
+        describeEnvironmentFailure(after) && baseline && describeEnvironmentFailure(baseline)
+      );
       if (!(baseline && !baseline.success && newErrors.length === 0)) {
         return {
           passed: false,
@@ -188,6 +225,7 @@ async function runEmpiricalGate(
       }
       qm.reapplyPromotion(taskId);
       preexistingFailure = true;
+      typecheckEnvironmentFailure = environmentFailure;
     }
 
     // Etapa 2: ESLint só nos arquivos promovidos (erros de lint são por arquivo).
@@ -223,6 +261,7 @@ async function runEmpiricalGate(
       preexistingFailure,
       newErrors: [],
       failedStage: null,
+      ...(typecheckEnvironmentFailure ? { environmentFailure: true } : {}),
     };
   }
 }

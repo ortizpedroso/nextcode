@@ -1754,9 +1754,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       empiricalBuildResult = gate.buildResult;
       promotionTarget = gate.rolledBack ? null : targetProjectRoot;
       if (gate.preexistingFailure) {
+        // Mudança 35: sem nenhum `error TS` nos dois type-checks o tsc nem rodou — é ambiente.
         TelemetryLogger.log({
           sessionId: taskDb.sessionId,
-          action: "EMPIRICAL_BUILD_PREEXISTING_FAILURE",
+          action: gate.environmentFailure ? "EMPIRICAL_BUILD_ENV_FAILURE" : "EMPIRICAL_BUILD_PREEXISTING_FAILURE",
           details: { nodeId: taskDb.id },
         });
       }

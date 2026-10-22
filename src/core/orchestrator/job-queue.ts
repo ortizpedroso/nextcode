@@ -308,14 +308,37 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         // gerar o build e abrir sem erro no celular e no desktop.
         let uiCheck: UiCheckReport | null = null;
         const projectPath = sessionAfterQueue.project?.path;
+        let finalBuildErrorLines: string[] = [];
         // Mudança 34: build reprovado só por etapas do meio → confere o projeto final de novo.
         if (!deliveryT10.buildVerified && deliveryT10.specFilesComplete && projectPath) {
           const recheck = await recheckFinalBuild(projectPath);
           TelemetryLogger.log({
             sessionId: job.sessionId,
             action: "FINAL_BUILD_RECHECK",
-            details: { checked: recheck.checked, ok: recheck.ok, erros: recheck.errors.length, amostra: recheck.errors.slice(0, 5) },
+            details: {
+              checked: recheck.checked,
+              ok: recheck.ok,
+              erros: recheck.errors.length,
+              amostra: recheck.errors.slice(0, 5),
+              ...(recheck.ambiente ? { ambiente: recheck.ambiente } : {}),
+            },
           });
+          // Mudança 35: o tsc não rodou — nada no código foi julgado; Retomar, sem reparo nem Spec.
+          if (recheck.ambiente) {
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "FALHA_AMBIENTE" },
+              {
+                extraDetails: { ambiente: recheck.ambiente },
+                detalheAviso:
+                  `**Causa:** ${recheck.ambiente}.\n\n` +
+                  "Não é erro de código nem da Spec: o NextCode não conseguiu rodar a conferência de tipos do projeto final " +
+                  "(no Windows, `0xC0000142` costuma ser falta de memória). Libere memória e retome.",
+              }
+            );
+            return await prisma.job.findUnique({ where: { id: jobId } });
+          }
+          finalBuildErrorLines = recheck.linhas ?? [];
           if (recheck.checked) {
             deliveryT10.gaps = deliveryT10.gaps.filter(
               (g) => !g.startsWith("Falha na verificação empírica de build") && !g.startsWith("Build do projeto não verificado")

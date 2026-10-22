@@ -368,7 +368,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
         expect(res.ctx.voltasConferencia).toBe(4);
         expect(res.ctx.faseAntesDoBloqueio).toBe('CONFERENCIA');
         expect(res.effects).toEqual([
-          { type: 'AVISAR_HUMANO', motivo: 'analista e elicitador sem acordo' },
+          { type: 'AVISAR_HUMANO', motivo: 'analista e elicitador sem acordo', acao: 'ajustar_spec' },
         ]);
       }
     });
@@ -686,6 +686,8 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'DESBLOQUEIO_HUMANO' },
       { type: 'VERIFICACAO_COM_LACUNAS' },
       { type: 'VERIFICACAO_OK' },
+      { type: 'FALHA_AMBIENTE' },
+      { type: 'REPARO_NECESSARIO' },
       { type: 'FALHA_REPETIDA' },
       { type: 'SILENCIO_DETECTADO' },
       { type: 'NOVO_PEDIDO' },
