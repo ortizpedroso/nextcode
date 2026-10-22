@@ -10,7 +10,7 @@ import {
   readProjectFilesContent,
 } from "@/core/orchestrator/node-executor";
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
-import { reviewFinalDelivery } from "@/core/governance/final-reviewer";
+import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -381,7 +381,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         }
 
         // J3: revisão final cega (avaliador-final) — Spec inteira × todos os arquivos entregues.
-        let finalReviewDefects: Array<{ arquivo: string | null; defeito: string }> = [];
+        let finalReviewDefects: FinalDefect[] = [];
+        let finalReviewQuestions: string[] = [];
         let finalReviewSummary: Record<string, unknown> | null = null;
         const revisaoFinalModo = loadOrchestrationPolicy().execucao.revisaoFinal;
         if (revisaoFinalModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
@@ -389,7 +390,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           const review = await reviewFinalDelivery({
             sessionId: job.sessionId,
             spec: sessionAfterQueue.canonicalSpec,
-            files: readProjectFilesContent(specFiles, projectPath),
+            files: readProjectFilesContent([...specFiles, "package.json"], projectPath),
+            // Mudança 43.2: com a pasta, cada defeito é provado na bancada antes de ir ao reparo.
+            projectPath,
           });
           finalReviewSummary = {
             modo: revisaoFinalModo,
@@ -398,7 +401,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             aprovado: review.aprovado,
             modelo: review.modelo,
             reqs: review.reqVerdicts.map((v) => `${v.id}=${v.status}`),
-            defeitos: review.defeitos.map((d) => d.defeito).slice(0, 30),
+            defeitos: review.defeitos.map((d) => `[${d.prova ?? "leitura"}] ${d.defeito}`).slice(0, 30),
+            perguntasSpec: review.perguntasSpec ?? [],
+            naoReproduzidos: (review.naoReproduzidos ?? []).slice(0, 20),
             ressalvas: review.ressalvas.slice(0, 30),
             naoVerificados: review.naoVerificados ?? [],
             citacoesInvalidas: (review.citacoesInvalidas ?? []).slice(0, 10),
@@ -407,7 +412,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
             deliveryT10.passed = false;
-            finalReviewDefects = review.defeitos;
+            // Perguntas de Spec não vão para o reparo de código (sem etapa dona); o aviso as faz ao fundador.
+            finalReviewDefects = review.defeitos.filter((d) => d.prova !== "spec");
+            finalReviewQuestions = review.perguntasSpec ?? [];
             deliveryT10.gaps.push(...review.defeitos.map((d) => d.defeito));
           }
         }

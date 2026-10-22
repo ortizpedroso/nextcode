@@ -25,9 +25,15 @@ async function main(): Promise<void> {
 
   const session = await prisma.session.findFirstOrThrow({ where: { id: { startsWith: prefixo } }, include: { project: true } });
   const spec = session.canonicalSpec || "";
-  const files = readProjectFilesContent(parseSpecDocument(spec)?.arquivosAfetados ?? [], session.project?.path);
+  const files = readProjectFilesContent([...(parseSpecDocument(spec)?.arquivosAfetados ?? []), "package.json"], session.project?.path);
   const t0 = Date.now();
-  const r = await reviewFinalDelivery({ sessionId: session.id, spec, files });
+  // Mudança 43.2: com a pasta do projeto, cada defeito é provado na bancada (--sem-prova desliga).
+  const r = await reviewFinalDelivery({
+    sessionId: session.id,
+    spec,
+    files,
+    projectPath: process.argv.includes("--sem-prova") ? null : session.project?.path,
+  });
   const resumo = {
     executado: r.executado,
     motivoNaoExecutado: r.motivoNaoExecutado,
@@ -35,7 +41,9 @@ async function main(): Promise<void> {
     modelo: r.modelo,
     segundos: Math.round((Date.now() - t0) / 1000),
     reqs: r.reqVerdicts.map((v) => `${v.id}=${v.status}`),
-    defeitos: r.defeitos,
+    defeitos: r.defeitos.map((d) => ({ prova: d.prova, arquivo: d.arquivo, defeito: d.defeito.slice(0, 300), teste: d.teste?.caminho, saida: d.saida?.slice(0, 400), pergunta: d.pergunta })),
+    perguntasSpec: r.perguntasSpec,
+    naoReproduzidos: r.naoReproduzidos,
     ressalvas: r.ressalvas,
     naoVerificados: r.naoVerificados,
     citacoesInvalidas: r.citacoesInvalidas,

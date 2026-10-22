@@ -4,6 +4,14 @@ import { fileLineRefExists } from "@/core/governance/dual-lens-auditor";
 import { dispatchStrongEvaluator, type EvaluatorCallResult } from "@/core/llm/evaluator-models";
 import { recordLlmCost } from "@/core/llm/cost";
 import { parseSpecDocument } from "@/core/intake/spec-format";
+import {
+  reproduceDefects,
+  isProjectTestFile,
+  type DefectToReproduce,
+  type ReproductionStatus,
+  type ReproductionTest,
+} from "@/core/governance/defect-reproducer";
+import type { TestBenchReport, TestBenchRequest } from "@/core/execution/test-bench";
 
 /**
  * J3 (§5.0/§5.5; mudanças 12 e 17): revisão final cega da entrega. Um modelo forte de outra família do
@@ -29,6 +37,20 @@ export interface FinalProblem {
   req?: string;
   arquivoLinha: string;
   descricao: string;
+  /** Citação que não existe nos arquivos: não some — vira suspeita a reproduzir (ressalva do teste do Antigravity). */
+  semCitacao?: boolean;
+}
+
+/** Um defeito da revisão final, com a prova da bancada (mudança 43.2). */
+export interface FinalDefect {
+  arquivo: string | null;
+  defeito: string;
+  req?: string;
+  /** reproduzido = teste falha; sem_prova = leitura sem teste; spec = a Spec é ambígua (ver pergunta). */
+  prova?: ReproductionStatus;
+  teste?: ReproductionTest;
+  saida?: string;
+  pergunta?: string;
 }
 
 export interface FinalReviewResult {
@@ -39,7 +61,11 @@ export interface FinalReviewResult {
   reqVerdicts: FinalReqVerdict[];
   problemas: FinalProblem[];
   /** Defeitos que reprovam, com o arquivo citado (para a etapa dona) ou sem arquivo (sem dono). */
-  defeitos: Array<{ arquivo: string | null; defeito: string }>;
+  defeitos: FinalDefect[];
+  /** Perguntas objetivas sobre a Spec (a revisão não conseguiu testar porque a Spec é ambígua). */
+  perguntasSpec?: string[];
+  /** Suspeitas que o teste não reproduziu (viram ressalva, não bloqueiam). */
+  naoReproduzidos?: string[];
   ressalvas: string[];
   descartes: string[];
   /** REQ que a revisão disse "implementado" com citação inexistente: não contam nem como aprovação nem como defeito. */
@@ -75,7 +101,8 @@ const defaultDispatch: FinalReviewDispatch = (messages) =>
 /** Arquivo de uma citação `arquivo:linha` (ou `arquivo:linha-linha`, com texto em volta). */
 export function fileOfRef(ref: string): string | null {
   const m = /([\w@./\-[\]()]+\.[A-Za-z0-9]+):\d+/.exec(ref || "");
-  return m ? m[1] : null;
+  // "(src/a.ts:1)": o parêntese do texto entra no casamento; pastas "(grupo)" do Next nunca começam o caminho.
+  return m ? m[1].replace(/^\(+/, "") : null;
 }
 
 type Parsed =
@@ -145,6 +172,12 @@ export function parseFinalReview(raw: string | null, expectedReqs: string[], fil
   const problemasValidos = problemas.filter((p) => {
     if (p.severidade === "menor" || finalRefExists(p.arquivoLinha, files)) return true;
     invalidas.push(`problema ${p.severidade} cita "${p.arquivoLinha.slice(0, 120)}"`);
+    // Crítico com citação errada não some (o teste independente apontou que sumir deixava de reprovar):
+    // vira suspeita sem citação, e a bancada decide se o defeito existe.
+    if (p.severidade === "critico") {
+      p.semCitacao = true;
+      return true;
+    }
     return false;
   });
   const itens = verdicts.length + problemas.filter((p) => p.severidade !== "menor").length;
@@ -169,6 +202,11 @@ export async function reviewFinalDelivery(input: {
   spec: string;
   files: Record<string, string>;
   dispatch?: FinalReviewDispatch;
+  /** Mudança 43.2: pasta do projeto para a bancada reproduzir cada defeito; sem ela, só leitura (como antes). */
+  projectPath?: string | null;
+  /** Injeções para teste: quem escreve o teste de reprodução e a bancada. */
+  reproDispatch?: FinalReviewDispatch;
+  bench?: (projectPath: string, req: TestBenchRequest) => Promise<TestBenchReport>;
 }): Promise<FinalReviewResult> {
   const empty = (motivo: string): FinalReviewResult => ({
     executado: false,
@@ -235,26 +273,94 @@ export async function reviewFinalDelivery(input: {
       }
       continue;
     }
-    const defeitos: FinalReviewResult["defeitos"] = [];
+    let defeitos: FinalDefect[] = [];
     for (const v of parsed.verdicts) {
       if (v.status === "implementado") continue;
       const ligados = parsed.problemas.filter((p) => p.req === v.id && p.severidade !== "menor").map((p) => `${p.arquivoLinha}: ${p.descricao}`);
       defeitos.push({
+        req: v.id,
         arquivo: fileOfRef(v.evidencia),
         defeito: `revisão final: ${v.id} ${v.status} (${v.evidencia || "sem evidência"})${ligados.length ? ` — ${ligados.join("; ")}` : ""}`,
       });
     }
     for (const p of parsed.problemas.filter((x) => x.severidade === "critico")) {
       if (p.req && defeitos.some((d) => d.defeito.includes(`${p.req} `))) continue;
-      defeitos.push({ arquivo: fileOfRef(p.arquivoLinha), defeito: `revisão final [critico] ${p.arquivoLinha}: ${p.descricao}` });
+      defeitos.push({
+        req: p.req,
+        arquivo: p.semCitacao ? null : fileOfRef(p.arquivoLinha),
+        defeito: `revisão final [critico]${p.semCitacao ? " (citação inexistente)" : ""} ${p.arquivoLinha}: ${p.descricao}`,
+      });
+    }
+
+    // Mudança 43.2: cada defeito é provado na bancada antes de ir para o reparo.
+    const ressalvasExtras: string[] = [];
+    const naoReproduzidos: string[] = [];
+    const perguntasSpec: string[] = [];
+    // Os testes do próprio projeto rodam sempre (sem LLM): a leitura varia de uma rodada para outra, o
+    // teste não (Gateway 22/10: o REQ-055 sumiu de uma revisão, mas o teste do parcelamento seguia falhando).
+    const projectTests = input.projectPath
+      ? Object.keys(input.files).filter((f) => isProjectTestFile(f) && !defeitos.some((d) => d.arquivo === f))
+      : [];
+    if (input.projectPath && (defeitos.length > 0 || projectTests.length > 0)) {
+      const toReproduce: DefectToReproduce[] = [
+        ...defeitos.map((d, i) => ({ id: `D${i + 1}`, req: d.req, arquivo: d.arquivo, defeito: d.defeito })),
+        ...projectTests.map((f, i) => ({ id: `T${i + 1}`, arquivo: f, defeito: `teste do projeto ${f}` })),
+      ];
+      const reproResults = await reproduceDefects({
+        sessionId: input.sessionId,
+        projectPath: input.projectPath,
+        spec: input.spec,
+        files: input.files,
+        defects: toReproduce,
+        dispatch: input.reproDispatch,
+        bench: input.bench,
+      });
+      const kept: FinalDefect[] = [];
+      defeitos.forEach((d, i) => {
+        const r = reproResults[i];
+        if (r.status === "nao_reproduzido") {
+          naoReproduzidos.push(d.defeito);
+          ressalvasExtras.push(`suspeita não reproduzida por teste: ${d.defeito.slice(0, 300)}`);
+          return;
+        }
+        if (r.status === "spec") {
+          perguntasSpec.push(`${d.req ?? "Spec"}: ${r.motivo ?? ""}`);
+          kept.push({ ...d, arquivo: null, prova: "spec", pergunta: r.motivo });
+          return;
+        }
+        kept.push({
+          ...d,
+          arquivo: r.arquivoCorrecao ?? d.arquivo,
+          prova: r.status,
+          ...(r.teste ? { teste: r.teste } : {}),
+          ...(r.saida ? { saida: r.saida } : {}),
+        });
+      });
+      projectTests.forEach((f, i) => {
+        const r = reproResults[defeitos.length + i];
+        if (r.status !== "reproduzido") return; // passou (ou bancada fora): nada a dizer
+        kept.push({
+          arquivo: r.arquivoCorrecao ?? f,
+          defeito: `teste do projeto falha: ${f} — ${(r.saida ?? "").split("\n")[0].slice(0, 300)}`,
+          prova: "reproduzido",
+          ...(r.teste ? { teste: r.teste } : {}),
+          ...(r.saida ? { saida: r.saida } : {}),
+        });
+      });
+      defeitos = kept;
     }
     return {
       executado: true,
       aprovado: defeitos.length === 0,
+      ...(perguntasSpec.length ? { perguntasSpec } : {}),
+      ...(naoReproduzidos.length ? { naoReproduzidos } : {}),
       reqVerdicts: parsed.verdicts,
       problemas: parsed.problemas,
       defeitos,
-      ressalvas: parsed.problemas.filter((p) => p.severidade === "importante").map((p) => `${p.arquivoLinha}: ${p.descricao}`),
+      ressalvas: [
+        ...parsed.problemas.filter((p) => p.severidade === "importante").map((p) => `${p.arquivoLinha}: ${p.descricao}`),
+        ...ressalvasExtras,
+      ],
       descartes,
       naoVerificados: parsed.naoVerificados,
       citacoesInvalidas: parsed.citacoesInvalidas,
