@@ -11,6 +11,8 @@ import {
 } from "@/core/orchestrator/node-executor";
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
 import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
+import type { PriorProof } from "@/core/governance/defect-reproducer";
+import { readRepairPayload } from "@/core/orchestrator/repair-payload";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
@@ -52,6 +54,48 @@ export function getJobLeaseMs(): number {
  * Enfileira um Job "session_queue" em status "queued" com activeKey = sessionId.
  * Se já houver um job ativo para a sessão (P2002 em activeKey), devolve o id do job existente.
  */
+/**
+ * Mudança 44: provas anteriores da sessão — testes que reproduziram defeitos na revisão final
+ * (`FINAL_REVIEW_PROOFS`) e contratos das etapas de reparo. Sem repetir conteúdo; as 20 mais recentes.
+ */
+export async function loadPriorProofs(sessionId: string): Promise<PriorProof[]> {
+  const out: PriorProof[] = [];
+  const seen = new Set<string>();
+  const push = (p: PriorProof) => {
+    if (!p.conteudo || seen.has(p.conteudo)) return;
+    seen.add(p.conteudo);
+    out.push(p);
+  };
+  const logs = await prisma.telemetryLog.findMany({
+    where: { sessionId, action: "FINAL_REVIEW_PROOFS" },
+    orderBy: { createdAt: "desc" },
+    select: { details: true },
+  });
+  for (const l of logs) {
+    try {
+      for (const p of (JSON.parse(l.details || "{}").provas ?? []) as PriorProof[]) push(p);
+    } catch {
+      // registro ilegível: ignora
+    }
+  }
+  const nodes = await prisma.taskNode.findMany({ where: { sessionId }, orderBy: { createdAt: "desc" }, select: { title: true, payload: true, filesScope: true } });
+  for (const n of nodes) {
+    const rep = readRepairPayload(n.payload);
+    for (const t of rep?.testesReproducao ?? []) {
+      if (t.existente) continue;
+      const escopo = (() => {
+        try {
+          return (JSON.parse(n.filesScope || "[]") as string[]).filter((f) => !/(^|\/)(tests?|__tests__)\//.test(f));
+        } catch {
+          return [];
+        }
+      })();
+      push({ caminho: t.caminho, conteudo: t.conteudo, arquivo: escopo[0] ?? null, defeito: `contrato do "${n.title}" (${rep!.defeitos[0]?.slice(0, 200) ?? ""})` });
+    }
+  }
+  return out.slice(0, 20);
+}
+
 export async function enqueueSessionQueueJob(sessionId: string): Promise<string> {
   try {
     const job = await prisma.job.create({
@@ -420,7 +464,15 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             files: readProjectFilesContent([...specFiles, "package.json"], projectPath),
             // Mudança 43.2: com a pasta, cada defeito é provado na bancada antes de ir ao reparo.
             projectPath,
+            // Mudança 44: o que já foi provado nesta sessão roda de novo (a leitura varia, o teste não).
+            priorProofs: await loadPriorProofs(job.sessionId),
           });
+          const novasProvas = review.defeitos
+            .filter((d) => d.prova === "reproduzido" && d.teste && !d.teste.existente)
+            .map((d) => ({ caminho: d.teste!.caminho, conteudo: d.teste!.conteudo, req: d.req, arquivo: d.arquivo, defeito: d.defeito }));
+          if (novasProvas.length > 0) {
+            TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW_PROOFS", details: { provas: novasProvas } });
+          }
           finalReviewSummary = {
             modo: revisaoFinalModo,
             executado: review.executado,
@@ -431,6 +483,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             defeitos: review.defeitos.map((d) => `[${d.prova ?? "leitura"}] ${d.defeito}`).slice(0, 30),
             perguntasSpec: review.perguntasSpec ?? [],
             naoReproduzidos: (review.naoReproduzidos ?? []).slice(0, 20),
+            importantesSemProva: (review.importantesSemProva ?? []).map((d) => d.defeito).slice(0, 20),
+            provasAnteriores: review.provasAnteriores ?? null,
             ressalvas: review.ressalvas.slice(0, 30),
             naoVerificados: review.naoVerificados ?? [],
             citacoesInvalidas: (review.citacoesInvalidas ?? []).slice(0, 10),
@@ -439,7 +493,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
           finalReviewVerdicts = review.reqVerdicts.map((v) => `${v.id}=${v.status}`);
           if (revisaoFinalModo === "ativo" && review.executado && review.aprovado) {
-            deliveryRessalvas = importantProblemsAsDefects(review.problemas, review.defeitos);
+            deliveryRessalvas = projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos);
           }
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
             finalReviewQuestions = review.perguntasSpec ?? [];
@@ -448,7 +502,10 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             const { bloqueiam, leitura: leituraDefeitos } = splitDefectsByEvidence(review.defeitos);
             // Problemas "importante" (bug real que não chega a reprovar: ex.: 500 num cadastro) acompanham o
             // reparo quando há rodada aberta e, na entrega, viram ressalva — antes ficavam só na trilha.
-            const leitura = [...leituraDefeitos, ...importantProblemsAsDefects(review.problemas, review.defeitos)];
+            const leitura = [
+              ...leituraDefeitos,
+              ...(projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos)),
+            ];
             if (bloqueiam.length === 0) {
               deliveryRessalvas = leitura;
               TelemetryLogger.log({

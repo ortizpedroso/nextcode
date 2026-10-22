@@ -67,14 +67,16 @@ As linhas dos arquivos vêm numeradas (`12| código`); cite por esse número. To
 - Mais de 20% das citações inexistentes → a resposta inteira é **descartada** e a pergunta é feita de novo, com o motivo.
 
 ## 5. O que o harness faz com a sua resposta (mudança 43)
-1. Algum REQ `parcial`/`ausente` ou problema `critico` → é uma **suspeita de defeito**.
+1. Algum REQ `parcial`/`ausente` ou problema `critico`/`importante` → é uma **suspeita de defeito** (o rótulo varia de uma leitura para outra; quem decide é o teste).
 2. **Reprodução:** para cada suspeita, um teste vitest é escrito (sem rede, sem banco, com `vi.mock`) e rodado na bancada isolada:
    - o teste **falha** → defeito **provado**: vai ao reparo da etapa dona do arquivo a corrigir, **com o teste e a saída** — o executor tem de fazê-lo passar sem mudar o teste;
    - o teste **passa** → a suspeita **não se confirmou**: vira ressalva e não bloqueia;
-   - o teste não carrega (import errado) → uma nova tentativa com o erro; persistindo, o defeito segue **sem prova** (bloqueia pela leitura, como antes);
+   - o teste não carrega (import errado) → uma nova tentativa com o erro; persistindo, o defeito segue **sem prova**: acompanha o reparo quando houver defeito provado e, sozinho, vira ressalva da entrega — exceto `critico` (segurança, dinheiro), que bloqueia mesmo sem teste;
+   - a bancada está fora (Docker parado) → nada foi provado: a suspeita bloqueia pela leitura, como antes;
    - não dá para testar porque a **Spec é ambígua** → vira **pergunta objetiva** ao dono do projeto (não vai ao reparo de código).
 3. Por isso: escreva cada descrição como **instrução de correção** e diga o comportamento esperado (entrada → resultado), que é o que o teste vai cobrar.
-- Só `importante`/`menor` → aprovado com ressalvas (registradas).
+4. **Provas anteriores:** todo teste que já provou um defeito nesta sessão (revisões anteriores e contratos dos reparos) roda de novo em cada verificação final, sem depender da sua leitura; se ainda falhar, reprova.
+- Só `menor`, ou suspeitas sem prova → aprovado com ressalvas (listadas na mensagem de entrega).
 
 ## 6. Formato da resposta (exato; só o JSON, sem markdown)
 ```json

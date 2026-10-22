@@ -179,7 +179,9 @@ export async function reproduceDefects(input: {
 }): Promise<ReproductionResult[]> {
   const dispatch = input.dispatch ?? defaultDispatch;
   const bench = input.bench ?? runTestBench;
-  const defects = input.defects.slice(0, MAX_DEFECTS_TO_REPRODUCE);
+  // Mudança 44: o limite vale só para quem precisa de um teste escrito pelo LLM; teste do próprio projeto
+  // roda sempre (sem custo de LLM) — antes, com 10 defeitos, os testes do projeto ficavam de fora.
+  const defects = input.defects;
   const results = new Map<string, ReproductionResult>();
   const pending = new Map<string, { defect: DefectToReproduce; test: ReproductionTest; fix: string | null }>();
 
@@ -210,7 +212,8 @@ export async function reproduceDefects(input: {
   // Defeito num teste do próprio projeto: a prova é rodar esse teste (um teste novo não prova um teste errado).
   const existing = new Map<string, DefectToReproduce>();
   for (const d of defects) if (d.arquivo && isProjectTestFile(d.arquivo) && input.files[d.arquivo] !== undefined) existing.set(d.id, d);
-  const toWrite = defects.filter((d) => !existing.has(d.id));
+  const toWriteAll = defects.filter((d) => !existing.has(d.id));
+  const toWrite = toWriteAll.slice(0, MAX_DEFECTS_TO_REPRODUCE);
 
   // 1ª rodada: um teste por defeito (até 4 em paralelo).
   for (let i = 0; i < toWrite.length; i += 4) {
@@ -286,7 +289,7 @@ export async function reproduceDefects(input: {
     retry.forEach((r, k) => accept(r.defect, answers[k]));
   }
   for (const p of pending.values()) results.set(p.defect.id, { id: p.defect.id, status: "sem_prova", teste: p.test, motivo: "sem resultado da bancada" });
-  for (const d of input.defects.slice(MAX_DEFECTS_TO_REPRODUCE)) results.set(d.id, { id: d.id, status: "sem_prova", motivo: "acima do limite de reprodução" });
+  for (const d of toWriteAll.slice(MAX_DEFECTS_TO_REPRODUCE)) results.set(d.id, { id: d.id, status: "sem_prova", motivo: "acima do limite de reprodução" });
 
   const out = input.defects.map((d) => results.get(d.id) ?? { id: d.id, status: "sem_prova" as const, motivo: "sem resultado" });
   if (input.sessionId) {
@@ -297,4 +300,65 @@ export async function reproduceDefects(input: {
     });
   }
   return out;
+}
+
+/**
+ * Mudança 44: teste que já provou um defeito (revisão anterior ou contrato de reparo) roda de novo em toda
+ * verificação final, sem LLM — a leitura do revisor varia de uma rodada para outra (Gateway 22/10: o REQ-018
+ * provado na rodada 4 virou "importante" na leitura seguinte e a entrega passou com o defeito), o teste não.
+ */
+export interface PriorProof {
+  caminho: string;
+  conteudo: string;
+  req?: string;
+  /** Onde corrigir (para a etapa dona), quando conhecido. */
+  arquivo: string | null;
+  defeito: string;
+}
+
+export interface PriorProofFailure {
+  prova: PriorProof;
+  teste: ReproductionTest;
+  saida: string;
+  arquivoCorrecao: string | null;
+}
+
+export async function rerunPriorProofs(input: {
+  sessionId?: string;
+  projectPath: string;
+  proofs: PriorProof[];
+  files: Record<string, string>;
+  bench?: (projectPath: string, req: TestBenchRequest) => Promise<TestBenchReport>;
+}): Promise<{ falhas: PriorProofFailure[]; rodou: boolean; passaram: number }> {
+  if (input.proofs.length === 0) return { falhas: [], rodou: false, passaram: 0 };
+  const bench = input.bench ?? runTestBench;
+  // Nome próprio por prova: nomes como "D1-x.test.ts" se repetem entre rodadas com conteúdos diferentes.
+  const named = input.proofs.map((p, i) => {
+    const base = safeName(p.caminho.replace(/^.*\//, "").replace(/(\.test)?\.(ts|tsx|js|mjs)$/, "")).slice(0, 40);
+    return { p, caminho: `prova-${i + 1}-${base}.test.ts` };
+  });
+  const reproTests = Object.fromEntries(named.map((n) => [n.caminho, n.p.conteudo]));
+  const report = await bench(input.projectPath, { reproTests, files: named.map((n) => `.nextcode-repro/${n.caminho}`) });
+  if (!report.ok) return { falhas: [], rodou: false, passaram: 0 };
+  const falhas: PriorProofFailure[] = [];
+  let passaram = 0;
+  for (const n of named) {
+    const c = classifyRun(report, n.caminho);
+    if (c.status === "passou") passaram++;
+    if (c.status !== "falhou") continue;
+    falhas.push({
+      prova: n.p,
+      teste: { caminho: n.caminho, conteudo: n.p.conteudo },
+      saida: c.saida ?? "",
+      arquivoCorrecao: n.p.arquivo ?? sourceFileInFailure(c.saida ?? "", input.files),
+    });
+  }
+  if (input.sessionId) {
+    TelemetryLogger.log({
+      sessionId: input.sessionId,
+      action: "PRIOR_PROOFS_RERUN",
+      details: { total: named.length, passaram, falharam: falhas.map((f) => f.prova.caminho) },
+    });
+  }
+  return { falhas, rodou: true, passaram };
 }

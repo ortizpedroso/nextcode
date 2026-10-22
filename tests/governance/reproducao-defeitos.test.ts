@@ -224,3 +224,69 @@ describe("43.2 — erro do próprio teste não é prova", () => {
     expect(isAssertionFailure("ErroTaxaNaoConfigurada: sem configuração ativa")).toBe(true);
   });
 });
+
+describe("44 — prova anterior roda sempre; importante também vai à bancada; bancada fora reprova", () => {
+  const SPEC = "---\ntitulo: T\nrequisitos:\n  - id: REQ-001\n    titulo: a\n    criterio: b\n---\n";
+  const semTestes = Object.fromEntries(Object.entries(FILES).filter(([f]) => !f.startsWith("tests/")));
+  const aprovaTudo = async () => answer({ aprovado: true, reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/taxas.ts:1" }], problemas: [] });
+
+  it("Gateway 22/10: a leitura aprova, mas o teste que provou o REQ-018 ainda falha → reprova com o teste", async () => {
+    const { bench, calls } = fakeBench((f) => (f.includes("webhook") ? "falha" : "passa"));
+    const r = await reviewFinalDelivery({
+      spec: SPEC,
+      files: semTestes,
+      projectPath: "C:/p",
+      dispatch: aprovaTudo,
+      bench,
+      priorProofs: [
+        { caminho: "D1-webhook-asaas.test.ts", conteudo: "c-webhook", req: "REQ-018", arquivo: "src/lib/cobrancas-service.ts", defeito: "revisão final: REQ-018 parcial — cabeçalho asaas-access-token" },
+        { caminho: "D1-taxas.test.ts", conteudo: "c-taxas", arquivo: "src/lib/taxas.ts", defeito: "REQ-055" },
+      ],
+    });
+    expect(r.aprovado).toBe(false);
+    expect(r.defeitos).toHaveLength(1);
+    expect(r.defeitos[0]).toMatchObject({ req: "REQ-018", prova: "reproduzido", arquivo: "src/lib/cobrancas-service.ts" });
+    expect(r.defeitos[0].defeito).toContain("prova anterior ainda falha");
+    expect(r.provasAnteriores).toEqual({ total: 2, passaram: 1, falharam: 1 });
+    // Nomes próprios: o mesmo "D1-" de rodadas diferentes não colide.
+    expect(Object.keys(calls[calls.length - 1].reproTests ?? {})).toEqual(["prova-1-D1-webhook-asaas.test.ts", "prova-2-D1-taxas.test.ts"]);
+  });
+
+  it("importante: teste falha → defeito; teste passa → sai; sem teste possível → importantesSemProva", async () => {
+    const problemas = [
+      { severidade: "importante", req: "REQ-001", arquivoLinha: "src/lib/cobrancas-service.ts:1", descricao: "falha real" },
+      { severidade: "importante", req: "REQ-001", arquivoLinha: "src/lib/taxas.ts:1", descricao: "não reproduz" },
+    ];
+    const writer = (async (msgs: { content: string }[]) => {
+      const m = msgs.map((x) => x.content).join("\n");
+      return m.includes("falha real") ? testOf("a.test.ts") : testOf("b.test.ts");
+    }) as never;
+    const r = await reviewFinalDelivery({
+      spec: SPEC,
+      files: semTestes,
+      projectPath: "C:/p",
+      dispatch: async () => answer({ aprovado: true, reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/taxas.ts:1" }], problemas }),
+      reproDispatch: writer,
+      bench: fakeBench((f) => (f.includes("-a.test") ? "falha" : "passa")).bench,
+    });
+    expect(r.aprovado).toBe(false);
+    expect(r.defeitos.map((d) => d.defeito)).toEqual(["revisão final [importante] src/lib/cobrancas-service.ts:1: falha real"]);
+    expect(r.naoReproduzidos).toEqual(["revisão final [importante] src/lib/taxas.ts:1: não reproduz"]);
+    expect(r.importantesSemProva ?? []).toEqual([]);
+  });
+
+  it("bancada fora (Docker parado): o defeito fica sem 'prova' — reprova como antes, não vira ressalva", async () => {
+    const r = await reviewFinalDelivery({
+      spec: SPEC,
+      files: semTestes,
+      projectPath: "C:/p",
+      dispatch: async () => answer({ aprovado: false, reqVerdicts: [{ id: "REQ-001", status: "parcial", evidencia: "src/lib/cobrancas-service.ts:1" }], problemas: [] }),
+      reproDispatch: (async () => testOf("r.test.ts")) as never,
+      bench: async () => ({ ok: false, stage: "docker", error: "Docker não está rodando", files: [], cases: [], durationMs: 0 }),
+    });
+    expect(r.aprovado).toBe(false);
+    expect(r.defeitos[0].prova).toBeUndefined();
+    const { splitDefectsByEvidence } = await import("@/core/orchestrator/delivery-diagnosis");
+    expect(splitDefectsByEvidence(r.defeitos).bloqueiam).toHaveLength(1);
+  });
+});

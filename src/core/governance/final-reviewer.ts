@@ -6,6 +6,8 @@ import { recordLlmCost } from "@/core/llm/cost";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import {
   reproduceDefects,
+  rerunPriorProofs,
+  type PriorProof,
   isProjectTestFile,
   type DefectToReproduce,
   type ReproductionStatus,
@@ -66,6 +68,13 @@ export interface FinalReviewResult {
   perguntasSpec?: string[];
   /** Suspeitas que o teste não reproduziu (viram ressalva, não bloqueiam). */
   naoReproduzidos?: string[];
+  /**
+   * Mudança 44: problemas `importante` que a bancada não teve como testar (ex.: tela) — acompanham o reparo e
+   * viram ressalva da entrega. Os que o teste reproduziu entram em `defeitos` (reprovam); os não reproduzidos saem.
+   */
+  importantesSemProva?: FinalDefect[];
+  /** Mudança 44: re-execução dos testes que provaram defeitos antes (regressão). */
+  provasAnteriores?: { total: number; passaram: number; falharam: number };
   ressalvas: string[];
   descartes: string[];
   /** REQ que a revisão disse "implementado" com citação inexistente: não contam nem como aprovação nem como defeito. */
@@ -207,6 +216,8 @@ export async function reviewFinalDelivery(input: {
   /** Injeções para teste: quem escreve o teste de reprodução e a bancada. */
   reproDispatch?: FinalReviewDispatch;
   bench?: (projectPath: string, req: TestBenchRequest) => Promise<TestBenchReport>;
+  /** Mudança 44: testes que já provaram defeitos nesta sessão — rodam de novo, sem LLM, e reprovam se falharem. */
+  priorProofs?: PriorProof[];
 }): Promise<FinalReviewResult> {
   const empty = (motivo: string): FinalReviewResult => ({
     executado: false,
@@ -301,10 +312,21 @@ export async function reviewFinalDelivery(input: {
     const projectTests = input.projectPath
       ? Object.keys(input.files).filter((f) => isProjectTestFile(f) && !defeitos.some((d) => d.arquivo === f))
       : [];
-    if (input.projectPath && (defeitos.length > 0 || projectTests.length > 0)) {
+    // Mudança 44: o rótulo "importante" × "parcial" varia de uma leitura para outra; a prova não. O importante
+    // também vai à bancada: teste que falha reprova; que passa, sai; sem teste possível, vira ressalva.
+    const importantes: FinalDefect[] = parsed.problemas
+      .filter((p) => p.severidade === "importante" && !defeitos.some((d) => d.defeito.includes(p.arquivoLinha)))
+      .map((p) => ({
+        ...(p.req ? { req: p.req } : {}),
+        arquivo: fileOfRef(p.arquivoLinha),
+        defeito: `revisão final [importante] ${p.arquivoLinha}: ${p.descricao}`,
+      }));
+    let importantesSemProva: FinalDefect[] = importantes.map((d) => ({ ...d, prova: "sem_prova" as const }));
+    if (input.projectPath && (defeitos.length > 0 || projectTests.length > 0 || importantes.length > 0)) {
       const toReproduce: DefectToReproduce[] = [
         ...defeitos.map((d, i) => ({ id: `D${i + 1}`, req: d.req, arquivo: d.arquivo, defeito: d.defeito })),
         ...projectTests.map((f, i) => ({ id: `T${i + 1}`, arquivo: f, defeito: `teste do projeto ${f}` })),
+        ...importantes.map((d, i) => ({ id: `I${i + 1}`, req: d.req, arquivo: d.arquivo, defeito: d.defeito })),
       ];
       const reproResults = await reproduceDefects({
         sessionId: input.sessionId,
@@ -331,7 +353,9 @@ export async function reviewFinalDelivery(input: {
         kept.push({
           ...d,
           arquivo: r.arquivoCorrecao ?? d.arquivo,
-          prova: r.status,
+          // Bancada fora (Docker parado): não houve como provar — sem `prova`, o defeito reprova como antes da
+          // mudança 44 (senão tudo viraria ressalva e a entrega passaria sem teste nenhum).
+          ...(r.status === "sem_prova" && /^bancada indisponível/.test(r.motivo ?? "") ? {} : { prova: r.status }),
           ...(r.teste ? { teste: r.teste } : {}),
           ...(r.saida ? { saida: r.saida } : {}),
         });
@@ -347,13 +371,50 @@ export async function reviewFinalDelivery(input: {
           ...(r.saida ? { saida: r.saida } : {}),
         });
       });
+      importantesSemProva = [];
+      importantes.forEach((d, i) => {
+        const r = reproResults[defeitos.length + projectTests.length + i];
+        if (r.status === "reproduzido") {
+          kept.push({ ...d, arquivo: r.arquivoCorrecao ?? d.arquivo, prova: "reproduzido", ...(r.teste ? { teste: r.teste } : {}), ...(r.saida ? { saida: r.saida } : {}) });
+        } else if (r.status === "nao_reproduzido") {
+          naoReproduzidos.push(d.defeito);
+        } else {
+          importantesSemProva.push({ ...d, prova: "sem_prova" });
+        }
+      });
       defeitos = kept;
+    }
+
+    // Mudança 44: provas anteriores (revisões e contratos de reparo) rodam de novo; falha = defeito provado.
+    let provasAnteriores: FinalReviewResult["provasAnteriores"];
+    if (input.projectPath && input.priorProofs?.length) {
+      const rerun = await rerunPriorProofs({
+        sessionId: input.sessionId,
+        projectPath: input.projectPath,
+        proofs: input.priorProofs,
+        files: input.files,
+        bench: input.bench,
+      });
+      if (rerun.rodou) provasAnteriores = { total: input.priorProofs.length, passaram: rerun.passaram, falharam: rerun.falhas.length };
+      for (const f of rerun.falhas) {
+        if (defeitos.some((d) => d.teste?.conteudo === f.prova.conteudo)) continue;
+        defeitos.push({
+          ...(f.prova.req ? { req: f.prova.req } : {}),
+          arquivo: f.arquivoCorrecao,
+          defeito: `prova anterior ainda falha: ${f.prova.defeito.replace(/^revisão final:?\s*/, "").slice(0, 400)}`,
+          prova: "reproduzido",
+          teste: f.teste,
+          saida: f.saida,
+        });
+      }
     }
     return {
       executado: true,
       aprovado: defeitos.length === 0,
       ...(perguntasSpec.length ? { perguntasSpec } : {}),
       ...(naoReproduzidos.length ? { naoReproduzidos } : {}),
+      ...(importantesSemProva.length ? { importantesSemProva } : {}),
+      ...(provasAnteriores ? { provasAnteriores } : {}),
       reqVerdicts: parsed.verdicts,
       problemas: parsed.problemas,
       defeitos,
