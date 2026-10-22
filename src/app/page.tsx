@@ -634,6 +634,23 @@ export default function DashboardOrchestrator() {
     }
   };
 
+  // Mudança 43.4: mais uma rodada de reparo (rodadas automáticas gastas, defeitos de código).
+  const handleAuthorizeRound = async () => {
+    if (!activeSessionId) return;
+    try {
+      const res = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "authorize_repair_round", sessionId: activeSessionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setConsoleLogs((prev) => [...prev, `[RODADA] ${data.message || data.error || "Resposta sem mensagem"}`]);
+      await fetchSessionDetails(activeSessionId);
+    } catch (err) {
+      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao autorizar a rodada: ${String(err)}`]);
+    }
+  };
+
   const handleRetryNode = async (nodeId: string) => {
     setConsoleLogs((prev) => [...prev, `[RETRY] Desbloqueando etapa e liberando fila no servidor...`]);
     try {
@@ -802,6 +819,7 @@ export default function DashboardOrchestrator() {
         onAuthorizeBudget={handleAuthorizeBudget}
         sessionPhase={sessionPhase}
         onResumeSession={handleResumeSession}
+        onAuthorizeRound={handleAuthorizeRound}
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}

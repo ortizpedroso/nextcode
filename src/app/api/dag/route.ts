@@ -16,7 +16,7 @@ import {
 } from "@/core/orchestrator/job-queue";
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
-import { resumeBlockedSession, reopenDeliveredSession } from "@/core/orchestrator/session-resume";
+import { resumeBlockedSession, reopenDeliveredSession, authorizeRepairRound } from "@/core/orchestrator/session-resume";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 import { getSessionBudget, BUDGET_AUTHORIZED_ACTION } from "@/core/orchestrator/budget-guard";
 
@@ -357,6 +357,15 @@ export async function POST(request: NextRequest) {
     if (action === "resume_session" && (sessionId || body.sessionId)) {
       const targetSessionId: string = sessionId || body.sessionId;
       const result = await resumeBlockedSession(targetSessionId, "painel");
+      return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
+        status: result.ok ? 200 : 409,
+      });
+    }
+
+    // Ação 8 (mudança 43.4): o fundador autoriza mais uma rodada de reparo depois das 3 automáticas.
+    if (action === "authorize_repair_round" && (sessionId || body.sessionId)) {
+      const targetSessionId: string = sessionId || body.sessionId;
+      const result = await authorizeRepairRound(targetSessionId, "painel");
       return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
         status: result.ok ? 200 : 409,
       });

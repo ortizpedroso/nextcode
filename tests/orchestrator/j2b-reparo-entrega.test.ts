@@ -164,7 +164,7 @@ describe("J2b — fila: VERIFICACAO reprovada abre o reparo ou bloqueia com rela
     expect(await prisma.job.count({ where: { sessionId: s.id, status: "queued" } })).toBe(1);
   });
 
-  it(`depois de ${MAX_DELIVERY_REPAIR_ROUNDS} rodadas → BLOQUEADA com o histórico e "ajustar a Spec"`, async () => {
+  it(`depois de ${MAX_DELIVERY_REPAIR_ROUNDS} rodadas, lacuna de código com dona → BLOQUEADA com o histórico e "Autorizar mais uma rodada" (43.4)`, async () => {
     const rounds = [1, 2, 3].map((r) => ({
       id: `n1-reparo${r}`,
       title: `Reparo ${r}/3 — Etapa 1/1: src/x.ts`,
@@ -174,9 +174,10 @@ describe("J2b — fila: VERIFICACAO reprovada abre o reparo ou bloqueia com rela
     await runJob(s.id);
     expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("BLOQUEADA");
     const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
-    expect(msg).toContain("3 rodadas gastas");
+    expect(msg).toContain("3 rodada(s) gastas");
     expect(msg).toContain("rodada 3:");
-    expect(msg).toMatch(/Spec volta para revisão/);
+    expect(msg).toContain("A Spec está certa");
+    expect(msg).toContain("Autorizar mais uma rodada");
   });
 
   it("lacuna sem dono → BLOQUEADA com 'Dono: analista', nenhum reparo criado", async () => {
@@ -206,5 +207,32 @@ describe("43.3 — o teste que prova o defeito vai junto para a etapa dona", () 
       reproTests: { "D2-contato.test.ts": "c1" },
       files: [".nextcode-repro/D2-contato.test.ts", "tests/cobrancas-service.test.ts"],
     });
+  });
+});
+
+describe("43.4 — rodada autorizada soma 1 ao limite", () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await cleanup();
+  });
+  afterAll(cleanup);
+
+  it("3 rodadas gastas + 1 autorização → abre a rodada 4 (Reparo 4/4)", async () => {
+    const session = await prisma.session.create({ data: { title: "J2b-43.4", phase: "EXECUCAO" } });
+    created.push(session.id);
+    const mk = (id: string, payload: object) =>
+      prisma.taskNode.create({ data: { id: `${session.id}-${id}`, sessionId: session.id, title: "Etapa 1/1: src/x.ts", status: "completed", filesScope: JSON.stringify(["src/x.ts"]), payload: JSON.stringify(payload) } });
+    await mk("n1", { reqsCobertos: ["REQ-001"] });
+    for (const r of [1, 2, 3]) await mk(`n1-reparo${r}`, { reqsCobertos: ["REQ-001"], reparoEntrega: { rodada: r, origemId: `${session.id}-n1`, etapaAnterior: `${session.id}-n1`, defeitos: ["d"], microbriefReparo: {} } });
+    await prisma.telemetryLog.create({ data: { sessionId: session.id, action: "REPAIR_ROUND_AUTHORIZED", details: "{}" } });
+    const all = await prisma.taskNode.findMany({ where: { sessionId: session.id } });
+    vi.spyOn(sessionQueueModule, "processSessionQueue").mockResolvedValue({ processedCount: 0, allCompleted: true, tasks: all, specCompleteness: { complete: false, declaredFiles: ["src/x.ts"], missingFiles: ["src/x.ts"] } } as never);
+    vi.spyOn(nodeExecutorModule, "verifyProjectDeliveryT10").mockReturnValue({ passed: false, specFilesComplete: false, allReqsApproved: true, buildVerified: true, missingFiles: ["src/x.ts"], unapprovedReqs: [], gaps: ["Arquivos da Spec ausentes no disco: src/x.ts"] });
+    const jobId = await enqueueSessionQueueJob(session.id);
+    await claimJob(jobId, "w-434");
+    await executeClaimedJob(jobId, "w-434");
+    expect((await prisma.session.findUnique({ where: { id: session.id } }))?.phase).toBe("EXECUCAO");
+    const reparo4 = await prisma.taskNode.findFirst({ where: { sessionId: session.id, id: { endsWith: "-reparo4" } } });
+    expect(reparo4?.title).toMatch(/^Reparo 4\/4 — /);
   });
 });

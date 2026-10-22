@@ -14,6 +14,8 @@ export function humanActionText(acao: HumanAction | undefined): string {
       return "**O que fazer:** autorize mais verba no painel da DAG (**Autorizar**). A execução continua de onde parou; nada muda na Spec.";
     case "retentar_etapa":
       return "**O que fazer:** se a falha foi passageira, clique em **Re-tentar** na etapa bloqueada (painel da DAG). Se o pedido estiver errado ou impossível, responda aqui dizendo o que ajustar: a Spec volta para revisão.";
+    case "autorizar_rodada":
+      return "**O que fazer:** a Spec está certa — o que sobrou é defeito de código, cada um com etapa dona (e, quando há, o teste que prova). Clique em **Autorizar mais uma rodada** no painel da DAG — ou escreva `autorizar rodada` aqui no chat. Se preferir mudar o pedido, responda o que ajustar: aí a Spec volta para revisão.";
     case "ajustar_spec":
     default:
       return "**O que fazer:** responda aqui no chat dizendo o que ajustar: a Spec volta para revisão e, aprovada, a execução recomeça.";

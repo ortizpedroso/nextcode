@@ -36,7 +36,7 @@ import {
   describeUnverifiedBuild,
 } from "@/core/orchestrator/node-executor";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
-import { isResumeCommand, resumeBlockedSession } from "@/core/orchestrator/session-resume";
+import { isResumeCommand, resumeBlockedSession, isAuthorizeRoundCommand, authorizeRepairRound } from "@/core/orchestrator/session-resume";
 import { pickBlockedCulprit } from "@/core/orchestrator/blocked-culprit";
 import {
   classifyMessage,
@@ -303,6 +303,11 @@ export async function POST(request: NextRequest) {
     };
 
     // Mudança 36: "retomar" em BLOQUEADA retoma sem mexer na Spec (sem LLM e sem Jev).
+    // Mudança 43.4: "autorizar rodada" em BLOQUEADA libera mais uma rodada de reparo (sem LLM e sem Jev).
+    if (phaseBefore === "BLOQUEADA" && isAuthorizeRoundCommand(targetPrompt)) {
+      const authorized = await authorizeRepairRound(activeSessionId, "chat");
+      return respondDeterministically(authorized.ok ? `▶️ ${authorized.message}` : `⚠️ ${authorized.message}`);
+    }
     if (phaseBefore === "BLOQUEADA" && isResumeCommand(targetPrompt)) {
       const resumed = await resumeBlockedSession(activeSessionId, "chat");
       return respondDeterministically(resumed.ok ? `▶️ ${resumed.message}` : `⚠️ ${resumed.message}`);

@@ -17,11 +17,31 @@ import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckRep
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
+import { buildDeliveryDiagnosis } from "@/core/orchestrator/delivery-diagnosis";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
 
 export const DEFAULT_JOB_LEASE_MS = 30000;
+
+/** Mudança 43.4: quantos defeitos cada revisão final executada desta sessão achou, em ordem. */
+export async function finalReviewProgress(sessionId: string): Promise<number[]> {
+  const logs = await prisma.telemetryLog.findMany({
+    where: { sessionId, action: "FINAL_REVIEW" },
+    orderBy: { createdAt: "asc" },
+    select: { details: true },
+  });
+  const out: number[] = [];
+  for (const l of logs) {
+    try {
+      const d = JSON.parse(l.details || "{}");
+      if (d.executado && Array.isArray(d.defeitos)) out.push(d.defeitos.length);
+    } catch {
+      /* ignora registro ilegível */
+    }
+  }
+  return out;
+}
 
 export function getJobLeaseMs(): number {
   const raw = Number(process.env.NEXTCODE_JOB_LEASE_MS);
@@ -509,19 +529,29 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
             ),
             fileDefects: [...finalReviewDefects, ...uiBuildDefects],
-          });
+          }, { perguntasSpec: finalReviewQuestions });
           if (!repair.started) {
+            // Mudança 43.4: aviso montado com o diagnóstico (o que sobrou, com prova; a Spec está certa?;
+            // progresso) e o caminho certo — rodada extra autorizada ou a pergunta exata sobre a Spec.
+            const progresso = await finalReviewProgress(job.sessionId);
+            const diag = buildDeliveryDiagnosis({
+              defeitos: [...finalReviewDefects, ...uiBuildDefects],
+              perguntasSpec: finalReviewQuestions,
+              outrasLacunas: deliveryT10.gaps.filter(
+                (g) =>
+                  !g.startsWith("revisão final") &&
+                  !g.startsWith("teste do projeto falha") &&
+                  !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
+              ),
+              progresso,
+              reparo: repair,
+            });
             await applyPhaseEvent(
               job.sessionId,
-              { type: "VERIFICACAO_COM_LACUNAS" },
+              { type: diag.evento },
               {
-                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo },
-                detalheAviso:
-                  "**Lacunas encontradas:**\n" +
-                  (deliveryT10.gaps.length > 0
-                    ? deliveryT10.gaps.map((g) => `- ${g}`).join("\n")
-                    : "- (a verificação não detalhou a lacuna)") +
-                  `\n\n${repair.motivo}`,
+                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo, diagnostico: diag.evento },
+                detalheAviso: diag.detalhe,
               }
             );
           }

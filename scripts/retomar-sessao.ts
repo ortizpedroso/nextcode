@@ -5,8 +5,9 @@
  * NODE_UNBLOCKED_BY_HUMAN. Uso: só com o app parado (um worker por banco) e com autorização do fundador.
  *
  * Com `--reabrir`, uma sessão ENTREGUE volta à verificação final (mudança 40), sem mudar a Spec.
+ * Com `--rodada-extra`, autoriza mais uma rodada de reparo depois das 3 automáticas (mudança 43.4).
  *
- * Uso: npx tsx scripts/retomar-sessao.ts <idDaSessao|prefixo> [--refazer id1,id2] [--reabrir] [--motivo "texto"]
+ * Uso: npx tsx scripts/retomar-sessao.ts <idDaSessao|prefixo> [--refazer id1,id2] [--reabrir | --rodada-extra] [--motivo "texto"]
  */
 import fs from "fs";
 import path from "path";
@@ -60,7 +61,13 @@ async function main(): Promise<void> {
     console.log(`[retomar] etapa liberada: ${t.title}`);
   }
 
-  if (process.argv.includes("--reabrir")) {
+  if (process.argv.includes("--rodada-extra")) {
+    // Mudança 43.4: mais uma rodada de reparo, autorizada pelo fundador.
+    const { authorizeRepairRound } = await import("@/core/orchestrator/session-resume");
+    const authorized = await authorizeRepairRound(session.id, "linha_de_comando");
+    console.log(`[retomar] ${authorized.message}`);
+    if (!authorized.ok) throw new Error(authorized.message);
+  } else if (process.argv.includes("--reabrir")) {
     const { reopenDeliveredSession } = await import("@/core/orchestrator/session-resume");
     const reopened = await reopenDeliveredSession(session.id, "linha_de_comando", motivo);
     console.log(`[retomar] ${reopened.message}`);

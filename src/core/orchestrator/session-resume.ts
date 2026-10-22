@@ -82,3 +82,39 @@ export async function reopenDeliveredSession(
   return { ok: true, message: "Entrega reaberta: a verificação final roda de novo." };
 }
 
+
+/** Mudança 43.4: "autorizar rodada" digitado sozinho no chat. */
+export function isAuthorizeRoundCommand(text: string): boolean {
+  return /^\s*autorizar\s+(mais\s+uma\s+)?rodada\s*[.!]?\s*$/i.test(text);
+}
+
+/**
+ * Mudança 43.4: o fundador autoriza mais UMA rodada de reparo depois das 3 automáticas — só quando a
+ * sessão parou por `REPARO_ESGOTADO` (defeitos de código com dona; a Spec está certa). Cada autorização
+ * fica na trilha (`REPAIR_ROUND_AUTHORIZED`) e soma 1 ao limite; a verificação final roda de novo e o
+ * que ela reprovar abre a rodada nova.
+ */
+export async function authorizeRepairRound(sessionId: string, via: "painel" | "chat" | "linha_de_comando"): Promise<ResumeResult> {
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { phase: true } });
+  if (!session) return { ok: false, message: "Sessão não encontrada." };
+  if (session.phase !== "BLOQUEADA") {
+    return { ok: false, message: `A sessão não está bloqueada (fase atual: ${session.phase}); não há rodada a autorizar.` };
+  }
+  const lastBlock = await prisma.telemetryLog.findFirst({
+    where: { sessionId, action: "PHASE_TRANSITION", details: { contains: '"to":"BLOQUEADA"' } },
+    orderBy: { createdAt: "desc" },
+    select: { details: true },
+  });
+  if (!lastBlock?.details?.includes('"type":"REPARO_ESGOTADO"')) {
+    return {
+      ok: false,
+      message:
+        "Rodada extra só vale quando a sessão parou porque as rodadas de reparo acabaram com defeitos de código. Este bloqueio tem outra causa — veja o aviso no chat (Retomar, Re-tentar ou ajuste da Spec).",
+    };
+  }
+  TelemetryLogger.log({ sessionId, action: "REPAIR_ROUND_AUTHORIZED", details: { via } });
+  const res = await applyPhaseEvent(sessionId, { type: "DESBLOQUEIO_HUMANO" });
+  if (!res.ok) return { ok: false, message: `Não foi possível retomar: ${res.reason}.` };
+  if (res.effects.some((e) => e.type === "RETOMAR_EXECUCAO")) await enqueueSessionQueueJob(sessionId);
+  return { ok: true, message: "Mais uma rodada de reparo autorizada: a verificação final roda de novo e o que ela reprovar abre a rodada." };
+}

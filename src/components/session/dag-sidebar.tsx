@@ -36,6 +36,8 @@ interface DagSidebarProps {
   /** Mudança 36: fase da sessão e Retomar (sessão BLOQUEADA sem mexer na Spec). */
   sessionPhase?: string | null;
   onResumeSession?: () => Promise<void>;
+  /** Mudança 43.4: mais uma rodada de reparo (o servidor recusa se o bloqueio não for por rodadas gastas). */
+  onAuthorizeRound?: () => Promise<void>;
 }
 
 export interface SessionCostBreakdown {
@@ -82,9 +84,11 @@ export function DagSidebar({
   onAuthorizeBudget,
   sessionPhase,
   onResumeSession,
+  onAuthorizeRound,
 }: DagSidebarProps) {
   const [authorizing, setAuthorizing] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const [authorizingRound, setAuthorizingRound] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
@@ -326,6 +330,24 @@ export function DagSidebar({
           className="w-full rounded-lg bg-amber-600 px-2 py-1.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1"
         >
           <RotateCcw className="w-3 h-3" /> {resuming ? "Retomando..." : "Retomar"}
+        </button>
+      )}
+      {sessionPhase === "BLOQUEADA" && onAuthorizeRound && (
+        <button
+          type="button"
+          disabled={authorizingRound}
+          onClick={async () => {
+            setAuthorizingRound(true);
+            try {
+              await onAuthorizeRound();
+            } finally {
+              setAuthorizingRound(false);
+            }
+          }}
+          title="Libera mais uma rodada de reparo quando as 3 automáticas acabaram e o que sobrou é defeito de código (a Spec está certa)"
+          className="w-full rounded-lg bg-indigo-600 px-2 py-1.5 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1"
+        >
+          <RefreshCw className="w-3 h-3" /> {authorizingRound ? "Autorizando..." : "Autorizar mais uma rodada"}
         </button>
       )}
 

@@ -673,6 +673,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'REPARO_NECESSARIO' },
       { type: 'REABRIR_ENTREGA' },
       { type: 'SEM_LLM_PERSISTENTE' },
+      { type: 'REPARO_ESGOTADO' },
       { type: 'FALHA_REPETIDA' },
       { type: 'SILENCIO_DETECTADO' },
       { type: 'NOVO_PEDIDO' },

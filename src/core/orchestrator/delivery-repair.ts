@@ -141,38 +141,58 @@ function microbriefReparoFor(item: RepairPlanItem, rodada: number, idProjeto: st
 
 export type DeliveryRepairOutcome =
   | { started: true; rodada: number; etapas: number }
-  | { started: false; motivo: string };
+  | {
+      started: false;
+      motivo: string;
+      /** Mudança 43.4: por que não abriu — o aviso muda conforme o tipo. */
+      tipo: "esgotado" | "sem_dono" | "erro";
+      /** No "esgotado": todos os defeitos têm etapa dona (código) → cabe autorizar mais uma rodada. */
+      todosComDono?: boolean;
+    };
+
+/** Mudança 43.4: rodadas extras que o fundador autorizou nesta sessão (trilha `REPAIR_ROUND_AUTHORIZED`). */
+export async function authorizedExtraRounds(sessionId: string): Promise<number> {
+  return prisma.telemetryLog.count({ where: { sessionId, action: "REPAIR_ROUND_AUTHORIZED" } });
+}
 
 /**
  * Tenta abrir uma rodada de reparo. `started: false` → o chamador bloqueia (VERIFICACAO_COM_LACUNAS)
  * com `motivo` no aviso.
  */
-export async function tryStartDeliveryRepair(sessionId: string, gaps: DeliveryGaps): Promise<DeliveryRepairOutcome> {
+export async function tryStartDeliveryRepair(
+  sessionId: string,
+  gaps: DeliveryGaps,
+  opts: { perguntasSpec?: string[] } = {}
+): Promise<DeliveryRepairOutcome> {
   const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { specVersion: true, title: true } });
   const specVersion = session?.specVersion ?? 0;
   const tasks = await prisma.taskNode.findMany({ where: { sessionId, specVersion } });
   const rodadaAnterior = currentRepairRound(tasks);
+  const limite = MAX_DELIVERY_REPAIR_ROUNDS + (await authorizedExtraRounds(sessionId));
+  const plan = planDeliveryRepair(tasks, gaps);
 
-  if (rodadaAnterior >= MAX_DELIVERY_REPAIR_ROUNDS) {
+  if (rodadaAnterior >= limite) {
     const historico = tasks
       .map((t) => ({ t, r: readRepairPayload(t.payload) }))
       .filter((x) => x.r)
       .sort((a, b) => a.r!.rodada - b.r!.rodada)
       .map((x) => `- rodada ${x.r!.rodada}: "${x.t.title}" (${x.t.status}) — ${x.r!.defeitos.length} defeito(s)`);
-    TelemetryLogger.log({ sessionId, action: "DELIVERY_REPAIR_EXHAUSTED", details: { rodadas: rodadaAnterior } });
+    TelemetryLogger.log({ sessionId, action: "DELIVERY_REPAIR_EXHAUSTED", details: { rodadas: rodadaAnterior, limite } });
     return {
       started: false,
+      tipo: "esgotado",
+      todosComDono: plan.semDono.length === 0 && plan.itens.length > 0,
       motivo:
-        `**Reparo automático:** ${MAX_DELIVERY_REPAIR_ROUNDS} rodadas gastas e a entrega continua reprovada (regra das 3 tentativas).\n` +
+        `**Reparo automático:** ${rodadaAnterior} rodada(s) gastas (limite ${limite}: regra das 3 tentativas${limite > MAX_DELIVERY_REPAIR_ROUNDS ? " + autorizadas" : ""}).\n` +
         historico.join("\n"),
     };
   }
 
-  const plan = planDeliveryRepair(tasks, gaps);
   if (plan.semDono.length > 0 || plan.itens.length === 0) {
     TelemetryLogger.log({ sessionId, action: "DELIVERY_REPAIR_NO_OWNER", details: { semDono: plan.semDono.slice(0, 20) } });
     return {
       started: false,
+      tipo: "sem_dono",
       motivo:
         "**Dono:** analista — há lacuna que não pertence a nenhuma etapa do plano, então o reparo automático não abre:\n" +
         (plan.semDono.length > 0 ? plan.semDono.slice(0, 15).map((g) => `- ${g}`).join("\n") : "- (nenhuma lacuna ligável)"),
@@ -185,7 +205,7 @@ export async function tryStartDeliveryRepair(sessionId: string, gaps: DeliveryGa
     { type: "REPARO_NECESSARIO" },
     { extraDetails: { rodada, etapas: plan.itens.map((i) => ({ dona: i.dona.id, defeitos: i.defeitos.length })) } }
   );
-  if (!toPlanning.ok) return { started: false, motivo: `não foi possível abrir o reparo: ${toPlanning.reason}` };
+  if (!toPlanning.ok) return { started: false, tipo: "erro", motivo: `não foi possível abrir o reparo: ${toPlanning.reason}` };
 
   const idProjeto = session?.title || sessionId;
   for (const item of plan.itens) {
@@ -210,7 +230,7 @@ export async function tryStartDeliveryRepair(sessionId: string, gaps: DeliveryGa
         id: `${item.origemId}-reparo${rodada}`,
         sessionId,
         specVersion,
-        title: `Reparo ${rodada}/${MAX_DELIVERY_REPAIR_ROUNDS} — ${originalTitle}`,
+        title: `Reparo ${rodada}/${limite} — ${originalTitle}`,
         role: item.dona.role,
         cluster: item.dona.cluster,
         status: "pending",
@@ -235,12 +255,20 @@ export async function tryStartDeliveryRepair(sessionId: string, gaps: DeliveryGa
       sessionId,
       role: "assistant",
       content:
-        `🔧 **Entrega reprovada na verificação final — reparo automático, rodada ${rodada}/${MAX_DELIVERY_REPAIR_ROUNDS}.**\n\n` +
+        `🔧 **Entrega reprovada na verificação final — reparo automático, rodada ${rodada}/${limite}.**\n\n` +
         `${plan.itens.length} etapa(s) de reparo, cada uma partindo do código atual e corrigindo só as lacunas dos seus arquivos:\n` +
         plan.itens
-          .map((i) => `- **${i.dona.title.replace(/^Reparo \d+\/\d+ — /, "")}**: ${i.defeitos.length} defeito(s) — ${i.defeitos[0].slice(0, 200)}`)
+          .map(
+            (i) =>
+              `- **${i.dona.title.replace(/^Reparo \d+\/\d+ — /, "")}**: ${i.defeitos.length} defeito(s)` +
+              (i.testes.length ? `, ${i.testes.length} com teste que prova` : "") +
+              ` — ${i.defeitos[0].slice(0, 200)}`
+          )
           .join("\n") +
-        "\n\nNada muda na Spec. Se a entrega continuar reprovada depois da 3ª rodada, a sessão para e eu aviso com o relatório.",
+        (opts.perguntasSpec?.length
+          ? `\n\n**Pergunta(s) sobre a Spec para você** (não vão para o reparo de código):\n${opts.perguntasSpec.map((q) => `- ${q}`).join("\n")}`
+          : "") +
+        `\n\nNada muda na Spec. Se a entrega continuar reprovada depois da rodada ${limite}, a sessão para e eu aviso com o diagnóstico.`,
     },
   });
 
