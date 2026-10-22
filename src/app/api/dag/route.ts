@@ -16,7 +16,7 @@ import {
 } from "@/core/orchestrator/job-queue";
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
-import { resumeBlockedSession } from "@/core/orchestrator/session-resume";
+import { resumeBlockedSession, reopenDeliveredSession } from "@/core/orchestrator/session-resume";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 import { getSessionBudget, BUDGET_AUTHORIZED_ACTION } from "@/core/orchestrator/budget-guard";
 
@@ -357,6 +357,16 @@ export async function POST(request: NextRequest) {
     if (action === "resume_session" && (sessionId || body.sessionId)) {
       const targetSessionId: string = sessionId || body.sessionId;
       const result = await resumeBlockedSession(targetSessionId, "painel");
+      return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
+        status: result.ok ? 200 : 409,
+      });
+    }
+
+    // Ação 7 (mudança 40): reabrir uma sessão ENTREGUE para a verificação final (T10 + revisão final) rodar de novo.
+    if (action === "reopen_delivery" && (sessionId || body.sessionId)) {
+      const targetSessionId: string = sessionId || body.sessionId;
+      const motivo = typeof body.motivo === "string" && body.motivo.trim() ? body.motivo.trim().slice(0, 200) : "pedido no painel";
+      const result = await reopenDeliveredSession(targetSessionId, "painel", motivo);
       return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
         status: result.ok ? 200 : 409,
       });

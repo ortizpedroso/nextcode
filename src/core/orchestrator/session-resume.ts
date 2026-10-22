@@ -49,3 +49,36 @@ export async function resumeBlockedSession(sessionId: string, via: "painel" | "c
   }
   return { ok: true, message: `Sessão retomada na fase ${res.ctx.phase}.` };
 }
+
+/**
+ * Mudança 40: reabre uma sessão ENTREGUE para a verificação final rodar de novo, sem mudar a Spec nem as
+ * etapas — uso: entrega feita antes de a revisão final (J3) funcionar, ou projeto mexido fora do NextCode.
+ * As rodadas de reparo continuam contando (máx. 3 por versão da Spec, regra das 3 tentativas).
+ */
+export async function reopenDeliveredSession(
+  sessionId: string,
+  via: "painel" | "chat" | "linha_de_comando",
+  motivo: string
+): Promise<ResumeResult> {
+  const session = await prisma.session.findUnique({ where: { id: sessionId }, select: { phase: true } });
+  if (!session) return { ok: false, message: "Sessão não encontrada." };
+  if (session.phase !== "ENTREGUE") {
+    return { ok: false, message: `Só uma sessão ENTREGUE pode ser reaberta (fase atual: ${session.phase}).` };
+  }
+  TelemetryLogger.log({ sessionId, action: "DELIVERY_REOPENED_BY_HUMAN", details: { via, motivo } });
+  const res = await applyPhaseEvent(sessionId, { type: "REABRIR_ENTREGA" }, { extraDetails: { via, motivo } });
+  if (!res.ok) return { ok: false, message: `Não foi possível reabrir: ${res.reason}.` };
+  await prisma.message.create({
+    data: {
+      sessionId,
+      role: "assistant",
+      content:
+        `🔁 **Entrega reaberta para nova verificação final** (${motivo}).\n\n` +
+        "Nada muda na Spec. A verificação roda de novo (arquivos, requisitos, type-check e revisão final cega); " +
+        "o que ela reprovar vira reparo automático das etapas donas, dentro do limite de 3 rodadas.",
+    },
+  });
+  await enqueueSessionQueueJob(sessionId);
+  return { ok: true, message: "Entrega reaberta: a verificação final roda de novo." };
+}
+

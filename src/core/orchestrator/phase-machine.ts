@@ -67,6 +67,7 @@ export type PhaseEvent =
   | { type: 'VERIFICACAO_OK' }
   | { type: 'FALHA_AMBIENTE' }
   | { type: 'REPARO_NECESSARIO' }
+  | { type: 'REABRIR_ENTREGA' }
   | { type: 'FALHA_REPETIDA' }
   | { type: 'SILENCIO_DETECTADO' }
   | { type: 'NOVO_PEDIDO' };
@@ -94,6 +95,7 @@ export const PHASE_EVENT_TYPES = [
   'VERIFICACAO_OK',
   'FALHA_AMBIENTE',
   'REPARO_NECESSARIO',
+  'REABRIR_ENTREGA',
   'FALHA_REPETIDA',
   'SILENCIO_DETECTADO',
   'NOVO_PEDIDO',
@@ -715,9 +717,18 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   ENTREGUE: {
-    allowedEvents: ['NOVO_PEDIDO', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['NOVO_PEDIDO', 'REABRIR_ENTREGA', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['criar_novo', 'corrigir_existente', 'incerto', 'duvida_avulsa', 'status'],
     handler: (ctx, event) => {
+      // Mudança 40: o humano reabre a entrega sem mudar a Spec; a fila vazia leva direto à verificação
+      // final (T10 + revisão final), e o que ela reprovar vira reparo J2b.
+      if (event.type === 'REABRIR_ENTREGA') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'EXECUCAO', faseAntesDoBloqueio: undefined },
+          effects: [{ type: 'RETOMAR_EXECUCAO' }],
+        };
+      }
       if (event.type === 'NOVO_PEDIDO') {
         return {
           ok: true,

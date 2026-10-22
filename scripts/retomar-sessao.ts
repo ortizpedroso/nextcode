@@ -4,7 +4,9 @@
  * etapas (`--refazer <id,id>`), como o botão "Re-tentar": zera tentativas e registra
  * NODE_UNBLOCKED_BY_HUMAN. Uso: só com o app parado (um worker por banco) e com autorização do fundador.
  *
- * Uso: npx tsx scripts/retomar-sessao.ts <idDaSessao|prefixo> [--refazer id1,id2] [--motivo "texto"]
+ * Com `--reabrir`, uma sessão ENTREGUE volta à verificação final (mudança 40), sem mudar a Spec.
+ *
+ * Uso: npx tsx scripts/retomar-sessao.ts <idDaSessao|prefixo> [--refazer id1,id2] [--reabrir] [--motivo "texto"]
  */
 import fs from "fs";
 import path from "path";
@@ -58,8 +60,15 @@ async function main(): Promise<void> {
     console.log(`[retomar] etapa liberada: ${t.title}`);
   }
 
-  if (session.phase === "BLOQUEADA") await applyPhaseEvent(session.id, { type: "DESBLOQUEIO_HUMANO" });
-  await enqueueSessionQueueJob(session.id);
+  if (process.argv.includes("--reabrir")) {
+    const { reopenDeliveredSession } = await import("@/core/orchestrator/session-resume");
+    const reopened = await reopenDeliveredSession(session.id, "linha_de_comando", motivo);
+    console.log(`[retomar] ${reopened.message}`);
+    if (!reopened.ok) throw new Error(reopened.message);
+  } else {
+    if (session.phase === "BLOQUEADA") await applyPhaseEvent(session.id, { type: "DESBLOQUEIO_HUMANO" });
+    await enqueueSessionQueueJob(session.id);
+  }
   startJobWorker();
 
   const inicio = Date.now();
