@@ -1,3 +1,12 @@
+## 22/10/2026 (210) — Mudança 43 aprovada: revisor com bancada de testes
+
+**Fundador:** "eu aprovo, só não quero que se perca na sequência… depois de tudo feito me traga um checklist do que falta"; "siga os passos que você definiu".
+**Feito:** mudança 43 registrada na §5.0 (texto + checklist 43.1–43.4 + rodada extra) e ▶ AGORA atualizado, antes de qualquer código.
+**Como:** trabalho na worktree `../nextcode-43` (branch `mudanca-43`) porque o Antigravity está testando na pasta principal (usa `git stash` no passo 4); junta ao `main` quando ele terminar. Suíte inteira só depois dele (memória).
+**Próximo passo:** 43.1 bancada.
+
+---
+
 ## 22/10/2026 (209) — Diagnóstico do aviso genérico depois das 3 rodadas (fundador pediu antes de mexer)
 
 **Fundador:** melhorar a análise do revisor (ou usar o Jev) para a decisão certa; o aviso genérico "ajuste a Spec" invalida a Spec e o trabalho; aceita outra rodada se a resposta melhorar; quer o diagnóstico primeiro.
