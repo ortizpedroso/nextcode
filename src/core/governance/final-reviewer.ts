@@ -137,7 +137,8 @@ export async function reviewFinalDelivery(input: {
   });
   if (!input.dispatch && process.env.NODE_ENV === "test") return empty("teste sem LLM (dispatch não injetado)");
 
-  const maxTotal = Number(process.env.FINAL_REVIEW_MAX_TOTAL_CHARS) || 450_000;
+  // Sonnet 5.5 e Opus 5.5: 1 milhão de tokens de entrada; 1,2 milhão de caracteres ≈ 350 mil tokens (folga para skill e resposta).
+  const maxTotal = Number(process.env.FINAL_REVIEW_MAX_TOTAL_CHARS) || 1_200_000;
   const total = input.spec.length + Object.values(input.files).reduce((n, c) => n + c.length, 0);
   if (total > maxTotal) return empty(`não coube: ${total} caracteres (máximo ${maxTotal})`);
 
