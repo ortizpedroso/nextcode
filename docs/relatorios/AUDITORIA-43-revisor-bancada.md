@@ -53,7 +53,10 @@ Diferença (`e2cc665..054ddb1`, código, testes, docker, scripts, skills): 35 ar
 
 ## 4. Rodada extra no Gateway `4d019f00` (autorizada pelo fundador na aprovação)
 
-RESULTADO_RODADA_EXTRA
+- **Rodada 4** (autorizada pelo fundador na aprovação): 8 etapas, **7/8 com o teste-contrato passando** na 1ª passada (`REPAIR_CONTRACT_PASSED`). A 8ª (auth) bloqueou porque o defeito também estava em `src/middleware.ts`, fora do escopo dela → corrigido na **mudança 44.1** (escopo do reparo = arquivos de código citados no defeito; Re-tentar recalcula); com o escopo novo, o contrato passou.
+- A revisão seguinte caiu para **1 defeito provado** (REQ-018: o webhook não lia o cabeçalho `asaas-access-token`, real). A rodada 5 foi entregue com ele aberto porque a leitura do revisor mudou o rótulo para "importante" → causa corrigida na **44.2c** (prova anterior roda em toda verificação; "importante" também vai à bancada).
+- Rodadas 5–7 (por delegação, execução autônoma 5): contratos 100% passando nas rodadas 6–7; duas regressões vistas só no fim → **44.2d/44.2e** (regressão no portão de cada etapa de reparo, inclusive os testes do próprio projeto); um contrato errado (mock sem zerar entre casos) travava uma etapa → bancada com `clearMocks` (imagem `:2`).
+- Placar dos defeitos **provados** por revisão: 8 → 1 → (reaberto) 7 → 6 → 5. Detalhe e números finais em `docs/relatorios/AUDITORIA-E5.md`.
 
 ## 5. Ressalvas do teste do Antigravity (conferidas no código)
 

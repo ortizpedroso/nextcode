@@ -1,3 +1,13 @@
+## 22/10/2026 (215) — J4 no bench: régua faltava, bench parava antes do reparo; refazendo P2–P4
+
+**Feito (commits):** `85570a7` bench constrói a imagem `nextcode-aceite:1` se faltar (o aceite saía "0/0" calado) · `6929a00` bench segue a fila até ENTREGUE/BLOQUEADA/PAUSADA (o reparo J2b roda) e preserva a pasta de toda iteração não entregue. Relatórios em rascunho: `docs/relatorios/IMPLEMENTADO-E5.md`, `DECISOES-AUTONOMAS-E5.md`; §6 da referência com os itens 3–7 decididos; `medicoes.md` com as medições da mudança 44; `AUDITORIA-43` §4 preenchido.
+**Medido (bench `2026-10-22-1538`):** P1 padrão ENTREGUE 10/10 US$ 0,115 · P1 sem-jev ENTREGUE 10/10 US$ 0,146 · P2 padrão ENTREGUE 13/13 US$ 0,256 · P2 sem-jev/P3 parados em EXECUCAO com o reparo na fila (defeito do bench, corrigido) · P3 aceite 0/12 e 1/12 → a revisão final achou defeito e o reparo não rodou.
+**Onde parou:** bench P2–P4 × padrão/sem-jev rodando de novo (log `scratchpad/bench-j4c.log`).
+**Próximo passo:** ler o bench (J4 com × sem Jev; P3 0/12 — causa) → `npm audit fix` → rodada 8 do Gateway → `AUDITORIA-E5.md` e fechar os dois relatórios.
+**Pendências do fundador:** Gateway REQ-061 (regras de ConfigTaxa) e REQ-064 (status do boleto ainda não gerado); publicar o CI quando quiser.
+
+---
+
 ## 22/10/2026 (214) — Execução autônoma 5: E2, E5, E4 (J20), E6 feitos; Gateway rodada 7; J4 no bench
 
 **Feito (commits):** `2f17e4d` 44.2d regressão no portão do reparo · `39f790c` 44.2e testes do projeto como regressão · `ed6a249` P8 T7 · `0bca333` J11 · `da48367` J8 · `9bcf26f` J7 · `4feb883` TR1 (7) por trecho · `8c476c6` E5 autoteste (skill `testador`) · `2ba13a8` isolamento dos testes (supervisores/`runOnce` com `onlySessionIds`) · `252ad9a` J20 · `0d43a13` E6 CI + digest + OmniRoute em loopback. Suíte 162/1042 (2× limpa antes do E5), tsc 0.

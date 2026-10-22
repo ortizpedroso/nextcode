@@ -684,12 +684,12 @@ Fora do J2 (anotado): sessões paradas em `MACROBRIEF`/`CONFERENCIA` (rodam na r
 1. ~~**Aprovar o plano v2** (§5) e a ordem P0 → P10.~~ ✅ aprovado 15/10 (§5.0).
 1b. ✅ **decidido 17/10 (mudança 23): avaliador Claude, nunca a família do executor** — ~~**Avaliador:** continua fixo em modelo forte de outra família (decisão de 06/10) ou entra no roteamento do Jev ("o restante", 08/10)?~~
 2. ✅ **decidido na mudança 26 (D31–D33, por delegação):** teto = max(US$ 0,50; etapas × US$ 0,35 × 1,5) + autorizado, 1 autorização para o resto do plano (P9). ~~Teto fixo US$ 0,50; proposta US$ 3,00 para P1–P4.~~
-3. **Privacidade do Jev:** J11, J18, J20, J23 enviam trechos de conversa/código do usuário à TypeSafe (nunca segredos;
-   retenção zero só no plano enterprise). Proposta: aceitar agora para o NextCode do fundador; rever antes de outros usuários.
-4. **Gateway:** stack (Next.js já provado × React+Vite) e recorte do primeiro Gate (P10).
-5. **Busca da T7:** Exa (sem conta) como 1ª opção (D2) — confirmar.
-6. **Autoteste (§5.5 T):** testes em dois grupos — visíveis ao executor e escondidos (só o sistema roda no fim, para o executor não "decorar" o teste)? Recomendação do Claude: sim.
-7. **Autoteste:** teste e avaliador cego discordam → a sessão para e reporta ao fundador? Recomendação do Claude: sim.
+3. ✅ **decidido 22/10 (E5-D30, por delegação): aceito para o NextCode do fundador; rever antes de outros usuários** — ~~**Privacidade do Jev:** J11, J18, J20, J23 enviam trechos de conversa/código do usuário à TypeSafe (nunca segredos;
+   retenção zero só no plano enterprise). Proposta: aceitar agora para o NextCode do fundador; rever antes de outros usuários.~~
+4. ✅ **decidido 22/10 (E5-D31): Next.js** (provado no Gateway real `4d019f00`) — ~~**Gateway:** stack (Next.js já provado × React+Vite) e recorte do primeiro Gate (P10).~~
+5. ✅ **decidido 22/10 (E5-D17): buscador aberto sem conta + domínio oficial + páginas verificadas de reserva**; Exa se o fundador criar conta — ~~**Busca da T7:** Exa (sem conta) como 1ª opção (D2) — confirmar.~~
+6. ✅ **decidido 22/10 (E5-D20): sim** — ~~**Autoteste (§5.5 T):** testes em dois grupos — visíveis ao executor e escondidos (só o sistema roda no fim, para o executor não "decorar" o teste)? Recomendação do Claude: sim.~~
+7. ✅ **decidido 22/10 com dado (E5-D21): na última tentativa a etapa segue com ressalva e a revisão final decide com prova** (teste cego errou 1 de 2 rodadas no controle P4) — ~~**Autoteste:** teste e avaliador cego discordam → a sessão para e reporta ao fundador? Recomendação do Claude: sim.~~
 
 ---
 

@@ -11,6 +11,18 @@
 | 08/10 | P2, item 10 | ENTREGUE, 426 s | US$ 0,1398 | 4 chamadas, 8.902 tokens, US$ 0,0004 |
 | 13/10 | J1 — auditoria final do Jev (`verifyProjectDeliveryWithJev`) 5× em `p1-referencia` (correto) e `p4-base` (3 bugs) | p1 reprovado 5/5 (falso negativo); p4 reprovado 5/5 (certo). Separam: requisitos 0,92×0,06 · regras 0,88×0,14 · contratos 0,92×0,45 · integração 0,96×0,81. **Não separam:** stubs 0,45×0,46 · segurança 0,38×0,37 | — | 10 chamadas, 17.960 tokens, US$ 0,00075 |
 
+## Execução autônoma 5 — mudança 44 (22/10)
+| Medição | Resultado | Fonte |
+|---|---|---|
+| Esforço Anthropic nos controles J3 (Sonnet, 8 casos) | high 8/8 US$ 0,085–0,12 · medium 8/8 US$ 0,073 · low 8/8 US$ 0,059 (efeito teto: não separa) | `docs/relatorios/bench/2026-10-22-44-5-effort-j3.json` |
+| Esforço no avaliador de etapa (AV1.5, 7 casos) | medium 7/7 US$ 0,080 × high 7/7 US$ 0,078 | `…-44-5-effort-av15-*.json` |
+| Jev T7 — probabilidade de injeção | páginas oficiais do Asaas 0,34 / 0,42 / 0,47 / 0,42 · injeção plantada 0,98 / 0,94 / 0,98 → limiar 0,80 | script de calibração (P8) |
+| JV1 — uso real do Jev (toda a base) | 327 chamadas, US$ 0,033; J23: 211 checagens, 15 divergências, 15 falsas; J2: estado 284–292 mil > 28 mil (nunca rodou); M3 Gateway 30.115 > 24.000 (40 etapas na reserva); diagnóstico 23 (12 wrong_code, 10 incomplete_output, 1 environment) | `docs/relatorios/JV1-revisao-jev.md` |
+| J8 nas Specs reais | Gateway: 10/10 itens aplicáveis cobertos por palavra-chave; P1/P4 nada aplicável; P3 (login simples) 2/2 depois do ajuste | P8/J8 |
+| E5 controles do testador (2 rodadas) | P1 referência 9/9 passam; P4 base: testes de REQ-001 e REQ-002 falham (os defeitos), REQ-003 vira regressão (passa) | `scripts/controles-autoteste-e5.ts` |
+| Gateway `4d019f00` defeitos **provados** por revisão (rodadas 4→7) | 8 → 1 → (reaberto) 7 → 6 → 5; contratos das rodadas 6–7: 100% passando; custo da sessão US$ 37,07 | trilha |
+| `npm audit` (antes da correção) | 17 vulnerabilidades: 3 críticas (inclui Next.js), 9 altas, 5 moderadas | E6 |
+
 ## Achados de custo (07–08/10)
 - Raciocínio da DeepSeek = 75–90% da saída (ex.: 5.256 de 7.200 tokens na etapa de tela); saída custa 3× a entrada.
 - Cache do provedor: 85–93% da entrada do avaliador vem do cache.
