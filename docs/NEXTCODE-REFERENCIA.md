@@ -757,6 +757,7 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 | `docs/rascunhos/skills/avaliador-frontend/SKILL.md` | `git show 54e08bd:docs/rascunhos/skills/avaliador-frontend/SKILL.md` | Rascunho inicial da skill de avaliador de frontend com checklist duplicado | 9.2, 9.3 |
 | `docs/PLANO-UNICO-NEXTCODE.md` | `git show acbe398:docs/PLANO-UNICO-NEXTCODE.md` | Plano de fases E1 e commits (16/10); conteúdo vivo em §5.0.1 | 9.5 |
 | `docs/GUIA-UNICO-SEGUIR.md` | `git show acbe398:docs/GUIA-UNICO-SEGUIR.md` | Inventário completo de `docs/` (16/10); resumo em §7.1 | 9.5 |
+| `docs/relatorios/PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md` | `git show ce20bf3:docs/relatorios/PONTO-DE-RETOMADA-POS-REINICIO-2026-10-21.md` | Análise da pasta `docs/` e ponto de retomada escritos por outro agente às 06:52 de 21/10, fora do git e já desatualizados (citavam o HEAD `19d3bcd`, sem as entradas 190–202 do diário); documento paralelo à referência (regra 4). Apagado por decisão delegada do fundador 22/10 | 9.7 |
 
 ### 9.1 Até 04/10 — fundação (arquitetura v4, etapa 0, hardening do OmniRoute)
 - **27/09 a 28/09** — Inicialização do NextCode Engine, integração OmniRoute e hardening de segurança (Fases 2–6) · `1d6edb3, 8d7e639, fcf212d, 46b8683` · prova: `tests/`
