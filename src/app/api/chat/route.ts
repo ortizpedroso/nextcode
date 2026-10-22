@@ -674,7 +674,7 @@ export async function POST(request: NextRequest) {
         `Responda apenas com explicação clara e objetiva. ` +
         `É ESTRITAMENTE PROIBIDO gerar Spec Canônica (YAML com frontmatter --- ... ---) e PROIBIDO gerar código de implementação para gravar em arquivos.`
       : isSpecDraftingPhase
-        ? buildElicitadorSpecSystemPrompt(funnelBrief, officialDocsBlock)
+        ? buildElicitadorSpecSystemPrompt(funnelBrief, officialDocsBlock, fanOut.source === "jev" ? fanOut.perfilUsuario : null)
         : IntakeEngine.getGovernanceSystemPrompt();
 
     const dispatchMessages: DispatchMessage[] = [

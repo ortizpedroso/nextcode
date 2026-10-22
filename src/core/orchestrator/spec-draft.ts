@@ -100,11 +100,33 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
 }
 
 /** S2: skill elicitador + contrato YAML/canônico do harness (sem prompt genérico de governança). */
-export function buildElicitadorSpecSystemPrompt(funnelBrief?: string, officialDocsBlock?: string | null): string {
+/**
+ * J7 (E2, mudança 44): o perfil que o Jev já calcula no fan-out do chat ganha dono — muda como o elicitador
+ * conversa (a Spec é a mesma: o formato não depende do perfil).
+ */
+export type PerfilUsuario = "leigo_ou_negocio" | "desenvolvedor_tecnico";
+
+export function perfilDirective(perfil?: PerfilUsuario | null): string {
+  if (perfil === "leigo_ou_negocio") {
+    return "PERFIL DO USUÁRIO (J7): leigo / de negócio. Na conversa, fale sem jargão técnico, explique o termo quando for inevitável e pergunte pelo comportamento (\"o que acontece quando o pagamento falha?\"), nunca pela tecnologia. As escolhas técnicas são suas: registre como premissa.";
+  }
+  if (perfil === "desenvolvedor_tecnico") {
+    return "PERFIL DO USUÁRIO (J7): técnico. Seja direto, use os termos técnicos e pergunte por decisões de arquitetura quando elas mudarem o software (stack, contratos, versões).";
+  }
+  return "";
+}
+
+export function buildElicitadorSpecSystemPrompt(
+  funnelBrief?: string,
+  officialDocsBlock?: string | null,
+  perfil?: PerfilUsuario | null
+): string {
   const skillBlock = buildSkillSystemPrompt(loadRoleSkill("elicitador"));
   const formatBlock = buildSpecWriterSystemPrompt(funnelBrief);
+  const perfilBlock = perfilDirective(perfil);
   return [
     skillBlock,
+    ...(perfilBlock ? ["", perfilBlock] : []),
     "",
     "--- FORMATO CANÔNICO DA SPEC (contrato do harness; obedeça junto com a skill elicitador) ---",
     formatBlock,
