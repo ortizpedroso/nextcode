@@ -66,4 +66,27 @@ describe("E5 — testes de aceite", () => {
     expect(parseTesterAnswer("não sei")).toBeNull();
     expect(parseTesterAnswer('{"testes":[{"req":"REQ-1","conteudo":"sem o runner"}]}')?.testes).toEqual([]);
   });
+
+  it("bench 22/10 (P3): teste que presume cookies/next/headers sem o Microbrief pedir é descartado antes da bancada", async () => {
+    const { presumedTechnology } = await import("@/core/governance/acceptance-tests");
+    expect(presumedTechnology("vi.mock('next/headers'); expect(cookies().get('sessao'))", "Lê o header Authorization: Bearer <token>")).toBe("cookies / next/headers");
+    expect(presumedTechnology("vi.mock('next/headers')", "a sessão fica num cookie httpOnly")).toBeNull();
+    const chamadas: TestBenchRequest[] = [];
+    const r = await generateAcceptanceTests({
+      projectPath: "C:/p",
+      input: { ...input, criteriosPorReq: { "REQ-001": ["GET com Authorization: Bearer <token> devolve 200"] } },
+      dispatch: async () =>
+        answer([
+          { req: "REQ-001", arquivo: "a", conteudo: "import { it, vi } from 'vitest'; vi.mock('next/headers', () => ({ cookies: () => ({}) })); it('REQ-001 x', () => {});" },
+          t("REQ-001", "b"),
+        ]),
+      bench: async (p, req) => {
+        chamadas.push(req);
+        return benchWith(() => false)(p, req);
+      },
+    });
+    expect(r.descartados[0]).toMatchObject({ motivo: "presume cookies / next/headers, que o Microbrief não pede" });
+    expect(r.testes.map((x) => x.caminho)).toEqual(["aceite-2-b.test.ts"]);
+    expect(Object.keys(chamadas[0].reproTests ?? {})).toEqual(["aceite-2-b.test.ts"]);
+  });
 });

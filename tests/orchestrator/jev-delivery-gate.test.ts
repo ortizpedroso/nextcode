@@ -361,4 +361,54 @@ describe("Portão Final de Entrega com JEV no job-queue (Spec Canônica × Códi
     const updatedSession = await prisma.session.findUnique({ where: { id: session.id } });
     expect(updatedSession?.phase).toBe("ENTREGUE");
   });
+
+  it("mudança 44: revisão final ativa que não rodou por falta de modelo (crédito) → BLOQUEADA com Retomar, nada entregue", async () => {
+    const finalReviewer = await import("../../src/core/governance/final-reviewer.js");
+    const pol = orchestrationPolicyModule.loadOrchestrationPolicy();
+    vi.spyOn(orchestrationPolicyModule, "loadOrchestrationPolicy").mockReturnValue({ ...pol, execucao: { ...pol.execucao, revisaoFinal: "ativo" } });
+    vi.spyOn(finalReviewer, "reviewFinalDelivery").mockResolvedValue({
+      executado: false,
+      motivoNaoExecutado: "sem modelo: claude/direct: HTTP 400 invalid_request_error: Your credit balance is too low",
+      aprovado: true,
+      reqVerdicts: [],
+      problemas: [],
+      defeitos: [],
+      ressalvas: [],
+      descartes: [],
+    });
+    const session = await prisma.session.create({
+      data: { title: "Revisão sem crédito", phase: "EXECUCAO", specApproved: true, canonicalSpec: specExemplo },
+    });
+    createdSessionIds.push(session.id);
+    vi.spyOn(sessionQueueModule, "processSessionQueue").mockResolvedValue({
+      tasks: [],
+      allCompleted: true,
+      pendingCount: 0,
+      runningCount: 0,
+      completedCount: 1,
+      failedCount: 0,
+      blockedCount: 0,
+      specCompleteness: { complete: true, declaredFiles: ["src/payments.ts"], missingFiles: [] },
+    });
+    vi.spyOn(nodeExecutorModule, "verifyProjectDeliveryT10").mockReturnValue({
+      passed: true,
+      specFilesComplete: true,
+      allReqsApproved: true,
+      buildVerified: true,
+      missingFiles: [],
+      unapprovedReqs: [],
+      gaps: [],
+    });
+    vi.spyOn(nodeExecutorModule, "readProjectFilesContent").mockReturnValue({ "src/payments.ts": "export function createPix() {}" });
+
+    const jobId = await enqueueSessionQueueJob(session.id);
+    await claimJob(jobId, "worker-test");
+    await executeClaimedJob(jobId, "worker-test");
+
+    expect((await prisma.session.findUnique({ where: { id: session.id } }))?.phase).toBe("BLOQUEADA");
+    const msgs = (await prisma.message.findMany({ where: { sessionId: session.id } })).map((m) => m.content).join("\n");
+    expect(msgs).toContain("a revisão final do projeto não rodou");
+    expect(msgs).toContain("Retomar");
+    expect(msgs).not.toContain("Entrega concluída");
+  });
 });

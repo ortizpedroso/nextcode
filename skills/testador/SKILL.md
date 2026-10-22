@@ -24,10 +24,11 @@ Você escreve os testes que provam que **esta etapa** cumpre cada `REQ-xxx` do M
 ## Regras
 1. **Um ou dois casos por REQ testável**, cada `it(...)` com o id do REQ no nome (`"REQ-002 POST sem titulo devolve 400"`). Cubra o caminho feliz e o erro que o critério cita.
 2. **Só o que o critério diz.** Não invente regra, campo, mensagem exata ou status que o critério não fixa; se ele diz "devolve 400", teste o 400, não o texto do erro.
-3. **vitest, ambiente node, sem rede e sem banco:** `import { describe, it, expect, vi } from "vitest"`; imports com `@/` (raiz `src/`). Prisma, serviços externos (Asaas, e-mail, WhatsApp) e `next/headers` sempre com `vi.mock`. Rota Next.js: importe `GET`/`POST`… do arquivo da rota e chame com `new Request(...)` (ou `NextRequest`).
-4. **Mocks isolados por caso:** estado em `vi.hoisted` e reiniciado no `beforeEach`.
-5. **Monte o estado pela API pública do próprio projeto** (ex.: `POST` antes do `GET`/`PATCH`/`DELETE`), nunca escrevendo direto num módulo interno que você não vê — o código pode guardar o estado de outro jeito e o teste falharia com o código certo. Mock só para Prisma, serviços externos e `next/headers`.
-6. **REQ que máquina não julga** (aparência, texto "claro", layout) → liste em `julgamento`, sem teste forçado.
+3. **vitest, ambiente node, sem rede e sem banco:** `import { describe, it, expect, vi } from "vitest"`; imports com `@/` (raiz `src/`). Rota Next.js: importe `GET`/`POST`… do arquivo da rota e chame com `new Request(...)` (ou `NextRequest`). Mock só para o que o critério ou o contrato **nomeiam**: Prisma quando o projeto usa banco, serviços externos (Asaas, e-mail, WhatsApp).
+4. **Não presuma tecnologia que o critério não nomeia.** Se o critério diz "token no header Authorization", o teste manda o header — nada de cookies, `next/headers`, JWT ou bcrypt. Teste que presume tecnologia que muda o desenho do código é descartado pelo harness (bench 22/10: um teste com cookies levou o executor a importar `next/headers` e a régua reprovou 12/12).
+5. **Mocks isolados por caso:** estado em `vi.hoisted` e reiniciado no `beforeEach`.
+6. **Monte o estado pela API pública do próprio projeto** (ex.: `POST` antes do `GET`/`PATCH`/`DELETE`), nunca escrevendo direto num módulo interno que você não vê — o código pode guardar o estado de outro jeito e o teste falharia com o código certo. 
+7. **REQ que máquina não julga** (aparência, texto "claro", layout) → liste em `julgamento`, sem teste forçado.
 
 ## Formato da resposta (exato; só o JSON)
 ```json

@@ -472,6 +472,26 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             descartes: review.descartes,
           };
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
+          // Mudança 44 (bench 22/10: P3 entregue com a régua 0/12 quando o crédito da Anthropic acabou): com a
+          // revisão ativa, revisão que não rodou por falta de modelo ou por respostas descartadas NÃO libera a
+          // entrega — é ambiente: para com o motivo e Retomar. "Não coube" (projeto grande demais) segue como antes.
+          if (
+            revisaoFinalModo === "ativo" &&
+            !review.executado &&
+            /^(sem modelo|respostas descartadas)/.test(review.motivoNaoExecutado ?? "")
+          ) {
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "FALHA_AMBIENTE" },
+              {
+                extraDetails: { ambiente: `revisão final não rodou: ${review.motivoNaoExecutado}` },
+                detalheAviso:
+                  `**Causa:** a revisão final do projeto não rodou (${(review.motivoNaoExecutado ?? "").slice(0, 400)}).\n\n` +
+                  "Nada foi entregue sem essa conferência. Confira crédito e chave do avaliador (Anthropic) em Configurações e clique em **Retomar**: a verificação final roda de novo.",
+              }
+            );
+            return await prisma.job.findUnique({ where: { id: jobId } });
+          }
           finalReviewVerdicts = review.reqVerdicts.map((v) => `${v.id}=${v.status}`);
           if (revisaoFinalModo === "ativo" && review.executado && review.aprovado) {
             deliveryRessalvas = projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos);

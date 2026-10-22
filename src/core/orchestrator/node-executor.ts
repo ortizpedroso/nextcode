@@ -1194,6 +1194,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         arquivosExistentes: arquivos.filter((f) => fs.existsSync(path.join(root, f))),
         criteriosPorReq: nodeMicrobrief.criteriosAceitePorReq ?? {},
         contrato: nodeMicrobrief.interfacesProduz,
+        contratosDependencias: [...(nodeMicrobrief.arquivosPermitidos.lerContratos ?? []), ...(nodeMicrobrief.interfacesConsome ?? [])].join("\n"),
       },
     }).catch(() => null);
     acceptance = set && !set.bancadaFora ? { testes: set.testes, julgamento: set.julgamento } : { testes: [], julgamento: [], indisponivel: true };

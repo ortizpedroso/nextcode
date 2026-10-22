@@ -76,6 +76,25 @@ export function buildTesterPrompt(input: AcceptanceInput): { role: "system" | "u
   ];
 }
 
+/**
+ * Bench 22/10 (P3): o testador mockou `next/headers` e cobrou cookies que a Spec não pede ("token no header
+ * Authorization… só node:crypto"); o executor obedeceu ao teste e o código passou a importar `next/headers` —
+ * a régua do auditor reprovou 12/12 e a entrega saiu assim. Teste que presume uma tecnologia que muda o
+ * desenho e que o Microbrief não menciona é descartado (o teste cobra só o que o critério diz).
+ */
+const TECNOLOGIAS_DE_DESENHO: Array<{ nome: string; noTeste: RegExp; noMicrobrief: RegExp }> = [
+  { nome: "cookies / next/headers", noTeste: /next\/headers|\bcookies?\b/i, noMicrobrief: /cookie|next\/headers/i },
+  { nome: "JWT", noTeste: /\bjsonwebtoken\b|\bjwt\b|\bjose\b/i, noMicrobrief: /\bjwt\b|jsonwebtoken|\bjose\b/i },
+  { nome: "bcrypt", noTeste: /\bbcrypt/i, noMicrobrief: /\bbcrypt/i },
+];
+
+export function presumedTechnology(conteudo: string, microbriefTexto: string): string | null {
+  for (const t of TECNOLOGIAS_DE_DESENHO) {
+    if (t.noTeste.test(conteudo) && !t.noMicrobrief.test(microbriefTexto)) return t.nome;
+  }
+  return null;
+}
+
 const safe = (s: string) => s.replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "aceite";
 
 export function parseTesterAnswer(raw: string | null): { testes: Array<{ req: string; arquivo: string; conteudo: string }>; julgamento: string[] } | null {
@@ -119,16 +138,28 @@ export async function generateAcceptanceTests(params: {
   if (!parsed || parsed.testes.length === 0) {
     return { testes: [], julgamento: parsed?.julgamento ?? [], descartados: [{ arquivo: "-", motivo: parsed ? "nenhum teste" : "resposta sem JSON" }] };
   }
+  const descartados: AcceptanceTestSet["descartados"] = [];
+  const microbriefTexto = [
+    ...Object.values(params.input.criteriosPorReq).flat(),
+    params.input.contrato ?? "",
+    params.input.contratosDependencias ?? "",
+    params.input.arquivos.join(" "),
+  ].join("\n");
+  const candidatos = parsed.testes.filter((t) => {
+    const tec = presumedTechnology(t.conteudo, microbriefTexto);
+    if (tec) descartados.push({ arquivo: t.arquivo, motivo: `presume ${tec}, que o Microbrief não pede` });
+    return !tec;
+  });
+  if (candidatos.length === 0) return { testes: [], julgamento: parsed.julgamento, descartados };
   // Teste do teste: contra o projeto ANTES da etapa, todo teste tem de falhar (ou nem carregar: o código não existe).
   const report = await bench(params.projectPath, {
-    reproTests: Object.fromEntries(parsed.testes.map((t) => [t.arquivo, t.conteudo])),
-    files: parsed.testes.map((t) => `.nextcode-repro/${t.arquivo}`),
+    reproTests: Object.fromEntries(candidatos.map((t) => [t.arquivo, t.conteudo])),
+    files: candidatos.map((t) => `.nextcode-repro/${t.arquivo}`),
   });
-  if (!report.ok) return { testes: [], julgamento: parsed.julgamento, descartados: [], bancadaFora: true };
-  const descartados: AcceptanceTestSet["descartados"] = [];
+  if (!report.ok) return { testes: [], julgamento: parsed.julgamento, descartados, bancadaFora: true };
   const modifica = (params.input.arquivosExistentes ?? []).length > 0;
   const regressoes = new Set<string>();
-  const validos = parsed.testes.filter((t) => {
+  const validos = candidatos.filter((t) => {
     const c = classifyRun(report, t.arquivo);
     if (c.status === "passou") {
       if (modifica) {
