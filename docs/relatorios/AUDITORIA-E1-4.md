@@ -3,7 +3,7 @@
 - **Período:** 21/10/2026 19:30 – 22/10/2026 01:10 (horário de Brasília: 21/10 16:30 – 22:10)
 - **Quem implementou:** Claude (Opus 5.5), sozinho, por delegação do fundador ("faça a implementação e só pare quando estiver terminado").
 - **Faixa de commits:** `e5e1b76` … `57c3d44`; rodada final `8a8b52a` … `b6b5077` (§9); + os commits de documentação.
-- **Decisões tomadas pelo fundador:** `DECISOES-AUTONOMAS-E1-4.md` (D1–D33 e F1–F12). **Prompt para outro LLM testar:** `docs/prompts/TESTE-E1-4.md`.
+- **Decisões que o Claude tomou pelo fundador:** `DECISOES-AUTONOMAS-E1-4.md` (D1–D33 e F1–F12). **Prompt para outro LLM testar:** `docs/prompts/TESTE-E1-4.md`.
 
 ## Veredito
 
