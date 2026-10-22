@@ -282,7 +282,7 @@ Gerar texto ou código; contar; comparar datas; ser a única defesa contra inje�
 3. Mexer em algo marcado ✅ (funciona) exige reportar ao fundador **antes**, com o motivo e o que pode quebrar.
 4. Auditoria do Claude não cria lista nova: atualiza o status das linhas desta tabela.
 
-**▶ AGORA (atualizar a cada passo):** execução autônoma 4 (mudança 39) **concluída 22/10**: 35, 36, G1–G3, J2b + J2.7, J3, TS1 feitos; porta da E1 (mudança 37) cumprida — `4d019f00` ENTREGUE; relatórios `AUDITORIA-E1-4.md`, `IMPLEMENTADO-E1-4.md`, `DECISOES-AUTONOMAS-E1-4.md`; prompt de teste independente `docs/prompts/TESTE-E1-4.md` (aguarda o fundador entregar a outro LLM). **Aguarda o fundador:** mudança 40 (reabrir a entrega do Gateway com os 15 defeitos achados pelo J3). Depois: J4 → JV1/PJ2b/S3 → E2.
+**▶ AGORA (atualizar a cada passo):** E1 fechada (execução autônoma 4, mudanças 35–42; relatórios `AUDITORIA-E1-4.md` §1–§9, `IMPLEMENTADO-E1-4.md`, `DECISOES-AUTONOMAS-E1-4.md`). Gateway `4d019f00` reaberto (mudança 40): rodada 2 do reparo 13/13 aprovada; rodada 3 parada por **DeepSeek sem crédito** → BLOQUEADA com Retomar (mudança 42). **Aguarda o fundador:** (1) recarregar o crédito do DeepSeek e Retomar a `4d019f00`; (2) desligar `router9` e `electronhub` no FreeLLMAPI (o modo automático recusou); (3) entregar `docs/prompts/TESTE-E1-4.md` a outro LLM. Depois: J4 → JV1/PJ2b/S3 → E2.
 
 **Checklist da execução autônoma 4 (mudança 39) — ordem fixa, 1 commit por linha com tsc + vitest:**
 - [x] **35** falha de ambiente reconhecida (verificação final e portão da etapa) — `describeEnvironmentFailure` (`empirical-gate.ts`): falha sem `error TS` = ambiente; `recheckFinalBuild` devolve `ambiente`; evento `FALHA_AMBIENTE` (VERIFICACAO → BLOQUEADA, Retomar); portão da etapa registra `EMPIRICAL_BUILD_ENV_FAILURE`
@@ -827,4 +827,5 @@ compara o relatório com o código. Resultado: **aceito / aceito com ressalvas /
 
 - **21/10** — Teste real do fundador `4d019f00` (Gateway whitelabel sobre Asaas): 41/41 etapas, 31/40 aprovadas na 1ª, US$ 12,33, 0 pausas sem LLM; BLOQUEADA na entrega por portão cego (mudanças 33, 34) e por memória · prova: `docs/relatorios/TESTE-REAL-GATEWAY-4d019f00.md`
 - **21–22/10** — Execução autônoma 4: 35 ambiente, 36 aviso por causa + Retomar, G1–G3, J2b + J2.7 reparo da entrega, J3 avaliador-final (controles 8/8), TS1 · `e5e1b76`…`57c3d44` · porta da E1: `4d019f00` ENTREGUE (3 reparos aprovados na 1ª, US$ 0,24); J3 posterior achou 15 REQ parciais → mudança 40 (aguarda) · prova: `docs/relatorios/AUDITORIA-E1-4.md`, `IMPLEMENTADO-E1-4.md`, `DECISOES-AUTONOMAS-E1-4.md`
+- **22/10** — Rodada final: 40 reabrir entrega, 41 client do Prisma regerado + erro do `next build` com dona, 42 pausa que pisca vira bloqueio; organização da pasta `docs/` · `8a8b52a`…`b6b5077` · Gateway: rodada 2 13/13 aprovada, rodada 3 parada por crédito do DeepSeek · prova: `docs/relatorios/AUDITORIA-E1-4.md` §9
 

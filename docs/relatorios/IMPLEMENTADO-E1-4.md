@@ -63,3 +63,20 @@ Detalhe técnico, commits e provas: `AUDITORIA-E1-4.md`. Decisões que tomei por
 | Revisão final no Gateway (2 rodadas) | US$ 1,69 |
 | Chamadas sem texto na retomada (não registradas, estimado) | ~US$ 0,76 |
 | **Total** | **~US$ 3,14** |
+
+## Rodada final (22/10) — o que mudou depois
+
+| # | O que | Por quê |
+|---|---|---|
+| **40** Reabrir entrega | Uma sessão ENTREGUE pode voltar à verificação final sem mudar a Spec (`retomar-sessao.ts --reabrir` ou a ação `reopen_delivery`) | O Gateway tinha sido entregue antes de a revisão final funcionar |
+| **41** Client do Prisma | Quando uma etapa muda o schema, o client é regerado antes da conferência de tipos; erro do `next build` vira defeito da etapa dona | Na rodada 2, a conferência passou com o client velho e só o build da tela pegou o erro |
+| **42** Pausa que pisca | Se a sessão pausa por "sem modelo" 3 vezes em 10 minutos, ela para e avisa o motivo (crédito, cota ou chave), em vez de ficar indo e voltando | A chave do DeepSeek ficou sem crédito e a sessão piscava a cada 25 segundos |
+| Organização | Arquivo solto de 21/10 guardado no histórico e apagado; índices de relatórios e de prompts refeitos; `git status` limpo | Pedido "organize" |
+
+**Como o Gateway está agora:** reaberto, a revisão final rodou dentro do fluxo e abriu a **rodada 2 do reparo (13 etapas, todas aprovadas)**. A verificação seguinte achou o erro do schema (mudança 41) e abriu a **rodada 3**. No meio dela, **o DeepSeek ficou sem crédito**. A sessão está **BLOQUEADA com Retomar**: 59 etapas concluídas e 5 reparos na fila, sem nenhuma tentativa gasta. Custo desde a reabertura: US$ 3,56.
+
+**Para terminar o Gateway (só você pode):**
+1. Recarregar o crédito do DeepSeek.
+2. Clicar em **Retomar**: a rodada 3 termina e a verificação final roda de novo. Se ainda reprovar, a sessão para com o histórico das 3 rodadas (limite de tentativas automáticas).
+3. **Desligar as rotas de revenda no FreeLLMAPI:** `router9` (o 9router) e `electronhub` continuam ligadas lá dentro, e um pedido chegou a sair para elas. O modo automático não me deixou mudar o banco do FreeLLMAPI. Caminho: painel `http://localhost:3100`, em Chaves.
+

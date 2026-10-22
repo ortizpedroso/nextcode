@@ -81,3 +81,7 @@ Detalhe: `docs/relatorios/AUDITORIA-E1-4.md` §4 e §5.
 - A revisão final (J3) não rodou dentro da retomada (defeito do teto de resposta, corrigido). Rodada depois no projeto entregue: **65 REQ, 50 implementados, 15 parciais** — ex.: chave própria do Asaas sem `asaasSubcontaId` (toda cobrança falha), webhook com status que regride e cabeçalho errado, taxa só inteira. Evidência: `docs/relatorios/bench/2026-10-22-j3-gateway-4d019f00.json`. **O projeto não está pronto para uso**; correção proposta na mudança 40 (aguarda o fundador).
 - Teto temporário de US$ 80 desfeito (0,50; o teto pelo plano cobre a sessão).
 
+## Reabertura de 22/10 (mudanças 40–42) — BLOQUEADA por crédito do DeepSeek
+
+Detalhe: `docs/relatorios/AUDITORIA-E1-4.md` §9. Reaberta às 01:35 UTC → revisão final dentro do fluxo → **rodada 2: 13 reparos, 13 aprovados** → client do Prisma velho escondia 16 erros (mudança 41) → **rodada 3: 7 reparos, 2 aprovados** → DeepSeek `out_of_credits` → **BLOQUEADA com Retomar** (mudança 42) às 02:28. 59 etapas concluídas, 5 na fila. Custo desde a reabertura US$ 3,56; sessão ≈ US$ 17,8. **Próximo:** recarregar o crédito e Retomar.
+

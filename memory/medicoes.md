@@ -216,3 +216,9 @@ P1 ENTREGUE 10/10 US$ 0,0675 · P2 ENTREGUE 13/13 US$ 0,2134 (depois do `835e98f
 - **J3 no Gateway entregue:** Sonnet 5.5, 208 mil tokens de entrada, ~19 mil de saída, 136 s, US$ 0,68; 65 REQ → 50 implementados, 15 parciais, 0 citação inválida. Com teto de 8 mil tokens: só raciocínio (`stop_reason=max_tokens`). Sem linhas numeradas: 2 descartes por fim de intervalo 1–2 linhas além do arquivo (US$ 1,01).
 - **TS1:** teste mais lento dos 2 e2e = 5,6 s; suíte 145/961 2× com o prazo padrão.
 
+## 22/10 — Reabertura do Gateway `4d019f00` (mudanças 40–42)
+- Revisão final dentro do fluxo: Sonnet 5.5, US$ 0,67, reprovou → rodada 2: 13 reparos, 13/13 aprovados (10 na 1ª, 2 na 2ª, 1 na 3ª), ~29 min.
+- Client do Prisma velho depois de mudar o schema: `tsc` 0 erros (falso) × `next build` 1 erro; com o client regerado: 16 erros reais.
+- Rodada 3: 7 reparos, 2 aprovados antes do DeepSeek `out_of_credits` (FreeLLMAPI 429 "All models exhausted").
+- Custo desde a reabertura US$ 3,56 (executor 2,06; avaliador 1,49; Jev 0,002).
+

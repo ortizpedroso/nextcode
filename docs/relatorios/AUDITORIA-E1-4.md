@@ -2,8 +2,8 @@
 
 - **Período:** 21/10/2026 19:30 – 22/10/2026 01:10 (horário de Brasília: 21/10 16:30 – 22:10)
 - **Quem implementou:** Claude (Opus 5.5), sozinho, por delegação do fundador ("faça a implementação e só pare quando estiver terminado").
-- **Faixa de commits:** `e5e1b76` … `57c3d44` (+ o commit de documentação final deste relatório).
-- **Decisões tomadas pelo fundador:** `DECISOES-AUTONOMAS-E1-4.md` (D1–D33). **Prompt para outro LLM testar:** `docs/prompts/TESTE-E1-4.md`.
+- **Faixa de commits:** `e5e1b76` … `57c3d44`; rodada final `8a8b52a` … `b6b5077` (§9); + os commits de documentação.
+- **Decisões tomadas pelo fundador:** `DECISOES-AUTONOMAS-E1-4.md` (D1–D33 e F1–F12). **Prompt para outro LLM testar:** `docs/prompts/TESTE-E1-4.md`.
 
 ## Veredito
 
@@ -126,3 +126,40 @@ Se o J3 tivesse rodado dentro da retomada (`revisao_final: ativo`), esses 15 def
 - A tela do botão **Retomar** não foi aberta no navegador: o app ficou parado durante a retomada para haver um worker só no banco. Coberto pelos testes de rota, não pelo smoke na tela.
 - G4 (executor > 10 chamadas) não foi remedido num projeto grande. Nos 3 reparos foram 4–6 ações.
 - O teste pesado sintético não foi rodado (D1).
+
+## 9. Rodada final (22/10, 01:30–02:30 UTC) — "atualize e organize a implementação pela última vez"
+
+### 9.1 Commits
+
+| Commit | Item | tsc | vitest |
+|---|---|---|---|
+| `8a8b52a` | **40** reabrir entrega (`REABRIR_ENTREGA`, `reopen_delivery`, `retomar-sessao.ts --reabrir`) | 0 | 147 / 968 |
+| `ce20bf3` → `e13ce67` | ponto de retomada solto guardado no histórico e apagado (linha na §9.0); índice de relatórios refeito | — | — |
+| `2ab14d9` | índice de prompts | — | — |
+| `40f4017` | `.serena/project.yml` (regravado pela própria ferramenta) | — | — |
+| `b3ab02a` | **41** client do Prisma regerado quando o schema muda; erro do `next build` com etapa dona | 0 | 148 / 972 |
+| `b6b5077` | **42** pausa que pisca vira BLOQUEADA com o último erro do gateway | 0 | 149 / 974 |
+
+### 9.2 Prova real — Gateway `4d019f00` reaberto (mudança 40)
+
+| Hora (UTC) | Evento | O que diz |
+|---|---|---|
+| 01:35:03 | `DELIVERY_REOPENED_BY_HUMAN` → `REABRIR_ENTREGA` → EXECUCAO → VERIFICACAO | fila vazia, direto para a verificação final |
+| 01:35:06 | `FINAL_BUILD_RECHECK` | 0 erros |
+| 01:36:44 | `UI_CHECK_PASSED` | 10 páginas abertas no navegador |
+| 01:38:52 | `FINAL_REVIEW` (dentro do fluxo, ativo) | executado, Sonnet, US$ 0,67; reprovado → **rodada 2 do J2b com 13 etapas de reparo** |
+| 01:40–02:08 | 13 × `NODE_EXECUTION_COMPLETED` | 13/13 aprovadas (10 na 1ª tentativa, 2 na 2ª, 1 na 3ª) |
+| 02:08:11 | `FINAL_BUILD_RECHECK` | 0 erros — **falso positivo**: o client do Prisma estava velho (a rodada 2 mudou o schema) |
+| 02:09:03 | `UI_CHECK_FAILED` (next build) → `DELIVERY_REPAIR_NO_OWNER` → BLOQUEADA | `src/app/admin/page.tsx:197` usa `valorTotalCentavos`, que a rodada 2 tirou do schema; a lacuna veio sem arquivo → mudança **41** |
+| 02:17:42 | retomada → `FINAL_BUILD_RECHECK` com client regerado | **16 erros reais** (os mesmos que o `next build` via) → **rodada 3 com 7 etapas** |
+| 02:19–02:28 | 2 de 7 aprovadas (`admin/page.tsx`, rotas de cobrança); depois `SEM_LLM` em série | a chave do DeepSeek no FreeLLMAPI ficou **sem crédito** (`custom/deepseek-v4-pro key1: out_of_credits`); a sonda via o FreeLLMAPI de pé e a sessão piscava a cada ~25 s → mudança **42** |
+| 02:28:47 | `SEM_LLM_PERSISTENTE` → **BLOQUEADA** | aviso: "o provedor do executor responde mas não atende (crédito, cota ou chave)", último erro do gateway e **Retomar**; 0 tentativas gastas |
+
+**Estado final:** BLOQUEADA, 59 etapas concluídas, **5 reparos da rodada 3 na fila** (nenhuma tentativa gasta). Ao recarregar o crédito do DeepSeek e clicar **Retomar**, a rodada 3 termina, a verificação final roda de novo (T10 + tela + revisão final) e a sessão vai a ENTREGUE ou a BLOQUEADA com o histórico das 3 rodadas (limite atingido).
+
+Custo desde a reabertura: **US$ 3,56** (executor 2,06; avaliador 1,49; Jev 0,002). Total da sessão registrado: ≈ US$ 17,8.
+
+### 9.3 Pendências que só você pode resolver
+1. **Crédito do DeepSeek** (pagamento): recarregar a conta usada pelo FreeLLMAPI (`custom` → `api.deepseek.com`) e clicar **Retomar** na sessão do Gateway.
+2. **Rotas de revenda ainda ligadas no FreeLLMAPI:** `router9` (o 9router que você mandou tirar em 21/10) e `electronhub` estão `enabled = 1`; o pedido do executor chegou a sair para `router9/deepseek` (a resposta foi recusada pelo NextCode, mas o envio aconteceu). Desligar foi **recusado pelo modo automático** (recurso compartilhado). Passo: painel do FreeLLMAPI (`http://localhost:3100`) → Chaves → desligar `router9` e `electronhub`.
+3. Entregar `docs/prompts/TESTE-E1-4.md` a outro LLM.
