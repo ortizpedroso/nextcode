@@ -69,6 +69,7 @@ export type PhaseEvent =
   | { type: 'REPARO_NECESSARIO' }
   | { type: 'REABRIR_ENTREGA' }
   | { type: 'SEM_LLM_PERSISTENTE' }
+  | { type: 'REPARO_ESGOTADO' }
   | { type: 'FALHA_REPETIDA' }
   | { type: 'SILENCIO_DETECTADO' }
   | { type: 'NOVO_PEDIDO' };
@@ -98,6 +99,7 @@ export const PHASE_EVENT_TYPES = [
   'REPARO_NECESSARIO',
   'REABRIR_ENTREGA',
   'SEM_LLM_PERSISTENTE',
+  'REPARO_ESGOTADO',
   'FALHA_REPETIDA',
   'SILENCIO_DETECTADO',
   'NOVO_PEDIDO',
@@ -124,7 +126,7 @@ export type PhaseEffect =
  * retomar = nada a mudar na Spec (ambiente, erro interno, silêncio, avaliador fora);
  * autorizar_verba = teto; retentar_etapa = etapa com 3 tentativas; ajustar_spec = o pedido precisa mudar.
  */
-export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec';
+export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec' | 'autorizar_rodada';
 
 export interface PhaseContext {
   phase: Phase;
@@ -674,7 +676,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   VERIFICACAO: {
-    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'FALHA_AMBIENTE', 'REPARO_NECESSARIO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['VERIFICACAO_COM_LACUNAS', 'VERIFICACAO_OK', 'FALHA_AMBIENTE', 'REPARO_NECESSARIO', 'REPARO_ESGOTADO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
@@ -694,6 +696,17 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'entrega reprovada na verificação final', acao: 'ajustar_spec' }],
+        };
+      }
+      // Mudança 43.4: 3 rodadas gastas e o que sobrou é defeito de CÓDIGO com dona → a Spec está certa;
+      // o humano autoriza mais uma rodada (não "ajuste a Spec", que refaria o plano inteiro).
+      if (event.type === 'REPARO_ESGOTADO') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          effects: [
+            { type: 'AVISAR_HUMANO', motivo: 'rodadas de reparo gastas com defeitos de código ainda abertos', acao: 'autorizar_rodada' },
+          ],
         };
       }
       // Mudança 35: a verificação não julgou o código (processo não abriu) → Retomar, sem mexer na Spec.

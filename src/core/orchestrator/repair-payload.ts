@@ -10,6 +10,26 @@ export interface DeliveryRepairPayload {
   etapaAnterior: string;
   defeitos: string[];
   microbriefReparo: MicrobriefReparoDocument;
+  /** Mudança 43.3: testes que provam os defeitos — o contrato do reparo (têm de passar sem ser alterados). */
+  testesReproducao?: RepairContractTest[];
+}
+
+/** Teste que prova um defeito: escrito pela revisão (`.nextcode-repro/`) ou um teste do próprio projeto. */
+export interface RepairContractTest {
+  caminho: string;
+  conteudo: string;
+  /** Saída da falha quando o defeito foi provado. */
+  saida?: string;
+  existente?: boolean;
+}
+
+/** Pedido à bancada para rodar só os testes do contrato. */
+export function contractBenchRequest(testes: RepairContractTest[]): { reproTests: Record<string, string>; files: string[] } {
+  const repro = testes.filter((t) => !t.existente);
+  return {
+    reproTests: Object.fromEntries(repro.map((t) => [t.caminho, t.conteudo])),
+    files: [...repro.map((t) => `.nextcode-repro/${t.caminho}`), ...testes.filter((t) => t.existente).map((t) => t.caminho)],
+  };
 }
 
 export function readRepairPayload(payload?: string | null): DeliveryRepairPayload | null {

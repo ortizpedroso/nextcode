@@ -21,6 +21,7 @@ import {
 } from "@/core/orchestrator/node-executor";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
+import { setTestBenchRunnerForTests, type TestBenchRequest } from "@/core/execution/test-bench";
 import { promoteWithEmpiricalGate } from "@/core/governance/empirical-gate";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import {
@@ -172,13 +173,15 @@ async function setupSingleTaskSession(projectDir: string) {
   return { project, session, task: microbriefTask!, jobId: startRes.jobId! };
 }
 
-async function waitForTelemetryLogs(sessionId: string, action: string) {
-  for (let i = 0; i < 30; i++) {
+// A trilha é gravada sem esperar (TelemetryLogger): sob carga da suíte inteira o 2º registro chegava
+// depois do 1º e o teste via só 1 — espera até a quantidade pedida (ou o prazo).
+async function waitForTelemetryLogs(sessionId: string, action: string, min = 1) {
+  for (let i = 0; i < 60; i++) {
     const rows = await prisma.telemetryLog.findMany({
       where: { sessionId, action },
       orderBy: { createdAt: "asc" },
     });
-    if (rows.length > 0) return rows;
+    if (rows.length >= min) return rows;
     await new Promise((r) => setTimeout(r, 30));
   }
   return prisma.telemetryLog.findMany({
@@ -1117,7 +1120,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     const res = await executeTaskNode(task);
     expect(res.finalStatus).toBe("completed");
     expect(calls).toBe(4);
-    const retries = await waitForTelemetryLogs(session.id, "EXECUTOR_TURN_RETRY");
+    const retries = await waitForTelemetryLogs(session.id, "EXECUTOR_TURN_RETRY", 2);
     expect(retries).toHaveLength(2);
     const s = await prisma.session.findUniqueOrThrow({ where: { id: session.id } });
     expect(s.phase).not.toBe("PAUSADA");
@@ -1372,7 +1375,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     const res = await executeTaskNode(task);
     expect(res.success).toBe(false);
 
-    const toolLogs = await waitForTelemetryLogs(session.id, "EXECUTOR_TOOL_CALL");
+    const toolLogs = await waitForTelemetryLogs(session.id, "EXECUTOR_TOOL_CALL", 3);
     const invalidLogs = toolLogs
       .map((l) => JSON.parse(l.details!))
       .filter((d) => d.ferramenta === "invalido");
@@ -1382,4 +1385,108 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
     expect(invalidLogs[0].amostra).toBe(longInvalidResponse.slice(0, 300));
     expect(invalidLogs[0].tamanho).toBe(450);
   });
+
+  // Mudança 43.3 — o reparo com testes do contrato só é aceito com eles passando; o executor roda os testes.
+  async function makeRepairWithContract(projectDir: string) {
+    const ctx = await setupSingleTaskSession(projectDir);
+    const payload = JSON.parse(ctx.task.payload || "{}");
+    payload.reparoEntrega = {
+      rodada: 1,
+      origemId: ctx.task.id,
+      etapaAnterior: ctx.task.id,
+      defeitos: ["revisão final: REQ-001 parcial (src/greet.ts:1) — greet deve saudar"],
+      microbriefReparo: {
+        documento: "microbrief_reparo",
+        idReparo: "r1",
+        cluster: "core",
+        referenciaEtapaOriginal: ctx.task.id,
+        versaoReparo: 1,
+        idProjeto: "p",
+        filesScope: ["src/greet.ts"],
+        reqsAlvo: ["REQ-001"],
+        diretrizCirurgica: "corrija",
+        lacunasParaSanar: ["greet deve saudar"],
+      },
+      testesReproducao: [
+        { caminho: "D1-greet.test.ts", conteudo: "import { it, expect } from 'vitest';\nit('saúda', () => expect(1).toBe(1));", saida: "expected 'Ana' to be 'Olá, Ana'" },
+      ],
+    };
+    await prisma.taskNode.update({ where: { id: ctx.task.id }, data: { payload: JSON.stringify(payload) } });
+    const task = await prisma.taskNode.findUniqueOrThrow({ where: { id: ctx.task.id }, include: { session: { include: { project: true } } } });
+    return { ...ctx, task };
+  }
+
+  function mockExecutorAndEvaluator(prompts: string[]) {
+    let calls = 0;
+    vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const sys = opts.messages.map((m) => m.content).join("\n");
+      if (sys.includes("Auditor Cego")) return makeOkDispatch(EVALUATOR_PASS_JSON, "groq", "llama-3.3-70b");
+      calls++;
+      prompts.push(sys);
+      if (calls === 1) {
+        return makeOkDispatch(
+          "```json acao\n" +
+            JSON.stringify([
+              { ferramenta: "write_file", args: { caminho: "src/greet.ts", conteudo: "export function greet(name: string): string {\n  return `Olá, ${name}`;\n}\n" } },
+              { ferramenta: "run_check", args: { comando: "test" } },
+            ]) +
+            "\n```",
+          "deepseek",
+          "deepseek-chat"
+        );
+      }
+      return makeOkDispatch(toolTurn("finish", { relatorio_executor: VALID_REPORT_YAML }), "deepseek", "deepseek-chat");
+    });
+  }
+
+  it("43.3 a) contrato passando: o executor viu o teste e a saída, rodou run_check test e a etapa foi aceita", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await makeRepairWithContract(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
+    const benchCalls: TestBenchRequest[] = [];
+    setTestBenchRunnerForTests(async (_p, req) => {
+      benchCalls.push(req);
+      return { ok: true, stage: "run", durationMs: 1, files: [{ file: ".nextcode-repro/D1-greet.test.ts", status: "passed" }], cases: [{ file: ".nextcode-repro/D1-greet.test.ts", name: "saúda", status: "passed" }] };
+    });
+    const prompts: string[] = [];
+    mockExecutorAndEvaluator(prompts);
+    try {
+      const res = await executeTaskNode(task);
+      expect(res.finalStatus).toBe("completed");
+      expect(prompts[0]).toContain("Testes que provam os defeitos (contrato deste reparo)");
+      expect(prompts[0]).toContain("expected 'Ana' to be 'Olá, Ana'");
+      expect(prompts[1]).toContain("Testes do contrato: todos passaram");
+      // run_check test (no laço) + o portão depois da aprovação
+      expect(benchCalls.length).toBe(2);
+      expect(benchCalls[0].files).toEqual([".nextcode-repro/D1-greet.test.ts"]);
+      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(true);
+    } finally {
+      setTestBenchRunnerForTests(null);
+    }
+  });
+
+  it("43.3 b) contrato ainda falhando depois da aprovação do avaliador: promoção desfeita e etapa reprovada pelo teste", async () => {
+    const projectDir = makeTempProjectDir();
+    const { task } = await makeRepairWithContract(projectDir);
+    vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
+    setTestBenchRunnerForTests(async () => ({
+      ok: true,
+      stage: "run",
+      durationMs: 1,
+      files: [{ file: ".nextcode-repro/D1-greet.test.ts", status: "failed" }],
+      cases: [{ file: ".nextcode-repro/D1-greet.test.ts", name: "saúda", status: "failed", failure: "expected 'Ana' to be 'Olá, Ana'" }],
+    }));
+    mockExecutorAndEvaluator([]);
+    try {
+      const res = await executeTaskNode(task);
+      expect(res.finalStatus).not.toBe("completed");
+      const after = await prisma.taskNode.findUniqueOrThrow({ where: { id: task.id } });
+      expect(after.result ?? "").toContain("teste do contrato ainda falha");
+      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(false);
+      expect(await waitForTelemetryLogs(task.sessionId, "REPAIR_CONTRACT_FAILED")).toHaveLength(1);
+    } finally {
+      setTestBenchRunnerForTests(null);
+    }
+  });
 });
+

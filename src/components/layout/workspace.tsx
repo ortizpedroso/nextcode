@@ -82,6 +82,7 @@ interface WorkspaceProps {
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
   sessionPhase?: string | null;
   onResumeSession?: () => Promise<void>;
+  onAuthorizeRound?: () => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: (content?: string) => void;
@@ -141,6 +142,7 @@ export function Workspace({
   onAuthorizeBudget,
   sessionPhase,
   onResumeSession,
+  onAuthorizeRound,
   onInspectQuarantine,
   onExportAuditReport,
   onOpenSpecModal,
@@ -575,6 +577,7 @@ export function Workspace({
                 onAuthorizeBudget={onAuthorizeBudget}
                 sessionPhase={sessionPhase}
                 onResumeSession={onResumeSession}
+                onAuthorizeRound={onAuthorizeRound}
               />
             )}
           </div>

@@ -10,18 +10,38 @@ import {
   readProjectFilesContent,
 } from "@/core/orchestrator/node-executor";
 import { recheckFinalBuild } from "@/core/governance/empirical-gate";
-import { reviewFinalDelivery } from "@/core/governance/final-reviewer";
+import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
 import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
+import { buildDeliveryDiagnosis } from "@/core/orchestrator/delivery-diagnosis";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
 
 export const DEFAULT_JOB_LEASE_MS = 30000;
+
+/** Mudança 43.4: quantos defeitos cada revisão final executada desta sessão achou, em ordem. */
+export async function finalReviewProgress(sessionId: string): Promise<number[]> {
+  const logs = await prisma.telemetryLog.findMany({
+    where: { sessionId, action: "FINAL_REVIEW" },
+    orderBy: { createdAt: "asc" },
+    select: { details: true },
+  });
+  const out: number[] = [];
+  for (const l of logs) {
+    try {
+      const d = JSON.parse(l.details || "{}");
+      if (d.executado && Array.isArray(d.defeitos)) out.push(d.defeitos.length);
+    } catch {
+      /* ignora registro ilegível */
+    }
+  }
+  return out;
+}
 
 export function getJobLeaseMs(): number {
   const raw = Number(process.env.NEXTCODE_JOB_LEASE_MS);
@@ -381,7 +401,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         }
 
         // J3: revisão final cega (avaliador-final) — Spec inteira × todos os arquivos entregues.
-        let finalReviewDefects: Array<{ arquivo: string | null; defeito: string }> = [];
+        let finalReviewDefects: FinalDefect[] = [];
+        let finalReviewQuestions: string[] = [];
         let finalReviewSummary: Record<string, unknown> | null = null;
         const revisaoFinalModo = loadOrchestrationPolicy().execucao.revisaoFinal;
         if (revisaoFinalModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
@@ -389,7 +410,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           const review = await reviewFinalDelivery({
             sessionId: job.sessionId,
             spec: sessionAfterQueue.canonicalSpec,
-            files: readProjectFilesContent(specFiles, projectPath),
+            files: readProjectFilesContent([...specFiles, "package.json"], projectPath),
+            // Mudança 43.2: com a pasta, cada defeito é provado na bancada antes de ir ao reparo.
+            projectPath,
           });
           finalReviewSummary = {
             modo: revisaoFinalModo,
@@ -398,7 +421,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             aprovado: review.aprovado,
             modelo: review.modelo,
             reqs: review.reqVerdicts.map((v) => `${v.id}=${v.status}`),
-            defeitos: review.defeitos.map((d) => d.defeito).slice(0, 30),
+            defeitos: review.defeitos.map((d) => `[${d.prova ?? "leitura"}] ${d.defeito}`).slice(0, 30),
+            perguntasSpec: review.perguntasSpec ?? [],
+            naoReproduzidos: (review.naoReproduzidos ?? []).slice(0, 20),
             ressalvas: review.ressalvas.slice(0, 30),
             naoVerificados: review.naoVerificados ?? [],
             citacoesInvalidas: (review.citacoesInvalidas ?? []).slice(0, 10),
@@ -407,7 +432,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
             deliveryT10.passed = false;
-            finalReviewDefects = review.defeitos;
+            // Perguntas de Spec não vão para o reparo de código (sem etapa dona); o aviso as faz ao fundador.
+            finalReviewDefects = review.defeitos.filter((d) => d.prova !== "spec");
+            finalReviewQuestions = review.perguntasSpec ?? [];
             deliveryT10.gaps.push(...review.defeitos.map((d) => d.defeito));
           }
         }
@@ -502,19 +529,29 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
             ),
             fileDefects: [...finalReviewDefects, ...uiBuildDefects],
-          });
+          }, { perguntasSpec: finalReviewQuestions });
           if (!repair.started) {
+            // Mudança 43.4: aviso montado com o diagnóstico (o que sobrou, com prova; a Spec está certa?;
+            // progresso) e o caminho certo — rodada extra autorizada ou a pergunta exata sobre a Spec.
+            const progresso = await finalReviewProgress(job.sessionId);
+            const diag = buildDeliveryDiagnosis({
+              defeitos: [...finalReviewDefects, ...uiBuildDefects],
+              perguntasSpec: finalReviewQuestions,
+              outrasLacunas: deliveryT10.gaps.filter(
+                (g) =>
+                  !g.startsWith("revisão final") &&
+                  !g.startsWith("teste do projeto falha") &&
+                  !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
+              ),
+              progresso,
+              reparo: repair,
+            });
             await applyPhaseEvent(
               job.sessionId,
-              { type: "VERIFICACAO_COM_LACUNAS" },
+              { type: diag.evento },
               {
-                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo },
-                detalheAviso:
-                  "**Lacunas encontradas:**\n" +
-                  (deliveryT10.gaps.length > 0
-                    ? deliveryT10.gaps.map((g) => `- ${g}`).join("\n")
-                    : "- (a verificação não detalhou a lacuna)") +
-                  `\n\n${repair.motivo}`,
+                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo, diagnostico: diag.evento },
+                detalheAviso: diag.detalhe,
               }
             );
           }

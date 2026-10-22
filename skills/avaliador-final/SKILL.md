@@ -61,10 +61,19 @@ Não gaste atenção com tipo, import ou sintaxe.
 **Calibração:** não invente problema para parecer rigoroso; estilo equivalente não é problema. Se a Spec é ambígua e o código escolheu uma leitura razoável, não é defeito.
 
 ## 4. Evidência (conferida pelo harness)
-Todo `implementado` e todo problema `critico`/`importante` cita `arquivo:linha` (ou `arquivo:linha-linha`) de um arquivo **mostrado** que existe nessas linhas. Citação que não existe faz a resposta ser **descartada** e a pergunta ser feita de novo, com o motivo. Problema de algo que **falta** cita o arquivo e a linha onde deveria estar.
+As linhas dos arquivos vêm numeradas (`12| código`); cite por esse número. Todo `implementado` e todo problema `critico`/`importante` cita `arquivo:linha` (ou `arquivo:linha-linha`) de um arquivo **mostrado**. Problema de algo que **falta** cita o arquivo e a linha onde deveria estar; quando você souber **onde se corrige** (pode ser outro arquivo, ex.: o teste falha mas o erro está no serviço), cite esse arquivo também na descrição.
+- `implementado` com citação que não existe → aquele REQ fica **não verificado** (não conta como aprovado nem como defeito).
+- `critico` com citação que não existe → não some: vira **suspeita sem citação**, e a reprodução (§5) decide.
+- Mais de 20% das citações inexistentes → a resposta inteira é **descartada** e a pergunta é feita de novo, com o motivo.
 
-## 5. Como o harness decide
-- Algum REQ `parcial`/`ausente` ou algum problema `critico` → **reprovado**: cada defeito vira correção da etapa dona do arquivo citado (reparo automático, até 3 rodadas). Escreva a descrição como **instrução de correção**.
+## 5. O que o harness faz com a sua resposta (mudança 43)
+1. Algum REQ `parcial`/`ausente` ou problema `critico` → é uma **suspeita de defeito**.
+2. **Reprodução:** para cada suspeita, um teste vitest é escrito (sem rede, sem banco, com `vi.mock`) e rodado na bancada isolada:
+   - o teste **falha** → defeito **provado**: vai ao reparo da etapa dona do arquivo a corrigir, **com o teste e a saída** — o executor tem de fazê-lo passar sem mudar o teste;
+   - o teste **passa** → a suspeita **não se confirmou**: vira ressalva e não bloqueia;
+   - o teste não carrega (import errado) → uma nova tentativa com o erro; persistindo, o defeito segue **sem prova** (bloqueia pela leitura, como antes);
+   - não dá para testar porque a **Spec é ambígua** → vira **pergunta objetiva** ao dono do projeto (não vai ao reparo de código).
+3. Por isso: escreva cada descrição como **instrução de correção** e diga o comportamento esperado (entrada → resultado), que é o que o teste vai cobrar.
 - Só `importante`/`menor` → aprovado com ressalvas (registradas).
 
 ## 6. Formato da resposta (exato; só o JSON, sem markdown)

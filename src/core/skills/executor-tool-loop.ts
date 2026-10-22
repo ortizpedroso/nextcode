@@ -5,6 +5,8 @@ import { enforceSkillToolPermission, type LoadedRoleSkill } from "@/core/skills/
 import type { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { QuarantineManager as QuarantineManagerClass } from "@/core/governance/quarantine-manager";
 import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
+import { runTestBench, type TestBenchReport } from "@/core/execution/test-bench";
+import { contractBenchRequest, type RepairContractTest } from "@/core/orchestrator/repair-payload";
 import { withProjectBuildLock } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
 import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
@@ -594,6 +596,50 @@ export async function defaultRunTypecheckInQuarantine(params: {
   });
 }
 
+/** Mudança 43.3: limite de `run_check test` por etapa (cada um sobe a bancada, ~10–60 s). */
+export const MAX_CONTRACT_TEST_RUNS = 4;
+
+/** Resumo legível do resultado dos testes do contrato, para o executor. */
+export function summarizeContractRun(report: TestBenchReport): string {
+  if (!report.ok) return `Bancada de testes indisponível (${report.stage}): ${report.error ?? ""}`;
+  const loadErrors = report.files.filter((f) => f.loadError).map((f) => `✗ ${f.file} não carregou: ${f.loadError}`);
+  const lines = report.cases.map((c) => `${c.status === "passed" ? "✓" : "✗"} ${c.file} › ${c.name}${c.failure ? `\n    ${c.failure.slice(0, 1200)}` : ""}`);
+  const falhas = report.cases.filter((c) => c.status === "failed").length + loadErrors.length;
+  return [falhas === 0 ? `Testes do contrato: todos passaram (${report.cases.length}).` : `Testes do contrato: ${falhas} falha(s).`, ...loadErrors, ...lines]
+    .join("\n")
+    .slice(0, 8000);
+}
+
+/**
+ * Mudança 43.3: roda os testes do contrato do reparo com o código da quarentena aplicado no projeto
+ * (o mesmo vai-e-volta do `run_check typecheck`) — a bancada copia o projeto, então o código tem de estar lá.
+ */
+export async function defaultRunContractTestsInQuarantine(params: {
+  qm: QuarantineManager;
+  taskId: string;
+  projectRoot: string;
+  allowedScopeFiles: string[];
+  quarantinedFiles: Map<string, string>;
+  testes: RepairContractTest[];
+}): Promise<string> {
+  const { qm, taskId, projectRoot, allowedScopeFiles, quarantinedFiles } = params;
+  return withProjectBuildLock(projectRoot, async () => {
+    const snapshot = new Map<string, string>(quarantinedFiles);
+    qm.promoteToMainRepo(taskId, projectRoot, allowedScopeFiles);
+    const schemaTouched = touchesPrismaSchema(Array.from(quarantinedFiles.keys()));
+    try {
+      return summarizeContractRun(await runTestBench(projectRoot, contractBenchRequest(params.testes)));
+    } finally {
+      qm.rollbackPromotion(taskId);
+      if (schemaTouched) await regeneratePrismaClient(projectRoot);
+      qm.prepareWorkspace(taskId);
+      for (const [relPath, content] of snapshot.entries()) {
+        qm.writeFile(taskId, relPath, content);
+      }
+    }
+  });
+}
+
 export interface ExecutorToolLoopParams {
   sessionId: string;
   nodeId: string;
@@ -621,6 +667,9 @@ export interface ExecutorToolLoopParams {
   paidGateways?: GatewayConfig[];
   allowedRoutedViaPrefixes?: string[];
   runTypecheck?: RunTypecheckFn;
+  /** Mudança 43.3: testes do contrato do reparo; com eles, `run_check test` roda na bancada. */
+  contractTests?: RepairContractTest[];
+  runContractTests?: typeof defaultRunContractTestsInQuarantine;
 }
 
 export interface ExecutorToolLoopResult {
@@ -651,6 +700,8 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     loopTimeoutMs = LOOP_TOTAL_TIMEOUT_MS,
     routerKeys,
     runTypecheck = defaultRunTypecheckInQuarantine,
+    contractTests,
+    runContractTests = defaultRunContractTestsInQuarantine,
   } = params;
 
   qm.prepareWorkspace(nodeId);
@@ -672,6 +723,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
   const messages: DispatchMessage[] = [...initialMessages];
   const loopStartMs = Date.now();
   let consecutiveInvalidTurns = 0;
+  let contractTestRuns = 0;
   let currentStep = 0;
   let lastModelUsed = "";
   const denialCounts = new Map<string, HarnessDenial>();
@@ -1112,7 +1164,14 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
       } else if (ferramenta === "run_check") {
         const comando = typeof args.comando === "string" ? args.comando.trim() : "";
         if (comando === "test") {
-          toolOutput = "não disponível neste item";
+          if (!contractTests || contractTests.length === 0) {
+            toolOutput = "não disponível neste item";
+          } else if (contractTestRuns >= MAX_CONTRACT_TEST_RUNS) {
+            toolOutput = `Limite de ${MAX_CONTRACT_TEST_RUNS} execuções de teste nesta etapa atingido. Corrija pelo que já viu e encerre com finish.`;
+          } else {
+            contractTestRuns += 1;
+            toolOutput = await runContractTests({ qm, taskId: nodeId, projectRoot, allowedScopeFiles, quarantinedFiles, testes: contractTests });
+          }
         } else if (comando !== "typecheck") {
           toolOutput = `Comando "${comando}" não suportado. Use {"comando": "typecheck"}.`;
         } else {

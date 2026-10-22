@@ -53,7 +53,9 @@ import { checkSecretsInCodeWithJev } from "@/core/governance/secret-guard";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
-import { readRepairPayload, supersededByRepair } from "@/core/orchestrator/repair-payload";
+import { readRepairPayload, supersededByRepair, contractBenchRequest } from "@/core/orchestrator/repair-payload";
+import { runTestBench } from "@/core/execution/test-bench";
+import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
 
 /**
  * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
@@ -1157,6 +1159,20 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             Object.entries(currentCode)
               .map(([f, c]) => `--- ${f} ---\n${c}`)
               .join("\n\n")
+          : "") +
+        // Mudança 43.3: os testes que provam os defeitos são o contrato — o reparo só vale com eles passando.
+        (repairPayload.testesReproducao?.length
+          ? "\n\n## Testes que provam os defeitos (contrato deste reparo)\n\n" +
+            "NÃO altere estes testes: o reparo só é aceito quando todos passam (o portão roda cada um na bancada). " +
+            'Rode `run_check` com `{"comando": "test"}` para conferir antes do finish. ' +
+            "Se um teste é do próprio projeto e está no seu escopo, só mude o teste se ele contradiz a Spec — nunca para enfraquecê-lo.\n\n" +
+            repairPayload.testesReproducao
+              .map(
+                (t) =>
+                  `--- ${t.existente ? t.caminho : `.nextcode-repro/${t.caminho}`}${t.existente ? " (teste do projeto)" : ""} ---\n${t.conteudo}` +
+                  (t.saida ? `\n\nSaída da falha:\n${t.saida.slice(0, 2000)}` : "")
+              )
+              .join("\n\n")
           : ""),
     });
   }
@@ -1228,6 +1244,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       stepTimeoutMs,
       paidGateways,
       allowedRoutedViaPrefixes: paidGateways ? policy.roteamentoPapeisCriticos.prefixosRotaPaga : undefined,
+      // Mudança 43.3: com testes do contrato, o executor roda `run_check test` na bancada.
+      contractTests: repairPayload?.testesReproducao,
       routerKeys: {
         geminiKey: readSecret(setting?.geminiKey),
         groqKey: readSecret((setting as any)?.groqKey),
@@ -1794,6 +1812,33 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           action: gate.environmentFailure ? "EMPIRICAL_BUILD_ENV_FAILURE" : "EMPIRICAL_BUILD_PREEXISTING_FAILURE",
           details: { nodeId: taskDb.id },
         });
+      }
+      // Mudança 43.3: reparo com testes do contrato só é aceito com todos passando (o defeito saiu).
+      if (gate.passed && !gate.rolledBack && repairPayload?.testesReproducao?.length) {
+        const contract = await runTestBench(targetProjectRoot, contractBenchRequest(repairPayload.testesReproducao));
+        if (!contract.ok) {
+          // Bancada fora (Docker parado): não trava a etapa; fica o veredito do avaliador e a verificação final.
+          TelemetryLogger.log({ sessionId: taskDb.sessionId, action: "REPAIR_CONTRACT_UNAVAILABLE", details: { nodeId: taskDb.id, stage: contract.stage, error: contract.error } });
+        } else {
+          const falhas = [
+            ...contract.files.filter((f) => f.loadError).map((f) => `${f.file} não carregou: ${f.loadError}`),
+            ...contract.cases.filter((c) => c.status === "failed").map((c) => `${c.file} › ${c.name}: ${c.failure ?? ""}`),
+          ];
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: falhas.length ? "REPAIR_CONTRACT_FAILED" : "REPAIR_CONTRACT_PASSED",
+            details: { nodeId: taskDb.id, casos: contract.cases.length, falhas: falhas.slice(0, 10).map((f) => f.slice(0, 300)) },
+          });
+          if (falhas.length) {
+            qm.rollbackPromotion(taskDb.id);
+            if (touchesPrismaSchema(filesScopeArr)) await regeneratePrismaClient(targetProjectRoot);
+            promotionTarget = null;
+            gate.passed = false;
+            gate.failedStage = "teste";
+            gate.failureLine = `teste do contrato ainda falha — ${falhas[0].slice(0, 600)}`;
+            gate.newErrors = falhas.slice(1, 10).map((f) => f.slice(0, 400));
+          }
+        }
       }
       if (!gate.passed) {
         empiricalFailureLine = gate.failureLine || "falha na verificação empírica pós-promoção";
