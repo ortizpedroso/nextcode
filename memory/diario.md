@@ -1,3 +1,14 @@
+## 22/10/2026 (211) — Mudança 43 implementada (43.1–43.4) e rodada extra no Gateway em andamento
+
+**Feito (commits):** `1403b39` 43.1 bancada · `636244e` e `c132d3b` causa de 2 testes instáveis · `8f4771f` 43.2 revisor prova cada defeito · `ffe5ce9` 43.3 reparo com o teste como contrato · `7b29278` 43.4 aviso pelo diagnóstico + Autorizar mais uma rodada · `9f19dec` junção ao `main` · `7366533` pergunta de Spec não trava a rodada do código · `054ddb1` erro do próprio teste não é prova. Suíte 152/999, tsc 0. Antigravity: `TESTE-E1-4-antigravity.md` aceito com ressalvas (conferidas; F10 fica pendente).
+**Gateway `4d019f00`:** 3 rodadas → `REPARO_ESGOTADO` com aviso objetivo (8 defeitos com teste que falha, 1 só de tela, "a Spec está certa"); `--rodada-extra` abriu a **rodada 4 com 8 etapas** (10:51 UTC); às 11:05, 2 concluídas com `REPAIR_CONTRACT_PASSED` (etapas 9 e 1), 6 rodando ou na fila; custo de hoje US$ 4,53 (total da sessão US$ 23,81).
+**Rascunho (sem commit):** `docs/relatorios/AUDITORIA-43-revisor-bancada.md` (§4 espera o resultado da rodada 4); `docs/relatorios/README.md` com a mudança 43.
+**Onde parou:** esperando a rodada 4 terminar (retomada em segundo plano; app parado — um worker só no banco).
+**Próximo passo:** ler o desfecho (ENTREGUE ou BLOQUEADA) → preencher §4 da auditoria, checklist da mudança 43 e ▶ AGORA na referência, `medicoes.md`, `TESTE-REAL-GATEWAY-4d019f00.md` → commit → apagar `scripts/_tmp_g*.ts`, remover a worktree `../nextcode-43` → entregar ao fundador o checklist do que falta.
+**Pendências do fundador:** nenhuma agora; §6 itens 3, 4, 5, 6, 7 e "fora da ordem" (M1/M4, `verificacao_evidencia`) seguem abertos e vão no checklist.
+
+---
+
 ## 22/10/2026 (210) — Mudança 43 aprovada: revisor com bancada de testes
 
 **Fundador:** "eu aprovo, só não quero que se perca na sequência… depois de tudo feito me traga um checklist do que falta"; "siga os passos que você definiu".

@@ -4,7 +4,12 @@ Um arquivo por pacote ou fase, no formato de `docs/NEXTCODE-REFERENCIA.md` §8.4
 
 **Regra (referência §8.1):** ao fechar uma fase de implementação, relatório consolidado `AUDITORIA-<escopo>.md` é obrigatório. Execução autônoma (o Claude decide pelo fundador) → também `DECISOES-AUTONOMAS-<escopo>.md`.
 
-## Agora — fim da E1 (21–22/10)
+## Agora — mudança 43, revisor com bancada de testes (22/10)
+- `AUDITORIA-43-revisor-bancada.md` — **consolidado** da mudança 43 (43.1–43.4): bancada, reprodução de defeitos, contrato do reparo, aviso pelo diagnóstico, rodada extra no Gateway, decisões H1–H10.
+- `TESTE-E1-4-antigravity.md` — teste independente da execução 4 pelo Antigravity (aceito com ressalvas; ressalvas conferidas na auditoria 43 §5).
+- `bench/2026-10-22-43-2-reproducao-gateway.json` — revisão com reprodução no Gateway (8 de 10 suspeitas provadas).
+
+## Fim da E1 (21–22/10)
 - `AUDITORIA-E1-4.md` — **consolidado** da execução autônoma 4 (mudanças 35–40): commits, testes, retomada real do Gateway, revisão final.
 - `IMPLEMENTADO-E1-4.md` — o mesmo em linguagem simples, para o fundador.
 - `DECISOES-AUTONOMAS-E1-4.md` — o que o Claude decidiu pelo fundador (D1–D33) e, a partir da 2ª rodada, a seção "rodada final".
