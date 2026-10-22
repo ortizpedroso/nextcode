@@ -110,7 +110,7 @@ const SAMPLE_SPEC_TWO_FILES = renderCanonicalSpecDocument({
 });
 
 // Orquestração com fila real: casos de até 23 s medidos sob carga (diário 166–171).
-describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promoção", { timeout: 60_000 }, () => {
+describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promoção", () => {
   beforeEach(() => {
     vi.spyOn(localAuthModule, "requireAuth").mockReturnValue({ response: null } as any);
     vi.spyOn(localAuthModule, "requireReadAuth").mockReturnValue({ response: null } as any);
