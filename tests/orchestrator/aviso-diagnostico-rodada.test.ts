@@ -28,7 +28,7 @@ describe("43.4 — aviso montado com o diagnóstico", () => {
     expect(d.detalhe).toContain("15 → 14 → 5");
   });
 
-  it("com pergunta de Spec → VERIFICACAO_COM_LACUNAS com a pergunta exata (não 'ajuste a Spec' genérico)", () => {
+  it("pergunta de Spec junto com defeito de código → a rodada extra segue para o código e a pergunta fica listada", () => {
     const d = buildDeliveryDiagnosis({
       defeitos: [provado],
       perguntasSpec: ["REQ-035: com o whitelabel inativo, devolve a marca padrão ou os campos personalizados?"],
@@ -36,9 +36,22 @@ describe("43.4 — aviso montado com o diagnóstico", () => {
       progresso: [],
       reparo: esgotado,
     });
-    expect(d.evento).toBe("VERIFICACAO_COM_LACUNAS");
+    expect(d.evento).toBe("REPARO_ESGOTADO");
     expect(d.detalhe).toContain("REQ-035: com o whitelabel inativo");
+    expect(d.detalhe).toContain("O código pode seguir");
     expect(d.detalhe).not.toContain("A Spec está certa");
+  });
+
+  it("só pergunta de Spec (nenhum defeito de código) → VERIFICACAO_COM_LACUNAS com a pergunta exata", () => {
+    const d = buildDeliveryDiagnosis({
+      defeitos: [{ req: "REQ-035", arquivo: null, defeito: "revisão final: REQ-035 parcial", prova: "spec", pergunta: "marca padrão?" }],
+      perguntasSpec: ["REQ-035: marca padrão?"],
+      outrasLacunas: [],
+      progresso: [],
+      reparo: esgotado,
+    });
+    expect(d.evento).toBe("VERIFICACAO_COM_LACUNAS");
+    expect(d.detalhe).toContain("A Spec precisa de resposta");
   });
 
   it("lacuna sem dona → VERIFICACAO_COM_LACUNAS (analista)", () => {

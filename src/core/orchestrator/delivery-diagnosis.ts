@@ -44,14 +44,20 @@ export function buildDeliveryDiagnosis(input: DeliveryDiagnosisInput): DeliveryD
   if (input.progresso.length > 1) linhas.push(`\n**Progresso das revisões:** ${input.progresso.join(" → ")} defeito(s).`);
 
   // "Todos com dona" já cobre as lacunas da T10 (arquivo ausente, erro de tipo): também são código.
-  const soCodigo = input.reparo.tipo === "esgotado" && input.reparo.todosComDono === true && input.perguntasSpec.length === 0;
+  const temCodigo =
+    input.reparo.tipo === "esgotado" &&
+    input.reparo.todosComDono === true &&
+    (input.perguntasSpec.length === 0 || input.defeitos.some((d) => d.prova !== "spec"));
+  // Uma pergunta de Spec não trava a rodada extra do código: ela é listada para o fundador responder.
   linhas.push(
-    soCodigo
+    temCodigo && input.perguntasSpec.length === 0
       ? "\n**A Spec está certa:** o que sobrou é defeito de código, cada um com etapa dona."
-      : input.perguntasSpec.length
-        ? "\n**A Spec precisa de resposta** nas perguntas acima (o resto é código e segue no reparo quando você responder)."
-        : ""
+      : temCodigo
+        ? "\n**O código pode seguir:** mais uma rodada corrige os defeitos de código; as perguntas acima ficam para você responder quando puder."
+        : input.perguntasSpec.length
+          ? "\n**A Spec precisa de resposta** nas perguntas acima."
+          : ""
   );
   linhas.push(`\n${input.reparo.motivo}`);
-  return { evento: soCodigo ? "REPARO_ESGOTADO" : "VERIFICACAO_COM_LACUNAS", detalhe: linhas.filter(Boolean).join("\n") };
+  return { evento: temCodigo ? "REPARO_ESGOTADO" : "VERIFICACAO_COM_LACUNAS", detalhe: linhas.filter(Boolean).join("\n") };
 }
