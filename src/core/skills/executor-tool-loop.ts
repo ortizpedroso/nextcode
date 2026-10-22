@@ -189,43 +189,176 @@ function collectActionObjects(parsed: unknown): unknown[] {
 }
 
 /**
- * TR1 (12): extrai as ações do turno. Aceita um bloco ```json acao com um objeto OU uma lista de
- * objetos, e também vários blocos ```json acao (cada um com objeto ou lista). Sem bloco rotulado,
- * cai nas mesmas regras de `parseExecutorToolAction` (bloco ```json sem rótulo / resposta inteira).
+ * G1: dentro das strings do JSON, escapa o que o modelo costuma mandar cru — quebra de linha, tab e
+ * barra invertida sem escape válido (`\d` de uma regex). Fora das strings nada muda.
  */
-export function parseExecutorToolActions(text: string): ParseToolActionsResult {
-  const labeled = Array.from(text.matchAll(/```json[ \t]+acao\s*([\s\S]*?)```/gi)).map((m) => m[1].trim());
-  const raws: unknown[] = [];
-  if (labeled.length > 0) {
-    for (const block of labeled) {
+function escapeRawCharsInJsonStrings(raw: string): string {
+  let out = "";
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "\\") {
+      const next = raw[i + 1];
+      if (next !== undefined && '"\\/bfnrtu'.includes(next)) {
+        out += ch + next;
+        i++;
+      } else {
+        out += "\\\\";
+      }
+    } else if (ch === '"') {
+      inString = false;
+      out += ch;
+    } else if (ch === "\n") out += "\\n";
+    else if (ch === "\r") out += "\\r";
+    else if (ch === "\t") out += "\\t";
+    else out += ch;
+  }
+  return out;
+}
+
+/** Fim do primeiro valor JSON completo (objeto/lista), contando colchetes fora das strings; -1 se não fecha. */
+function firstJsonValueEnd(raw: string): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * G1: lê JSON tolerando os erros mais comuns de modelo (ver `escapeRawCharsInJsonStrings`) e sobra de
+ * fechamentos/crases depois de um valor completo (trilha `4d019f00`: `[...]}]` e `[...]\``).
+ */
+export function parseJsonLenient(raw: string): { ok: true; value: unknown } | { ok: false; error: string } {
+  try {
+    return { ok: true, value: JSON.parse(raw) };
+  } catch (err) {
+    const fixed = escapeRawCharsInJsonStrings(raw);
+    const end = firstJsonValueEnd(fixed);
+    const attempts = [fixed];
+    if (end > 0 && /^[\s\]}`]*$/.test(fixed.slice(end))) attempts.push(fixed.slice(0, end));
+    for (const attempt of attempts) {
+      if (attempt === raw) continue;
       try {
-        raws.push(...collectActionObjects(JSON.parse(block)));
-      } catch (err) {
-        return {
-          ok: false,
-          error: `JSON inválido no bloco \`\`\`json acao: ${err instanceof Error ? err.message : String(err)}. ${MULTI_FORMAT_REMINDER}`,
-        };
+        return { ok: true, value: JSON.parse(attempt) };
+      } catch {
+        /* segue com o erro original */
       }
     }
+    const msg = err instanceof Error ? err.message : String(err);
+    const pos = Number(/position (\d+)/.exec(msg)?.[1]);
+    const near = Number.isFinite(pos) ? ` perto de "${raw.slice(Math.max(0, pos - 40), pos + 40).replace(/\s+/g, " ")}"` : "";
+    return { ok: false, error: `${msg}${near}` };
+  }
+}
+
+interface ActionFence {
+  labeled: boolean;
+  value?: unknown;
+  error?: string;
+}
+
+/**
+ * G1 (mudança 38): acha os blocos de ação do turno. Teste real `4d019f00`: 49 turnos recusados com a ação
+ * certa — rótulo `acao` na linha de baixo do ```json, bloco ```json sem rótulo, `conteudo` com ``` dentro
+ * (o bloco fechava no meio), resposta cortada sem o ``` final. Abertura = ``` + só "json"/"acao" (qualquer
+ * espaço, inclusive quebra de linha) + `{` ou `[`; fechamento = o primeiro ``` seguinte (ou o fim do texto)
+ * em que o JSON fecha.
+ */
+function scanActionFences(text: string): ActionFence[] {
+  const out: ActionFence[] = [];
+  let i = text.indexOf("```");
+  while (i !== -1) {
+    const after = text.slice(i + 3);
+    const header = /^([ \t]*(?:json)?[\s]*(?:acao)?[ \t]*\r?\n?[ \t]*)([{[])/i.exec(after);
+    if (!header) {
+      i = text.indexOf("```", i + 3);
+      continue;
+    }
+    const labeled = /acao/i.test(header[1]);
+    const bodyStart = i + 3 + header[1].length;
+    const closings: number[] = [];
+    for (let c = text.indexOf("```", bodyStart); c !== -1; c = text.indexOf("```", c + 3)) closings.push(c);
+    closings.push(text.length);
+    let found: ActionFence | null = null;
+    let firstError = "";
+    let nextFrom = text.length;
+    for (const c of closings) {
+      const parsed = parseJsonLenient(text.slice(bodyStart, c).trim());
+      if (parsed.ok) {
+        found = { labeled, value: parsed.value };
+        nextFrom = c + 3;
+        break;
+      }
+      if (!firstError) {
+        firstError =
+          c === text.length
+            ? `a resposta terminou antes de fechar o bloco (cortada?): ${parsed.error}`
+            : parsed.error;
+        nextFrom = c + 3;
+      }
+    }
+    out.push(found ?? { labeled, error: firstError });
+    i = nextFrom >= text.length ? -1 : text.indexOf("```", nextFrom);
+  }
+  return out;
+}
+
+const hasToolName = (o: unknown): boolean =>
+  Boolean(
+    o &&
+      typeof o === "object" &&
+      !Array.isArray(o) &&
+      typeof (o as Record<string, unknown>).ferramenta === "string" &&
+      ((o as Record<string, unknown>).ferramenta as string).trim().length > 0
+  );
+
+/**
+ * TR1 (12): extrai as ações do turno. Aceita um bloco ```json acao com um objeto OU uma lista de
+ * objetos, e também vários blocos ```json acao (cada um com objeto ou lista). Sem bloco rotulado,
+ * vale bloco ```json sem rótulo com "ferramenta" ou a resposta inteira. G1: rótulo em qualquer
+ * espaço, ``` dentro do conteúdo, barra invertida sem escape e erro que diz o que está errado.
+ */
+export function parseExecutorToolActions(text: string): ParseToolActionsResult {
+  const fences = scanActionFences(text);
+  const labeled = fences.filter((f) => f.labeled);
+  const raws: unknown[] = [];
+  if (labeled.length > 0) {
+    const bad = labeled.find((f) => f.error);
+    if (bad) {
+      return {
+        ok: false,
+        error: `JSON inválido no bloco \`\`\`json acao: ${bad.error}. Confira aspas e quebras de linha escapadas dentro de "conteudo". ${MULTI_FORMAT_REMINDER}`,
+      };
+    }
+    for (const f of labeled) raws.push(...collectActionObjects(f.value));
   } else {
-    const unlabeled = Array.from(text.matchAll(/```(?:json)?(?=[ \t]*[\r\n{[])\s*([\s\S]*?)```/gi)).map((m) =>
-      m[1].trim()
-    );
     const trimmed = text.trim();
-    const candidates = unlabeled.length > 0 ? unlabeled : /^[[{][\s\S]*[\]}]$/.test(trimmed) ? [trimmed] : [];
-    for (const block of candidates) {
-      try {
-        const objs = collectActionObjects(JSON.parse(block)).filter(
-          (o) =>
-            o &&
-            typeof o === "object" &&
-            !Array.isArray(o) &&
-            typeof (o as Record<string, unknown>).ferramenta === "string" &&
-            ((o as Record<string, unknown>).ferramenta as string).trim().length > 0
-        );
-        raws.push(...objs);
-      } catch {
-        // Ignora bloco sem JSON válido; se nenhum candidato for válido, retorna erro ao final
+    const candidates: unknown[] = fences.filter((f) => !f.error).map((f) => f.value);
+    if (fences.length === 0 && /^[[{][\s\S]*[\]}]$/.test(trimmed)) {
+      const whole = parseJsonLenient(trimmed);
+      if (whole.ok) candidates.push(whole.value);
+    }
+    for (const v of candidates) raws.push(...collectActionObjects(v).filter(hasToolName));
+    if (raws.length === 0) {
+      const bad = fences.find((f) => f.error);
+      if (bad) {
+        return { ok: false, error: `JSON inválido no bloco de ação: ${bad.error}. ${MULTI_FORMAT_REMINDER}` };
       }
     }
   }
@@ -626,6 +759,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           duracaoMs: 0,
           amostra: turnText.slice(0, 300),
           tamanho: turnText.length,
+          erro: parsedTurn.error.slice(0, 300),
         },
       });
       if (consecutiveInvalidTurns >= MAX_CONSECUTIVE_INVALID_TURNS) {
