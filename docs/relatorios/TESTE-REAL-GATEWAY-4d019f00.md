@@ -71,3 +71,13 @@ falta de memória (Windows `0xC0000142`). Falta uma retomada com memória livre 
    `prisma generate` + instala o `nodemailer` e mostra os erros reais que sobrarem.
 3. Erros reais de código que sobrarem: ajuste pela Spec (o NextCode refaz as etapas) — sugiro eu preparar o texto.
 4. Voltar o teto para 0,50.
+
+## Retomada de 22/10 (execução autônoma 4) — ENTREGUE
+
+Detalhe: `docs/relatorios/AUDITORIA-E1-4.md` §4 e §5.
+
+- Com memória livre, o conserto de ambiente rodou (`prisma generate`, pacotes): **71 → 9 erros reais** em 3 arquivos.
+- O reparo automático (J2b, novo) abriu 3 etapas ligadas às donas (16 registro/login, 10 e-mail, 5 middleware); pausou 34 s sem LLM (Docker), retomou sozinho; **3/3 aprovadas na 1ª tentativa**; type-check final **0 erros**; **ENTREGUE** às 00:54 UTC. Custo da retomada: US$ 0,24.
+- A revisão final (J3) não rodou dentro da retomada (defeito do teto de resposta, corrigido). Rodada depois no projeto entregue: **65 REQ, 50 implementados, 15 parciais** — ex.: chave própria do Asaas sem `asaasSubcontaId` (toda cobrança falha), webhook com status que regride e cabeçalho errado, taxa só inteira. Evidência: `docs/relatorios/bench/2026-10-22-j3-gateway-4d019f00.json`. **O projeto não está pronto para uso**; correção proposta na mudança 40 (aguarda o fundador).
+- Teto temporário de US$ 80 desfeito (0,50; o teto pelo plano cobre a sessão).
+

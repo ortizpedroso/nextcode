@@ -1,3 +1,13 @@
+## 22/10/2026 (202) — Execução autônoma 4 concluída: E1 fechada, Gateway ENTREGUE; J3 achou 15 REQ parciais
+
+**Feito (depois do 201):** J3 `avaliador-final` (`471ef92`; controles reais 8/8 Opus e Sonnet → Sonnet padrão, `revisao_final: ativo`), TS1 (`dbacd91`, 2× verde no prazo padrão), limite J3 1,2 mi caracteres (`e0cd2a5`), J3 no projeto real (`57c3d44`: teto 32 mil, custo de resposta sem texto registrado, linhas numeradas, citação isolada). Suíte final **146/965**, tsc 0.
+**Ambiente:** motor do Docker não subia; Docker Desktop fechado/reaberto + `wsl --shutdown` → `nextcode-freellmapi` healthy.
+**Porta da E1 (mudança 37):** `retomar-sessao.ts 4d019f00` → recheck 71 → 9 erros reais → J2b rodada 1 (3 reparos) → pausa SEM_LLM 34 s sem gastar tentativa → SUP1 retomou → 3/3 aprovados na 1ª → tsc 0 → **ENTREGUE** (US$ 0,24). O J3 não rodou ali (teto de 8 mil gasto em raciocínio); rodado depois: **15 de 65 REQ parciais** (pior: chave própria do Asaas sem subconta → cobrança falha). Um defeito (enum CARTAO duplicado) vem em parte da minha intervenção do 196.
+**Relatórios:** `docs/relatorios/AUDITORIA-E1-4.md`, `IMPLEMENTADO-E1-4.md`, `DECISOES-AUTONOMAS-E1-4.md` (D1–D33); prompt `docs/prompts/TESTE-E1-4.md`. Gasto LLM da execução ≈ US$ 3,14.
+**Próximo passo:** fundador decide a mudança 40 (reabrir a entrega do Gateway com os 15 defeitos) e entrega o `TESTE-E1-4.md` a outro LLM; depois J4.
+
+---
+
 ## 21/10/2026 (201) — Execução autônoma 4 (mudança 39): 35, 36, G1–G3, J2b + J2.7 feitos
 
 **Fundador:** "o teste já foi rodado, vou ter que sair agora, faça a implementação e só pare quando estiver terminado, ao final monte um relatório do que foi implementado, um relatório do que decidiu por mim e um prompt para outro llm testar".

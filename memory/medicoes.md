@@ -208,3 +208,11 @@ Sonda (15 candidatos): 200 — `deepseek-v4-pro` via **`custom/`** (pago, chave 
 
 ## 20/10 — Bench P1–P4 `padrao` depois da mudança 26 (Claude; `docs/relatorios/bench/2026-10-20-1244.md` + `-1314.md`)
 P1 ENTREGUE 10/10 US$ 0,0675 · P2 ENTREGUE 13/13 US$ 0,2134 (depois do `835e98f`; antes PAUSADA 10/13 2× por gateway cortar em 120 s) · P3 ENTREGUE 12/12 US$ 0,1243 · P4 ENTREGUE 12/12 US$ 0,0612. Chamadas do executor por etapa: média 2,5–4, **máx. 4** (meta TR1 ≤ 10); todas as etapas aprovadas na 1ª. Cache do avaliador: 3.236 tokens lidos + 1.713 gravados numa avaliação do P2. n = 1 por projeto.
+
+## 21–22/10 — Execução autônoma 4 (Claude; `docs/relatorios/AUDITORIA-E1-4.md`)
+- **Retomada `4d019f00`:** 71 → 9 erros reais com memória livre; J2b 3 reparos, 3/3 aprovados na 1ª, 4/6/4 ações do executor; tsc final 0; ENTREGUE; US$ 0,2351 (executor 0,153, avaliador 0,081). Total da sessão US$ 12,56 (+~0,76 não registrados de 2 chamadas sem texto).
+- **G1 na trilha real:** 9/9 turnos antes recusados (inteiros na trilha) agora aceitos; antes 0/9.
+- **J3 controles** (P1 correto 5×, integração, stub, P4 base): Opus 5.5 8/8 US$ 0,259; Sonnet 5.5 8/8 US$ 0,118; Sonnet com linhas numeradas 8/8 US$ 0,072.
+- **J3 no Gateway entregue:** Sonnet 5.5, 208 mil tokens de entrada, ~19 mil de saída, 136 s, US$ 0,68; 65 REQ → 50 implementados, 15 parciais, 0 citação inválida. Com teto de 8 mil tokens: só raciocínio (`stop_reason=max_tokens`). Sem linhas numeradas: 2 descartes por fim de intervalo 1–2 linhas além do arquivo (US$ 1,01).
+- **TS1:** teste mais lento dos 2 e2e = 5,6 s; suíte 145/961 2× com o prazo padrão.
+
