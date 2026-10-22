@@ -42,7 +42,7 @@ A causa comum é a mesma: **o crédito da API da Anthropic acabou às ~20:23 UTC
 | E5 controles (2×) | P1 referência 9/9; P4 base: REQ-001/002 falham (os defeitos), REQ-003 vira regressão |
 | JV1 | J23 15/15 divergências falsas; J2 nunca coube; M3 caía na reserva com 40 etapas |
 | `npm audit` | 17 (3 críticas) → produção 0; desenvolvimento 13 (exigem vitest 5 / tailwind 4) |
-| Bench J4 (`bench/2026-10-22-1538.md` + execução seguinte) | P1: com Jev ENTREGUE 10/10 US$ 0,115 × sem Jev 10/10 US$ 0,146 · P2: com Jev 13/13 US$ 0,23–0,26 × sem Jev 13/13 US$ 0,56 (precisou de rodada de reparo) · P3/P4: **inconclusivos** (abaixo) |
+| Bench J4 e final (`bench/2026-10-22-1538.md`, `…-1628.md`, `…-1835.md`) | P1 com Jev 10/10 US$ 0,115 × sem 10/10 US$ 0,146; P2 13/13 US$ 0,231 × 13/13 US$ 0,561; P3 12/12 US$ 0,308 × 12/12 US$ 0,179; P4 12/12 US$ 0,093 × 12/12 US$ 0,110 — total US$ 0,75 × US$ 1,00, aceite 47/47 nos dois; qualidade igual (efeito teto), com Jev ~25% mais barato no total (não em todos: P3 inverteu; 1 repetição) |
 
 ## 3. O que o benchmark achou (e que virou correção)
 
@@ -55,7 +55,7 @@ A causa comum é a mesma: **o crédito da API da Anthropic acabou às ~20:23 UTC
 
 ## 4. O que não foi verificado (e por quê)
 - **Gateway rodada 8 e entrega:** precisa do avaliador Claude (sem crédito). A sessão está `BLOQUEADA` (`REPARO_ESGOTADO`, 5 defeitos provados). Depois da recarga, autorizar mais uma rodada.
-- **J4 completo e benchmark final P1–P4:** P3 e P4 precisam rodar de novo com as correções de `71c258a`, também com crédito.
+- ~~J4 completo e benchmark final P1–P4~~ — **feito 23/10** com o crédito de volta: 8/8 ENTREGUE, 47/47.
 - **CI no GitHub:** criado, não publicado (sem `push`).
 - **Botões na interface** (Fechar/Reabrir projeto, mensagem de entrega): testados pela rota e pelo código, não clicados no navegador.
 - **Dependências de desenvolvimento com versão principal nova** (vitest 5, tailwind 4): não trocadas. Mudam o executor de testes e o CSS inteiros e merecem uma mudança própria com benchmark.

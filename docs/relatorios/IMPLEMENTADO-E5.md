@@ -53,16 +53,15 @@ Rodadas 4 a 7 de reparo. Os defeitos **provados** por revisão caíram de 8 para
 | Projeto | Com Jev | Sem Jev |
 |---|---|---|
 | P1 | entregue, 10/10, US$ 0,115 | entregue, 10/10, US$ 0,146 |
-| P2 | entregue, 13/13, US$ 0,23–0,26 | entregue, 13/13, US$ 0,56 (precisou de uma rodada de reparo) |
-| P3 / P4 | inconclusivo | inconclusivo |
+| P2 | entregue, 13/13, US$ 0,231 | entregue, 13/13, US$ 0,561 |
+| P3 | entregue, 12/12, US$ 0,308 | entregue, 12/12, US$ 0,179 |
+| P4 | entregue, 12/12, US$ 0,093 | entregue, 12/12, US$ 0,110 |
+| **Total** | **US$ 0,75** | **US$ 1,00** |
 
-**Com Jev, o mesmo resultado sai mais barato** (P1 −21%, P2 −55%), porque ele escolhe o modelo certo por etapa.
-
-O P3 revelou dois problemas, ambos corrigidos:
-- um teste de aceite exigiu cookies que a Spec não pede, e o código passou a não carregar fora do Next;
-- a revisão final não rodou por falta de crédito e a entrega saiu sem conferência. Agora isso **bloqueia** com o motivo e o botão Retomar.
-
-P3 e P4 precisam rodar de novo com crédito para fechar a medição.
+**Os 8 projetos foram entregues com aceite 47/47.**
+- A qualidade foi igual com e sem Jev: os projetos de teste são fáceis demais para separar as duas versões.
+- Com Jev saiu cerca de 25% mais barato no total. No P3 inverteu, e foi uma repetição só, então é indicação, não prova.
+- No caminho, o benchmark revelou e eu corrigi um teste do testador que inventava cookies e uma entrega que saía sem revisão quando o crédito acabou. O P3 passou de 0/12 para 12/12.
 
 ## 8. Dependências
 - **Produção:** 0 vulnerabilidades (eram 3 críticas, inclusive no Next.js). O build de produção passa.

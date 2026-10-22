@@ -21,6 +21,7 @@
 | J8 nas Specs reais | Gateway: 10/10 itens aplicáveis cobertos por palavra-chave; P1/P4 nada aplicável; P3 (login simples) 2/2 depois do ajuste | P8/J8 |
 | E5 controles do testador (2 rodadas) | P1 referência 9/9 passam; P4 base: testes de REQ-001 e REQ-002 falham (os defeitos), REQ-003 vira regressão (passa) | `scripts/controles-autoteste-e5.ts` |
 | Gateway `4d019f00` defeitos **provados** por revisão (rodadas 4→7) | 8 → 1 → (reaberto) 7 → 6 → 5; contratos das rodadas 6–7: 100% passando; custo da sessão US$ 37,07 | trilha |
+| J4 / bench final (23/10, 1 repetição) | P1 com Jev 10/10 US$ 0,115 × sem 10/10 US$ 0,146; P2 13/13 US$ 0,231 × 13/13 US$ 0,561; P3 12/12 US$ 0,308 × 12/12 US$ 0,179; P4 12/12 US$ 0,093 × 12/12 US$ 0,110 — total US$ 0,75 × US$ 1,00, aceite 47/47 nos dois | `docs/relatorios/bench/2026-10-22-1835.md` (+ `1538`, `1628`) |
 | `npm audit` (antes da correção) | 17 vulnerabilidades: 3 críticas (inclui Next.js), 9 altas, 5 moderadas | E6 |
 
 ## Achados de custo (07–08/10)
