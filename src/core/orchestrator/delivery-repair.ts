@@ -10,6 +10,7 @@ import {
   readRepairPayload,
   currentRepairRound,
   type DeliveryRepairPayload,
+  type RepairContractTest,
 } from "@/core/orchestrator/repair-payload";
 
 export { readRepairPayload, supersededByRepair, currentRepairRound, type DeliveryRepairPayload } from "@/core/orchestrator/repair-payload";
@@ -33,7 +34,7 @@ export interface DeliveryGaps {
   /** Lacunas que não ligam a arquivo nem a REQ (tela, auditoria do Jev, build não verificável…). */
   otherGaps: string[];
   /** J3: defeitos da revisão final, com o arquivo citado (null = sem dono). */
-  fileDefects?: Array<{ arquivo: string | null; defeito: string }>;
+  fileDefects?: Array<{ arquivo: string | null; defeito: string; teste?: { caminho: string; conteudo: string; existente?: boolean }; saida?: string }>;
 }
 
 export interface RepairPlanItem {
@@ -41,6 +42,8 @@ export interface RepairPlanItem {
   origemId: string;
   defeitos: string[];
   reqs: string[];
+  /** Mudança 43.3: testes que provam os defeitos desta dona. */
+  testes: RepairContractTest[];
 }
 
 export interface RepairPlan {
@@ -85,7 +88,7 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
 
   const byOwner = new Map<string, RepairPlanItem>();
   const semDono: string[] = [];
-  const add = (owner: TaskLike | undefined, defeito: string, req?: string) => {
+  const add = (owner: TaskLike | undefined, defeito: string, req?: string, teste?: RepairContractTest) => {
     if (!owner) {
       semDono.push(defeito);
       return;
@@ -93,8 +96,9 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
     const full = owner as TaskNode;
     const item =
       byOwner.get(owner.id) ??
-      ({ dona: full, origemId: readRepairPayload(owner.payload)?.origemId ?? owner.id, defeitos: [], reqs: [] } as RepairPlanItem);
+      ({ dona: full, origemId: readRepairPayload(owner.payload)?.origemId ?? owner.id, defeitos: [], reqs: [], testes: [] } as RepairPlanItem);
     if (!item.defeitos.includes(defeito)) item.defeitos.push(defeito);
+    if (teste && !item.testes.some((t) => t.caminho === teste.caminho)) item.testes.push(teste);
     if (req && !item.reqs.includes(req)) item.reqs.push(req);
     byOwner.set(owner.id, item);
   };
@@ -104,7 +108,10 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
     const file = fileOfTsErrorLine(line);
     add(file ? ownerOfFile(file) : undefined, `type-check do projeto final: ${line}`);
   }
-  for (const d of gaps.fileDefects ?? []) add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito);
+  for (const d of gaps.fileDefects ?? []) {
+    const teste = d.teste ? { caminho: d.teste.caminho, conteudo: d.teste.conteudo, existente: d.teste.existente, saida: d.saida } : undefined;
+    add(d.arquivo ? ownerOfFile(d.arquivo) : undefined, d.defeito, undefined, teste);
+  }
   for (const req of gaps.unapprovedReqs) add(ownerOfReq(req), `${req} não aprovado (veredito do avaliador abaixo de "implementado")`, req);
   // Sem detalhe do build: só é lacuna sem dono se não houver outra coisa a reparar (a próxima verificação mostra).
   if (gaps.buildGapWithoutDetail && byOwner.size === 0) semDono.push("falha de build sem a lista de erros");
@@ -195,6 +202,7 @@ export async function tryStartDeliveryRepair(sessionId: string, gaps: DeliveryGa
       etapaAnterior: item.dona.id,
       defeitos: item.defeitos,
       microbriefReparo: microbriefReparoFor(item, rodada, idProjeto),
+      ...(item.testes.length > 0 ? { testesReproducao: item.testes } : {}),
     };
     const originalTitle = item.dona.title.replace(/^Reparo \d+\/\d+ — /, "");
     await prisma.taskNode.create({

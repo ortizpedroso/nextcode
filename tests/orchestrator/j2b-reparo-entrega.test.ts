@@ -188,3 +188,23 @@ describe("J2b — fila: VERIFICACAO reprovada abre o reparo ou bloqueia com rela
     expect(await prisma.taskNode.count({ where: { sessionId: s.id, id: { contains: "reparo" } } })).toBe(0);
   });
 });
+
+describe("43.3 — o teste que prova o defeito vai junto para a etapa dona", () => {
+  it("plano leva os testes; o pedido à bancada separa teste novo de teste do projeto", async () => {
+    const { contractBenchRequest } = await import("../../src/core/orchestrator/repair-payload.js");
+    const n9 = node({ id: "n9", filesScope: JSON.stringify(["src/lib/cobrancas-service.ts", "tests/cobrancas-service.test.ts"]) });
+    const plan = planDeliveryRepair([n9], {
+      ...noGaps,
+      fileDefects: [
+        { arquivo: "src/lib/cobrancas-service.ts", defeito: "REQ-026", teste: { caminho: "D2-contato.test.ts", conteudo: "c1" }, saida: "resolveu em vez de rejeitar" },
+        { arquivo: "src/lib/cobrancas-service.ts", defeito: "REQ-052", teste: { caminho: "tests/cobrancas-service.test.ts", conteudo: "c2", existente: true } },
+      ],
+    });
+    expect(plan.itens[0].testes.map((t) => t.caminho)).toEqual(["D2-contato.test.ts", "tests/cobrancas-service.test.ts"]);
+    expect(plan.itens[0].testes[0].saida).toBe("resolveu em vez de rejeitar");
+    expect(contractBenchRequest(plan.itens[0].testes)).toEqual({
+      reproTests: { "D2-contato.test.ts": "c1" },
+      files: [".nextcode-repro/D2-contato.test.ts", "tests/cobrancas-service.test.ts"],
+    });
+  });
+});

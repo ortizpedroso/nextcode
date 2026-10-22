@@ -25,7 +25,7 @@ import {
   type PrismaRegenerator,
 } from "../execution/project-base";
 
-export type EmpiricalStage = "typecheck" | "lint";
+export type EmpiricalStage = "typecheck" | "lint" | "teste";
 
 const projectBuildLocks = new Map<string, Promise<unknown>>();
 
@@ -163,6 +163,7 @@ export async function recheckFinalBuild(
 
 /** Rótulo legível da etapa, para mensagens de rejeição. */
 export function empiricalStageLabel(stage: EmpiricalStage | null): string {
+  if (stage === "teste") return "teste do contrato do reparo (bancada)";
   return stage === "lint" ? "ESLint real pós-promoção" : "type-check real pós-promoção";
 }
 
