@@ -32,6 +32,7 @@ import { runUniversalIntakeFunnel, formatIntakeFunnelBrief, type IntakeFunnelRes
 import { checkMandatoryGaps, renderMandatoryGapsNotice } from "@/core/intake/mandatory-gaps";
 import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
 import { checkReqOrigins, renderReqOriginNotice } from "@/core/intake/req-origin-check";
+import { applySpecPatch, buildPatchSpecSystemPrompt, extractSpecPatch } from "@/core/intake/spec-patch";
 import { autoHealSpecDocument } from "@/core/intake/spec-auto-heal";
 import {
   checkSpecCompletenessOnDisk,
@@ -683,7 +684,11 @@ export async function POST(request: NextRequest) {
         ? [
             {
               role: "system" as const,
-              content: buildCumulativeSpecSystemPrompt(sessionBefore.canonicalSpec),
+              // TR1 (7): com Spec existente, o ajuste vem por trecho (patch_spec); "inteira" = como antes.
+              content:
+                loadOrchestrationPolicy().execucao.correcaoSpec === "trecho"
+                  ? buildPatchSpecSystemPrompt(sessionBefore.canonicalSpec)
+                  : buildCumulativeSpecSystemPrompt(sessionBefore.canonicalSpec),
             },
           ]
         : []),
@@ -821,7 +826,9 @@ export async function POST(request: NextRequest) {
       if (
         isSpecDraftingPhase &&
         (claudeSpecText !== null || dispatchRes?.providerUsed !== "none") &&
-        !parseSpecDocument(aiResponseContent)
+        !parseSpecDocument(aiResponseContent) &&
+        // TR1 (7): resposta por trecho não é Spec inteira de propósito — é aplicada mais abaixo.
+        !(sessionBefore?.canonicalSpec?.trim() && extractSpecPatch(aiResponseContent))
       ) {
         const retryMessages: DispatchMessage[] = [
           ...dispatchMessages,
@@ -859,6 +866,26 @@ export async function POST(request: NextRequest) {
         // nunca altera a fase nem a canonicalSpec.
         aiResponseContent = stripSpecFrontmatterFromQuestionAnswer(aiResponseContent);
       } else if (isSpecDraftingPhase) {
+        // TR1 (7): resposta com bloco patch_spec → aplica por âncora e segue com a Spec inteira resultante.
+        let patchNotice = "";
+        const patch = sessionBefore?.canonicalSpec?.trim() ? extractSpecPatch(aiResponseContent) : null;
+        if (patch && sessionBefore?.canonicalSpec) {
+          const applied = applySpecPatch(sessionBefore.canonicalSpec, patch);
+          TelemetryLogger.log({
+            sessionId: activeSessionId,
+            action: applied.ok ? "SPEC_PATCH_APPLIED" : "SPEC_PATCH_REJECTED",
+            details: { resumo: applied.resumo.slice(0, 30), erros: applied.erros.slice(0, 20), caracteresResposta: aiResponseContent.length },
+          });
+          if (applied.ok && applied.spec) {
+            aiResponseContent = applied.spec;
+            patchNotice =
+              `\n\n✏️ **Correção por trecho:** ${applied.resumo.slice(0, 12).join("; ")}.` + (patch.resposta ? ` ${patch.resposta.slice(0, 300)}` : "");
+          } else {
+            aiResponseContent = sessionBefore.canonicalSpec;
+            patchNotice =
+              `\n\n⚠️ **Não apliquei a correção** (${applied.erros.slice(0, 5).join("; ")}). A Spec acima é a mesma de antes: repita o pedido citando o REQ ou o arquivo.`;
+          }
+        }
         // 4b.3: Guarda cumulativa contra perda de módulos/arquivos + status: aguardando_aprovacao obrigatório
         let guardRes = applyCumulativeSpecGuard(
           sessionBefore?.canonicalSpec,
@@ -981,7 +1008,7 @@ export async function POST(request: NextRequest) {
                 gapsNotice = renderMandatoryGapsNotice(gaps);
               }
             }
-            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}${renderReqOriginNotice(origens)}${gapsNotice}`;
+            guardRes.finalMessageContent = `${healed.healedSpec}${reinjectionNotice}${specFixNotice}${healNotice}${renderReqOriginNotice(origens)}${gapsNotice}${patchNotice}`;
             structureProblems = checkSpecStructure(healed.parsed);
 
             // Quality Gate do Jev (M2)

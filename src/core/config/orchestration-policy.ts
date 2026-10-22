@@ -112,6 +112,8 @@ export interface OrchestrationPolicy {
     modoExecutor: "laco" | "chamada_unica";
     /** J3: revisão final cega (`avaliador-final`) antes de ENTREGUE. */
     revisaoFinal: "ativo" | "sombra" | "desligado";
+    /** TR1 (7): ajuste de Spec existente por trecho (bloco patch_spec) ou reescrita inteira (como antes). */
+    correcaoSpec: "trecho" | "inteira";
   };
   jevExecucao: {
     diagnosticoFalha: "ativo" | "desligado";
@@ -304,6 +306,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
   execucao: {
     modoExecutor: "laco",
     revisaoFinal: "sombra",
+    correcaoSpec: "trecho",
   },
   jevExecucao: {
     diagnosticoFalha: "ativo",
@@ -569,6 +572,9 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   if (verifEvidRaw === "ativo" || verifEvidRaw === "sombra" || verifEvidRaw === "desligado") {
     policy.jevExecucao.verificacaoEvidencia = verifEvidRaw;
   }
+
+  const correcaoSpecRaw = extractScalarString(raw, "correcao_spec", policy.execucao.correcaoSpec);
+  if (correcaoSpecRaw === "trecho" || correcaoSpecRaw === "inteira") policy.execucao.correcaoSpec = correcaoSpecRaw;
 
   const revisaoFinalRaw = extractScalarString(raw, "revisao_final", policy.execucao.revisaoFinal);
   if (revisaoFinalRaw === "ativo" || revisaoFinalRaw === "sombra" || revisaoFinalRaw === "desligado") {

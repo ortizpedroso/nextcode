@@ -379,7 +379,9 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       .filter((m) => m.role === "system")
       .map((m) => m.content)
       .join("\n");
-    expect(systemTexts).toContain("devolva a Spec COMPLETA atualizada");
+    // TR1 (7): com Spec existente, o padrão é a correção por trecho; se o modelo devolver a Spec inteira
+    // mesmo assim (como o LLM falso aqui), a guarda cumulativa abaixo continua protegendo os módulos.
+    expect(systemTexts).toContain("CORREÇÃO POR TRECHO");
     expect(systemTexts).toContain("MOD-PROD");
 
     // Rascunho final gravado no servidor contém os módulos, arquivos e requisitos das duas mensagens
@@ -397,6 +399,60 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     expect(data2.assistantMessage.content).toContain(
       "Mantive 2 itens da versão anterior que não apareceram na nova."
     );
+  });
+
+  it("4b. TR1 (7): Spec existente + resposta só com o bloco patch_spec → a rota aplica o trecho, grava a Spec inteira e avisa no chat", async () => {
+    const { session } = await createTestProjectAndSession({
+      title: "Correção por trecho pela rota",
+      phase: "ELICITACAO",
+      specApproved: false,
+      canonicalSpec: null,
+    });
+    const spec1 = renderCanonicalSpecDocument({
+      titulo: "Gateway v1",
+      status: "aguardando_aprovacao",
+      data: "2026-10-05",
+      objetivo: "Módulo inicial de produtos.",
+      stack: ["Next.js", "TypeScript"],
+      modulos: [{ id: "MOD-PROD", nome: "Produtos", resumo: "Catálogo", arquivos: ["src/app/dashboard/products/page.tsx"] }],
+      entidades: [{ nome: "Product", campos: [{ nome: "id", tipo: "string" }] }],
+      arquivosAfetados: ["src/app/dashboard/products/page.tsx"],
+      requisitos: [{ id: "REQ-001", titulo: "Catálogo", criterio: "src/app/dashboard/products/page.tsx exibe a lista de produtos." }],
+    });
+    const patchResp =
+      "Incluí a busca por nome.\n```json patch_spec\n" +
+      JSON.stringify({
+        requisitos: { incluir: [{ titulo: "Busca por nome", criterio: "src/app/dashboard/products/page.tsx filtra a lista pelo nome digitado.", origem: "buscar produto pelo nome" }] },
+        resposta: "Incluí a busca por nome.",
+      }) +
+      "\n```";
+    const spy = vi
+      .spyOn(SmartRouter.prototype, "dispatchWithFallback")
+      .mockResolvedValueOnce(makeFakeDispatchResult(spec1))
+      // 2ª mensagem em SPEC_REVISAO: a rota classifica a intenção antes de chamar o elicitador.
+      .mockResolvedValueOnce(makeFakeDispatchResult('{"intencao":"corrigir_existente"}'))
+      .mockResolvedValueOnce(makeFakeDispatchResult(patchResp));
+    const post = (prompt: string) =>
+      postChat(
+        new NextRequest("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: session.id, prompt }),
+        })
+      );
+    expect((await post("Criar o módulo de produtos no dashboard")).status).toBe(200);
+    const res2 = await post("quero buscar produto pelo nome");
+    expect(res2.status).toBe(200);
+    const data2 = await res2.json();
+    // Nenhuma nova tentativa "a resposta não é a Spec": o trecho é a resposta esperada.
+    expect(spy).toHaveBeenCalledTimes(3);
+    const final = parseSpecDocument((await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).canonicalSpec || "");
+    expect(final!.requisitos?.map((r) => [r.id, r.titulo])).toEqual([
+      ["REQ-001", "Catálogo"],
+      ["REQ-002", "Busca por nome"],
+    ]);
+    expect(final!.modulos.map((m) => m.id)).toEqual(["MOD-PROD"]);
+    expect(data2.assistantMessage.content).toContain("Correção por trecho:** incluído REQ-002");
   });
 
   it('5. LLM falso escreve status: "aprovada" → o rascunho gravado tem aguardando_aprovacao', async () => {
