@@ -1,3 +1,12 @@
+## 22/10/2026 (214) — Execução autônoma 5: E2, E5, E4 (J20), E6 feitos; Gateway rodada 7; J4 no bench
+
+**Feito (commits):** `2f17e4d` 44.2d regressão no portão do reparo · `39f790c` 44.2e testes do projeto como regressão · `ed6a249` P8 T7 · `0bca333` J11 · `da48367` J8 · `9bcf26f` J7 · `4feb883` TR1 (7) por trecho · `8c476c6` E5 autoteste (skill `testador`) · `2ba13a8` isolamento dos testes (supervisores/`runOnce` com `onlySessionIds`) · `252ad9a` J20 · `0d43a13` E6 CI + digest + OmniRoute em loopback. Suíte 162/1042 (2× limpa antes do E5), tsc 0.
+**Gateway `4d019f00`:** rodadas 6–7 (delegação): contratos 100% passando; defeitos provados por revisão 7 → 6 → 5; nenhuma prova anterior voltou a falhar depois da 44.2d. Bloqueado por REPARO_ESGOTADO após a rodada 7 (5 provados: papéis/admin, comprovante 2×). US$ 37,07.
+**Onde parou:** bench J4 (P1–P3 × padrão/sem-jev) rodando de novo — a imagem `nextcode-aceite:1` faltava (aceite "0/0" calado) e o bench agora a constrói. Depois: `npm audit fix` (17 vulnerabilidades, 3 críticas), rodada 8 do Gateway, bench final P1–P4, relatórios.
+**Pendências do fundador:** perguntas de Spec do Gateway (REQ-061 regras de ConfigTaxa; REQ-064 status do boleto ainda não gerado); publicar o CI (push) quando quiser.
+
+---
+
 ## 22/10/2026 (213) — Execução autônoma 5 continua: provas re-rodadas, JV1, S3, P8 (T7 ligado)
 
 **Feito (commits):** `4971077` 44.2c prova anterior roda em toda verificação + importante na bancada + Docker fora reprova · `bb8b4a3` 44.7 JV1 (M3 em lotes; J23 e J2 desligados por medição; `docs/relatorios/JV1-revisao-jev.md`) · `151a35f` 44.9 S3 (elicitador reescrito, protocolo do executor só no código, `project-memory` → docs, papel desconhecido falha fechado, memória sem corte calado, M1/M4 removidos, bancada `clearMocks` — imagem `:2`) · `ed6a249` 44.10a P8 (pesquisa oficial T7 no elicitador; limiar de injeção 0,15 → 0,80 medido). Suíte 156/1017, tsc 0.

@@ -857,6 +857,16 @@ async function main() {
   }
 
   console.log(`\nIniciando Benchmark: Projetos=[${projetos.join(",")}], Variantes=[${variantes.join(",")}], Repetições=${repeticoes}`);
+  // Mudança 44: sem a imagem da régua do auditor o aceite saía "0/0" calado (bench 22/10) — constrói ou para.
+  const aceiteImg = spawnSync("docker", ["image", "inspect", "nextcode-aceite:1"], { encoding: "utf8" });
+  if (aceiteImg.status !== 0) {
+    console.log("Imagem nextcode-aceite:1 ausente — construindo (docker/aceite)…");
+    const build = spawnSync("docker", ["build", "-t", "nextcode-aceite:1", path.join(process.cwd(), "docker", "aceite")], { encoding: "utf8", stdio: "inherit" });
+    if (build.status !== 0) {
+      console.error("Falha ao construir nextcode-aceite:1: sem a régua o aceite não é medido. Benchmark interrompido.");
+      process.exit(3);
+    }
+  }
 
   let custoAcumulado = 0;
   const metricas: MetricasExecucao[] = [];
