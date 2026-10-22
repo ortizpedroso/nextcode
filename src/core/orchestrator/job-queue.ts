@@ -17,7 +17,7 @@ import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckRep
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
-import { buildDeliveryDiagnosis } from "@/core/orchestrator/delivery-diagnosis";
+import { buildDeliveryDiagnosis, buildDeliveryReport, splitDefectsByEvidence } from "@/core/orchestrator/delivery-diagnosis";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
@@ -404,6 +404,10 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         let finalReviewDefects: FinalDefect[] = [];
         let finalReviewQuestions: string[] = [];
         let finalReviewSummary: Record<string, unknown> | null = null;
+        let finalReviewVerdicts: string[] = [];
+        let deliveryRessalvas: FinalDefect[] = [];
+        // Mudança 44: defeitos da revisão final já vão como fileDefects; não podem virar "lacuna sem dono".
+        const finalReviewGaps = new Set<string>();
         const revisaoFinalModo = loadOrchestrationPolicy().execucao.revisaoFinal;
         if (revisaoFinalModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
           const specFiles = parseSpecDocument(sessionAfterQueue.canonicalSpec)?.arquivosAfetados ?? [];
@@ -430,12 +434,26 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             descartes: review.descartes,
           };
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });
+          finalReviewVerdicts = review.reqVerdicts.map((v) => `${v.id}=${v.status}`);
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
-            deliveryT10.passed = false;
-            // Perguntas de Spec não vão para o reparo de código (sem etapa dona); o aviso as faz ao fundador.
-            finalReviewDefects = review.defeitos.filter((d) => d.prova !== "spec");
             finalReviewQuestions = review.perguntasSpec ?? [];
-            deliveryT10.gaps.push(...review.defeitos.map((d) => d.defeito));
+            // Mudança 44: só o que tem prova (teste que falha, crítico, ou sem bancada para provar) reprova;
+            // o resto acompanha o reparo, ou vira ressalva da entrega se for tudo o que sobrou.
+            const { bloqueiam, leitura } = splitDefectsByEvidence(review.defeitos);
+            if (bloqueiam.length === 0) {
+              deliveryRessalvas = leitura;
+              TelemetryLogger.log({
+                sessionId: job.sessionId,
+                action: "FINAL_REVIEW_RESSALVAS",
+                details: { ressalvas: leitura.map((d) => d.defeito).slice(0, 20), perguntasSpec: finalReviewQuestions },
+              });
+            } else {
+              deliveryT10.passed = false;
+              // Perguntas de Spec não vão para o reparo de código (sem etapa dona); o aviso as faz ao fundador.
+              finalReviewDefects = [...bloqueiam, ...leitura];
+              for (const d of review.defeitos) finalReviewGaps.add(d.defeito);
+              deliveryT10.gaps.push(...review.defeitos.map((d) => d.defeito));
+            }
           }
         }
 
@@ -505,6 +523,19 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           }
         }
         if (deliveryT10.passed) {
+          await prisma.message.create({
+            data: {
+              sessionId: job.sessionId,
+              role: "assistant",
+              content: buildDeliveryReport({
+                reqs: (parseSpecDocument(sessionAfterQueue.canonicalSpec || "")?.requisitos ?? []).map((r) => r.id),
+                revisaoFinal: finalReviewVerdicts,
+                telas: uiCheck?.ok ? uiPages : [],
+                ressalvas: deliveryRessalvas,
+                perguntasSpec: finalReviewQuestions,
+              }),
+            },
+          });
           await applyPhaseEvent(
             job.sessionId,
             { type: "VERIFICACAO_OK" },
@@ -526,6 +557,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 !g.startsWith("Type-check do projeto final") &&
                 !g.startsWith("Falha na verificação empírica de build") &&
                 !g.startsWith("revisão final") &&
+                !finalReviewGaps.has(g) &&
                 !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
             ),
             fileDefects: [...finalReviewDefects, ...uiBuildDefects],

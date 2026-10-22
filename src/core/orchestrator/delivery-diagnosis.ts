@@ -33,6 +33,51 @@ function linhaDefeito(d: FinalDefect): string {
   return `- ${req}${onde} · ${d.defeito.replace(/^revisão final:\s*/, "").slice(0, 220)}`;
 }
 
+/**
+ * Mudança 44 — entrega decidida pela prova (fundador 22/10: "não quero ajuste para passar nos testes, quero
+ * resultado melhor; se está muito rígido, vamos ajustar"). Reprova a entrega: defeito com teste que falha,
+ * `critico` (segurança/dinheiro, mesmo sem teste) e defeito sem bancada (Docker fora — não há como provar,
+ * fica o comportamento antigo). Defeito só de leitura (sem teste possível, ex.: tela) acompanha o reparo
+ * enquanto houver defeito provado; sozinho, vira ressalva da entrega. Pergunta de Spec nunca trava código.
+ */
+export function splitDefectsByEvidence(defeitos: FinalDefect[]): { bloqueiam: FinalDefect[]; leitura: FinalDefect[]; spec: FinalDefect[] } {
+  const spec = defeitos.filter((d) => d.prova === "spec");
+  const bloqueiam = defeitos.filter(
+    (d) => d.prova !== "spec" && (d.prova === "reproduzido" || d.prova === undefined || d.defeito.startsWith("revisão final [critico]"))
+  );
+  const leitura = defeitos.filter((d) => d.prova !== "spec" && !bloqueiam.includes(d));
+  return { bloqueiam, leitura, spec };
+}
+
+export interface DeliveryReportInput {
+  reqs: string[];
+  /** Vereditos da revisão final (`REQ-001=implementado`). */
+  revisaoFinal?: string[];
+  telas?: string[];
+  ressalvas: FinalDefect[];
+  perguntasSpec: string[];
+}
+
+/** Mudança 44: ao entregar, o chat diz o que foi conferido e o que ficou como ressalva (antes: nada). */
+export function buildDeliveryReport(input: DeliveryReportInput): string {
+  const linhas = ["✅ **Entrega concluída.**", "", "**O que foi conferido:**"];
+  linhas.push(`- ${input.reqs.length} requisito(s) da Spec aprovados pelo avaliador de cada etapa; arquivos da Spec no disco; type-check do projeto sem erro.`);
+  if (input.telas?.length) linhas.push(`- Telas abertas no navegador: ${input.telas.join(", ")}.`);
+  if (input.revisaoFinal?.length) {
+    const impl = input.revisaoFinal.filter((v) => v.endsWith("=implementado")).length;
+    linhas.push(`- Revisão final do projeto inteiro: ${impl}/${input.revisaoFinal.length} REQ implementados; testes do projeto e defeitos suspeitos rodados na bancada (sem rede).`);
+  }
+  if (input.ressalvas.length) {
+    linhas.push("", `**Ressalvas** (apontadas pela leitura, sem teste que prove — confira ao usar) — ${input.ressalvas.length}:`);
+    linhas.push(...input.ressalvas.slice(0, 15).map(linhaDefeito));
+  }
+  if (input.perguntasSpec.length) {
+    linhas.push("", "**Perguntas sobre a Spec** (o código seguiu uma das leituras; responda se quiser outra):");
+    linhas.push(...input.perguntasSpec.map((q) => `- ${q}`));
+  }
+  return linhas.join("\n");
+}
+
 export function buildDeliveryDiagnosis(input: DeliveryDiagnosisInput): DeliveryDiagnosis {
   const provados = input.defeitos.filter((d) => d.prova === "reproduzido");
   const lidos = input.defeitos.filter((d) => d.prova !== "reproduzido" && d.prova !== "spec");

@@ -111,3 +111,35 @@ describe("43.4 — autorizar mais uma rodada", () => {
     expect(await prisma.telemetryLog.count({ where: { sessionId: s.id, action: "REPAIR_ROUND_AUTHORIZED" } })).toBe(0);
   });
 });
+
+describe("44 — entrega decidida pela prova", () => {
+  it("provado e crítico reprovam; sem bancada (prova indefinida) reprova; só leitura vira ressalva; Spec à parte", async () => {
+    const { splitDefectsByEvidence } = await import("../../src/core/orchestrator/delivery-diagnosis.js");
+    const critico: FinalDefect = { arquivo: "src/lib/auth.ts", defeito: "revisão final [critico] src/lib/auth.ts:5: segredo fixo", prova: "sem_prova" };
+    const semBancada: FinalDefect = { arquivo: "src/a.ts", defeito: "revisão final: REQ-001 parcial" };
+    const spec: FinalDefect = { arquivo: null, defeito: "revisão final: REQ-035 parcial", prova: "spec", pergunta: "marca?" };
+    const s = splitDefectsByEvidence([provado, tela, critico, semBancada, spec]);
+    expect(s.bloqueiam).toEqual([provado, critico, semBancada]);
+    expect(s.leitura).toEqual([tela]);
+    expect(s.spec).toEqual([spec]);
+    expect(splitDefectsByEvidence([tela]).bloqueiam).toEqual([]);
+  });
+
+  it("mensagem de entrega diz o que foi conferido, as ressalvas e as perguntas", async () => {
+    const { buildDeliveryReport } = await import("../../src/core/orchestrator/delivery-diagnosis.js");
+    const msg = buildDeliveryReport({
+      reqs: ["REQ-001", "REQ-002"],
+      revisaoFinal: ["REQ-001=implementado", "REQ-002=parcial"],
+      telas: ["/login"],
+      ressalvas: [tela],
+      perguntasSpec: ["REQ-035: marca padrão?"],
+    });
+    expect(msg).toContain("Entrega concluída");
+    expect(msg).toContain("1/2 REQ implementados");
+    expect(msg).toContain("/login");
+    expect(msg).toContain("Ressalvas");
+    expect(msg).toContain("REQ-033");
+    expect(msg).toContain("REQ-035: marca padrão?");
+    expect(buildDeliveryReport({ reqs: ["REQ-001"], ressalvas: [], perguntasSpec: [] })).not.toContain("Ressalvas");
+  });
+});
