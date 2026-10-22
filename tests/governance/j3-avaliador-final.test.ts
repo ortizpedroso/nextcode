@@ -82,19 +82,66 @@ describe("J3 — avaliador-final", () => {
     expect(plan.semDono).toEqual([]);
   });
 
-  it("citação inventada → descarta, repete com o motivo; 2 descartes → não executado (não reprova sozinho)", async () => {
+  it("muitas citações inventadas → descarta, repete com o motivo; 2 descartes → não executado (não reprova sozinho)", async () => {
     const prompts: string[] = [];
     const r = await reviewFinalDelivery({
       spec: SPEC,
       files: FILES,
       dispatch: async (m) => {
         prompts.push(m[1].content);
-        return answer({ aprovado: true, reqVerdicts: [okVerdicts[0], { ...okVerdicts[1], evidencia: "src/app/api/tarefas/route.ts:99" }], problemas: [] });
+        return answer({
+          aprovado: true,
+          reqVerdicts: [
+            { ...okVerdicts[0], evidencia: "src/lib/tarefas.ts:90" },
+            { ...okVerdicts[1], evidencia: "src/app/api/tarefas/route.ts:99" },
+          ],
+          problemas: [],
+        });
       },
     });
     expect(prompts[1]).toContain("[SUA RESPOSTA ANTERIOR FOI DESCARTADA]");
     expect(r.executado).toBe(false);
     expect(r.descartes).toHaveLength(2);
+    expect(r.descartes[0]).toMatch(/2 de 2 citações/);
+  });
+
+  it("Gateway real: fim do intervalo além do arquivo é cortado; 1 citação inválida isolada só tira aquele item", async () => {
+    // tarefas.ts tem 4 linhas (3 + a vazia do fim); "1-6" passa do fim como no tenant.ts:15-25 de 24 linhas.
+    const r = await reviewFinalDelivery({
+      spec: SPEC,
+      files: FILES,
+      dispatch: async () =>
+        answer({
+          aprovado: true,
+          reqVerdicts: [
+            { ...okVerdicts[0], evidencia: "src/lib/tarefas.ts:1-6" },
+            { ...okVerdicts[1], evidencia: "src/app/api/tarefas/route.ts:99" },
+          ],
+          problemas: [
+            { severidade: "importante", arquivoLinha: "src/lib/tarefas.ts:2", descricao: "x" },
+            { severidade: "importante", arquivoLinha: "src/lib/tarefas.ts:2", descricao: "y" },
+            { severidade: "importante", arquivoLinha: "src/lib/tarefas.ts:2", descricao: "z" },
+          ],
+        }),
+    });
+    expect(r.executado).toBe(true);
+    expect(r.aprovado).toBe(true);
+    expect(r.reqVerdicts.map((v) => v.id)).toEqual(["REQ-001"]);
+    expect(r.naoVerificados).toEqual(["REQ-002"]);
+    expect(r.citacoesInvalidas).toHaveLength(1);
+  });
+
+  it("as linhas vão numeradas para o modelo citar com precisão", async () => {
+    let user = "";
+    await reviewFinalDelivery({
+      spec: SPEC,
+      files: FILES,
+      dispatch: async (m) => {
+        user = m[1].content;
+        return answer({ aprovado: true, reqVerdicts: okVerdicts, problemas: [] });
+      },
+    });
+    expect(user).toContain("--- src/lib/tarefas.ts ---\n1| export function criarTarefa(titulo: string) {\n2|   return { titulo };");
   });
 
   it("REQ faltando na resposta é descartado", () => {

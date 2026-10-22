@@ -35,6 +35,8 @@ export interface EvaluatorCallResult {
   /** Uso de tokens informado pelo provedor (para o custo). */
   usage?: UsageLike | null;
   failures: string[];
+  /** Respostas que vieram sem texto (ex.: só thinking até o max_tokens): a Anthropic cobra; o custo é registrado. */
+  wastedUsage?: Array<{ model: string; usage: UsageLike }>;
 }
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
@@ -92,7 +94,8 @@ async function parseAnthropicDirectMessageResponse(
   antRes: Response,
   anthropicModel: string,
   executorFamily: EvaluatorProvider,
-  failures: string[]
+  failures: string[],
+  wasted: Array<{ model: string; usage: UsageLike }> = []
 ): Promise<EvaluatorCallResult | null> {
   if (!antRes.ok) {
     const errJson = (await antRes.json().catch(() => ({}))) as {
@@ -133,6 +136,17 @@ async function parseAnthropicDirectMessageResponse(
   failures.push(
     `claude/direct: sem texto (stop_reason=${antJson.stop_reason ?? "?"}; blocos=${blockTypes.join(",") || "nenhum"})`
   );
+  if (antJson.usage) {
+    wasted.push({
+      model: anthropicModel,
+      usage: {
+        input_tokens: antJson.usage.input_tokens,
+        output_tokens: antJson.usage.output_tokens,
+        cache_read_input_tokens: antJson.usage.cache_read_input_tokens,
+        cache_creation_input_tokens: antJson.usage.cache_creation_input_tokens,
+      },
+    });
+  }
   return null;
 }
 
@@ -143,6 +157,8 @@ export interface StrongEvaluatorOptions {
   chain?: EvaluatorCandidate[];
   preferIndependentFirst?: boolean;
   directClaudeKey?: string | null;
+  /** Teto da resposta (thinking + texto). Padrão 8000; a revisão final (J3) usa mais. */
+  maxTokens?: number;
 }
 
 export async function dispatchStrongEvaluator(
@@ -153,6 +169,8 @@ export async function dispatchStrongEvaluator(
   const failures: string[] = [];
   const chain = opts.chain ?? defaultEvaluatorChain();
   const timeoutMs = opts.timeoutMs ?? 120_000;
+  const maxTokens = opts.maxTokens ?? 8000;
+  const wasted: Array<{ model: string; usage: UsageLike }> = [];
 
   let gateways: GatewayConfig[] | null = null;
   let claudeKey: string | null | undefined = opts.directClaudeKey;
@@ -189,7 +207,7 @@ export async function dispatchStrongEvaluator(
           },
           body: JSON.stringify({
             model: c.model,
-            max_tokens: 8000,
+            max_tokens: maxTokens,
             ...buildAnthropicCachedBody(messages),
           }),
           signal: AbortSignal.timeout(timeoutMs),
@@ -197,8 +215,8 @@ export async function dispatchStrongEvaluator(
         if ([401, 402, 403, 429].includes(antRes.status)) {
           skippedUntil.set("claude", Date.now() + SKIP_MS);
         }
-        const directResult = await parseAnthropicDirectMessageResponse(antRes, c.model, executorFamily, failures);
-        if (directResult) return directResult;
+        const directResult = await parseAnthropicDirectMessageResponse(antRes, c.model, executorFamily, failures, wasted);
+        if (directResult) return wasted.length > 0 ? { ...directResult, wastedUsage: wasted } : directResult;
       } catch (errDirect) {
         failures.push(`claude/${c.model}: ${String(errDirect).slice(0, 140)}`);
       }
@@ -247,5 +265,5 @@ export async function dispatchStrongEvaluator(
     }
   }
 
-  return { content: null, provider: null, model: null, independent: false, failures };
+  return { content: null, provider: null, model: null, independent: false, failures, ...(wasted.length > 0 ? { wastedUsage: wasted } : {}) };
 }

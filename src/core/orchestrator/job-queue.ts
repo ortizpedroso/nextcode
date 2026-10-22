@@ -394,6 +394,8 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             reqs: review.reqVerdicts.map((v) => `${v.id}=${v.status}`),
             defeitos: review.defeitos.map((d) => d.defeito).slice(0, 30),
             ressalvas: review.ressalvas.slice(0, 30),
+            naoVerificados: review.naoVerificados ?? [],
+            citacoesInvalidas: (review.citacoesInvalidas ?? []).slice(0, 10),
             descartes: review.descartes,
           };
           TelemetryLogger.log({ sessionId: job.sessionId, action: "FINAL_REVIEW", details: finalReviewSummary });

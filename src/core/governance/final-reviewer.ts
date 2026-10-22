@@ -42,6 +42,9 @@ export interface FinalReviewResult {
   defeitos: Array<{ arquivo: string | null; defeito: string }>;
   ressalvas: string[];
   descartes: string[];
+  /** REQ que a revisão disse "implementado" com citação inexistente: não contam nem como aprovação nem como defeito. */
+  naoVerificados?: string[];
+  citacoesInvalidas?: string[];
   modelo?: string;
   justificativa?: string;
 }
@@ -61,7 +64,13 @@ function finalReviewChain() {
 }
 
 const defaultDispatch: FinalReviewDispatch = (messages) =>
-  dispatchStrongEvaluator(messages, { chain: finalReviewChain(), timeoutMs: 300_000, executorFamily: "deepseek" });
+  // Gateway real (22/10, ~150 mil tokens): com 8000 de teto o Sonnet gastou tudo pensando (stop_reason=max_tokens).
+  dispatchStrongEvaluator(messages, {
+    chain: finalReviewChain(),
+    timeoutMs: 600_000,
+    maxTokens: Number(process.env.FINAL_REVIEW_MAX_TOKENS) || 32_000,
+    executorFamily: "deepseek",
+  });
 
 /** Arquivo de uma citação `arquivo:linha` (ou `arquivo:linha-linha`, com texto em volta). */
 export function fileOfRef(ref: string): string | null {
@@ -69,7 +78,29 @@ export function fileOfRef(ref: string): string | null {
   return m ? m[1] : null;
 }
 
-type Parsed = { ok: true; verdicts: FinalReqVerdict[]; problemas: FinalProblem[]; justificativa: string } | { ok: false; discard: string };
+type Parsed =
+  | { ok: true; verdicts: FinalReqVerdict[]; problemas: FinalProblem[]; justificativa: string; naoVerificados: string[]; citacoesInvalidas: string[] }
+  | { ok: false; discard: string };
+
+/** Acima desta fração de itens com citação que não existe, a resposta inteira é descartada (alucinação). */
+export const FINAL_REVIEW_MAX_INVALID_FRACTION = 0.2;
+
+/**
+ * Citação do avaliador final: o arquivo existe e a linha inicial está nele; o fim do intervalo que passa do
+ * fim do arquivo é cortado no fim (Gateway real, 22/10: `tenant.ts:15-25` com 24 linhas e `middleware.ts:95-120`
+ * com 119 — contagem imprecisa num contexto de 150 mil tokens, não invenção).
+ */
+export function finalRefExists(ref: string, files: Record<string, string>): boolean {
+  const m = /([A-Za-z0-9_./@[\]()-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?/.exec(String(ref || ""));
+  if (!m) return false;
+  const start = Number(m[2]);
+  const end = m[3] ? Number(m[3]) : start;
+  if (start < 1 || end < start) return false;
+  const content = files[m[1]] ?? Object.entries(files).find(([k]) => k.replace(/\\/g, "/") === m[1])?.[1];
+  if (content === undefined) return false;
+  const total = content.split(/\r?\n/).length;
+  return start <= total && fileLineRefExists(`${m[1]}:${start}-${Math.min(end, total)}`, files);
+}
 
 export function parseFinalReview(raw: string | null, expectedReqs: string[], files: Record<string, string>): Parsed {
   if (!raw) return { ok: false, discard: "avaliador final sem resposta" };
@@ -101,21 +132,35 @@ export function parseFinalReview(raw: string | null, expectedReqs: string[], fil
           descricao: String(p.descricao || "").slice(0, 600),
         }))
     : [];
+  // Citação inválida isolada desqualifica só o item: "implementado" vira não verificado (a T10 já aprovou o REQ)
+  // e o problema sai da lista. Muitas inválidas → a resposta inteira é descartada.
+  const invalidas: string[] = [];
+  const naoVerificados: string[] = [];
   for (const v of verdicts) {
-    if (v.status === "implementado" && !fileLineRefExists(v.evidencia, files)) {
-      return { ok: false, discard: `${v.id} "implementado" cita "${v.evidencia.slice(0, 120)}", que não existe nos arquivos mostrados` };
+    if (v.status === "implementado" && !finalRefExists(v.evidencia, files)) {
+      invalidas.push(`${v.id} "implementado" cita "${v.evidencia.slice(0, 120)}"`);
+      naoVerificados.push(v.id);
     }
   }
-  for (const p of problemas) {
-    if (p.severidade !== "menor" && !fileLineRefExists(p.arquivoLinha, files)) {
-      return { ok: false, discard: `problema ${p.severidade} cita "${p.arquivoLinha.slice(0, 120)}", que não existe nos arquivos mostrados` };
-    }
+  const problemasValidos = problemas.filter((p) => {
+    if (p.severidade === "menor" || finalRefExists(p.arquivoLinha, files)) return true;
+    invalidas.push(`problema ${p.severidade} cita "${p.arquivoLinha.slice(0, 120)}"`);
+    return false;
+  });
+  const itens = verdicts.length + problemas.filter((p) => p.severidade !== "menor").length;
+  if (invalidas.length > 0 && invalidas.length > Math.max(1, Math.floor(itens * FINAL_REVIEW_MAX_INVALID_FRACTION))) {
+    return {
+      ok: false,
+      discard: `${invalidas.length} de ${itens} citações não existem nos arquivos mostrados (ex.: ${invalidas.slice(0, 3).join("; ")})`,
+    };
   }
   return {
     ok: true,
-    verdicts: verdicts.filter((v) => expectedReqs.length === 0 || expectedReqs.includes(v.id)),
-    problemas,
+    verdicts: verdicts.filter((v) => (expectedReqs.length === 0 || expectedReqs.includes(v.id)) && !naoVerificados.includes(v.id)),
+    problemas: problemasValidos,
     justificativa: String(parsed.justificativa || "").slice(0, 400),
+    naoVerificados,
+    citacoesInvalidas: invalidas,
   };
 }
 
@@ -151,11 +196,13 @@ export async function reviewFinalDelivery(input: {
   }
   const system =
     "Você é o avaliador final cego do projeto. Siga as instruções da skill abaixo. Responda SOMENTE com o JSON pedido." +
+    ' Cada linha dos arquivos vem numerada ("12| código"): cite arquivo:linha por esse número; o prefixo não faz parte do código.' +
     (expectedReqs.length > 0 ? ` Julgue CADA requisito da Spec: ${expectedReqs.join(", ")}.` : "") +
     "\n\n[INSTRUÇÕES DECLARATIVAS DA SKILL AVALIADOR-FINAL]\n" +
     skillBlock;
+  // Linhas numeradas ("12| ") só para citar com precisão; o número não faz parte do código.
   const filesBlock = Object.entries(input.files)
-    .map(([f, c]) => `--- ${f} ---\n${c}`)
+    .map(([f, c]) => `--- ${f} ---\n${c.split(/\r?\n/).map((l, i) => `${i + 1}| ${l}`).join("\n")}`)
     .join("\n\n");
   const dispatch = input.dispatch ?? defaultDispatch;
   const descartes: string[] = [];
@@ -173,6 +220,9 @@ export async function reviewFinalDelivery(input: {
     ]).catch((err): EvaluatorCallResult => ({ content: null, provider: null, model: null, independent: false, failures: [String(err)] }));
     if (res.content && res.provider && res.model) {
       await recordLlmCost({ sessionId: input.sessionId, papel: "avaliador", provider: res.provider, model: res.model, usage: res.usage }).catch(() => 0);
+    }
+    for (const w of res.wastedUsage ?? []) {
+      await recordLlmCost({ sessionId: input.sessionId, papel: "avaliador", provider: "claude", model: w.model, usage: w.usage }).catch(() => 0);
     }
     if (!res.content) {
       return { ...empty(`sem modelo: ${res.failures.slice(0, 3).join(" | ") || "sem resposta"}`), descartes };
@@ -206,6 +256,8 @@ export async function reviewFinalDelivery(input: {
       defeitos,
       ressalvas: parsed.problemas.filter((p) => p.severidade === "importante").map((p) => `${p.arquivoLinha}: ${p.descricao}`),
       descartes,
+      naoVerificados: parsed.naoVerificados,
+      citacoesInvalidas: parsed.citacoesInvalidas,
       modelo: res.model ?? undefined,
       justificativa: parsed.justificativa,
     };

@@ -534,6 +534,9 @@ export function makeBlindAuditDispatchFn(
         failures: strong?.failures ?? [],
       },
     });
+    for (const w of strong?.wastedUsage ?? []) {
+      await recordLlmCost({ sessionId, nodeId, papel: "avaliador", provider: "claude", model: w.model, usage: w.usage }).catch(() => 0);
+    }
     if (strong?.content && strong.provider && strong.model) {
       await recordLlmCost({ sessionId, nodeId, papel: "avaliador", provider: strong.provider, model: strong.model, usage: strong.usage });
       return strong.content;
