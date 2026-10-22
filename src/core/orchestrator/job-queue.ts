@@ -15,6 +15,7 @@ import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-tem
 import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
@@ -444,18 +445,37 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 } }
           );
         } else {
-          await applyPhaseEvent(
-            job.sessionId,
-            { type: "VERIFICACAO_COM_LACUNAS" },
-            {
-              extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10 },
-              detalheAviso:
-                "**Lacunas encontradas:**\n" +
-                (deliveryT10.gaps.length > 0
-                  ? deliveryT10.gaps.map((g) => `- ${g}`).join("\n")
-                  : "- (a verificação não detalhou a lacuna)"),
-            }
-          );
+          // J2b: com dono para cada lacuna (e rodada disponível), volta ao planejamento com etapas de reparo.
+          const repair = await tryStartDeliveryRepair(job.sessionId, {
+            missingFiles: deliveryT10.missingFiles,
+            unapprovedReqs: deliveryT10.unapprovedReqs,
+            buildErrorLines: finalBuildErrorLines,
+            buildGapWithoutDetail: deliveryT10.gaps.some(
+              (g) => g.startsWith("Falha na verificação empírica de build") || (g.startsWith("Type-check do projeto final") && finalBuildErrorLines.length === 0)
+            ),
+            otherGaps: deliveryT10.gaps.filter(
+              (g) =>
+                !g.startsWith("Arquivos da Spec ausentes") &&
+                !g.startsWith("Requisitos não aprovados") &&
+                !g.startsWith("Type-check do projeto final") &&
+                !g.startsWith("Falha na verificação empírica de build")
+            ),
+          });
+          if (!repair.started) {
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "VERIFICACAO_COM_LACUNAS" },
+              {
+                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo },
+                detalheAviso:
+                  "**Lacunas encontradas:**\n" +
+                  (deliveryT10.gaps.length > 0
+                    ? deliveryT10.gaps.map((g) => `- ${g}`).join("\n")
+                    : "- (a verificação não detalhou a lacuna)") +
+                  `\n\n${repair.motivo}`,
+              }
+            );
+          }
         }
       }
     }

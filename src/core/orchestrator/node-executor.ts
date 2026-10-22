@@ -26,6 +26,7 @@ import {
 import {
   inferClusterFromFilePath,
   renderMicrobriefMarkdown,
+  renderMicrobriefReparoMarkdown,
   stripExecutorReportBlocks,
   extractAndValidateExecutorReport,
   type MicrobriefAndReportDocument,
@@ -52,6 +53,7 @@ import { checkSecretsInCodeWithJev } from "@/core/governance/secret-guard";
 import { promoteWithEmpiricalGate, empiricalStageLabel, type EmpiricalStage } from "@/core/governance/empirical-gate";
 import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult } from "@/core/execution/project-base";
 import type { Setting, TaskNode } from "@prisma/client";
+import { readRepairPayload, supersededByRepair } from "@/core/orchestrator/repair-payload";
 
 /**
  * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
@@ -285,9 +287,12 @@ export function verifyProjectDeliveryT10(opts: {
   const approvedReqsSet = new Set<string>();
   const failedReqsSet = new Set<string>();
   let anyEmpiricalBuildFailed = false;
+  // J2b: etapa substituída por um reparo concluído não conta — vale o veredito do reparo.
+  const superseded = supersededByRepair(opts.tasks);
 
   for (const t of opts.tasks) {
     if (t.role === "scaffold") continue;
+    if (superseded.has(t.id)) continue;
     const payload = readNodePayload(t.payload);
     let parsedResult: Record<string, any> | null = null;
     try {
@@ -1130,6 +1135,26 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         Object.entries(previousAttemptCode)
           .map(([f, c]) => `--- ${f} ---\n${c}`)
           .join("\n\n"),
+    });
+  }
+
+  // J2b: etapa de reparo da entrega — Microbrief de reparo (defeitos da verificação final) + código atual
+  // do projeto nos arquivos do escopo, para corrigir com edit_file sem reler nem reescrever do zero.
+  const repairPayload = readRepairPayload(taskDb.payload);
+  if (repairPayload) {
+    const currentCode = pickAttemptCodeToKeep(
+      readProjectFilesContent(repairPayload.microbriefReparo.filesScope, taskDb.session.project?.path)
+    );
+    dispatchMessages.push({
+      role: "system",
+      content:
+        renderMicrobriefReparoMarkdown(repairPayload.microbriefReparo) +
+        (currentCode
+          ? "\n\n## Código atual dos arquivos (já no projeto)\n\n" +
+            Object.entries(currentCode)
+              .map(([f, c]) => `--- ${f} ---\n${c}`)
+              .join("\n\n")
+          : ""),
     });
   }
 

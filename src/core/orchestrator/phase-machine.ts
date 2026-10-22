@@ -5,31 +5,43 @@
  * @see docs/PLANO-ETAPA-0.md (Etapa 0 - Passo 1b)
  */
 
-export type Phase =
-  | 'ENTRADA'
-  | 'CONVERSA'
-  | 'INTERVENCAO'
-  | 'ELICITACAO'
-  | 'ELICITACAO_CORRECAO'
-  | 'SPEC_REVISAO'
-  | 'MACROBRIEF'
-  | 'CONFERENCIA'
-  | 'PLANEJAMENTO'
-  | 'EXECUCAO'
-  | 'PAUSADA'
-  | 'BLOQUEADA'
-  | 'VERIFICACAO'
-  | 'ENTREGUE';
+/**
+ * J2.7: as listas do código são a fonte — os tipos saem delas e o teste estrutural confere a tabela
+ * contra elas (antes o teste usava listas escritas à mão, que podiam divergir do código).
+ */
+export const PHASES = [
+  'ENTRADA',
+  'CONVERSA',
+  'INTERVENCAO',
+  'ELICITACAO',
+  'ELICITACAO_CORRECAO',
+  'SPEC_REVISAO',
+  'MACROBRIEF',
+  'CONFERENCIA',
+  'PLANEJAMENTO',
+  'EXECUCAO',
+  'PAUSADA',
+  'BLOQUEADA',
+  'VERIFICACAO',
+  'ENTREGUE',
+] as const;
 
-export type MessageIntention =
-  | 'criar_novo'
-  | 'corrigir_existente'
-  | 'incerto'
-  | 'duvida_avulsa'
-  | 'mudanca_durante_execucao'
-  | 'status';
+export type Phase = (typeof PHASES)[number];
 
-export type InterventionChoice = 'criar' | 'corrigir' | 'conversar';
+export const MESSAGE_INTENTIONS = [
+  'criar_novo',
+  'corrigir_existente',
+  'incerto',
+  'duvida_avulsa',
+  'mudanca_durante_execucao',
+  'status',
+] as const;
+
+export type MessageIntention = (typeof MESSAGE_INTENTIONS)[number];
+
+export const INTERVENTION_CHOICES = ['criar', 'corrigir', 'conversar'] as const;
+
+export type InterventionChoice = (typeof INTERVENTION_CHOICES)[number];
 
 export type ConferenceCulprit = 'macrobrief' | 'spec';
 
@@ -58,6 +70,38 @@ export type PhaseEvent =
   | { type: 'FALHA_REPETIDA' }
   | { type: 'SILENCIO_DETECTADO' }
   | { type: 'NOVO_PEDIDO' };
+
+/** J2.7: todos os tipos de evento; o tipo abaixo garante, na compilação, que a lista e a união são iguais. */
+export const PHASE_EVENT_TYPES = [
+  'MENSAGEM_CLASSIFICADA',
+  'ESCOLHA_INTERVENCAO',
+  'SPEC_PRONTA',
+  'AJUSTE_SOLICITADO',
+  'SPEC_APROVADA',
+  'MACROBRIEF_PRONTO',
+  'CONFERENCIA_OK',
+  'CONFERENCIA_FALHOU',
+  'PLANO_PRONTO',
+  'PLANO_REPROVADO',
+  'AVALIADOR_FORA',
+  'SEM_PENDENCIAS',
+  'SEM_LLM',
+  'LLM_VOLTOU',
+  'EXECUTOR_BLOQUEADO',
+  'TETO_CUSTO',
+  'DESBLOQUEIO_HUMANO',
+  'VERIFICACAO_COM_LACUNAS',
+  'VERIFICACAO_OK',
+  'FALHA_AMBIENTE',
+  'REPARO_NECESSARIO',
+  'FALHA_REPETIDA',
+  'SILENCIO_DETECTADO',
+  'NOVO_PEDIDO',
+] as const satisfies readonly PhaseEvent['type'][];
+
+type MissingEventTypes = Exclude<PhaseEvent['type'], (typeof PHASE_EVENT_TYPES)[number]>;
+// Se algum tipo de evento não estiver na lista, esta linha não compila.
+export const PHASE_EVENT_TYPES_COMPLETE: [MissingEventTypes] extends [never] ? true : never = true;
 
 export type PhaseEffect =
   | { type: 'RESPONDER_SEM_MUDAR_FASE' }
@@ -734,6 +778,16 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
     },
   },
 };
+
+/** J2.7: o que a tabela declara aceitar em cada fase (para o teste estrutural). */
+export function declaredPhaseTable(): Record<Phase, { allowedEvents: PhaseEvent['type'][]; allowedIntents?: MessageIntention[] }> {
+  const out = {} as Record<Phase, { allowedEvents: PhaseEvent['type'][]; allowedIntents?: MessageIntention[] }>;
+  for (const phase of Object.keys(PHASE_DECLARATIVE_TABLE) as Phase[]) {
+    const { allowedEvents, allowedIntents } = PHASE_DECLARATIVE_TABLE[phase];
+    out[phase] = { allowedEvents: [...allowedEvents], ...(allowedIntents ? { allowedIntents: [...allowedIntents] } : {}) };
+  }
+  return out;
+}
 
 /**
  * Auxiliar para transitar qualquer fase dependente de LLM para PAUSADA.

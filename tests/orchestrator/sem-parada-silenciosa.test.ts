@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import prisma from "../../src/lib/prisma.js";
 import {
   transition,
+  PHASES,
+  MESSAGE_INTENTIONS,
+  INTERVENTION_CHOICES,
+  PHASE_EVENT_TYPES,
   type Phase,
   type PhaseContext,
   type PhaseEvent,
   type MessageIntention,
-  type IntervencaoEscolha,
 } from "../../src/core/orchestrator/phase-machine.js";
 import { applyPhaseEvent } from "../../src/core/orchestrator/session-phase.js";
 import {
@@ -35,53 +38,13 @@ async function cleanupTestRecords(): Promise<void> {
   }
 }
 
-const ALL_PHASES: Phase[] = [
-  "ENTRADA",
-  "CONVERSA",
-  "INTERVENCAO",
-  "ELICITACAO",
-  "ELICITACAO_CORRECAO",
-  "SPEC_REVISAO",
-  "MACROBRIEF",
-  "CONFERENCIA",
-  "PLANEJAMENTO",
-  "EXECUCAO",
-  "PAUSADA",
-  "BLOQUEADA",
-  "VERIFICACAO",
-  "ENTREGUE",
-];
-
-const ALL_INTENTIONS: MessageIntention[] = [
-  "criar_novo",
-  "alterar_existente",
-  "continuar",
-  "duvida_tecnica",
-  "duvida_especifica",
-  "duvida_negocio",
-  "especificacao_direta",
-  "pedido_confuso",
-  "apenas_conversa",
-  "saudacao",
-  "ajuste_escopo",
-  "incerto",
-  "duvida_avulsa",
-  "mudanca_durante_execucao",
-  "status",
-];
-
-const ALL_INTERVENCAO_ESCOLHAS: IntervencaoEscolha[] = [
-  "criar",
-  "alterar",
-  "revisar_especificacao",
-  "ajustar_escopo",
-  "pausar",
-  "cancelar",
-];
+// J2.7: listas do próprio código (antes: listas à mão com intenções e escolhas que não existem).
+const ALL_PHASES: Phase[] = [...PHASES];
+const ALL_INTENTIONS: MessageIntention[] = [...MESSAGE_INTENTIONS];
 
 export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   ...ALL_INTENTIONS.map((intencao): PhaseEvent => ({ type: "MENSAGEM_CLASSIFICADA", intencao })),
-  ...ALL_INTERVENCAO_ESCOLHAS.map((escolha): PhaseEvent => ({ type: "ESCOLHA_INTERVENCAO", escolha })),
+  ...INTERVENTION_CHOICES.map((escolha): PhaseEvent => ({ type: "ESCOLHA_INTERVENCAO", escolha })),
   { type: "SPEC_PRONTA" },
   { type: "AJUSTE_SOLICITADO" },
   { type: "SPEC_APROVADA" },
@@ -102,6 +65,8 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "DESBLOQUEIO_HUMANO" },
   { type: "VERIFICACAO_COM_LACUNAS" },
   { type: "VERIFICACAO_OK" },
+  { type: "FALHA_AMBIENTE" },
+  { type: "REPARO_NECESSARIO" },
   { type: "FALHA_REPETIDA" },
   { type: "SILENCIO_DETECTADO" },
   { type: "NOVO_PEDIDO" },
@@ -115,6 +80,10 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
 
   afterAll(async () => {
     await cleanupTestRecords();
+  });
+
+  it("(estrutural, J2.7) os eventos do teste cobrem todos os tipos de evento do código", () => {
+    expect(new Set(STRUCTURAL_TEST_EVENTS.map((e) => e.type))).toEqual(new Set(PHASE_EVENT_TYPES));
   });
 
   it("(estrutural) toda transição que leva a BLOQUEADA a partir de uma fase não-BLOQUEADA deve conter o efeito AVISAR_HUMANO", () => {
@@ -143,7 +112,8 @@ describe("Sem Parada Silenciosa — Garantia de Comunicação ao Humano (J2)", (
           for (const event of STRUCTURAL_TEST_EVENTS) {
             const res = transition(ctx, event, { etapa1Ativa });
             if (res.ok && res.ctx.phase === "BLOQUEADA") {
-              const hasAvisarHumano = res.effects.some((e) => e.type === "AVISAR_HUMANO");
+              // Mudança 36: todo aviso diz o que fazer (acao).
+              const hasAvisarHumano = res.effects.some((e) => e.type === "AVISAR_HUMANO" && Boolean(e.acao));
               expect(
                 hasAvisarHumano,
                 `Transição da fase ${phase} com evento ${event.type} resultou em BLOQUEADA sem efeito AVISAR_HUMANO`

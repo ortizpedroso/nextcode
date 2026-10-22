@@ -7,24 +7,14 @@ import {
   PhaseEvent,
   PhaseOptions,
   MessageIntention,
+  PHASES,
+  MESSAGE_INTENTIONS,
+  PHASE_EVENT_TYPES,
+  declaredPhaseTable,
 } from '../../src/core/orchestrator/phase-machine';
 
-const ALL_PHASES: Phase[] = [
-  'ENTRADA',
-  'CONVERSA',
-  'INTERVENCAO',
-  'ELICITACAO',
-  'ELICITACAO_CORRECAO',
-  'SPEC_REVISAO',
-  'MACROBRIEF',
-  'CONFERENCIA',
-  'PLANEJAMENTO',
-  'EXECUCAO',
-  'PAUSADA',
-  'BLOQUEADA',
-  'VERIFICACAO',
-  'ENTREGUE',
-];
+// J2.7: a lista do próprio código.
+const ALL_PHASES: Phase[] = [...PHASES];
 
 const LLM_DEPENDENT_PHASES: Phase[] = [
   'CONVERSA',
@@ -657,14 +647,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
   });
 
   describe('Consistência entre o declarado (allowedEvents/allowedIntents) e o aceito por transition', () => {
-    const ALL_INTENTIONS: MessageIntention[] = [
-      'criar_novo',
-      'corrigir_existente',
-      'incerto',
-      'duvida_avulsa',
-      'mudanca_durante_execucao',
-      'status',
-    ];
+    const ALL_INTENTIONS: MessageIntention[] = [...MESSAGE_INTENTIONS];
 
     const SAMPLE_EVENTS: PhaseEvent[] = [
       { type: 'MENSAGEM_CLASSIFICADA', intencao: 'duvida_avulsa' },
@@ -692,6 +675,21 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'SILENCIO_DETECTADO' },
       { type: 'NOVO_PEDIDO' },
     ];
+
+    it('J2.7: os eventos de amostra cobrem todos os tipos de evento do código', () => {
+      expect(new Set(SAMPLE_EVENTS.map((e) => e.type))).toEqual(new Set(PHASE_EVENT_TYPES));
+    });
+
+    it('J2.7: a tabela tem todas as fases; todo evento aceito por alguma fase está na lista e todo evento da lista é aceito por alguma fase', () => {
+      const table = declaredPhaseTable();
+      expect(new Set(Object.keys(table))).toEqual(new Set(PHASES));
+      const declared = new Set(Object.values(table).flatMap((c) => c.allowedEvents));
+      for (const ev of declared) expect(PHASE_EVENT_TYPES as readonly string[]).toContain(ev);
+      for (const ev of PHASE_EVENT_TYPES) expect(declared.has(ev), `evento ${ev} não é aceito por nenhuma fase`).toBe(true);
+      for (const c of Object.values(table)) {
+        for (const i of c.allowedIntents ?? []) expect(MESSAGE_INTENTIONS as readonly string[]).toContain(i);
+      }
+    });
 
     it.each(ALL_PHASES)('na fase %s, allowedEvents e allowedIntents coincidem exatamente com a aceitação real', (phase) => {
       const testCtx: PhaseContext = {
