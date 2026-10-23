@@ -1,3 +1,13 @@
+## 23/10/2026 (221) — Auditoria do TESTE-E5 e do DG1 (Antigravity)
+
+**TESTE-E5 (`docs/relatorios/TESTE-E5-antigravity.md`): aceito em parte.** Passos 1–3 conferem (tsc/vitest 2×, 162/1045; 12/12 testes falham sem a correção; `dev.db` intocado). Não feito: frentes 5, 7, 8, 9, passo 5 decisão por decisão, passo 6 (controles com LLM). Achado "4g" inválido: `NEXTCODE_DISABLE_JEV` não existe no código (o Antigravity seguiu a lista do próprio rascunho, abriu `jev-client.ts` inexistente); item 11b removido da §3.2. Desvio: editou a referência fora do R1.
+**DG1 (`0bb33c9`, `fb94aca`, `3849c26`; relatório `DIAG-GATEWAY-DEFEITOS.md`): aceito.** Reexecutei `scripts/diag-gateway-defeitos.ts` na cópia (`dev.db` 18:54:59 antes e depois): 14 revisões finais, 99 nós (41 do plano original), última revisão com 12 apontamentos (REQ-008, 035, 053, 060, 063 e validações reproduzidos; 061/062 sem prova; 4 provas anteriores). Ressalvas da etapa 36 (REQ-063) e 14 (webhook) conferidas na trilha. 0 eventos de autoteste: etapas de 21/10 (E5 é de 22/10 14:44) e o E5 não roda em reparo (`node-executor.ts:1185`, `!repairPayload`).
+**Leitura:** o defeito nasce na fronteira entre etapas (5/6) e o avaliador da etapa vê, mas aprova — a regra P7 (só `critico` reprova; `importante` vira ressalva) deixou passar 2 dos 6.
+**Onde parou:** referência §3.1 itens 1 (🌓) e 2a (✅) atualizados.
+**Próximo passo:** decisão do fundador sobre o que fazer com o achado do DG1 (contrato entre etapas / ressalva que vira reprovação); prompt curto do resto do TESTE-E5.
+
+---
+
 ## 23/10/2026 (220) — Documento único: rascunho do Antigravity auditado e corrigido; docs/ consolidado
 
 **Fundador:** "monte um documento único… ele pode implementar e você auditar"; "use o documento do Antigravity, continue".
