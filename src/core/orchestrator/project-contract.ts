@@ -407,6 +407,55 @@ export function renderContractTs(contrato: ContratoProjeto): string {
 }
 
 /**
+ * Gera a fatia do contrato para uma etapa específica.
+ * Retorna o que a etapa produz (interfacesProduz) e o que a etapa consome (interfacesConsome)
+ * em formato de texto TypeScript.
+ */
+export function renderContractSliceTs(
+  contrato: ContratoProjeto,
+  etapaId: string
+): { interfacesProduz: string; interfacesConsome: string[] } {
+  // O que a etapa produz: entidades, enums, funções e rotas cujo dono é a etapa
+  const entDono = (contrato.entidades ?? []).filter((e) => e.dono === etapaId);
+  const enDono = (contrato.enums ?? []).filter((e) => e.dono === etapaId);
+  const fnDono = (contrato.funcoes ?? []).filter((f) => f.dono === etapaId);
+  const rtDono = (contrato.rotas ?? []).filter((r) => r.dono === etapaId);
+
+  const produzContrato: ContratoProjeto = {
+    entidades: entDono,
+    enums: enDono,
+    funcoes: fnDono,
+    rotas: rtDono,
+  };
+  const interfacesProduz = renderContractTs(produzContrato);
+
+  // O que a etapa consome: símbolos onde etapaId está em usadoPor, ou entidades/enums de etapas produtoras
+  const fnConsome = (contrato.funcoes ?? []).filter((f) => (f.usadoPor ?? []).includes(etapaId));
+  const rtConsome = (contrato.rotas ?? []).filter((r) => (r.usadoPor ?? []).includes(etapaId));
+  // Coleta donos das funções e rotas consumidas
+  const donosConsumidos = new Set<string>([
+    ...fnConsome.map((f) => f.dono),
+    ...rtConsome.map((r) => r.dono),
+  ]);
+  const entConsome = (contrato.entidades ?? []).filter((e) => donosConsumidos.has(e.dono));
+  const enConsome = (contrato.enums ?? []).filter((e) => donosConsumidos.has(e.dono));
+
+  const consomeContrato: ContratoProjeto = {
+    entidades: entConsome,
+    enums: enConsome,
+    funcoes: fnConsome,
+    rotas: rtConsome,
+  };
+  const consomeTs = renderContractTs(consomeContrato);
+  const interfacesConsome = consomeTs.trim() ? [consomeTs] : [];
+
+  return {
+    interfacesProduz,
+    interfacesConsome,
+  };
+}
+
+/**
  * Converte caminho relativo a src/ em import alias @/...
  */
 function fileToImportPath(filePath: string): string {

@@ -14,6 +14,12 @@ import { loadRoleSkill, buildSkillSystemPrompt } from "./skill-runtime";
 import { GENERIC_FILE_NAMES, extractFilePathsFromCriteriaText, pathInStageScope } from "../decision/jev-execution-checks";
 import { validatePlanStages, type PlanStage } from "../orchestrator/plan-scope-check";
 import { recordLlmCost } from "../llm/cost";
+import {
+  validateContract,
+  renderContractTs,
+  renderContractSliceTs,
+  type ContratoProjeto,
+} from "../orchestrator/project-contract";
 
 export interface DecompositionResult {
   goal: string;
@@ -399,6 +405,11 @@ export class SpecDecomposerSkill {
         action: "ANALISTA_PLAN_FALLBACK",
         details: { reason: skipModel ? "modelo_desligado_em_teste" : "sem_roteador" },
       });
+      TelemetryLogger.log({
+        sessionId,
+        action: "CONTRATO_AUSENTE",
+        details: { motivo: skipModel ? "skip_model_teste" : "sem_roteador" },
+      });
       return baseDecomp;
     }
 
@@ -490,7 +501,7 @@ export class SpecDecomposerSkill {
       }
 
       const parsed = parseAnalystPlan(content);
-      const errors = parsed.ok
+      const stageErrors = parsed.ok
         ? validatePlanStages(parsed.stages, reqIds, textoPorReq, FILES_PER_NODE, uniqueFiles).errors
         : [
             finishReason === "length"
@@ -498,7 +509,18 @@ export class SpecDecomposerSkill {
               : parsed.error,
           ];
 
-      if (parsed.ok && errors.length === 0) {
+      const contractErrors: string[] = [];
+      if (parsed.ok) {
+        if (!parsed.contrato) {
+          contractErrors.push('[CONTRATO AUSENTE] O JSON do analista deve conter o bloco "contrato" com entidades, enums, funcoes e rotas.');
+        } else {
+          contractErrors.push(...validateContract(parsed.contrato, parsed.stages));
+        }
+      }
+
+      const errors = [...stageErrors, ...contractErrors];
+
+      if (parsed.ok && errors.length === 0 && parsed.contrato) {
         const result = buildDecompositionFromAnalystPlan({
           stages: parsed.stages,
           clusters: parsed.clusters,
@@ -506,11 +528,27 @@ export class SpecDecomposerSkill {
           titulo: titulo ?? parsedSpec?.titulo ?? null,
           declaredReqs,
           scaffold: baseDecomp.nodes.find((n) => (n.payload as { step?: string } | undefined)?.step === "scaffold"),
+          contrato: parsed.contrato,
         });
+
+        const cntEnt = parsed.contrato.entidades?.length ?? 0;
+        const cntEnum = parsed.contrato.enums?.length ?? 0;
+        const cntFn = parsed.contrato.funcoes?.length ?? 0;
+        const cntRt = parsed.contrato.rotas?.length ?? 0;
+
         TelemetryLogger.log({
           sessionId,
           action: "ANALISTA_PLAN_APPROVED",
-          details: { rodada, etapas: parsed.stages.length, model: modelUsed, t8bValid: true },
+          details: {
+            rodada,
+            etapas: parsed.stages.length,
+            model: modelUsed,
+            t8bValid: true,
+            entidades: cntEnt,
+            enums: cntEnum,
+            funcoes: cntFn,
+            rotas: cntRt,
+          },
         });
         return result;
       }
@@ -539,6 +577,11 @@ export class SpecDecomposerSkill {
       });
     }
 
+    TelemetryLogger.log({
+      sessionId,
+      action: "PLANO_REPROVADO",
+      details: { motivo: "rodadas_esgotadas", rodadas: ANALISTA_MAX_RODADAS, dono: "analista" },
+    });
     return fallback("rodadas_esgotadas", { rodadas: ANALISTA_MAX_RODADAS });
   }
 
@@ -672,8 +715,8 @@ const ANALISTA_TIMEOUT_MS = 600_000;
 
 const ANALYST_CLUSTERS: ClusterKind[] = ["core", "backend", "integration", "frontend"];
 
-type AnalystPlanParse =
-  | { ok: true; stages: PlanStage[]; clusters: Record<string, ClusterKind> }
+export type AnalystPlanParse =
+  | { ok: true; stages: PlanStage[]; clusters: Record<string, ClusterKind>; contrato?: ContratoProjeto }
   | { ok: false; error: string };
 
 /** Lê o JSON do analista. Formato e tipos errados viram um erro só, devolvido ao modelo. */
@@ -710,7 +753,19 @@ export function parseAnalystPlan(content: string): AnalystPlanParse {
       dependeDe: (m.dependeDe ?? []).map((d: string) => d.trim()),
     });
   }
-  return { ok: true, stages, clusters };
+
+  // Bloco de contrato (opcional no parse preliminar, validado em seguida)
+  let contrato: ContratoProjeto | undefined = undefined;
+  if (raw.contrato && typeof raw.contrato === "object") {
+    contrato = {
+      entidades: Array.isArray(raw.contrato.entidades) ? raw.contrato.entidades : [],
+      enums: Array.isArray(raw.contrato.enums) ? raw.contrato.enums : [],
+      funcoes: Array.isArray(raw.contrato.funcoes) ? raw.contrato.funcoes : [],
+      rotas: Array.isArray(raw.contrato.rotas) ? raw.contrato.rotas : [],
+    };
+  }
+
+  return { ok: true, stages, clusters, contrato };
 }
 
 /** Ordem topológica (o plano já passou pela T8b, então não há ciclo). */
@@ -739,8 +794,9 @@ export function buildDecompositionFromAnalystPlan(params: {
   titulo: string | null;
   declaredReqs: { id: string; titulo: string; criterio: string }[];
   scaffold?: DAGNode;
+  contrato?: ContratoProjeto;
 }): DecompositionResult {
-  const { specText, titulo, declaredReqs } = params;
+  const { specText, titulo, declaredReqs, contrato } = params;
   const ordered = topoOrder(params.stages);
   const stamp = Date.now();
   const projectSlug = (titulo || "projeto").toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -785,6 +841,20 @@ export function buildDecompositionFromAnalystPlan(params: {
       const r = declaredReqs.find((x) => x.id === reqId);
       criterios[reqId] = [r ? `${r.titulo}: ${r.criterio}` : `Cumprir ${reqId}`];
     }
+
+    // Fatia do contrato para a etapa: se houver contrato formal, gera fatias TS
+    let interfacesProduz = s.arquivos.join(", ");
+    let interfacesConsome: string[] = contratos;
+    if (contrato) {
+      const slice = renderContractSliceTs(contrato, s.id);
+      if (slice.interfacesProduz.trim()) {
+        interfacesProduz = slice.interfacesProduz;
+      }
+      if (slice.interfacesConsome.length > 0) {
+        interfacesConsome = slice.interfacesConsome;
+      }
+    }
+
     const microbrief: MicrobriefAndReportDocument = {
       documento: "microbrief",
       idMicrobrief: id,
@@ -798,8 +868,8 @@ export function buildDecompositionFromAnalystPlan(params: {
       statusExecucao: "PENDENTE",
       tentativaAtual: 0,
       medidoPeloHarness: { compilou: null, testes: null, arquivosAlterados: [] },
-      interfacesConsome: contratos,
-      interfacesProduz: s.arquivos.join(", "),
+      interfacesConsome,
+      interfacesProduz,
       criteriosAceitePorReq: criterios,
       registroCumprimento: s.reqs.map((reqId) => ({
         reqId,
@@ -830,6 +900,10 @@ export function buildDecompositionFromAnalystPlan(params: {
     });
   });
 
+  const contratosTypescript = contrato
+    ? renderContractTs(contrato)
+    : "// Contratos: arquivos das etapas de que cada etapa depende (lerContratos)";
+
   const macrobrief: MacrobriefDocument = {
     documento: "macrobrief",
     idMacrobrief: `macro-analista-${stamp}`,
@@ -844,7 +918,7 @@ export function buildDecompositionFromAnalystPlan(params: {
       arquivos: m.arquivosPermitidos.criar,
       reqs: m.reqsCobertos,
     })),
-    contratosTypescript: "// Contratos: arquivos das etapas de que cada etapa depende (lerContratos)",
+    contratosTypescript,
   };
 
   return {

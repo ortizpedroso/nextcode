@@ -98,3 +98,56 @@ stdout | tests/harness/orchestration-policy-and-skills.test.ts > Políticas de O
 #### 4. O que não foi feito
 - Nada do passo A1.1 ficou pendente. Próximo passo é A1.2.
 
+---
+
+### Passo A1.2 — O analista escreve o contrato do Macrobrief
+
+#### 1. O que mudou e arquivos afetados
+- `skills/analista/SKILL.md:53-95`: adicionada a seção "Regras de Contrato do Projeto (obrigatório)" e o exemplo do JSON contendo o bloco `"contrato"` com entidades, enums, funções (assinatura TS completa) e rotas (arquivo terminando em `route.ts`).
+- `src/core/orchestrator/project-contract.ts`: adicionada a função `renderContractSliceTs(contrato, etapaId)` que devolve as fatias `interfacesProduz` e `interfacesConsome` como código TS tipado.
+- `src/core/skills/spec-decomposer.ts`:
+  - `parseAnalystPlan`: agora extrai e normaliza o bloco `contrato` junto aos `microbriefs`.
+  - `decomposeWithAnalistaSkill`: valida o contrato contra as etapas usando `validateContract` no loop do analista. Caso haja erros no contrato ou contrato ausente, os erros retornam para o analista nas rodadas subsequentes (`ANALISTA_MAX_RODADAS = 3`).
+  - Se após as 3 rodadas o plano/contrato não for válido, registra `PLANO_REPROVADO` com `dono: "analista"`. Em modo de teste com `skipModel: true`, continua funcionando e emite o evento `CONTRATO_AUSENTE`.
+  - `buildDecompositionFromAnalystPlan`: aceita `contrato?: ContratoProjeto`, preenche `macrobrief.contratosTypescript` com `renderContractTs` e popula `interfacesProduz` e `interfacesConsome` dos Microbriefs com as fatias TypeScript de cada etapa.
+  - O evento `ANALISTA_PLAN_APPROVED` na telemetria passa a registrar as contagens de `entidades`, `enums`, `funcoes` e `rotas`.
+- `tests/orchestrator/analista-plan.test.ts`: adicionados 4 novos testes cobrindo:
+  - Plano com contrato válido aprovado, com `ANALISTA_PLAN_APPROVED` contendo as contagens e Microbriefs recebendo as fatias de contrato produzidas e consumidas;
+  - Contrato com erro retornando erro na 2ª rodada para correção;
+  - 3 rodadas com contrato inválido culminando em `PLANO_REPROVADO` com dono `analista`;
+  - `skipModel` em testes emitindo `CONTRATO_AUSENTE` na trilha de telemetria.
+
+#### 2. Saída real dos comandos
+
+##### `npx tsc --noEmit`
+```
+(saída vazia, código de retorno 0)
+```
+
+##### `npx vitest run tests/orchestrator/analista-plan.test.ts`
+```
+ RUN  v2.1.9 C:/projetos/nextcode
+
+ ✓ tests/orchestrator/analista-plan.test.ts (14 tests) 62ms
+
+ Test Files  1 passed (1)
+      Tests  14 passed (14)
+   Start at  06:21:37
+   Duration  2.04s (transform 331ms, setup 27ms, collect 893ms, tests 62ms, environment 0ms, prepare 125ms)
+```
+
+##### `npx vitest run` (suíte completa)
+```
+ Test Files  163 passed (163)
+      Tests  1059 passed (1059)
+   Start at  06:22:08
+   Duration  209.79s (transform 5.61s, setup 1.62s, collect 29.88s, tests 138.78s, environment 26ms, prepare 12.30s)
+```
+
+#### 3. Desvios
+- Nenhum.
+
+#### 4. O que não foi feito
+- Nada do passo A1.2 ficou pendente. Próximo passo é A1.3.
+
+

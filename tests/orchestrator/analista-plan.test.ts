@@ -28,7 +28,40 @@ const SPEC = renderCanonicalSpecDocument({
   ],
 } as any);
 
-const planJson = (mbs: unknown[]) => "```json\n" + JSON.stringify({ microbriefs: mbs }) + "\n```";
+const GOOD_CONTRACT = {
+  entidades: [
+    {
+      nome: "LinkItem",
+      campos: [{ nome: "id", tipo: "string" }, { nome: "url", tipo: "string" }],
+      dono: "mb-1",
+    },
+  ],
+  enums: [],
+  funcoes: [
+    {
+      nome: "validarLink",
+      arquivo: "src/lib/validacao.ts",
+      assinatura: "(url: string) => boolean",
+      dono: "mb-1",
+      usadoPor: ["mb-2"],
+    },
+  ],
+  rotas: [
+    {
+      metodo: "POST",
+      caminho: "/api/v1/links",
+      arquivo: "src/app/api/v1/links/route.ts",
+      entrada: "{ url: string }",
+      saida: "LinkItem",
+      erros: [{ status: 400, corpo: "{ erro: string }" }],
+      dono: "mb-2",
+      usadoPor: [],
+    },
+  ],
+};
+
+const planJson = (mbs: unknown[], contrato: unknown = GOOD_CONTRACT) =>
+  "```json\n" + JSON.stringify(contrato ? { microbriefs: mbs, contrato } : { microbriefs: mbs }) + "\n```";
 const GOOD = [
   { id: "mb-1", cluster: "core", arquivos: ["src/lib/validacao.ts"], reqs: ["REQ-001"], dependeDe: [] },
   { id: "mb-2", cluster: "backend", arquivos: ["src/app/api/v1/links/route.ts", "src/app/api/cobrancas/route.ts"], reqs: ["REQ-002", "REQ-003"], dependeDe: ["mb-1"] },
@@ -171,5 +204,134 @@ describe("A2.2 — analista planeja e o código confere", () => {
     const retry = logSpy.mock.calls.map((c: any) => c[0]).find((e: any) => e.action === "ANALISTA_PLAN_RETRY");
     expect(retry.details).toMatchObject({ rodada: 1, motivo: "sem_resposta", custoNaoMedido: true });
     expect(actions()).toContain("ANALISTA_PLAN_APPROVED");
+  });
+
+  describe("A1.2 — O analista escreve o contrato do Macrobrief", () => {
+    it("plano com contrato válido → aprovado, e o Microbrief recebe a fatia", async () => {
+      const router = fakeRouter([planJson(GOOD, GOOD_CONTRACT)]);
+      const d = await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+        specText: SPEC,
+        titulo: "Teste A1.2",
+        files: FILES,
+        smartRouter: router,
+      });
+
+      expect(actions()).toContain("ANALISTA_PLAN_APPROVED");
+      const approvedLog = logSpy.mock.calls
+        .map((c: any) => c[0])
+        .find((e: any) => e.action === "ANALISTA_PLAN_APPROVED");
+
+      expect(approvedLog.details).toMatchObject({
+        entidades: 1,
+        enums: 0,
+        funcoes: 1,
+        rotas: 1,
+      });
+
+      // Macrobrief possui contratosTypescript renderizado
+      expect(d.macrobrief?.contratosTypescript).toContain("export interface LinkItem");
+      expect(d.macrobrief?.contratosTypescript).toContain("export type FnValidarLink");
+
+      // Microbriefs recebem as fatias correspondentes
+      const impl = d.nodes.filter((n: any) => n.payload?.microbrief);
+      const mb1 = (impl[0].payload as any).microbrief;
+      const mb2 = (impl[1].payload as any).microbrief;
+
+      // mb-1 produz LinkItem e validarLink
+      expect(mb1.interfacesProduz).toContain("export interface LinkItem");
+      expect(mb1.interfacesProduz).toContain("export type FnValidarLink");
+
+      // mb-2 consome o contrato produzido por mb-1
+      expect(mb2.interfacesConsome.some((c: string) => c.includes("export type FnValidarLink"))).toBe(true);
+    });
+
+    it("contrato com erro → a 2ª rodada recebe o erro de contrato", async () => {
+      const badContract = {
+        entidades: [],
+        enums: [],
+        funcoes: [
+          {
+            nome: "funcaoSemDonoValido",
+            arquivo: "src/lib/validacao.ts",
+            assinatura: "() => void",
+            dono: "mb-fantasma",
+            usadoPor: [],
+          },
+        ],
+        rotas: [],
+      };
+
+      const router = fakeRouter([
+        planJson(GOOD, badContract),
+        planJson(GOOD, GOOD_CONTRACT),
+      ]);
+
+      await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+        specText: SPEC,
+        titulo: "Teste A1.2",
+        files: FILES,
+        smartRouter: router,
+      });
+
+      expect(router.calls).toHaveLength(2);
+      const secondPrompt = router.calls[1].at(-1).content;
+      expect(secondPrompt).toContain('[DONO INEXISTENTE] Função "funcaoSemDonoValido" tem dono inexistente "mb-fantasma"');
+      expect(actions()).toEqual(expect.arrayContaining(["ANALISTA_PLAN_RETRY", "ANALISTA_PLAN_APPROVED"]));
+    });
+
+    it("3 rodadas inválidas de contrato → PLANO_REPROVADO registrado na trilha", async () => {
+      const badContract = {
+        entidades: [],
+        enums: [],
+        funcoes: [
+          {
+            nome: "funcaoErroEterno",
+            arquivo: "src/lib/validacao.ts",
+            assinatura: "() => void",
+            dono: "mb-fantasma",
+            usadoPor: [],
+          },
+        ],
+        rotas: [],
+      };
+
+      const router = fakeRouter([
+        planJson(GOOD, badContract),
+        planJson(GOOD, badContract),
+        planJson(GOOD, badContract),
+      ]);
+
+      await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+        specText: SPEC,
+        titulo: "Teste A1.2",
+        files: FILES,
+        smartRouter: router,
+      });
+
+      expect(router.calls).toHaveLength(3);
+      expect(actions()).toContain("PLANO_REPROVADO");
+      const reprovadoLog = logSpy.mock.calls
+        .map((c: any) => c[0])
+        .find((e: any) => e.action === "PLANO_REPROVADO");
+      expect(reprovadoLog.details).toMatchObject({
+        motivo: "rodadas_esgotadas",
+        dono: "analista",
+      });
+    });
+
+    it("skipModel em teste registra CONTRATO_AUSENTE na trilha de auditoria", async () => {
+      await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+        specText: SPEC,
+        titulo: "Teste A1.2",
+        files: FILES,
+        skipModel: true,
+      });
+
+      expect(actions()).toContain("CONTRATO_AUSENTE");
+      const ausenteLog = logSpy.mock.calls
+        .map((c: any) => c[0])
+        .find((e: any) => e.action === "CONTRATO_AUSENTE");
+      expect(ausenteLog.details).toMatchObject({ motivo: "skip_model_teste" });
+    });
   });
 });

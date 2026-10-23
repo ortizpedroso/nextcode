@@ -50,13 +50,56 @@ Clusters: `core` (tipos, schemas, stores, libs de domínio, configuração), `ba
 3. Ponha as dependências para que a regra 4 valha para todos os REQs.
 4. Confira as 7 regras antes de responder.
 
+## Regras de Contrato do Projeto (obrigatório)
+Além das etapas em `microbriefs`, o JSON deve conter o bloco `"contrato"` com as definições canônicas de TypeScript que atravessam as etapas:
+- **`entidades`**: `{ nome, campos: [{ nome, tipo, opcional? }], dono }`. Nomes de campos e tipos vêm da Spec.
+- **`enums`**: `{ nome, valores: string[], dono }`.
+- **`funcoes`**: `{ nome, arquivo, assinatura, dono, usadoPor: string[] }`. Assinatura TypeScript completa (ex: `"(usuarioId: string, papel: PapelUsuario) => Promise<Sessao>"`).
+- **`rotas`**: `{ metodo, caminho, arquivo, entrada, saida, erros: [{ status, corpo }], dono, usadoPor: string[] }`. O arquivo de rotas DEVE terminar com `route.ts`.
+- **Regras do contrato:**
+  1. Todo símbolo/tipo que uma etapa usa de outra etapa DEVE estar no contrato, com o `dono` (id da etapa produtora) e `usadoPor` (lista de ids das etapas consumidoras).
+  2. Cada etapa consumidora em `usadoPor` deve obrigatoriamente depender (direta ou indiretamente) da etapa dona.
+  3. O arquivo de cada função ou rota deve pertencer à lista de arquivos da etapa dona.
+  4. Tipos citados devem ser entidades, enums, primitivos TS ou tipos globais (`Promise`, `Date`, etc.).
+
 ## Formato da resposta (exato, sem texto fora do JSON)
 ```json
 {
   "microbriefs": [
     { "id": "mb-1", "cluster": "core", "arquivos": ["src/lib/validacao.ts"], "reqs": ["REQ-009"], "dependeDe": [] },
     { "id": "mb-2", "cluster": "backend", "arquivos": ["src/app/api/v1/links/route.ts"], "reqs": ["REQ-032"], "dependeDe": ["mb-1"] }
-  ]
+  ],
+  "contrato": {
+    "entidades": [
+      {
+        "nome": "LinkItem",
+        "campos": [{ "nome": "id", "tipo": "string" }, { "nome": "url", "tipo": "string" }],
+        "dono": "mb-1"
+      }
+    ],
+    "enums": [],
+    "funcoes": [
+      {
+        "nome": "validarLink",
+        "arquivo": "src/lib/validacao.ts",
+        "assinatura": "(url: string) => boolean",
+        "dono": "mb-1",
+        "usadoPor": ["mb-2"]
+      }
+    ],
+    "rotas": [
+      {
+        "metodo": "POST",
+        "caminho": "/api/v1/links",
+        "arquivo": "src/app/api/v1/links/route.ts",
+        "entrada": "{ url: string }",
+        "saida": "LinkItem",
+        "erros": [{ "status": 400, "corpo": "{ erro: string }" }],
+        "dono": "mb-2",
+        "usadoPor": []
+      }
+    ]
+  }
 }
 ```
 - `id`: curto e único (`mb-1`, `mb-2`, …); `dependeDe` usa esses ids.
