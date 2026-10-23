@@ -18,6 +18,7 @@ import {
 } from "../templates/artifact-templates";
 import type { ClusterKind } from "../config/orchestration-policy";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
+import type { ContratoProjeto } from "../orchestrator/project-contract";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
 
@@ -127,6 +128,9 @@ export interface ValidateType2Options {
   nodeId?: string;
   sessionId?: string;
   executorReport?: MicrobriefAndReportDocument | null;
+  contrato?: ContratoProjeto | null;
+  contratosProduz?: string;
+  contratosConsome?: string[];
 }
 
 /** Função de despacho LLM injetada pelo chamador (desacopla o auditor do SmartRouter/provedores). */
@@ -611,6 +615,16 @@ export class DualLensAuditor {
         ? ` OBRIGATÓRIO: julgue CADA requisito (${options.expectedReqs.join(", ")}) separadamente, contra os critérios de aceite do Brief, no campo "reqVerdicts":[{"id":"REQ-001","status":"implementado"|"parcial"|"ausente","evidencia":"arquivo:linha"}]. Uma resposta sem todos esses REQ é descartada. Julgue só estes REQ e só os arquivos desta etapa.`
         : "";
 
+    let contractSection = "";
+    if (options?.contratosProduz || (options?.contratosConsome && options.contratosConsome.length > 0)) {
+      contractSection =
+        "\n\n[CONTRATOS DO PROJETO (src/contracts/index.ts)]\n" +
+        (options.contratosProduz ? `Interfaces que esta etapa PRODUZ:\n${options.contratosProduz}\n\n` : "") +
+        (options.contratosConsome && options.contratosConsome.length > 0
+          ? `Interfaces que esta etapa CONSOME (só leitura):\n${options.contratosConsome.join("\n")}\n\n`
+          : "");
+    }
+
     const messages: { role: "system" | "user"; content: string }[] = [
       {
         role: "system",
@@ -625,13 +639,16 @@ export class DualLensAuditor {
           (reqsInstruction ? ',"reqVerdicts":[...]' : "") +
           ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
           "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
+          "REGRA INEGOCIÁVEL DE CONTRATO: qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) — função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente — é OBRIGATORIAMENTE um defeito CRÍTICO ('severidade':'critico') e reprova a etapa (implemented: false). " +
           "Só problema critico reprova; importante aprova com ressalva e vira correção da próxima rodada; menor só registra. Problema que você considerou e descartou não entra na lista. Diga também em fatoQueGarante qual fato do código garante que a etapa está certa e em nivelProva como chegou a ele: dito | arquivo_linha | falha_descartada | executado | reproduzido." +
           skillBlock,
       },
       {
         role: "user",
         content:
-          `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}` +
+          `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}` +
+          contractSection +
+          `\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}` +
           // G2: a nova chamada sabe por que a anterior foi descartada (no fim: o cache do Brief continua valendo).
           (previousDiscard
             ? `\n\n[SUA RESPOSTA ANTERIOR FOI DESCARTADA] Motivo: ${previousDiscard}. Responda de novo no formato pedido, corrigindo isso.`

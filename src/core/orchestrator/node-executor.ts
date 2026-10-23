@@ -1128,6 +1128,23 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   if (dependencyBlock) {
     dispatchMessages.push({ role: "system", content: dependencyBlock });
   }
+
+  // A1.4: Fatia do contrato do projeto para o executor (chamada única ou laço)
+  if (
+    nodeMicrobrief &&
+    (nodeMicrobrief.interfacesProduz || (nodeMicrobrief.interfacesConsome && nodeMicrobrief.interfacesConsome.length > 0))
+  ) {
+    dispatchMessages.push({
+      role: "system",
+      content:
+        "CONTRATO DO PROJETO (src/contracts/index.ts — TRAVADO para edição; seu código deve cumprir rigorosamente as assinaturas abaixo):\n\n" +
+        (nodeMicrobrief.interfacesProduz ? `Interfaces que você DEVE PRODUZIR:\n${nodeMicrobrief.interfacesProduz}\n\n` : "") +
+        (nodeMicrobrief.interfacesConsome && nodeMicrobrief.interfacesConsome.length > 0
+          ? `Interfaces que você CONSOME (somente leitura):\n${nodeMicrobrief.interfacesConsome.join("\n")}\n\n`
+          : "") +
+        "Qualquer divergência com o contrato (parâmetro a mais/menos, tipo incompatível, rota divergente) é defeito crítico e causa reprovação imediata.",
+    });
+  }
   if (useToolLoop) {
     const fixedBlock = buildExecutorFixedContext(
       taskDb.session.project?.path,
@@ -1210,6 +1227,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         criteriosPorReq: nodeMicrobrief.criteriosAceitePorReq ?? {},
         contrato: nodeMicrobrief.interfacesProduz,
         contratosDependencias: [...(nodeMicrobrief.arquivosPermitidos.lerContratos ?? []), ...(nodeMicrobrief.interfacesConsome ?? [])].join("\n"),
+        contratosProduz: nodeMicrobrief.interfacesProduz,
+        contratosConsome: nodeMicrobrief.interfacesConsome,
       },
     }).catch(() => null);
     acceptance = set && !set.bancadaFora ? { testes: set.testes, julgamento: set.julgamento } : { testes: [], julgamento: [], indisponivel: true };
@@ -1741,6 +1760,9 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         nodeId: taskDb.id,
         sessionId: taskDb.sessionId,
         ...(nodeMicrobrief ? { executorReport: validatedExecutorReport } : {}),
+        contrato: stageContrato,
+        contratosProduz: nodeMicrobrief?.interfacesProduz,
+        contratosConsome: nodeMicrobrief?.interfacesConsome,
       }
     );
     if (type2Res.skillUsed) {

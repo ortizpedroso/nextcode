@@ -43,6 +43,8 @@ export interface AcceptanceInput {
   contrato?: string;
   /** Contratos das etapas de que esta depende (só leitura). */
   contratosDependencias?: string;
+  contratosProduz?: string;
+  contratosConsome?: string[];
 }
 
 type Dispatch = (messages: { role: "system" | "user"; content: string }[]) => Promise<EvaluatorCallResult>;
@@ -63,6 +65,24 @@ export function buildTesterPrompt(input: AcceptanceInput): { role: "system" | "u
   const reqs = Object.entries(input.criteriosPorReq)
     .map(([req, c]) => `- ${req}: ${c.join(" ")}`)
     .join("\n");
+
+  const produz = input.contratosProduz || input.contrato;
+  const consome =
+    (input.contratosConsome && input.contratosConsome.length > 0
+      ? input.contratosConsome.join("\n")
+      : input.contratosDependencias) || "";
+
+  let secaoContratos = "";
+  if (produz || consome) {
+    secaoContratos =
+      "\n[CONTRATOS DO PROJETO (src/contracts/index.ts)]\n" +
+      (produz ? `Interfaces que esta etapa PRODUZ:\n${produz.slice(0, 8000)}\n\n` : "") +
+      (consome ? `Interfaces que esta etapa CONSOME (só leitura):\n${consome.slice(0, 20_000)}\n` : "");
+  } else {
+    secaoContratos =
+      "\n[CONTRATOS DO PROJETO]\nAVISO: Contrato ausente ou não definido para esta etapa. Teste apenas com base nos critérios de aceite declarados.\n";
+  }
+
   return [
     { role: "system", content: buildSkillSystemPrompt(loadRoleSkill("testador")) },
     {
@@ -70,8 +90,7 @@ export function buildTesterPrompt(input: AcceptanceInput): { role: "system" | "u
       content:
         `[ETAPA ${input.microbriefId}] Arquivos que o executor vai escrever: ${input.arquivos.join(", ")}\n\n` +
         `[CRITÉRIOS DE ACEITE POR REQ]\n${reqs}\n` +
-        (input.contrato ? `\n[CONTRATO DESTA ETAPA (o que ela produz)]\n${input.contrato.slice(0, 8000)}\n` : "") +
-        (input.contratosDependencias ? `\n[CONTRATOS DAS DEPENDÊNCIAS (já existem no projeto; só leitura)]\n${input.contratosDependencias.slice(0, 20_000)}\n` : ""),
+        secaoContratos,
     },
   ];
 }

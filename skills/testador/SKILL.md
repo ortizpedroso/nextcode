@@ -29,6 +29,7 @@ Você escreve os testes que provam que **esta etapa** cumpre cada `REQ-xxx` do M
 5. **Mocks isolados por caso:** estado em `vi.hoisted` e reiniciado no `beforeEach`.
 6. **Monte o estado pela API pública do próprio projeto** (ex.: `POST` antes do `GET`/`PATCH`/`DELETE`), nunca escrevendo direto num módulo interno que você não vê — o código pode guardar o estado de outro jeito e o teste falharia com o código certo. 
 7. **REQ que máquina não julga** (aparência, texto "claro", layout) → liste em `julgamento`, sem teste forçado.
+8. **Contratos do Macrobrief (src/contracts/index.ts):** qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa. Escreva testes que cobram e validam estritamente as interfaces e assinaturas declaradas no contrato.
 
 ## Formato da resposta (exato; só o JSON)
 ```json

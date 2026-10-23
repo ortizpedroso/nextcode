@@ -220,5 +220,72 @@ C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
 #### 4. O que não foi feito
 - Nada do passo A1.3 ficou pendente. Próximo passo é A1.4.
 
+---
+
+### Passo A1.4 — Testador, executor e avaliador usam o contrato
+
+#### 1. O que mudou (arquivo:linha) e hash de partida
+- **Hash de partida:** `9eeff21`
+- **`skills/testador/SKILL.md:32`**:
+  - Documentada a regra inegociável: "8. Contratos do Macrobrief (src/contracts/index.ts): qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa. Escreva testes que cobram e validam estritamente as interfaces e assinaturas declaradas no contrato."
+- **`skills/avaliador/SKILL.md:63, 67`**:
+  - Documentada a regra inegociável na classificação de severidade: "qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa (função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente)."
+- **`src/core/governance/acceptance-tests.ts:46-47, 65-80`**:
+  - Em `AcceptanceInput`, adicionados `contratosProduz?: string` e `contratosConsome?: string[]`.
+  - Em `buildTesterPrompt`: inclui a seção `[CONTRATOS DO PROJETO (src/contracts/index.ts)]` detalhando as interfaces que a etapa produz e consome; se faltar contrato, emite aviso explícito no prompt do testador.
+- **`src/core/governance/dual-lens-auditor.ts:21, 131-133, 618-631, 642`**:
+  - Em `ValidateType2Options`, adicionados `contrato?: ContratoProjeto | null`, `contratosProduz?: string` e `contratosConsome?: string[]`.
+  - Em `runBlindLens`: inclui a seção `[CONTRATOS DO PROJETO (src/contracts/index.ts)]` no conteúdo enviado ao avaliador e adiciona no prompt de sistema a regra inegociável de que qualquer divergência de contrato (função com parâmetro a mais/menos, tipo trocado) é obrigatoriamente um defeito `critico` e reprova a etapa (`implemented: false`).
+- **`src/core/orchestrator/node-executor.ts:1132-1147, 1229-1230, 1763-1765`**:
+  - Passa a fatia do contrato (`interfacesProduz` e `interfacesConsome`) nas mensagens do executor (`dispatchMessages`), alimentando tanto execução em chamada única quanto em laço de ferramentas (`useToolLoop`).
+  - Passa a fatia do contrato para `generateAcceptanceTests` no autoteste E5.
+  - Passa a fatia do contrato e o objeto de contrato para `DualLensAuditor.validateType2` na lente cega do avaliador.
+
+#### 2. Saída real dos comandos
+
+##### `npx tsc --noEmit`
+```
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+
+(saída vazia, código de retorno 0)
+```
+
+##### `npx vitest run tests/governance/e5-testes-de-aceite.test.ts`
+```
+ RUN  v2.1.9 C:/projetos/nextcode
+
+ ✓ tests/governance/e5-testes-de-aceite.test.ts (5 tests) 9ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  06:51:23
+   Duration  493ms (transform 132ms, setup 21ms, collect 230ms, tests 9ms, environment 0ms, prepare 72ms)
+
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+```
+
+##### `npx vitest run` (suíte completa)
+```
+ Test Files  164 passed (164)
+      Tests  1062 passed (1062)
+   Start at  06:51:44
+   Duration  206.61s (transform 6.42s, setup 1.63s, collect 36.01s, tests 129.64s, environment 26ms, prepare 12.23s)
+
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+```
+
+#### 3. Desvios
+- Nenhum.
+
+#### 4. O que não foi feito
+- Nada do passo A1.4 ficou pendente. Próximo passo é A1.5.
+
+
 
 

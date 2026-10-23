@@ -60,11 +60,11 @@ Não julgue REQ de outra etapa nem cobre arquivo que não é desta etapa.
 <!-- Origem: https://github.com/obra/superpowers | Arquivo: skills/subagent-driven-development/task-reviewer-prompt.md (Part 2 — Code Quality & Calibration) | Commit: 8ca22dba9a94f28898bbce59f2537ff4d87c747d | Licença: MIT -->
 Olhe: separação de responsabilidades, tratamento de erro, contratos entre etapas (nomes, tipos, formato de resposta que a etapa seguinte vai consumir), segurança (validação de entrada, autenticação onde a Spec pede) e construção além do pedido.
 
-- **`critico`** — quebra um REQ, um contrato entre etapas ou a segurança; dado errado (dinheiro, status HTTP, campo descartado); erro não tratado num caminho que a Spec descreve.
+- **`critico`** — quebra um REQ, um contrato entre etapas ou a segurança; dado errado (dinheiro, status HTTP, campo descartado); erro não tratado num caminho que a Spec descreve; **qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa** (função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente).
 - **`importante`** — caso de borda relevante sem tratamento (erro 500 em uso real); responsabilidade misturada; validação fraca em campo secundário; construção não pedida que aumenta manutenção.
 - **`menor`** — nome, legibilidade, organização sem efeito em comportamento, contrato ou segurança.
 
-**Calibração:** não invente problema para parecer rigoroso; estilo equivalente não é problema; se o defeito vem do próprio Microbrief (o executor seguiu a instrução e ela está errada), aponte mesmo assim e diga isso na descrição.
+**Calibração:** não invente problema para parecer rigoroso; estilo equivalente não é problema; qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa; se o defeito vem do próprio Microbrief (o executor seguiu a instrução e ela está errada), aponte mesmo assim e diga isso na descrição.
 
 ## 5. Como o veredito é decidido (pelo harness, a partir da sua resposta)
 - Algum REQ `parcial`/`ausente` → **REPROVADO**.
