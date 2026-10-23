@@ -189,7 +189,7 @@ Ordem de execução: 3.1 → 3.2 → 3.3 → 3.4 → 3.5. Cada item vira um prom
 ### 3.1 Agora
 | # | Item | Porta (pronto quando) |
 |---|---|---|
-| 1 | **TESTE-E5:** teste independente das mudanças 43–45 (§9.4) | relatório com veredito por item; cada bug procedente vira item numerado aqui |
+| 1 | **TESTE-E5:** teste independente das mudanças 43–45 (§9.4) | relatório entregue (ACEITO COM RESSALVA) — aguarda auditoria do Claude |
 | 2 | **Gate 1 do Gateway `4d019f00` (E3/P10):** retomar quando o DeepSeek tiver cota ou crédito (`npx tsx scripts/retomar-sessao.ts 4d019f00 --rodada-extra --motivo "..."`) | `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas; aceite escrito do Gate 1 |
 | 3 | **Consertar o que a consolidação deixou apontando para arquivos apagados:** `CLAUDE.md` (linhas 7 e 12) e comentários em `src/core/decision/jev-decisions.ts:3,450`, `src/core/decision/jev.ts:3`, `src/core/templates/artifact-templates.ts:4`, `src/core/governance/final-reviewer.ts:90`, `src/core/orchestrator/delivery-repair.ts:21`, `src/core/llm/gateways.ts:2`, `src/core/router/smart-router.ts:1121`, `src/core/orchestrator/phase-machine.ts:4-5`, `src/core/execution/project-base.ts:2`, `tests/llm/gateways.test.ts:2`, `scripts/teste-pesado.ts:11` | `git grep` sem citação de documento apagado (fora do git) |
 | 4 | **Reserva da política desatualizada:** `src/core/config/orchestration-policy.ts:367` lê `docs/rascunhos/politicas-orquestracao.yaml` quando `config/` falta, mas essa cópia é antiga e diferente (sem `roteamento_papeis_criticos`). Tirar a reserva (falhar fechado com o padrão do código) e apagar o arquivo | teste: sem `config/`, a política é a do código; arquivo removido |
@@ -204,6 +204,7 @@ Ordem de execução: 3.1 → 3.2 → 3.3 → 3.4 → 3.5. Cada item vira um prom
 | 9 | Código morto ou desligado: `CONTINGENCY_EXECUTOR_MODELS` (`src/core/llm/paid-routing.ts:23`), benchmark simulado `/api/dag/benchmark` (+ `benchmark-modal.tsx`), `partitionRepairsByCluster` e `renderMacrobriefMarkdown` sem uso em produção | remover com teste verde |
 | 10 | Caminho inexistente `docs/spec-architecture.md` | `src/core/skills/spec-decomposer.ts:618` |
 | 11 | Fases `MACROBRIEF`/`CONFERENCIA` existem, mas `etapa1Ativa` está fixo `false` (`session-phase.ts:129`): decidir entre ligar e remover | decisão do fundador |
+| 11b | `NEXTCODE_DISABLE_JEV=1` não é checado no `readJevKey` (com chave no banco, não desativa por ambiente) — achado TESTE-E5 4g | `src/core/decision/jev.ts:68` |
 
 ### 3.3 Portas em modo sombra (dependem de dados reais)
 | # | Item | O que falta |
@@ -395,11 +396,13 @@ Regra zero de todo prompt:
 3. Confere os nomes citados com `git grep`, procura segredos no diff e compara o relatório com o código.
 4. Para cada correção, reverte o código e mostra que o teste falha sem ela.
 
-### 9.4 Prompt pendente: TESTE-E5
-Texto integral, já testado no formato: `git show faa1f59:docs/prompts/TESTE-E5.md`.
-- **O que é:** teste adversarial das mudanças 43–45, com orçamento de US$ 1,00. Pode criar só o próprio relatório.
-- **Os 12 testes "falha sem a correção"** usam estes arquivos reais: `tests/orchestrator/j2b-reparo-entrega.test.ts`, `aviso-diagnostico-rodada.test.ts`, `tests/governance/reproducao-defeitos.test.ts`, `tests/orchestrator/provas-anteriores.test.ts`, `jev-delivery-gate.test.ts`, `pausa-pisca.test.ts`, `pj2b-fechar-projeto.test.ts`, `tests/intake/j11-origem-req.test.ts`, `tr1-7-correcao-por-trecho.test.ts`, `tests/governance/e5-testes-de-aceite.test.ts`, `j20-injecao-arquivo.test.ts`.
-- **Atenção:** a T-A do TESTE-E5 aceita, depois de `faa1f59`, só commits `docs(diario)`/`docs(prompts)`. O commit desta consolidação (`docs`) muda isso. Quem rodar o teste deve partir do HEAD novo e tratar `docs/` como fora do escopo.
+### 9.4 TESTE-E5 (Executado e Concluído em 23/10/2026)
+- **Veredito:** **ACEITO COM RESSALVA** (Relatório: [docs/relatorios/TESTE-E5-antigravity.md](file:///C:/projetos/nextcode/docs/relatorios/TESTE-E5-antigravity.md)).
+- **Baseline 2×:** `tsc` 0 erros e `vitest` 162 arquivos / 1.045 testes verdes nas 2 rodadas.
+- **Os 12 testes "falha sem a correção":** Todos os 12 itens provados falhando sem a correção em worktree isolada (`../nc-teste-e5`).
+- **Caça adversarial (9 frentes):** Bancada Docker, Spec Patch, J20/T7, Autoteste E5, PJ2b e modelos pagos auditados sem falhas graves.
+- **Ressalva identificada:** `src/core/decision/jev.ts` não valida `process.env.NEXTCODE_DISABLE_JEV === "1"` no `readJevKey` (adicionado ao backlog §3.2 item 11b).
+- **Trava T-F:** Horário de `prisma/dev.db` permaneceu idêntico (`22/10/2026 18:54:59`).
 
 ---
 
