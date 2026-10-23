@@ -1,3 +1,13 @@
+## 23/10/2026 (224) — A1.2–A1.4 commitados pelo Antigravity; achados do Claude sobre o Macrobrief
+
+**Feito (commits do Antigravity, não auditados):** `aca39bd` A1.2 (analista escreve o contrato), `9eeff21` A1.3 (contrato gravado/travado/tsc), `1d7d687` A1.4 (testador, executor e avaliador usam o contrato). Faltam A1.5 (prova) e A1.6 (relatório).
+**Claude (sem código):** conferido que o Macrobrief não é gravado em MD+YAML em lugar nenhum (`renderMacrobriefMarkdown` não é chamado em produção; só o Microbrief vira MD+YAML, `node-executor.ts:505`, `:1112`); o analista é DeepSeek (D7) e a conferência mecânica pega erro de forma, não de sentido. Propostos ao fundador, para depois do A1: A1.7 Macrobrief gravado em `.nextcode/macrobrief.md` (YAML com o contrato como fonte); A1.8 DeepSeek × Opus no analista medido no replay do Gateway; A1.9 conferência do contrato × Spec por REQ (Jev); `outros`/`observacoes` só se o replay mostrar falta.
+**Onde parou:** aguardando A1.5/A1.6 e a resposta do fundador sobre A1.7–A1.9.
+**Próximo passo:** auditoria do A1 inteiro (§9.3); registrar A1.7–A1.9 na §3 se aprovado.
+**Pendências do fundador:** aprovar A1.7–A1.9; §3.4 (router9/electronhub, pasta `nextcode-43`, cliques na tela, push do CI); cota/crédito do DeepSeek para o Gate 1.
+
+---
+
 ## 23/10/2026 (223) — A1 em execução pelo Antigravity
 
 **Feito (commits do Antigravity, ainda não auditados):** `06045ac` A1.0 (reserva antiga da política fora de `docs/`), `dd47375` A1.1 (template do contrato e conferência mecânica). A1.2 em andamento (arquivos modificados, sem commit).
