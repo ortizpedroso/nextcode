@@ -1,3 +1,12 @@
+## 23/10/2026 (222) — A1 registrado (Macrobrief com contratos); um documento só
+
+**Fundador:** aceitou a análise macro (contrato entre etapas = causa medida no DG1) e a ordem A1 → Gate 1 → rito curto de correção; "crie somente um [documento] e apague os outros… resolver os problemas até o final, aí sim passar para outro".
+**Feito (commit):** referência §3.1 com regra de foco e item **A1** à frente (porta: P1–P4 47/47 + controle do Gateway reprovado no `tsc` + replay do analista na Spec real); Gate 1 depois do A1 (sessão nova, mesma Spec); rito curto vira 17a (depois do Gate 1); §9.1: relatório do Antigravity é resumido aqui e apagado depois da auditoria; prompt completo do A1 na §9.5 (A1.0 tira a reserva antiga da política e apaga `docs/rascunhos/`; A1.1–A1.6). Apagados `docs/relatorios/DIAG-GATEWAY-DEFEITOS.md` e `TESTE-E5-antigravity.md` (git: `df21912`).
+**Onde parou:** prompt do A1 entregue ao fundador.
+**Próximo passo:** Antigravity executa A1.0–A1.6; Claude audita (§9.3) antes de qualquer ✅.
+
+---
+
 ## 23/10/2026 (221) — Auditoria do TESTE-E5 e do DG1 (Antigravity)
 
 **TESTE-E5 (`docs/relatorios/TESTE-E5-antigravity.md`): aceito em parte.** Passos 1–3 conferem (tsc/vitest 2×, 162/1045; 12/12 testes falham sem a correção; `dev.db` intocado). Não feito: frentes 5, 7, 8, 9, passo 5 decisão por decisão, passo 6 (controles com LLM). Achado "4g" inválido: `NEXTCODE_DISABLE_JEV` não existe no código (o Antigravity seguiu a lista do próprio rascunho, abriu `jev-client.ts` inexistente); item 11b removido da §3.2. Desvio: editou a referência fora do R1.

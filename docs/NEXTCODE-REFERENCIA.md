@@ -187,11 +187,14 @@ Commits `1f5234f`…`bacbd2e`; relatórios `AUDITORIA-E5`, `IMPLEMENTADO-E5`, `D
 Ordem de execução: 3.1 → 3.2 → 3.3 → 3.4 → 3.5. Cada item vira um prompt para o Antigravity (§9). O Claude audita e só depois marca ✅ aqui. Item novo só entra com data, motivo e evidência.
 
 ### 3.1 Agora
+**Regra de foco (fundador, 23/10):** um item por vez, até a porta; só então o seguinte. Nada novo entra no meio sem registro aqui.
+
 | # | Item | Porta (pronto quando) |
 |---|---|---|
+| **A1** | **Macrobrief com contratos de verdade** (decidido 23/10 pelo fundador, depois do DG1). Causa medida: o campo `contratosTypescript` do Macrobrief (`artifact-templates.ts:64`) recebe frase fixa (`spec-decomposer.ts:350`, `:847`) e o "consome/produz" do Microbrief é só lista de arquivos (`spec-decomposer.ts:802`); por isso 5 de 6 defeitos do Gateway nascem na fronteira entre etapas. Correção: o **analista** preenche o contrato (template fixo: entidades/campos, enums, funções exportadas com assinatura, rotas com entrada/saída/erros, dono e quem usa); o **código** confere e grava em `src/contracts/` (travado para o executor); cada etapa gera um arquivo de conformidade que o `tsc` confere; **testador, executor e avaliador** recebem a fatia do contrato; violação de contrato = `critico`. Passos A1.0–A1.6 no prompt (§9.5) | P1–P4 sem regressão (47/47) **e** controle mecânico: o código real dos defeitos do Gateway (`papel === "admin"`, `criarSessao` sem papel) reprova no `tsc` contra o contrato; depois o item 2 (Gate 1) com o Gateway replanejado |
 | 1 | **TESTE-E5:** teste independente das mudanças 43–45 (§9.4) | 🌓 auditado 23/10 (diário 221): passos 1–3 aceitos (tsc/vitest 2×; 12/12 testes falham sem a correção); **faltam** frentes 5 (dados que saem na T7), 7 (skills), 8 (`npm audit` + portas/digest do compose), 9 (cenário de entrega errada com E5-D2/D21), passo 5 decisão por decisão e passo 6 (controles com LLM). O "achado 4g" foi descartado: `NEXTCODE_DISABLE_JEV` não existe no código (nasceu no rascunho) |
-| 2 | **Gate 1 do Gateway `4d019f00` (E3/P10):** retomar quando o DeepSeek tiver cota ou crédito (`npx tsx scripts/retomar-sessao.ts 4d019f00 --rodada-extra --motivo "..."`) | `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas; aceite escrito do Gate 1 |
-| 2a | **DG1 — diagnóstico dos defeitos do Gateway** (só leitura) | ✅ auditado 23/10 (diário 221): script `scripts/diag-gateway-defeitos.ts` reexecutado na cópia, tabela confere com a trilha. Resultado: dos 6 defeitos provados na última revisão, **5 são de integração entre etapas**; **6/6 aprovados como `implementado`** pelo avaliador da etapa; em 2 (REQ-063, webhook do REQ-018/053) o avaliador **escreveu o defeito nas ressalvas e aprovou** — efeito da regra P7 (só `critico` reprova; `importante` vira ressalva); autoteste E5 não rodou (etapas de 21/10, antes do E5; e o E5 não roda em etapa de reparo por desenho, `node-executor.ts:1185`) |
+| 2 | **Gate 1 do Gateway (E3/P10), depois do A1:** replanejar a Spec do `4d019f00` com contrato (sessão nova, mesma Spec) quando o DeepSeek tiver cota ou crédito; a sessão antiga fica como comparação (`npx tsx scripts/retomar-sessao.ts 4d019f00 --rodada-extra --motivo "..."`) | `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas; aceite escrito do Gate 1 |
+| 2a | **DG1 — diagnóstico dos defeitos do Gateway** (só leitura) | ✅ auditado 23/10 (diário 221; relatório `git show df21912:docs/relatorios/DIAG-GATEWAY-DEFEITOS.md`): script `scripts/diag-gateway-defeitos.ts` reexecutado na cópia, tabela confere com a trilha. Resultado: dos 6 defeitos provados na última revisão, **5 são de integração entre etapas**; **6/6 aprovados como `implementado`** pelo avaliador da etapa; em 2 (REQ-063, webhook do REQ-018/053) o avaliador **escreveu o defeito nas ressalvas e aprovou** — efeito da regra P7 (só `critico` reprova; `importante` vira ressalva); autoteste E5 não rodou (etapas de 21/10, antes do E5; e o E5 não roda em etapa de reparo por desenho, `node-executor.ts:1185`) |
 | 3 | **Consertar o que a consolidação deixou apontando para arquivos apagados:** `CLAUDE.md` (linhas 7 e 12) e comentários em `src/core/decision/jev-decisions.ts:3,450`, `src/core/decision/jev.ts:3`, `src/core/templates/artifact-templates.ts:4`, `src/core/governance/final-reviewer.ts:90`, `src/core/orchestrator/delivery-repair.ts:21`, `src/core/llm/gateways.ts:2`, `src/core/router/smart-router.ts:1121`, `src/core/orchestrator/phase-machine.ts:4-5`, `src/core/execution/project-base.ts:2`, `tests/llm/gateways.test.ts:2`, `scripts/teste-pesado.ts:11` | `git grep` sem citação de documento apagado (fora do git) |
 | 4 | **Reserva da política desatualizada:** `src/core/config/orchestration-policy.ts:367` lê `docs/rascunhos/politicas-orquestracao.yaml` quando `config/` falta, mas essa cópia é antiga e diferente (sem `roteamento_papeis_criticos`). Tirar a reserva (falhar fechado com o padrão do código) e apagar o arquivo | teste: sem `config/`, a política é a do código; arquivo removido |
 | 5 | **Saídas do bench fora de `docs/`:** `scripts/bench.ts` e `scripts/teste-pesado.ts` gravam em `docs/relatorios/` e recriam a pasta | relatórios gerados em pasta própria (ex.: `bench/resultados/`), citada aqui |
@@ -223,6 +226,7 @@ Ordem de execução: 3.1 → 3.2 → 3.3 → 3.4 → 3.5. Cada item vira um prom
 ### 3.5 Depois do Gate 1
 | # | Item | Gatilho |
 |---|---|---|
+| 17a | **Rito curto para correção pequena** (1–3 arquivos, sem REQ novo): Spec de correção de uma tela, 1 clique, uma etapa, sem analista LLM; T1 continua (fundador aceitou 23/10 deixar para depois do Gate 1) | depois do Gate 1 |
 | 18 | Dependências de desenvolvimento (13): `vitest` 5, `tailwind` 4 — mudança própria com bench | qualquer momento |
 | 19 | E6: Trivy no CI, HTTPS local | antes de expor na rede |
 | 20 | Memória do projeto (M20) acumulando contratos/decisões/lições, não copiando a Spec | 2ª sessão real no mesmo projeto |
@@ -362,7 +366,7 @@ Proibidos: `find-skills`/`npx skills add` (cadeia de suprimentos), `taste-skill`
 
 ### 9.1 Ciclo
 1. O Claude escreve o prompt de um item da §3, só depois de o item estar aqui. O prompt vai inteiro no chat, entre marcas de início e fim.
-2. O Antigravity implementa e grava o relatório do pacote (`relatorios/<pacote>.md`, recuperável pelo git) no último commit.
+2. O Antigravity implementa e grava o relatório do pacote em `docs/relatorios/<pacote>.md` no último commit. **Depois da auditoria o Claude resume o resultado aqui (§2/§3) e apaga o arquivo** — `docs/` fica só com este documento; o relatório continua no git (hash na linha do item).
 3. O Claude audita (§9.3) e registra o veredito no diário: aceito, aceito com ressalvas ou rejeitado.
 4. Só então o item vira ✅ aqui.
 
@@ -397,8 +401,169 @@ Regra zero de todo prompt:
 4. Para cada correção, reverte o código e mostra que o teste falha sem ela.
 
 ### 9.4 TESTE-E5
-- Prompt integral: `git show faa1f59:docs/prompts/TESTE-E5.md`. Relatório do Antigravity: `docs/relatorios/TESTE-E5-antigravity.md`.
+- Prompt integral: `git show faa1f59:docs/prompts/TESTE-E5.md`. Relatório do Antigravity: `git show df21912:docs/relatorios/TESTE-E5-antigravity.md`.
 - Auditoria do Claude (23/10, diário 221): aceitos os passos 1–3; pendentes as frentes 5, 7, 8, 9 e os passos 5–6 (ver §3.1 item 1). O item "4g / `NEXTCODE_DISABLE_JEV`" não vale: a variável não existe no código.
+
+### 9.5 Prompt do A1 (Macrobrief com contratos de verdade)
+
+**Objetivo:** fazer o Macrobrief cumprir o template.
+- O **analista** escreve o contrato do projeto: entidades e campos, enums, funções exportadas com assinatura, rotas com entrada/saída/erros, dono e quem usa.
+- O **código** confere o contrato, grava em `src/contracts/` (travado para o executor) e gera, por etapa, um arquivo de conformidade que o `tsc` confere.
+- **Testador, executor e avaliador** recebem a fatia do contrato da etapa.
+
+Motivo medido no DG1 (§3.1 item 2a): 5 de 6 defeitos do Gateway nascem na fronteira entre etapas. Hoje o contrato é uma frase fixa (`spec-decomposer.ts:350`, `:847`) e o "consome/produz" é só a lista de arquivos (`spec-decomposer.ts:802`).
+
+**Hash de partida:** o commit cujo assunto começa com `docs(referencia): A1 registrado`.
+
+**Regras (obrigatórias)**
+- **R1 — nada fora do prompt.** Só os arquivos de "PODE ALTERAR" de cada passo. Precisou de outro → PARE e escreva no relatório o que e por quê.
+- **R2 — relatório por passo** em `docs/relatorios/A1-contratos.md`, com:
+  - o que mudou (`arquivo:linha`) e o hash;
+  - a saída real de `npx tsc --noEmit` e as últimas linhas de `npx vitest run` com os totais;
+  - os desvios ("nenhum" se nenhum) e o que não foi feito.
+- **R3 — só dado.** "Funciona" só com saída colada; não sabe → "não verificado".
+- **T-A:** `git status --short` vazio; HEAD = hash de partida. Diferente → PARE.
+- **T-B/T-C:** escopo fechado e literalidade. Nunca aumentar timeout nem silenciar erro para teste passar. Ambiguidade → PARE e pergunte.
+- **T-D:** todo nome citado conferido com `git grep -n`.
+- **T-E:** 1 passo = 1 commit, com `tsc` 0 e `vitest` verde **naquele commit**. Proibido `--amend`, `reset`, `rebase`, `push`, `--no-verify`, `git add -A`, `git add .`.
+- **T-F:** nunca escrever em `prisma/dev.db`. Os scripts usam cópia em `%TEMP%`, como `scripts/replay-analista-a23.ts`. Cole o horário de modificação do arquivo antes e depois.
+- **T-G:** nenhum segredo. **T-H:** nenhum pacote novo. **T-I:** preservar o fim de linha.
+- **T-L:** todo número copiado da saída real. **T-M:** código gerado só roda no contêiner. **T-O:** nenhum documento novo além do relatório.
+- **Gasto:** até **US$ 2,00** no total, só no passo A1.5.
+- **Memória (7,7 GB):** suíte, `tsc`, bench e scripts **um de cada vez**; não abrir o app.
+- **T-K:** o commit termina com `Co-Authored-By: <seu modelo>`.
+
+**Leitura obrigatória:**
+- referência §1.2, §3.1 (A1 e 2a), §4 e §9.2;
+- `skills/analista/SKILL.md`;
+- `src/core/skills/spec-decomposer.ts`: `decomposeWithAnalistaSkill`, `parseAnalystPlan` (:680), `buildDecompositionFromAnalystPlan` (:735);
+- `src/core/orchestrator/plan-scope-check.ts`: `validatePlanStages`, `validateFinalPlan`;
+- `src/core/templates/artifact-templates.ts`: `MacrobriefDocument` (:56), `MicrobriefAndReportDocument`;
+- `src/core/orchestrator/execution-trigger.ts`: onde o plano vira `TaskNode`;
+- `src/core/orchestrator/node-executor.ts`: autoteste (:1185–1200), prompt do executor, porteiro com `promoteWithEmpiricalGate` em `checkOnly`;
+- `src/core/skills/skill-runtime.ts`: caminho protegido (:315);
+- `src/core/governance/dual-lens-auditor.ts`: `runBlindLens`;
+- `src/core/governance/acceptance-tests.ts`: `buildTesterPrompt` (:62).
+
+**A1.0 — Um documento só: tirar a reserva antiga da política (§3.1 item 4)**
+- PODE ALTERAR: `src/core/config/orchestration-policy.ts` e o teste da política que cobre o carregamento.
+- APAGAR: `docs/rascunhos/politicas-orquestracao.yaml`.
+
+`loadOrchestrationPolicy` deixa de ler `docs/rascunhos/politicas-orquestracao.yaml` (:367). Sem `config/politicas-orquestracao.yaml`, usa o padrão do código e registra o motivo (no mesmo padrão de log do arquivo).
+
+Teste: sem `config/`, a política é o padrão do código e o caminho antigo não é lido.
+
+Commit: `fix(politica): A1.0 - sem reserva antiga da politica em docs/`.
+
+**A1.1 — Template do contrato e conferência mecânica (sem LLM)**
+- PODE CRIAR: `src/core/orchestrator/project-contract.ts`, `tests/orchestrator/a1-contrato.test.ts`.
+- PODE ALTERAR: `src/core/templates/artifact-templates.ts` (só tipos).
+
+1. **Tipo `ContratoProjeto`:**
+   ```ts
+   {
+     entidades: { nome, campos: { nome, tipo, opcional? }[], dono }[];
+     enums: { nome, valores: string[], dono }[];
+     funcoes: { nome, arquivo, assinatura, dono, usadoPor: string[] }[];
+     rotas: { metodo, caminho, arquivo, entrada, saida, erros: { status: number, corpo: string }[], dono, usadoPor: string[] }[];
+   }
+   ```
+   `dono` e `usadoPor` são ids de etapa do plano (`mb-1`…). `assinatura`, `tipo`, `entrada`, `saida` e `corpo` são tipos TypeScript em texto.
+2. **`validateContract(contrato, stages)`** devolve erros, em texto curto, um por problema:
+   - dono inexistente;
+   - arquivo de função ou rota fora dos arquivos da etapa dona;
+   - `usadoPor` sem dependência (direta ou indireta) da etapa dona;
+   - nome repetido;
+   - tipo citado que não é entidade, enum, primitivo TS nem tipo global do TS (`Promise`, `Date`, `Record`, `Array`, `Request`, `Response`…);
+   - rota cujo arquivo não é `route.ts`.
+3. **`renderContractTs(contrato)`:** um arquivo TS só com tipos (`export type Enum = "A" | "B"`, `export interface Entidade { … }`, `export type FnNome = (…) => …`), sem código executável. Tem de compilar sozinho.
+4. **`renderConformance(contrato, etapaId)`:** arquivo TS que, para cada função e rota cujo dono é a etapa, importa o símbolo real do arquivo (`@/…`) e o atribui a uma constante do tipo do contrato.
+   - Função: `const _c_criarSessao: FnCriarSessao = criarSessao;`.
+   - Rota: o método exportado, com o tipo `(req: Request, ctx?: any) => Response | Promise<Response>`.
+5. **Testes:**
+   - (a) contrato válido → 0 erros;
+   - (b) um teste para cada erro do item 2;
+   - (c) `renderContractTs` compila (com o `typescript` do projeto, `createProgram` em memória);
+   - (d) **controle do Gateway:** um projeto mínimo em `os.tmpdir()` com este contrato:
+     - `PapelUsuario = "DONO" | "ADMIN" | "OPERADOR"`;
+     - `Sessao { usuarioId, papel: PapelUsuario, adminPlataforma: boolean }`;
+     - `criarSessao(usuarioId: string, papel: PapelUsuario) => Promise<Sessao>`.
+     
+     Com o código real do defeito (`sessao.papel === "admin"` e `criarSessao(usuario.id)` sem papel), o `tsc` do projeto tem de **reprovar** apontando as duas linhas. Com o código corrigido, tem de passar.
+
+Commit: `feat(a1): A1.1 - template do contrato e conferencia mecanica`.
+
+**A1.2 — O analista escreve o contrato**
+- PODE ALTERAR: `skills/analista/SKILL.md`, `src/core/skills/spec-decomposer.ts`, `tests/orchestrator/analista-plan.test.ts` (só acrescentar casos).
+
+1. **Skill:** o JSON de resposta ganha `"contrato"` no formato do A1.1, com uma regra curta por campo e um exemplo pequeno. Regras:
+   - todo símbolo que uma etapa usa de outra etapa tem de estar no contrato, com `dono` e `usadoPor`;
+   - tipos e nomes vêm da Spec (nomes de campos, valores de enum, rotas).
+2. **`parseAnalystPlan`** lê o contrato, e `validateContract` entra na mesma conferência do plano. Os erros voltam ao analista nas rodadas que já existem (`ANALISTA_MAX_RODADAS = 3`).
+3. **Sem contrato válido depois das 3 rodadas**, o plano é reprovado pelo caminho que já existe (`PLANO_REPROVADO`, "Dono: analista"). **Não** cair na heurística sem contrato em produção. O ramo de teste (`skipModel`) continua, com a trilha `CONTRATO_AUSENTE`.
+4. **`buildDecompositionFromAnalystPlan`:** `macrobrief.contratosTypescript = renderContractTs(contrato)`. Cada Microbrief recebe a **fatia** do contrato (o que a etapa produz e o que consome) em `interfacesProduz` / `interfacesConsome`, como texto TS.
+5. **Trilha:** o `ANALISTA_PLAN_APPROVED` ganha a contagem de entidades, enums, funções e rotas.
+
+Testes:
+- plano com contrato válido → aprovado, e o Microbrief recebe a fatia;
+- contrato com erro → a 2ª rodada recebe o erro;
+- 3 rodadas inválidas → `PLANO_REPROVADO`.
+
+Commit: `feat(a1): A1.2 - analista escreve o contrato do Macrobrief`.
+
+**A1.3 — Contrato gravado, travado e conferido pelo `tsc`**
+- PODE ALTERAR: `src/core/orchestrator/execution-trigger.ts`, `src/core/orchestrator/node-executor.ts`, `src/core/skills/skill-runtime.ts`.
+- PODE CRIAR: `tests/orchestrator/a1-contrato-travado.test.ts`.
+
+1. Quando o plano vira `TaskNode`, o harness grava `src/contracts/index.ts` (= `renderContractTs`) na pasta do projeto e registra `CONTRATO_GRAVADO` (com as contagens). Antes, confira que o `tsconfig.json` do projeto tem o alias `@/` → `src/`. Se não tiver → PARE e relate.
+2. `src/contracts/**` vira caminho protegido para escrita do executor (leitura continua liberada), pelo mecanismo de `skill-runtime.ts:315`.
+3. Antes do porteiro de cada etapa, o harness grava na quarentena da etapa o arquivo `src/contracts/conformidade/<id-da-etapa>.ts` (= `renderConformance`).
+   - O porteiro (`tsc`) passa a conferir também esse arquivo.
+   - Ele é promovido junto com a etapa e fica como guarda para as etapas seguintes.
+   - Falha nesse arquivo é reprovação mecânica com a mensagem do `tsc` (gasta tentativa, como hoje).
+
+Testes:
+- executor tentando escrever em `src/contracts/index.ts` → negado;
+- etapa com assinatura diferente do contrato → o porteiro reprova com o erro do `tsc`;
+- etapa certa → passa, e o arquivo de conformidade é promovido.
+
+Commit: `feat(a1): A1.3 - contrato gravado, travado e conferido pelo tsc`.
+
+**A1.4 — Testador, executor e avaliador usam o contrato**
+- PODE ALTERAR:
+  - `src/core/orchestrator/node-executor.ts`, `src/core/governance/acceptance-tests.ts`, `src/core/governance/dual-lens-auditor.ts`;
+  - `skills/testador/SKILL.md`, `skills/avaliador/SKILL.md`;
+  - `skills/executor-core/SKILL.md`, `skills/executor-backend/SKILL.md`, `skills/executor-frontend/SKILL.md`, `skills/executor-integration/SKILL.md`;
+  - os testes existentes desses módulos (só acrescentar casos).
+
+1. **Executor:** o prompt recebe a fatia do contrato e a regra "importe os tipos de `@/contracts`; não redefina; não mude assinatura".
+2. **Testador** (`node-executor.ts:1196`): `contrato` passa a ser a fatia que a etapa **produz**, e `contratosDependencias`, a fatia que ela **consome** (no lugar das listas de arquivo).
+3. **Avaliador da etapa:** recebe a fatia. Divergência do contrato (nome, campo, valor de enum, assinatura, status ou corpo de rota) é problema `critico`, que reprova; nunca é ressalva. A skill `avaliador` ganha essa regra em uma linha.
+
+Testes:
+- o prompt de cada papel contém a fatia;
+- avaliador falso que aponta divergência de contrato como `importante` → o código trata como reprovação.
+
+Commit: `feat(a1): A1.4 - testador, executor e avaliador usam o contrato`.
+
+**A1.5 — Prova (gasto até US$ 2,00)**
+1. **Bench:** `npx tsx scripts/bench.ts --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1`.
+   - Porta: 4/4 ENTREGUE, aceite 47/47.
+   - Cole a tabela e o custo.
+   - Cole, de um projeto, o `CONTRATO_GRAVADO` e o conteúdo do `src/contracts/index.ts` gerado.
+2. **Replay do analista na Spec real do Gateway:** sessão que começa com `4d019f00`, campo `canonicalSpec`, numa cópia do banco. Siga o molde de `scripts/replay-analista-a23.ts` (PODE CRIAR `scripts/replay-contrato-a1.ts`).
+   - Porta: plano aprovado com `validateContract` 0 erros.
+   - Liste entidades, enums, funções e rotas, e diga se `PapelUsuario` (ou equivalente) e `criarSessao` aparecem com dono e `usadoPor`.
+
+Commit: `test(a1): A1.5 - prova (bench e replay do Gateway)`.
+
+**A1.6 — Fechamento**
+Relatório completo (itens da §9.2): commits, testes novos (arquivo › teste › o que prova), nomes conferidos, custo, desvios, checklist das travas e o que não foi feito.
+
+Commit: `docs(relatorio): A1 contratos`.
+
+**Ao terminar (resposta ao fundador):** cole os hashes, `git show --stat HEAD`, `git reflog -10`, `git status --short` e o horário de `prisma/dev.db` antes e depois. **Pare** e aguarde a auditoria do Claude.
+
 ---
 
 ## 10. Documentos consolidados e como recuperar
