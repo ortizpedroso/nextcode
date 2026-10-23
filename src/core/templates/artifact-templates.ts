@@ -53,6 +53,16 @@ export interface MacrobriefMicrobriefEntry {
   reqs: string[];
 }
 
+export type {
+  ContratoProjeto,
+  ContratoEntidade,
+  ContratoEntidadeCampo,
+  ContratoEnum,
+  ContratoFuncao,
+  ContratoRota,
+  ContratoRotaErro,
+} from "@/core/orchestrator/project-contract";
+
 export interface MacrobriefDocument {
   documento: "macrobrief";
   idMacrobrief: string;
