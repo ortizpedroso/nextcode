@@ -1,3 +1,13 @@
+## 23/10/2026 (223) — A1 em execução pelo Antigravity
+
+**Feito (commits do Antigravity, ainda não auditados):** `06045ac` A1.0 (reserva antiga da política fora de `docs/`), `dd47375` A1.1 (template do contrato e conferência mecânica). A1.2 em andamento (arquivos modificados, sem commit).
+**Claude:** respondeu ao fundador que o template do contrato é fixo e o conteúdo é de cada projeto; o contrato fica travado durante a execução (mudança de contrato volta ao analista) e evolui num pedido novo; regra de negócio continua com testador/avaliador.
+**Onde parou:** aguardando o Antigravity terminar A1.2–A1.6.
+**Próximo passo:** auditoria do A1 inteiro (§9.3), incluindo rodar o controle do Gateway (A1.1 d) e conferir o replay do A1.5.
+**Pendências do fundador:** §3.4 (router9/electronhub no FreeLLMAPI, pasta `nextcode-43`, cliques na tela, push do CI); cota/crédito do DeepSeek para o Gate 1.
+
+---
+
 ## 23/10/2026 (222) — A1 registrado (Macrobrief com contratos); um documento só
 
 **Fundador:** aceitou a análise macro (contrato entre etapas = causa medida no DG1) e a ordem A1 → Gate 1 → rito curto de correção; "crie somente um [documento] e apague os outros… resolver os problemas até o final, aí sim passar para outro".
