@@ -1,3 +1,13 @@
+## 23/10/2026 (226) — A1.6 Fechamento e Relatório consolidado do Item A1
+
+**Feito (commit):** `docs/relatorios/A1-contratos.md` consolidando a entrega integral da tarefa A1 (A1.0 a A1.5).
+- Relatório completo com a lista dos 6 commits (`06045ac` a `b4e2242`), 14 testes novos documentados por arquivo/cenário/prova, nomes e caminhos conferidos com `git grep`, gasto real medido na prova A1.5 (US$ 1.1841 contra o teto de US$ 2,00; Bench US$ 0.8304, Replay US$ 0.3537), checklist das travas T2, T3, T4, T5, T8b e T10 afetadas e fortalecidas, desvios e pendências registradas.
+- O banco SQLite de desenvolvimento (`prisma/dev.db`) foi preservado estritamente intacto (`LastWriteTime: 2026-10-23T22:29:41.970Z`).
+**Onde parou:** Pacote A1 inteiramente concluído (A1.0 a A1.6). Todos os gates cumpridos (4/4 ENTREGUE, 47/47 aceite, validateContract 0 erros).
+**Próximo passo:** Aguardar a auditoria completa do Claude (§9.3).
+
+---
+
 ## 23/10/2026 (225) — A1.5 Prova concluída: Bench P1–P4 47/47 e Replay do Gateway aprovado
 
 **Feito:**

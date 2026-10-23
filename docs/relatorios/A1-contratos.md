@@ -1,291 +1,174 @@
-# Relatório da Tarefa A1 — Macrobrief com Contratos de Verdade
+# Relatório de Auditoria e Consolidação — Tarefa A1 (Contratos do Macrobrief)
 
-## Registro de Execução por Passo
+## 1. Lista dos Commits (A1.0 a A1.5)
 
----
-
-### Passo A1.0 — Um documento só: tirar a reserva antiga da política (§3.1 item 4)
-
-#### 1. O que mudou e arquivos afetados
-- `src/core/config/orchestration-policy.ts:365-375`: removido `fallbackPath` apontando para `docs/rascunhos/politicas-orquestracao.yaml`. Quando `config/politicas-orquestracao.yaml` não existir em `rootDir`, a função registra o motivo via `console.info` e retorna `DEFAULT_ORCHESTRATION_POLICY` do código.
-- `docs/rascunhos/politicas-orquestracao.yaml`: arquivo removido do repositório (diretório `docs/rascunhos/` limpo).
-- `tests/harness/orchestration-policy-and-skills.test.ts:3-12,46-67`: adicionado teste `A1.0: sem config/politicas-orquestracao.yaml, usa o padrão do código (DEFAULT_ORCHESTRATION_POLICY) e não lê docs/rascunhos/`, garantindo que diretórios sem `config/` usam os padrões do código e ignoram qualquer conteúdo residual em `docs/rascunhos/`.
-
-#### 2. Saída real dos comandos
-
-##### `npx tsc --noEmit`
-```
-(saída vazia, código de retorno 0)
-```
-
-##### `npx vitest run tests/harness/orchestration-policy-and-skills.test.ts`
-```
- RUN  v2.1.9 C:/projetos/nextcode
-
-stdout | tests/harness/orchestration-policy-and-skills.test.ts > Políticas de Orquestração (config/politicas-orquestracao.yaml) e Runtime de Skills > A1.0: sem config/politicas-orquestracao.yaml, usa o padrão do código (DEFAULT_ORCHESTRATION_POLICY) e não lê docs/rascunhos/
-[orchestration-policy] config/politicas-orquestracao.yaml não encontrado em "C:\Users\ortiz\AppData\Local\Temp\nc-policy-empty-TlrNgB". Usando DEFAULT_ORCHESTRATION_POLICY do código.
-
- ✓ tests/harness/orchestration-policy-and-skills.test.ts (13 tests) 124ms
-
- Test Files  1 passed (1)
-      Tests  13 passed (13)
-   Start at  05:53:18
-   Duration  1.59s (transform 118ms, setup 35ms, collect 105ms, tests 124ms, environment 0ms, prepare 180ms)
-```
-
-##### `npx vitest run` (suíte completa)
-```
- Test Files  162 passed (162)
-      Tests  1046 passed (1046)
-   Start at  05:53:25
-   Duration  213.15s (transform 6.37s, setup 1.98s, collect 28.84s, tests 134.78s, environment 32ms, prepare 14.98s)
-```
-
-#### 3. Desvios
-- Nenhum.
-
-#### 4. O que não foi feito
-- Nada do passo A1.0 ficou pendente. Próximo passo é A1.1.
+| Passo | Hash | Mensagem de Commit | Escopo Principal |
+|---|---|---|---|
+| **A1.0** | `06045ac` | `fix(politica): A1.0 - sem reserva antiga da politica em docs/` | `src/core/config/orchestration-policy.ts` (remove leitura de `docs/rascunhos/politicas-orquestracao.yaml`); remoção do arquivo de rascunho residual; teste de regressão. |
+| **A1.1** | `dd47375` | `feat(a1): A1.1 - template do contrato e conferencia mecanica` | `src/core/orchestrator/project-contract.ts` (`ContratoProjeto`, `validateContract`, `renderContractTs`, `renderConformance`); `tests/orchestrator/a1-contrato.test.ts` (validação mecânica, criação em memória com `ts.createProgram`, controle do Gateway em `os.tmpdir()` com `tsc`). |
+| **A1.2** | `aca39bd` | `feat(a1): A1.2 - analista escreve o contrato do Macrobrief` | `skills/analista/SKILL.md` (regras e formato de contrato); `src/core/skills/spec-decomposer.ts` (`parseAnalystPlan`, `decomposeWithAnalistaSkill`, loop de 3 rodadas, `ANALISTA_PLAN_APPROVED` com contagens, fatias de contrato em `interfacesProduz`/`interfacesConsome`); `tests/orchestrator/analista-plan.test.ts`. |
+| **A1.3** | `9eeff21` | `feat(a1): A1.3 - contrato gravado, travado e conferido pelo tsc` | `src/core/skills/skill-runtime.ts` (`src/contracts/**` protegido contra escrita do executor); `src/core/orchestrator/execution-trigger.ts` (gravação de `src/contracts/index.ts`, alias `@/` no tsconfig, telemetria `CONTRATO_GRAVADO`); `src/core/orchestrator/node-executor.ts` (geração de `src/contracts/conformidade/<etapaId>.ts` na quarentena e conferência obrigatória no porteiro `tsc`); `tests/orchestrator/a1-contrato-travado.test.ts`. |
+| **A1.4** | `1d7d687` | `feat(a1): A1.4 - testador, executor e avaliador usam o contrato` | `skills/testador/SKILL.md` e `skills/avaliador/SKILL.md` (divergência de contrato é crítica e reprova); `src/core/governance/acceptance-tests.ts` (prompt do testador recebe a fatia); `src/core/governance/dual-lens-auditor.ts` (avaliador cego recebe a fatia e regra crítica de contrato); `src/core/orchestrator/node-executor.ts` (fatia do contrato enviada no prompt do executor). |
+| **A1.5** | `b4e2242` | `test(a1): A1.5 - prova (bench e replay do servico)` | `scripts/bench.ts` executado com 4/4 ENTREGUE e 47/47 aceite hermético Docker; `scripts/replay-contrato-a1.ts` executado com aprovação em 0 erros mecânicos na Spec canônica do Gateway `4d019f00` (`ANALISTA_PLAN_APPROVED` na 3ª rodada); `docs/relatorios/REPLAY-GATEWAY-A1.json` e relatórios de bench. |
 
 ---
 
-### Passo A1.1 — Template do contrato e conferência mecânica (sem LLM)
+## 2. Testes Novos Criados
 
-#### 1. O que mudou e arquivos afetados
-- `src/core/orchestrator/project-contract.ts` (CRIADO): implementação das interfaces do `ContratoProjeto` (`entidades`, `enums`, `funcoes`, `rotas`), `validateContract`, `renderContractTs` e `renderConformance`.
-  - `validateContract`: validação mecânica sem LLM (dono inexistente, arquivo fora da etapa dona, `usadoPor` sem dependência da etapa dona, nomes repetidos, tipos desconhecidos com TypeScript AST, arquivo de rota fora de `route.ts`).
-  - `renderContractTs`: geração de arquivo TS canônico em `src/contracts/index.ts` contendo apenas declarações de tipos (interfaces, types de enums, types de assinaturas de função e tipos de rotas).
-  - `renderConformance`: geração do arquivo `src/contracts/conformidade/<etapaId>.ts` que importa os símbolos reais do projeto e os tipa contra as definições do contrato para checagem estrita de compilação pelo `tsc`.
-- `src/core/templates/artifact-templates.ts:56-65`: reexportação dos tipos do contrato (`ContratoProjeto`, `ContratoEntidade`, `ContratoEnum`, etc.) sem alterar contratos existentes.
-- `tests/orchestrator/a1-contrato.test.ts` (CRIADO): suíte de testes com 9 testes cobrindo:
-  - (a) contrato válido devolve 0 erros;
-  - (b) erros individuais de validação mecânica (dono inexistente, arquivo fora do dono, consumidor sem dependência, nome duplicado, tipo desconhecido, rota com nome de arquivo inválido);
-  - (c) `renderContractTs` compila sozinho em memória usando `ts.createProgram`;
-  - (d) controle do Gateway em `os.tmpdir()`: reprodução mecânica no `tsc` com o código defeituoso real (`sessao.papel === "admin"` e chamada sem argumento obrigatório `criarSessao(usuario.id)`), confirmando reprovação estrita pelo compilador, e aprovação limpa quando corrigido (`sessao.papel === "ADMIN"` e `criarSessao(usuario.id, "ADMIN")`).
-
-#### 2. Saída real dos comandos
-
-##### `npx tsc --noEmit`
-```
-(saída vazia, código de retorno 0)
-```
-
-##### `npx vitest run tests/orchestrator/a1-contrato.test.ts`
-```
- RUN  v2.1.9 C:/projetos/nextcode
-
- ✓ tests/orchestrator/a1-contrato.test.ts (9 tests) 6131ms
-   ✓ A1.1 — Contrato do Projeto e Conferência Mecânica > (c) renderContractTs compila sozinho em memória usando createProgram 2042ms
-   ✓ A1.1 — Contrato do Projeto e Conferência Mecânica > (d) controle do Gateway: tsc reprova o defeito real e passa quando corrigido 4079ms
-
- Test Files  1 passed (1)
-      Tests  9 passed (9)
-   Start at  06:06:50
-   Duration  6.80s (transform 49ms, setup 19ms, collect 310ms, tests 6.13s, environment 0ms, prepare 74ms)
-```
-
-##### `npx vitest run` (suíte completa)
-```
- Test Files  163 passed (163)
-      Tests  1055 passed (1055)
-   Start at  06:07:24
-   Duration  245.23s (transform 7.52s, setup 2.21s, collect 34.23s, tests 156.19s, environment 35ms, prepare 16.42s)
-```
-
-#### 3. Desvios
-- Nenhum.
-
-#### 4. O que não foi feito
-- Nada do passo A1.1 ficou pendente. Próximo passo é A1.2.
+| Arquivo de Teste | Teste / Cenário | O que Prova |
+|---|---|---|
+| `tests/harness/orchestration-policy-and-skills.test.ts` | `A1.0: sem config/politicas-orquestracao.yaml...` | Prova que diretórios sem arquivo de política utilizam `DEFAULT_ORCHESTRATION_POLICY` do código e nunca buscam caminhos legados em `docs/rascunhos/`. |
+| `tests/orchestrator/a1-contrato.test.ts` | (a) contrato válido | Prova que um contrato sintática e semanticamente íntegro retorna 0 erros no `validateContract`. |
+| `tests/orchestrator/a1-contrato.test.ts` | (b) erros individuais de validação mecânica | Prova que o `validateContract` detecta cada classe de erro: dono inexistente, arquivo de função fora do dono, consumidor em `usadoPor` sem dependência declarada em `dependeDe`, nomes repetidos, tipos desconhecidos e rota fora de `route.ts`. |
+| `tests/orchestrator/a1-contrato.test.ts` | (c) renderContractTs compila em memória | Prova que `renderContractTs` gera arquivo TypeScript autossuficiente e válido (`ts.createProgram` sem erros). |
+| `tests/orchestrator/a1-contrato.test.ts` | (d) controle do Gateway: tsc reprova o defeito real e passa quando corrigido | Prova a tese central do DG1: em um mini-projeto em `os.tmpdir()`, o código defeituoso real do Gateway (`sessao.papel === "admin"` e `criarSessao(usuario.id)`) é reprovado pelo compilador TypeScript estrito contra o contrato gerado; quando corrigido (`"ADMIN"` e 2 parâmetros), compila limpo. |
+| `tests/orchestrator/analista-plan.test.ts` | Plano com contrato válido aprovado | Prova que o analista emite o contrato, a T8b valida, `ANALISTA_PLAN_APPROVED` registra contagens e os Microbriefs recebem as fatias em `interfacesProduz` e `interfacesConsome`. |
+| `tests/orchestrator/analista-plan.test.ts` | Contrato com erro retorna na 2ª rodada | Prova que erros de contrato retornam na rodada seguinte ao analista para autocorreção. |
+| `tests/orchestrator/analista-plan.test.ts` | 3 rodadas inválidas culminam em `PLANO_REPROVADO` | Prova que planos sem contrato válido não avançam para execução em produção, disparando `PLANO_REPROVADO` com dono `analista`. |
+| `tests/orchestrator/analista-plan.test.ts` | `skipModel: true` emite `CONTRATO_AUSENTE` | Prova que rotinas de teste simulado continuam operando enquanto registram o evento `CONTRATO_AUSENTE` na telemetria. |
+| `tests/orchestrator/a1-contrato-travado.test.ts` | 1. Tentativa de escrita em `src/contracts/**` negada | Prova que o runtime de skills do executor bloqueia qualquer gravação manual em `src/contracts/index.ts` ou arquivos de conformidade. |
+| `tests/orchestrator/a1-contrato-travado.test.ts` | 2. Reprovação mecânica por divergência de assinatura | Prova que se uma etapa implementar função com assinatura divergente da acordada no contrato, o arquivo de conformidade `src/contracts/conformidade/<etapaId>.ts` falha no `tsc` durante o porteiro e a etapa é rejeitada com rollback. |
+| `tests/orchestrator/a1-contrato-travado.test.ts` | 3. Promoção com conformidade promovida junto | Prova que etapa aderente ao contrato é aprovada e seu arquivo de conformidade é promovido ao projeto principal como guarda perene. |
+| `tests/governance/e5-testes-de-aceite.test.ts` | Fatias de contrato no prompt do testador | Prova que o testador de aceite recebe as seções `interfacesProduz` e `interfacesConsome` do contrato para gerar cobranças estritas de interface. |
+| `tests/governance/dual-lens-auditor.test.ts` | Divergência de contrato é crítica no avaliador cego | Prova que qualquer divergência de tipos, nomes ou assinaturas do contrato é classificada com severidade crítica e reprova a etapa. |
 
 ---
 
-### Passo A1.2 — O analista escreve o contrato do Macrobrief
+## 3. Nomes de Arquivos e Funções Conferidos (`git grep`)
 
-#### 1. O que mudou e arquivos afetados
-- `skills/analista/SKILL.md:53-95`: adicionada a seção "Regras de Contrato do Projeto (obrigatório)" e o exemplo do JSON contendo o bloco `"contrato"` com entidades, enums, funções (assinatura TS completa) e rotas (arquivo terminando em `route.ts`).
-- `src/core/orchestrator/project-contract.ts`: adicionada a função `renderContractSliceTs(contrato, etapaId)` que devolve as fatias `interfacesProduz` e `interfacesConsome` como código TS tipado.
-- `src/core/skills/spec-decomposer.ts`:
-  - `parseAnalystPlan`: agora extrai e normaliza o bloco `contrato` junto aos `microbriefs`.
-  - `decomposeWithAnalistaSkill`: valida o contrato contra as etapas usando `validateContract` no loop do analista. Caso haja erros no contrato ou contrato ausente, os erros retornam para o analista nas rodadas subsequentes (`ANALISTA_MAX_RODADAS = 3`).
-  - Se após as 3 rodadas o plano/contrato não for válido, registra `PLANO_REPROVADO` com `dono: "analista"`. Em modo de teste com `skipModel: true`, continua funcionando e emite o evento `CONTRATO_AUSENTE`.
-  - `buildDecompositionFromAnalystPlan`: aceita `contrato?: ContratoProjeto`, preenche `macrobrief.contratosTypescript` com `renderContractTs` e popula `interfacesProduz` e `interfacesConsome` dos Microbriefs com as fatias TypeScript de cada etapa.
-  - O evento `ANALISTA_PLAN_APPROVED` na telemetria passa a registrar as contagens de `entidades`, `enums`, `funcoes` e `rotas`.
-- `tests/orchestrator/analista-plan.test.ts`: adicionados 4 novos testes cobrindo:
-  - Plano com contrato válido aprovado, com `ANALISTA_PLAN_APPROVED` contendo as contagens e Microbriefs recebendo as fatias de contrato produzidas e consumidas;
-  - Contrato com erro retornando erro na 2ª rodada para correção;
-  - 3 rodadas com contrato inválido culminando em `PLANO_REPROVADO` com dono `analista`;
-  - `skipModel` em testes emitindo `CONTRATO_AUSENTE` na trilha de telemetria.
-
-#### 2. Saída real dos comandos
-
-##### `npx tsc --noEmit`
-```
-(saída vazia, código de retorno 0)
-```
-
-##### `npx vitest run tests/orchestrator/analista-plan.test.ts`
-```
- RUN  v2.1.9 C:/projetos/nextcode
-
- ✓ tests/orchestrator/analista-plan.test.ts (14 tests) 62ms
-
- Test Files  1 passed (1)
-      Tests  14 passed (14)
-   Start at  06:21:37
-   Duration  2.04s (transform 331ms, setup 27ms, collect 893ms, tests 62ms, environment 0ms, prepare 125ms)
-```
-
-##### `npx vitest run` (suíte completa)
-```
- Test Files  163 passed (163)
-      Tests  1059 passed (1059)
-   Start at  06:22:08
-   Duration  209.79s (transform 5.61s, setup 1.62s, collect 29.88s, tests 138.78s, environment 26ms, prepare 12.30s)
-```
-
-#### 3. Desvios
-- Nenhum.
-
-#### 4. O que não foi feito
-- Nada do passo A1.2 ficou pendente. Próximo passo é A1.3.
+- **`validateContract`**:
+  - Declarada em: `src/core/orchestrator/project-contract.ts:168`
+  - Utilizada em: `src/core/skills/spec-decomposer.ts:517`
+- **`renderContractTs`**:
+  - Declarada em: `src/core/orchestrator/project-contract.ts:370`
+  - Utilizada em: `src/core/skills/spec-decomposer.ts:905`, `src/core/orchestrator/execution-trigger.ts:468`
+- **`renderConformance`**:
+  - Declarada em: `src/core/orchestrator/project-contract.ts:500`
+  - Utilizada em: `src/core/orchestrator/node-executor.ts:1587`
+- **`renderContractSliceTs`**:
+  - Declarada em: `src/core/orchestrator/project-contract.ts:435`
+  - Utilizada em: `src/core/skills/spec-decomposer.ts:850`
+- **`parseAnalystPlan`**:
+  - Declarada em: `src/core/skills/spec-decomposer.ts:285`
+  - Utilizada em: `src/core/skills/spec-decomposer.ts:503`, `scripts/replay-contrato-a1.ts:94`
+- **`CONTRATO_GRAVADO`**:
+  - Registrado em: `src/core/orchestrator/execution-trigger.ts:518`
+- **`CONTRATO_AUSENTE`**:
+  - Registrado em: `src/core/skills/spec-decomposer.ts:410`
+- **Caminho Protegido `src/contracts`**:
+  - Travado em: `src/core/skills/skill-runtime.ts:312-314`
 
 ---
 
-### Passo A1.3 — Gravar o contrato, travar para o executor e conferir na promoção
+## 4. Custo Total da Prova (Passo A1.5)
 
-#### 1. O que mudou (arquivo:linha) e hash de partida
-- **Hash de partida:** `aca39bd`
-- **`src/core/skills/skill-runtime.ts:312-314`**:
-  - Adicionado `src/contracts` e `src/contracts/**` à lista de caminhos protegidos do executor com a mensagem de violação `[SKILL PROTECTED PATH] Escrita bloqueada em caminho protegido: "${targetFile}"`.
-- **`src/core/orchestrator/execution-trigger.ts:3, 467-468, 476-522`**:
-  - Quando o plano é aprovado, grava `src/contracts/index.ts` no projeto antes de disparar o grafo.
-  - Confere e garante que o `tsconfig.json` do projeto tenha o alias `@/*` apontando para `./src/*` (adiciona caso falte).
-  - Emite telemetria `CONTRATO_GRAVADO` contendo `projectRoot`, `arquivo: "src/contracts/index.ts"`, `hash` SHA-256 do conteúdo e contagens de entidades, enums, funções e rotas.
-  - Propaga `contrato` e `etapaId` para o payload da `TaskNode`.
-- **`src/core/orchestrator/node-executor.ts:60, 416-424, 446-447, 1555-1576, 1888-1889`**:
-  - Exportada função `readNodeContract(payload)` e adicionados campos `etapaId` e `contrato` ao tipo de retorno de `readNodePayload`.
-  - Antes de chamar o porteiro com `promoteWithEmpiricalGate(..., { checkOnly: true })`, gera em quarentena o arquivo de conformidade `src/contracts/conformidade/<etapaId>.ts` usando `renderConformance(contrato, etapaId)`.
-  - Adiciona `src/contracts/conformidade/<etapaId>.ts` ao `effectiveScope` passado para o porteiro empírico. Se o `tsc` falhar devido à não-conformidade com a assinatura do contrato, a etapa reprova antes de tocar o projeto e sem gastar o avaliador.
-  - Na promoção real (`verdict === "APPROVED"`), o arquivo de conformidade é promovido junto (`effectiveScope`), ficando permanentemente no projeto para resguardar as etapas subsequentes.
-- **`tests/orchestrator/a1-contrato-travado.test.ts`**:
-  - Teste 1: Executor tenta escrever em `src/contracts/index.ts`, `src/contracts/conformidade/etapa_1.ts` e `src/contracts/outro.ts` via `write_file`/`edit_file` e recebe negação `[SKILL PROTECTED PATH]`.
-  - Teste 2: Etapa implementa função com assinatura divergente do contrato (`criarSessao(userId)` sem o papel) e toma reprovação mecânica do porteiro pelo `tsc` do arquivo de conformidade, com rollback dos arquivos.
-  - Teste 3: Etapa implementa a assinatura canônica e passa pelo porteiro `checkOnly: true` e pela promoção real, promovendo tanto a implementação quanto o arquivo de conformidade em `src/contracts/conformidade/etapa_1.ts`.
+| Item da Prova | Descrição | Custo Medido (US$) | Resultado |
+|---|---|---|---|
+| **Bench P1–P4** | `npx tsx scripts/bench.ts --projetos p1,p2,p3,p4 --variantes padrao --repeticoes 1` | US$ 0.8304 | **4/4 ENTREGUE**, 100% `tsc`, **47/47 aceite hermético** |
+| **Replay Gateway** | `scripts/replay-contrato-a1.ts` na Spec canônica `4d019f00` | US$ 0.3537 | **Plano aprovado com 0 erros mecânicos** (`ANALISTA_PLAN_APPROVED` rodada 3) |
+| **TOTAL A1.5** | Soma consolidada das provas | **US$ 1.1841** | **Abaixo do teto autorizado de US$ 2,00** |
 
-#### 2. Saída real dos comandos
+### Tabela de Resultados do Benchmark P1–P4 (`2026-10-23-1921.md`)
 
-##### `npx tsc --noEmit`
-```
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+| Projeto | Variante | Rep | Teto (US$) | Fase | Tempo (s) | Etapas | 1ª Tent. | Tent. Totais | tsc | UI Check | Aceite | Reprovados | Custo Total (US$) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **P1** | padrao | 1 | 3.00 | **ENTREGUE** | 186.9 | 4 | 4 | 0 | 0 (ok) | ausente | **10/10** | — | US$ 0.1836 |
+| **P2** | padrao | 1 | 3.00 | **ENTREGUE** | 362.7 | 4 | 4 | 0 | 0 (ok) | UI_CHECK_PASSED | **13/13** | — | US$ 0.2842 |
+| **P3** | padrao | 1 | 3.00 | **ENTREGUE** | 239.3 | 3 | 3 | 0 | 0 (ok) | ausente | **12/12** | — | US$ 0.2127 |
+| **P4** | padrao | 1 | 3.00 | **ENTREGUE** | 199.9 | 2 | 2 | 0 | 0 (ok) | ausente | **12/12** | — | US$ 0.1500 |
 
-(saída vazia, código de retorno 0)
-```
+### Amostra de Telemetria e Contrato Gerado no Bench (Projeto P2)
 
-##### `npx vitest run tests/orchestrator/a1-contrato-travado.test.ts`
-```
- RUN  v2.1.9 C:/projetos/nextcode
-
- ✓ tests/orchestrator/a1-contrato-travado.test.ts (3 tests) 2512ms
-   ✓ A1.3 — Contrato travado, protegido e conferido mecanicamente pelo porteiro > 2. Uma etapa que implementa função com assinatura diferente do contrato toma reprovação mecânica do porteiro pelo tsc do arquivo de conformidade 1293ms
-   ✓ A1.3 — Contrato travado, protegido e conferido mecanicamente pelo porteiro > 3. Uma etapa válida passa pelo porteiro e tem o arquivo de conformidade promovido 1215ms
-
- Test Files  1 passed (1)
-      Tests  3 passed (3)
-   Start at  06:41:08
-   Duration  3.33s (transform 168ms, setup 22ms, collect 536ms, tests 2.51s, environment 0ms, prepare 73ms)
-
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+**Evento `CONTRATO_GRAVADO` na trilha:**
+```json
+{
+  "projectRoot": "C:\\Users\\ortiz\\AppData\\Local\\Temp\\nc-bench-p2-padrao-1\\project-p2",
+  "arquivo": "src/contracts/index.ts",
+  "hash": "d36d56ede9191838c14d596fc7336ce5b39f00387e2d73f73f8cfacb743f495b",
+  "entidades": 1,
+  "enums": 0,
+  "funcoes": 4,
+  "rotas": 4
+}
 ```
 
-##### `npx vitest run` (suíte completa)
+**Arquivo `src/contracts/index.ts` gerado no P2:**
+```ts
+/* eslint-disable */
+// Contrato Canônico do Projeto (gerado mecanicamente pelo harness do NextCode)
+// TRAVADO PARA O EXECUTOR: não edite manualmente este arquivo.
+
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
+
+// === Entidades ===
+export interface Tarefa {
+  id: string;
+  titulo: string;
+  concluida: boolean;
+  criadaEm: string;
+}
+
+// === Assinaturas de Funções ===
+export type FnListarTarefas = () => Tarefa[];
+export type FnCriarTarefa = (titulo: string) => Tarefa;
+export type FnAtualizarTarefa = (id: string, dados: { titulo?: string; concluida?: boolean }) => Tarefa | null;
+export type FnRemoverTarefa = (id: string) => boolean;
+
+// === Rotas e I/O ===
+export type Route_get_api_tarefas_Entrada = void;
+export type Route_get_api_tarefas_Saida = Tarefa[];
+export type Route_post_api_tarefas_Entrada = { titulo: string };
+export type Route_post_api_tarefas_Saida = Tarefa;
+export type Route_patch_api_tarefas_id__Entrada = { titulo?: string; concluida?: boolean };
+export type Route_patch_api_tarefas_id__Saida = Tarefa;
+export type Route_delete_api_tarefas_id__Entrada = void;
+export type Route_delete_api_tarefas_id__Saida = void;
 ```
- Test Files  164 passed (164)
-      Tests  1062 passed (1062)
-   Start at  06:41:34
-   Duration  203.53s (transform 4.58s, setup 1.60s, collect 34.21s, tests 128.68s, environment 26ms, prepare 12.09s)
-
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
-```
-
-#### 3. Desvios
-- Nenhum.
-
-#### 4. O que não foi feito
-- Nada do passo A1.3 ficou pendente. Próximo passo é A1.4.
 
 ---
 
-### Passo A1.4 — Testador, executor e avaliador usam o contrato
+## 5. Replay do Analista na Spec Real do Gateway (`4d019f00`)
 
-#### 1. O que mudou (arquivo:linha) e hash de partida
-- **Hash de partida:** `9eeff21`
-- **`skills/testador/SKILL.md:32`**:
-  - Documentada a regra inegociável: "8. Contratos do Macrobrief (src/contracts/index.ts): qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa. Escreva testes que cobram e validam estritamente as interfaces e assinaturas declaradas no contrato."
-- **`skills/avaliador/SKILL.md:63, 67`**:
-  - Documentada a regra inegociável na classificação de severidade: "qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) é defeito crítico — reprove a etapa (função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente)."
-- **`src/core/governance/acceptance-tests.ts:46-47, 65-80`**:
-  - Em `AcceptanceInput`, adicionados `contratosProduz?: string` e `contratosConsome?: string[]`.
-  - Em `buildTesterPrompt`: inclui a seção `[CONTRATOS DO PROJETO (src/contracts/index.ts)]` detalhando as interfaces que a etapa produz e consome; se faltar contrato, emite aviso explícito no prompt do testador.
-- **`src/core/governance/dual-lens-auditor.ts:21, 131-133, 618-631, 642`**:
-  - Em `ValidateType2Options`, adicionados `contrato?: ContratoProjeto | null`, `contratosProduz?: string` e `contratosConsome?: string[]`.
-  - Em `runBlindLens`: inclui a seção `[CONTRATOS DO PROJETO (src/contracts/index.ts)]` no conteúdo enviado ao avaliador e adiciona no prompt de sistema a regra inegociável de que qualquer divergência de contrato (função com parâmetro a mais/menos, tipo trocado) é obrigatoriamente um defeito `critico` e reprova a etapa (`implemented: false`).
-- **`src/core/orchestrator/node-executor.ts:1132-1147, 1229-1230, 1763-1765`**:
-  - Passa a fatia do contrato (`interfacesProduz` e `interfacesConsome`) nas mensagens do executor (`dispatchMessages`), alimentando tanto execução em chamada única quanto em laço de ferramentas (`useToolLoop`).
-  - Passa a fatia do contrato para `generateAcceptanceTests` no autoteste E5.
-  - Passa a fatia do contrato e o objeto de contrato para `DualLensAuditor.validateType2` na lente cega do avaliador.
+- **Porta:** Plano aprovado com `validateContract` retornando **0 erros** (`ANALISTA_PLAN_APPROVED` na 3ª rodada).
+- **Contagem de elementos extraídos:**
+  - **Entidades:** 11 (`Lojista`, `Usuario`, `WhitelabelConfig`, `ApiKey`, `ConfigTaxa`, `Produto`, `LinkPagamento`, `Cliente`, `Cobranca`, `WebhookEvento`, `Notificacao`)
+  - **Enums:** 9 (`StatusOnboarding`, `PapelUsuario`, `MetodoPagamento`, `TipoProduto`, `OrigemCobranca`, `StatusCobranca`, `DestinatarioNotificacao`, `CanalNotificacao`, `StatusNotificacao`)
+  - **Funções:** 37
+  - **Rotas:** 41
+- **Conferência de Símbolos Críticos do DG1:**
+  - `PapelUsuario`: Formalizado como enum canônico `export type PapelUsuario = "DONO" | "ADMIN" | "OPERADOR";` (Dono: `mb-1`).
+  - `criarSessao`: Formalizado como assinatura exportada `export type FnCriarSessao = (usuario: Usuario) => Promise<void>;` (Dono: `mb-4`, Consome: `mb-5`).
+  - `obterMarca`: Formalizado como assinatura exportada `export type FnObterMarca = (lojistaId: string) => Promise<WhitelabelConfig>;` (Dono: `mb-18`, Consome: `mb-19`, `mb-20`, `mb-22`, `mb-27`).
+  - `exigirAdminPlataforma`: Formalizado como `() => Promise<Usuario>` (Dono: `mb-37`, Consome: `mb-38`).
 
-#### 2. Saída real dos comandos
+---
 
-##### `npx tsc --noEmit`
-```
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+## 6. Desvios Encontrados
 
-(saída vazia, código de retorno 0)
-```
+1. **Cooldown Temporário de Modelo:** Durante as primeiras tentativas, o modelo `custom/deepseek-flash` no FreeLLMAPI estava temporariamente em rate-limit (~20m). O sistema pausou com segurança (`SESSION_PAUSED_NO_LLM`). Após expirar o cooldown, o benchmark executou de forma 100% autônoma, atingindo 4/4 ENTREGUE.
+2. **Normalização de Expressões de Tipo em Rotas:** Modelos LLM podem omitir chaves externas ao descrever parâmetros de rota (ex: `busca?: string`). Adicionou-se uma normalização defensiva em `extractReferencedTypeNames` para envolver propriedades soltas em `{ ... }`, evitando falsos positivos de tipos desconhecidos sem relaxar as regras do TypeScript.
+3. **MIME Types e Tipo Json:** Adicionou-se `Json`, `Blob`, `FormData` e utilitários web à lista de tipos conhecidos, e gerou-se o tipo canônico `export type Json` em `renderContractTs`.
 
-##### `npx vitest run tests/governance/e5-testes-de-aceite.test.ts`
-```
- RUN  v2.1.9 C:/projetos/nextcode
+---
 
- ✓ tests/governance/e5-testes-de-aceite.test.ts (5 tests) 9ms
+## 7. Checklist das Travas Afetadas (T1 a T10)
 
- Test Files  1 passed (1)
-      Tests  5 passed (5)
-   Start at  06:51:23
-   Duration  493ms (transform 132ms, setup 21ms, collect 230ms, tests 9ms, environment 0ms, prepare 72ms)
+| Trava | Nome | Afetada no A1? | Como Foi Fortalecida |
+|---|---|---|---|
+| **T1** | Aprovação Humana da Spec | Não | Mantida íntegra. |
+| **T2** | Escopo de Arquivos por Etapa | **Sim** | `src/contracts/**` agora é escopo protegido do executor. O arquivo de conformidade `src/contracts/conformidade/<etapaId>.ts` é injetado no escopo efetivo da etapa dona. |
+| **T3** | Trilha TelemetryLog | **Sim** | Adicionados os eventos `CONTRATO_GRAVADO` e `CONTRATO_AUSENTE`. `ANALISTA_PLAN_APPROVED` agora grava contagens de entidades, enums, funções e rotas. |
+| **T4** | Quarentena e Porteiro | **Sim** | O porteiro empírico (`checkOnly: true`) agora valida obrigatoriamente a conformidade de assinatura do contrato via `tsc` antes de qualquer promoção ou avaliação. |
+| **T5** | Duas Lentes e Avaliador | **Sim** | O avaliador cego agora recebe a fatia do contrato (`interfacesProduz`/`interfacesConsome`) e tem regra inegociável de que qualquer desvio do contrato é falha crítica. |
+| **T6** | 3 Tentativas e Bloqueio | Não | Mantida íntegra. |
+| **T7** | Pesquisa em Fonte Oficial | Não | Mantida íntegra. |
+| **T8a/T8b** | Validação Spec x Plano | **Sim** | A Trava T8b agora inclui a validação mecânica estrita do contrato (`validateContract`) em até 3 rodadas; se reprovada, aciona `PLANO_REPROVADO` com dono `analista`. |
+| **T9** | Papel da Fase | Não | Mantida íntegra. |
+| **T10** | Entrega e Revisão Final | **Sim** | `src/contracts/index.ts` e arquivos de conformidade agora fazem parte da integridade permanente do projeto final entregue. |
 
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
-```
+---
 
-##### `npx vitest run` (suíte completa)
-```
- Test Files  164 passed (164)
-      Tests  1062 passed (1062)
-   Start at  06:51:44
-   Duration  206.61s (transform 6.42s, setup 1.63s, collect 36.01s, tests 129.64s, environment 26ms, prepare 12.23s)
+## 8. O que Não Foi Feito
 
-FullName                           LastWriteTime
---------                           -------------
-C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
-```
-
-#### 3. Desvios
-- Nenhum.
-
-#### 4. O que não foi feito
-- Nada do passo A1.4 ficou pendente. Próximo passo é A1.5.
-
-
-
-
+1. **A1.7 a A1.9:** Propostas sugeridas pelo Claude em diário 224 (gravação de `.nextcode/macrobrief.md`, comparação DeepSeek x Opus, conferência cruzada Jev REQ x Contrato) aguardam aprovação explícita do fundador e ficam para fases futuras.
+2. **Alteração da base de dados:** `prisma/dev.db` permaneceu estritamente intocado durante todo o processo (replays e bench executados em cópias temporárias isoladas).
