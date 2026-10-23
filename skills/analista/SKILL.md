@@ -52,15 +52,16 @@ Clusters: `core` (tipos, schemas, stores, libs de domínio, configuração), `ba
 
 ## Regras de Contrato do Projeto (obrigatório)
 Além das etapas em `microbriefs`, o JSON deve conter o bloco `"contrato"` com as definições canônicas de TypeScript que atravessam as etapas:
-- **`entidades`**: `{ nome, campos: [{ nome, tipo, opcional? }], dono }`. Nomes de campos e tipos vêm da Spec.
+- **`entidades`**: `{ nome, campos: [{ nome, tipo, opcional? }], dono }`. Nomes de campos e tipos vêm da Spec. Se um tipo for citado em funções ou rotas (ex: `Sessao`, `Usuario`, `ProdutoInput`), ele DEVE estar declarado em `entidades` ou use objeto inline `{ ... }`.
 - **`enums`**: `{ nome, valores: string[], dono }`.
-- **`funcoes`**: `{ nome, arquivo, assinatura, dono, usadoPor: string[] }`. Assinatura TypeScript completa (ex: `"(usuarioId: string, papel: PapelUsuario) => Promise<Sessao>"`).
+- **`funcoes`**: `{ nome, arquivo, assinatura, dono, usadoPor: string[] }`. Assinatura TypeScript completa (ex: `"(usuario: Usuario) => Promise<void>"`).
 - **`rotas`**: `{ metodo, caminho, arquivo, entrada, saida, erros: [{ status, corpo }], dono, usadoPor: string[] }`. O arquivo de rotas DEVE terminar com `route.ts`.
-- **Regras do contrato:**
-  1. Todo símbolo/tipo que uma etapa usa de outra etapa DEVE estar no contrato, com o `dono` (id da etapa produtora) e `usadoPor` (lista de ids das etapas consumidoras).
-  2. Cada etapa consumidora em `usadoPor` deve obrigatoriamente depender (direta ou indiretamente) da etapa dona.
-  3. O arquivo de cada função ou rota deve pertencer à lista de arquivos da etapa dona.
-  4. Tipos citados devem ser entidades, enums, primitivos TS ou tipos globais (`Promise`, `Date`, etc.).
+- **Regras inegociáveis do contrato:**
+  1. `entrada` e `saida` de rotas DEVEM ser expressões TypeScript válidas (ex: `void`, `unknown`, `string`, `Blob`, `{ busca?: string }`, `LinkItem`, `LinkItem[]`). NUNCA escreva texto informal ("Json do evento", "application/pdf" -> use `Blob`, "texto puro" -> use `string`). Para rotas com query ou url params, use objeto inline `{ param?: string }`. Se não tem corpo/entrada, use `void`.
+  2. Todo símbolo/tipo que uma etapa usa de outra etapa DEVE estar no contrato, com o `dono` (id da etapa produtora) e `usadoPor` (lista de ids das etapas consumidoras).
+  3. Cada etapa consumidora em `usadoPor` DEVE obrigatoriamente depender (direta ou indiretamente em `dependeDe`) da etapa dona. NUNCA liste em `usadoPor` etapas que não dependem da etapa dona.
+  4. O arquivo de cada função ou rota deve pertencer à lista de arquivos da etapa dona.
+  5. Tipos citados devem ser entidades declaradas no contrato, enums declarados, primitivos TS (`string`, `number`, `boolean`, `Date`, `void`, `unknown`, `any`, `Json`) ou tipos globais (`Promise`, `Record<string, unknown>`, `Blob`, `Response`, `Request`).
 
 ## Formato da resposta (exato, sem texto fora do JSON)
 ```json

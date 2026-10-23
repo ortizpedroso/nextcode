@@ -1,3 +1,14 @@
+## 23/10/2026 (225) — A1.5 Prova concluída: Bench P1–P4 47/47 e Replay do Gateway aprovado
+
+**Feito:**
+- **Passo 1 (Bench P1–P4):** Executado `scripts/bench.ts` com 4/4 ENTREGUE, 100% no `tsc`, e aceite hermético de 47/47 (P1: 10/10, P2: 13/13, P3: 12/12, P4: 12/12). Custo total do bench: US$ 0.8304.
+- **Passo 2 (Replay do Gateway `4d019f00`):** Executado `scripts/replay-contrato-a1.ts` em cópia temporária do SQLite (`%TEMP%/nc-a1-replay/dev.db`, `prisma/dev.db` intocado). O plano foi aprovado com `validateContract` retornando 0 erros (`ANALISTA_PLAN_APPROVED` na 3ª rodada). Extraídas 11 entidades, 9 enums, 37 funções e 41 rotas; `PapelUsuario` (dono: `mb-1`) e `criarSessao` (dono: `mb-4`, usado por: `mb-5`) formalizados. Custo do replay: US$ 0.3537. Custo total da prova A1.5: US$ 1.1841 (abaixo do teto de US$ 2,00).
+- **Ajustes necessários:** Inclusão de tipos web comuns (`Json`, `Blob`, `FormData`...) no conjunto de tipos permitidos e export de `type Json` em `renderContractTs`; normalização de propriedades TS sem chaves externas em `extractReferencedTypeNames`; instruções no prompt da skill do analista e reforço na mensagem de retry para regras de tipos válidos em rotas.
+**Onde parou:** A1.5 concluído e verde. Próximo: A1.6 (Relatório e consolidação em `docs/relatorios/A1-contratos.md`).
+**Próximo passo:** A1.6 — Fechamento e Relatório.
+
+---
+
 ## 23/10/2026 (224) — A1.2–A1.4 commitados pelo Antigravity; achados do Claude sobre o Macrobrief
 
 **Feito (commits do Antigravity, não auditados):** `aca39bd` A1.2 (analista escreve o contrato), `9eeff21` A1.3 (contrato gravado/travado/tsc), `1d7d687` A1.4 (testador, executor e avaliador usam o contrato). Faltam A1.5 (prova) e A1.6 (relatório).

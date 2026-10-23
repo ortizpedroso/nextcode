@@ -88,6 +88,14 @@ const TS_KNOWN_BUILTIN_TYPES = new Set([
   "NextResponse",
   "Buffer",
   "Uint8Array",
+  "Blob",
+  "FormData",
+  "ReadableStream",
+  "URL",
+  "URLSearchParams",
+  "Headers",
+  "BodyInit",
+  "Json",
   "Partial",
   "Required",
   "Readonly",
@@ -116,11 +124,22 @@ function normalizePath(p: string): string {
  */
 function extractReferencedTypeNames(typeExpr: string): string[] {
   if (!typeExpr || !typeExpr.trim()) return [];
-  const trimmed = typeExpr.trim();
+  let trimmed = typeExpr.trim();
   // Se for apenas void, any, unknown, etc.
   if (TS_KNOWN_BUILTIN_TYPES.has(trimmed)) return [trimmed];
 
-  const dummyCode = `type _DummyType = ${trimmed};`;
+  // Trata MIME types comuns (ex: application/pdf -> Blob)
+  if (trimmed.includes("/") && !trimmed.includes("{")) {
+    trimmed = "Blob";
+  }
+
+  // Se o LLM omitiu as chaves externas em declarações de propriedades como "busca?: string" ou "a: string, b: number"
+  const normalizedExpr =
+    !trimmed.startsWith("{") && !trimmed.startsWith("(") && !trimmed.startsWith("[") && trimmed.includes(":")
+      ? `{ ${trimmed.replace(/,\s*$/, "")} }`
+      : trimmed;
+
+  const dummyCode = `type _DummyType = ${normalizedExpr};`;
   const sf = ts.createSourceFile("dummy.ts", dummyCode, ts.ScriptTarget.ESNext, true);
   const references: string[] = [];
 
@@ -353,6 +372,8 @@ export function renderContractTs(contrato: ContratoProjeto): string {
     "/* eslint-disable */",
     "// Contrato Canônico do Projeto (gerado mecanicamente pelo harness do NextCode)",
     "// TRAVADO PARA O EXECUTOR: não edite manualmente este arquivo.",
+    "",
+    "export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];",
     "",
   ];
 

@@ -1,0 +1,1716 @@
+{
+  "sessao": "4d019f00-eca9-43d4-adf8-2217988fc57e",
+  "duracaoSeg": 402.668,
+  "custoTotalUsd": 0.35367270399999995,
+  "contratoValido": true,
+  "errosValidacao": [],
+  "totaisContrato": {
+    "entidades": 11,
+    "enums": 9,
+    "funcoes": 37,
+    "rotas": 41
+  },
+  "contratoTsCompleto": "/* eslint-disable */\n// Contrato Canônico do Projeto (gerado mecanicamente pelo harness do NextCode)\n// TRAVADO PARA O EXECUTOR: não edite manualmente este arquivo.\n\nexport type Json = string | number | boolean | null | { [key: string]: Json } | Json[];\n\n// === Enums ===\nexport type StatusOnboarding = \"PENDENTE\" | \"ATIVO\" | \"BLOQUEADO\";\nexport type PapelUsuario = \"DONO\" | \"ADMIN\" | \"OPERADOR\";\nexport type TipoProduto = \"PRODUTO\" | \"SERVICO\";\nexport type MetodoPagamento = \"PIX\" | \"BOLETO\" | \"CARTAO\";\nexport type OrigemCobranca = \"DASHBOARD\" | \"CHECKOUT\" | \"API\";\nexport type StatusCobranca = \"PENDENTE\" | \"PAGA\" | \"VENCIDA\" | \"CANCELADA\" | \"ESTORNADA\";\nexport type CanalNotificacao = \"EMAIL\" | \"WHATSAPP\";\nexport type Destinatario = \"PAGADOR\" | \"LOJISTA\";\nexport type StatusNotificacao = \"PENDENTE\" | \"ENVIADA\" | \"FALHOU\";\n\n// === Entidades ===\nexport interface Lojista {\n  id: string;\n  nomeFantasia: string;\n  documento: string;\n  email: string;\n  telefone: string;\n  asaasSubcontaId?: string;\n  asaasApiKey?: string;\n  asaasWalletId?: string;\n  asaasWebhookToken?: string;\n  statusOnboarding: StatusOnboarding;\n  criadoEm: Date;\n}\n\nexport interface Usuario {\n  id: string;\n  lojistaId: string;\n  nome: string;\n  email: string;\n  senhaHash: string;\n  papel: PapelUsuario;\n  adminPlataforma: boolean;\n  ativo: boolean;\n  criadoEm: Date;\n}\n\nexport interface WhitelabelConfig {\n  id: string;\n  lojistaId: string;\n  nomeMarca: string;\n  logoUrl?: string;\n  corPrimaria: string;\n  corSecundaria: string;\n  emailSuporte?: string;\n  mensagemCheckout?: string;\n  atualizadoEm: Date;\n}\n\nexport interface ApiKey {\n  id: string;\n  lojistaId: string;\n  nome: string;\n  prefixo: string;\n  chaveHash: string;\n  ultimoUsoEm?: Date;\n  revogadaEm?: Date;\n  criadoEm: Date;\n}\n\nexport interface ConfigTaxa {\n  id: string;\n  metodo: MetodoPagamento;\n  parcelas: number;\n  taxaPercentualBps: number;\n  taxaFixaCentavos: number;\n  acrescimoPercentualBps: number;\n  acrescimoFixoCentavos: number;\n  ativo: boolean;\n  atualizadoEm: Date;\n}\n\nexport interface Produto {\n  id: string;\n  lojistaId: string;\n  tipo: TipoProduto;\n  nome: string;\n  descricao?: string;\n  valorCentavos?: number;\n  metodosPermitidos: MetodoPagamento[];\n  ativo: boolean;\n  criadoEm: Date;\n}\n\nexport interface LinkPagamento {\n  id: string;\n  lojistaId: string;\n  produtoId: string;\n  slug: string;\n  valorCentavos?: number;\n  diasVencimento: number;\n  expiraEm?: Date;\n  limiteUsos?: number;\n  usos: number;\n  ativo: boolean;\n  criadoEm: Date;\n}\n\nexport interface Cliente {\n  id: string;\n  lojistaId: string;\n  nome: string;\n  documento?: string;\n  email?: string;\n  whatsapp?: string;\n  asaasCustomerId?: string;\n  criadoEm: Date;\n}\n\nexport interface Cobranca {\n  id: string;\n  lojistaId: string;\n  clienteId: string;\n  produtoId?: string;\n  linkPagamentoId?: string;\n  origem: OrigemCobranca;\n  referenciaExterna?: string;\n  descricao: string;\n  valorCentavos: number;\n  metodo: MetodoPagamento;\n  parcelas: number;\n  valorTaxaCentavos: number;\n  valorLiquidoCentavos: number;\n  valorTaxaProvedorCentavos: number;\n  valorReceitaPlataformaCentavos: number;\n  status: StatusCobranca;\n  vencimento: Date;\n  pagoEm?: Date;\n  asaasPaymentId?: string;\n  pixCopiaECola?: string;\n  pixQrCodeBase64?: string;\n  boletoLinhaDigitavel?: string;\n  boletoUrl?: string;\n  criadoEm: Date;\n}\n\nexport interface WebhookEvento {\n  id: string;\n  lojistaId?: string;\n  eventoExternoId: string;\n  tipoEvento: string;\n  payload: unknown;\n  processadoEm?: Date;\n  erro?: string;\n  recebidoEm: Date;\n}\n\nexport interface Notificacao {\n  id: string;\n  lojistaId: string;\n  cobrancaId: string;\n  destinatario: Destinatario;\n  canal: CanalNotificacao;\n  destino: string;\n  status: StatusNotificacao;\n  tentativas: number;\n  ultimoErro?: string;\n  mensagemExternaId?: string;\n  enviadaEm?: Date;\n  criadoEm: Date;\n}\n\n// === Assinaturas de Funções ===\nexport type FnCriptografar = (texto: string) => string;\nexport type FnDescriptografar = (cifra: string) => string;\nexport type FnRespostaErro = (erro: unknown) => Response;\nexport type FnCobrancaParaLojista = (cobranca: Cobranca) => Record<string, unknown>;\nexport type FnCobrancaParaPagador = (cobranca: Cobranca) => Record<string, unknown>;\nexport type FnClienteParaLojista = (cliente: Cliente) => Record<string, unknown>;\nexport type FnHashSenha = (senha: string) => Promise<string>;\nexport type FnVerificarSenha = (senha: string, hash: string) => Promise<boolean>;\nexport type FnCriarSessao = (usuario: Usuario) => Promise<void>;\nexport type FnLerSessao = () => { usuarioId: string, lojistaId: string, papel: PapelUsuario } | null;\nexport type FnEncerrarSessao = () => void;\nexport type FnExigirTenant = () => { usuarioId: string, lojistaId: string, papel: PapelUsuario };\nexport type FnLimitar = (chave: string, { limite, janelaMs }: { limite: number, janelaMs: number }) => { permitido: boolean, retryAfterSegundos: number };\nexport type FnRespostaLimiteExcedido = (retryAfterSegundos: number) => Response;\nexport type FnCalcularTaxasComConfig = (config: ConfigTaxa, valorCentavos: number) => { taxaProvedorCentavos: number, receitaPlataformaCentavos: number, valorTaxaCentavos: number, valorLiquidoCentavos: number };\nexport type FnCalcularTaxas = (metodo: MetodoPagamento, valorCentavos: number, parcelas: number) => { taxaProvedorCentavos: number, receitaPlataformaCentavos: number, valorTaxaCentavos: number, valorLiquidoCentavos: number };\nexport type FnOpcoesParcelamento = (valorCentavos: number) => Array<{ parcelas: number, valorParcelaCentavos: number, valorTotalCentavos: number, acrescimoCentavos: number }>;\nexport type FnCriarClienteAsaas = (lojista: Lojista) => Promise<Record<string, unknown>>;\nexport type FnCriarSubconta = (lojista: Lojista) => Promise<void>;\nexport type FnGerarSlugUnico = () => Promise<string>;\nexport type FnCriarLink = (lojistaId: string, dados: { produtoId?: string, valorCentavos?: number, diasVencimento: number, expiraEm?: Date, limiteUsos?: number }) => Promise<LinkPagamento>;\nexport type FnResolverLinkPublico = (slug: string) => Promise<LinkPagamento>;\nexport type FnCriarCobranca = (lojistaId: string, dados: Record<string, unknown>, origem: OrigemCobranca) => Promise<Cobranca>;\nexport type FnListarCobrancas = (lojistaId: string, filtros: Record<string, unknown>) => Promise<Cobranca[]>;\nexport type FnObterCobranca = (id: string, lojistaId: string) => Promise<Cobranca>;\nexport type FnCancelarCobranca = (id: string, lojistaId: string) => Promise<Cobranca>;\nexport type FnObterMarca = (lojistaId: string) => Promise<WhitelabelConfig>;\nexport type FnEnviarEmail = (para: string, assunto: string, html: string, nomeRemetente: string, responderPara?: string) => Promise<{ ok: boolean, mensagemExternaId?: string, erro?: string }>;\nexport type FnEnviarWhatsappTemplate = (para: string, template: string, idioma: string, variaveis: Record<string, string>) => Promise<{ ok: boolean, mensagemExternaId?: string, erro?: string }>;\nexport type FnValidarAssinaturaMeta = (corpoBruto: string, assinatura: string) => boolean;\nexport type FnEnviarComprovante = (cobrancaId: string) => Promise<void>;\nexport type FnReenviarPendentes = () => Promise<number>;\nexport type FnGerarApiKey = () => { valor: string, chaveHash: string };\nexport type FnAutenticarApiKey = (request: Request) => Promise<{ lojistaId: string, apiKeyId: string }>;\nexport type FnGerarRelatorio = (lojistaId: string, { inicio, fim }: { inicio: Date, fim: Date }) => Promise<Record<string, unknown>>;\nexport type FnParaCsv = (relatorio: Record<string, unknown>) => string;\nexport type FnExigirAdminPlataforma = () => Promise<Usuario>;\n\n// === Rotas e I/O ===\nexport type Route_post_api_auth_registro_Entrada = { nome: string, email: string, senha: string, documento: string, telefone?: string };\nexport type Route_post_api_auth_registro_Saida = unknown;\nexport type Route_post_api_auth_login_Entrada = { email: string, senha: string };\nexport type Route_post_api_auth_login_Saida = unknown;\nexport type Route_post_api_auth_logout_Entrada = void;\nexport type Route_post_api_auth_logout_Saida = void;\nexport type Route_get_api_auth_sessao_Entrada = void;\nexport type Route_get_api_auth_sessao_Saida = unknown;\nexport type Route_get_api_conta_asaas_Entrada = void;\nexport type Route_get_api_conta_asaas_Saida = { statusOnboarding: StatusOnboarding, contaVinculada: boolean };\nexport type Route_post_api_conta_asaas_Entrada = { asaasApiKey?: string };\nexport type Route_post_api_conta_asaas_Saida = unknown;\nexport type Route_post_api_webhooks_asaas_Entrada = unknown;\nexport type Route_post_api_webhooks_asaas_Saida = void;\nexport type Route_get_api_produtos_Entrada = void;\nexport type Route_get_api_produtos_Saida = Produto[];\nexport type Route_post_api_produtos_Entrada = { tipo: TipoProduto, nome: string, descricao?: string, valorCentavos?: number, metodosPermitidos: MetodoPagamento[] };\nexport type Route_post_api_produtos_Saida = Produto;\nexport type Route_get_api_produtos_id_Entrada = void;\nexport type Route_get_api_produtos_id_Saida = Produto;\nexport type Route_patch_api_produtos_id_Entrada = Partial<{ nome: string, descricao: string, valorCentavos: number, metodosPermitidos: MetodoPagamento[] }>;\nexport type Route_patch_api_produtos_id_Saida = Produto;\nexport type Route_delete_api_produtos_id_Entrada = void;\nexport type Route_delete_api_produtos_id_Saida = void;\nexport type Route_get_api_links_Entrada = void;\nexport type Route_get_api_links_Saida = LinkPagamento[];\nexport type Route_post_api_links_Entrada = { produtoId: string, valorCentavos?: number, diasVencimento: number, expiraEm?: Date, limiteUsos?: number };\nexport type Route_post_api_links_Saida = LinkPagamento;\nexport type Route_get_api_links_id_Entrada = void;\nexport type Route_get_api_links_id_Saida = LinkPagamento;\nexport type Route_patch_api_links_id_Entrada = Partial<{ ativo: boolean, expiraEm: Date, limiteUsos: number }>;\nexport type Route_patch_api_links_id_Saida = LinkPagamento;\nexport type Route_get_api_cobrancas_Entrada = void;\nexport type Route_get_api_cobrancas_Saida = Record<string, unknown>[];\nexport type Route_post_api_cobrancas_Entrada = Record<string, unknown>;\nexport type Route_post_api_cobrancas_Saida = Cobranca;\nexport type Route_get_api_cobrancas_id_Entrada = void;\nexport type Route_get_api_cobrancas_id_Saida = Record<string, unknown>;\nexport type Route_delete_api_cobrancas_id_Entrada = void;\nexport type Route_delete_api_cobrancas_id_Saida = void;\nexport type Route_get_api_clientes_Entrada = void;\nexport type Route_get_api_clientes_Saida = Record<string, unknown>[];\nexport type Route_get_api_checkout_slug_Entrada = void;\nexport type Route_get_api_checkout_slug_Saida = unknown;\nexport type Route_post_api_checkout_slug_Entrada = Record<string, unknown>;\nexport type Route_post_api_checkout_slug_Saida = unknown;\nexport type Route_get_api_publico_cobrancas_id_Entrada = void;\nexport type Route_get_api_publico_cobrancas_id_Saida = Record<string, unknown>;\nexport type Route_get_api_publico_cobrancas_id_boleto_Entrada = void;\nexport type Route_get_api_publico_cobrancas_id_boleto_Saida = Blob;\nexport type Route_get_api_whitelabel_Entrada = void;\nexport type Route_get_api_whitelabel_Saida = WhitelabelConfig;\nexport type Route_put_api_whitelabel_Entrada = Partial<{ nomeMarca: string, logoUrl: string, corPrimaria: string, corSecundaria: string, emailSuporte: string, mensagemCheckout: string }>;\nexport type Route_put_api_whitelabel_Saida = WhitelabelConfig;\nexport type Route_post_api_cron_notificacoes_Entrada = void;\nexport type Route_post_api_cron_notificacoes_Saida = { reenviadas: number };\nexport type Route_get_api_webhooks_whatsapp_Entrada = void;\nexport type Route_get_api_webhooks_whatsapp_Saida = string;\nexport type Route_post_api_webhooks_whatsapp_Entrada = unknown;\nexport type Route_post_api_webhooks_whatsapp_Saida = void;\nexport type Route_get_api_api_keys_Entrada = void;\nexport type Route_get_api_api_keys_Saida = Record<string, unknown>[];\nexport type Route_post_api_api_keys_Entrada = { nome: string };\nexport type Route_post_api_api_keys_Saida = Record<string, unknown>;\nexport type Route_delete_api_api_keys_id_Entrada = void;\nexport type Route_delete_api_api_keys_id_Saida = void;\nexport type Route_post_api_v1_cobrancas_Entrada = Record<string, unknown>;\nexport type Route_post_api_v1_cobrancas_Saida = Record<string, unknown>;\nexport type Route_get_api_v1_cobrancas_Entrada = void;\nexport type Route_get_api_v1_cobrancas_Saida = Record<string, unknown>[];\nexport type Route_get_api_v1_cobrancas_id_Entrada = void;\nexport type Route_get_api_v1_cobrancas_id_Saida = Record<string, unknown>;\nexport type Route_post_api_v1_links_Entrada = Record<string, unknown>;\nexport type Route_post_api_v1_links_Saida = Record<string, unknown>;\nexport type Route_get_api_relatorios_Entrada = void;\nexport type Route_get_api_relatorios_Saida = unknown;\nexport type Route_get_api_admin_taxas_Entrada = void;\nexport type Route_get_api_admin_taxas_Saida = ConfigTaxa[];\nexport type Route_put_api_admin_taxas_Entrada = ConfigTaxa[];\nexport type Route_put_api_admin_taxas_Saida = void;\nexport type Route_get_api_admin_receitas_Entrada = void;\nexport type Route_get_api_admin_receitas_Saida = Record<string, unknown>;\n",
+  "contratoObjeto": {
+    "entidades": [
+      {
+        "nome": "Lojista",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "nomeFantasia",
+            "tipo": "string"
+          },
+          {
+            "nome": "documento",
+            "tipo": "string"
+          },
+          {
+            "nome": "email",
+            "tipo": "string"
+          },
+          {
+            "nome": "telefone",
+            "tipo": "string"
+          },
+          {
+            "nome": "asaasSubcontaId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "asaasApiKey",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "asaasWalletId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "asaasWebhookToken",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "statusOnboarding",
+            "tipo": "StatusOnboarding"
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "Usuario",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "nome",
+            "tipo": "string"
+          },
+          {
+            "nome": "email",
+            "tipo": "string"
+          },
+          {
+            "nome": "senhaHash",
+            "tipo": "string"
+          },
+          {
+            "nome": "papel",
+            "tipo": "PapelUsuario"
+          },
+          {
+            "nome": "adminPlataforma",
+            "tipo": "boolean"
+          },
+          {
+            "nome": "ativo",
+            "tipo": "boolean"
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "WhitelabelConfig",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "nomeMarca",
+            "tipo": "string"
+          },
+          {
+            "nome": "logoUrl",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "corPrimaria",
+            "tipo": "string"
+          },
+          {
+            "nome": "corSecundaria",
+            "tipo": "string"
+          },
+          {
+            "nome": "emailSuporte",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "mensagemCheckout",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "atualizadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "ApiKey",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "nome",
+            "tipo": "string"
+          },
+          {
+            "nome": "prefixo",
+            "tipo": "string"
+          },
+          {
+            "nome": "chaveHash",
+            "tipo": "string"
+          },
+          {
+            "nome": "ultimoUsoEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "revogadaEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "ConfigTaxa",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "metodo",
+            "tipo": "MetodoPagamento"
+          },
+          {
+            "nome": "parcelas",
+            "tipo": "number"
+          },
+          {
+            "nome": "taxaPercentualBps",
+            "tipo": "number"
+          },
+          {
+            "nome": "taxaFixaCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "acrescimoPercentualBps",
+            "tipo": "number"
+          },
+          {
+            "nome": "acrescimoFixoCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "ativo",
+            "tipo": "boolean"
+          },
+          {
+            "nome": "atualizadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "Produto",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "tipo",
+            "tipo": "TipoProduto"
+          },
+          {
+            "nome": "nome",
+            "tipo": "string"
+          },
+          {
+            "nome": "descricao",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "valorCentavos",
+            "tipo": "number",
+            "opcional": true
+          },
+          {
+            "nome": "metodosPermitidos",
+            "tipo": "MetodoPagamento[]"
+          },
+          {
+            "nome": "ativo",
+            "tipo": "boolean"
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "LinkPagamento",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "produtoId",
+            "tipo": "string"
+          },
+          {
+            "nome": "slug",
+            "tipo": "string"
+          },
+          {
+            "nome": "valorCentavos",
+            "tipo": "number",
+            "opcional": true
+          },
+          {
+            "nome": "diasVencimento",
+            "tipo": "number"
+          },
+          {
+            "nome": "expiraEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "limiteUsos",
+            "tipo": "number",
+            "opcional": true
+          },
+          {
+            "nome": "usos",
+            "tipo": "number"
+          },
+          {
+            "nome": "ativo",
+            "tipo": "boolean"
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "Cliente",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "nome",
+            "tipo": "string"
+          },
+          {
+            "nome": "documento",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "email",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "whatsapp",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "asaasCustomerId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "Cobranca",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "clienteId",
+            "tipo": "string"
+          },
+          {
+            "nome": "produtoId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "linkPagamentoId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "origem",
+            "tipo": "OrigemCobranca"
+          },
+          {
+            "nome": "referenciaExterna",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "descricao",
+            "tipo": "string"
+          },
+          {
+            "nome": "valorCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "metodo",
+            "tipo": "MetodoPagamento"
+          },
+          {
+            "nome": "parcelas",
+            "tipo": "number"
+          },
+          {
+            "nome": "valorTaxaCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "valorLiquidoCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "valorTaxaProvedorCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "valorReceitaPlataformaCentavos",
+            "tipo": "number"
+          },
+          {
+            "nome": "status",
+            "tipo": "StatusCobranca"
+          },
+          {
+            "nome": "vencimento",
+            "tipo": "Date"
+          },
+          {
+            "nome": "pagoEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "asaasPaymentId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "pixCopiaECola",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "pixQrCodeBase64",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "boletoLinhaDigitavel",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "boletoUrl",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "WebhookEvento",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "eventoExternoId",
+            "tipo": "string"
+          },
+          {
+            "nome": "tipoEvento",
+            "tipo": "string"
+          },
+          {
+            "nome": "payload",
+            "tipo": "unknown"
+          },
+          {
+            "nome": "processadoEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "erro",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "recebidoEm",
+            "tipo": "Date"
+          }
+        ]
+      },
+      {
+        "nome": "Notificacao",
+        "dono": "mb-1",
+        "campos": [
+          {
+            "nome": "id",
+            "tipo": "string"
+          },
+          {
+            "nome": "lojistaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "cobrancaId",
+            "tipo": "string"
+          },
+          {
+            "nome": "destinatario",
+            "tipo": "Destinatario"
+          },
+          {
+            "nome": "canal",
+            "tipo": "CanalNotificacao"
+          },
+          {
+            "nome": "destino",
+            "tipo": "string"
+          },
+          {
+            "nome": "status",
+            "tipo": "StatusNotificacao"
+          },
+          {
+            "nome": "tentativas",
+            "tipo": "number"
+          },
+          {
+            "nome": "ultimoErro",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "mensagemExternaId",
+            "tipo": "string",
+            "opcional": true
+          },
+          {
+            "nome": "enviadaEm",
+            "tipo": "Date",
+            "opcional": true
+          },
+          {
+            "nome": "criadoEm",
+            "tipo": "Date"
+          }
+        ]
+      }
+    ],
+    "enums": [
+      {
+        "nome": "StatusOnboarding",
+        "valores": [
+          "PENDENTE",
+          "ATIVO",
+          "BLOQUEADO"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "PapelUsuario",
+        "valores": [
+          "DONO",
+          "ADMIN",
+          "OPERADOR"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "TipoProduto",
+        "valores": [
+          "PRODUTO",
+          "SERVICO"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "MetodoPagamento",
+        "valores": [
+          "PIX",
+          "BOLETO",
+          "CARTAO"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "OrigemCobranca",
+        "valores": [
+          "DASHBOARD",
+          "CHECKOUT",
+          "API"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "StatusCobranca",
+        "valores": [
+          "PENDENTE",
+          "PAGA",
+          "VENCIDA",
+          "CANCELADA",
+          "ESTORNADA"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "CanalNotificacao",
+        "valores": [
+          "EMAIL",
+          "WHATSAPP"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "Destinatario",
+        "valores": [
+          "PAGADOR",
+          "LOJISTA"
+        ],
+        "dono": "mb-1"
+      },
+      {
+        "nome": "StatusNotificacao",
+        "valores": [
+          "PENDENTE",
+          "ENVIADA",
+          "FALHOU"
+        ],
+        "dono": "mb-1"
+      }
+    ],
+    "funcoes": [
+      {
+        "nome": "criptografar",
+        "arquivo": "src/lib/crypto.ts",
+        "assinatura": "(texto: string) => string",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-8"
+        ]
+      },
+      {
+        "nome": "descriptografar",
+        "arquivo": "src/lib/crypto.ts",
+        "assinatura": "(cifra: string) => string",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-8"
+        ]
+      },
+      {
+        "nome": "respostaErro",
+        "arquivo": "src/lib/erros.ts",
+        "assinatura": "(erro: unknown) => Response",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-5",
+          "mb-9",
+          "mb-10",
+          "mb-13",
+          "mb-16",
+          "mb-20",
+          "mb-21",
+          "mb-22",
+          "mb-30",
+          "mb-33",
+          "mb-35"
+        ]
+      },
+      {
+        "nome": "cobrancaParaLojista",
+        "arquivo": "src/lib/serializadores.ts",
+        "assinatura": "(cobranca: Cobranca) => Record<string, unknown>",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-16",
+          "mb-21",
+          "mb-22"
+        ]
+      },
+      {
+        "nome": "cobrancaParaPagador",
+        "arquivo": "src/lib/serializadores.ts",
+        "assinatura": "(cobranca: Cobranca) => Record<string, unknown>",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-21"
+        ]
+      },
+      {
+        "nome": "clienteParaLojista",
+        "arquivo": "src/lib/serializadores.ts",
+        "assinatura": "(cliente: Cliente) => Record<string, unknown>",
+        "dono": "mb-2",
+        "usadoPor": [
+          "mb-16"
+        ]
+      },
+      {
+        "nome": "hashSenha",
+        "arquivo": "src/lib/auth.ts",
+        "assinatura": "(senha: string) => Promise<string>",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-5"
+        ]
+      },
+      {
+        "nome": "verificarSenha",
+        "arquivo": "src/lib/auth.ts",
+        "assinatura": "(senha: string, hash: string) => Promise<boolean>",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-5"
+        ]
+      },
+      {
+        "nome": "criarSessao",
+        "arquivo": "src/lib/auth.ts",
+        "assinatura": "(usuario: Usuario) => Promise<void>",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-5"
+        ]
+      },
+      {
+        "nome": "lerSessao",
+        "arquivo": "src/lib/auth.ts",
+        "assinatura": "() => { usuarioId: string, lojistaId: string, papel: PapelUsuario } | null",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-4",
+          "mb-5",
+          "mb-9",
+          "mb-10",
+          "mb-13",
+          "mb-16",
+          "mb-19",
+          "mb-20",
+          "mb-32",
+          "mb-33",
+          "mb-35"
+        ]
+      },
+      {
+        "nome": "encerrarSessao",
+        "arquivo": "src/lib/auth.ts",
+        "assinatura": "() => void",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-5"
+        ]
+      },
+      {
+        "nome": "exigirTenant",
+        "arquivo": "src/lib/tenant.ts",
+        "assinatura": "() => { usuarioId: string, lojistaId: string, papel: PapelUsuario }",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-9",
+          "mb-10",
+          "mb-13",
+          "mb-16",
+          "mb-19",
+          "mb-20",
+          "mb-32",
+          "mb-33",
+          "mb-35"
+        ]
+      },
+      {
+        "nome": "limitar",
+        "arquivo": "src/lib/rate-limit.ts",
+        "assinatura": "(chave: string, { limite, janelaMs }: { limite: number, janelaMs: number }) => { permitido: boolean, retryAfterSegundos: number }",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-20",
+          "mb-21",
+          "mb-22",
+          "mb-33"
+        ]
+      },
+      {
+        "nome": "respostaLimiteExcedido",
+        "arquivo": "src/lib/rate-limit.ts",
+        "assinatura": "(retryAfterSegundos: number) => Response",
+        "dono": "mb-3",
+        "usadoPor": [
+          "mb-20",
+          "mb-21",
+          "mb-22",
+          "mb-33"
+        ]
+      },
+      {
+        "nome": "calcularTaxasComConfig",
+        "arquivo": "src/lib/taxas.ts",
+        "assinatura": "(config: ConfigTaxa, valorCentavos: number) => { taxaProvedorCentavos: number, receitaPlataformaCentavos: number, valorTaxaCentavos: number, valorLiquidoCentavos: number }",
+        "dono": "mb-7",
+        "usadoPor": [
+          "mb-15"
+        ]
+      },
+      {
+        "nome": "calcularTaxas",
+        "arquivo": "src/lib/taxas.ts",
+        "assinatura": "(metodo: MetodoPagamento, valorCentavos: number, parcelas: number) => { taxaProvedorCentavos: number, receitaPlataformaCentavos: number, valorTaxaCentavos: number, valorLiquidoCentavos: number }",
+        "dono": "mb-7",
+        "usadoPor": [
+          "mb-15",
+          "mb-20"
+        ]
+      },
+      {
+        "nome": "opcoesParcelamento",
+        "arquivo": "src/lib/taxas.ts",
+        "assinatura": "(valorCentavos: number) => Array<{ parcelas: number, valorParcelaCentavos: number, valorTotalCentavos: number, acrescimoCentavos: number }>",
+        "dono": "mb-7",
+        "usadoPor": [
+          "mb-20"
+        ]
+      },
+      {
+        "nome": "criarClienteAsaas",
+        "arquivo": "src/lib/asaas-client.ts",
+        "assinatura": "(lojista: Lojista) => Promise<Record<string, unknown>>",
+        "dono": "mb-8",
+        "usadoPor": [
+          "mb-15"
+        ]
+      },
+      {
+        "nome": "criarSubconta",
+        "arquivo": "src/lib/asaas-subconta.ts",
+        "assinatura": "(lojista: Lojista) => Promise<void>",
+        "dono": "mb-8",
+        "usadoPor": [
+          "mb-9"
+        ]
+      },
+      {
+        "nome": "gerarSlugUnico",
+        "arquivo": "src/lib/links-service.ts",
+        "assinatura": "() => Promise<string>",
+        "dono": "mb-12",
+        "usadoPor": [
+          "mb-13"
+        ]
+      },
+      {
+        "nome": "criarLink",
+        "arquivo": "src/lib/links-service.ts",
+        "assinatura": "(lojistaId: string, dados: { produtoId?: string, valorCentavos?: number, diasVencimento: number, expiraEm?: Date, limiteUsos?: number }) => Promise<LinkPagamento>",
+        "dono": "mb-12",
+        "usadoPor": [
+          "mb-13"
+        ]
+      },
+      {
+        "nome": "resolverLinkPublico",
+        "arquivo": "src/lib/links-service.ts",
+        "assinatura": "(slug: string) => Promise<LinkPagamento>",
+        "dono": "mb-12",
+        "usadoPor": [
+          "mb-20"
+        ]
+      },
+      {
+        "nome": "criarCobranca",
+        "arquivo": "src/lib/cobrancas-service.ts",
+        "assinatura": "(lojistaId: string, dados: Record<string, unknown>, origem: OrigemCobranca) => Promise<Cobranca>",
+        "dono": "mb-15",
+        "usadoPor": [
+          "mb-16",
+          "mb-20",
+          "mb-33"
+        ]
+      },
+      {
+        "nome": "listarCobrancas",
+        "arquivo": "src/lib/cobrancas-service.ts",
+        "assinatura": "(lojistaId: string, filtros: Record<string, unknown>) => Promise<Cobranca[]>",
+        "dono": "mb-15",
+        "usadoPor": [
+          "mb-16",
+          "mb-33"
+        ]
+      },
+      {
+        "nome": "obterCobranca",
+        "arquivo": "src/lib/cobrancas-service.ts",
+        "assinatura": "(id: string, lojistaId: string) => Promise<Cobranca>",
+        "dono": "mb-15",
+        "usadoPor": [
+          "mb-21",
+          "mb-22"
+        ]
+      },
+      {
+        "nome": "cancelarCobranca",
+        "arquivo": "src/lib/cobrancas-service.ts",
+        "assinatura": "(id: string, lojistaId: string) => Promise<Cobranca>",
+        "dono": "mb-15",
+        "usadoPor": [
+          "mb-16"
+        ]
+      },
+      {
+        "nome": "obterMarca",
+        "arquivo": "src/lib/whitelabel.ts",
+        "assinatura": "(lojistaId: string) => Promise<WhitelabelConfig>",
+        "dono": "mb-18",
+        "usadoPor": [
+          "mb-19",
+          "mb-20",
+          "mb-22",
+          "mb-27"
+        ]
+      },
+      {
+        "nome": "enviarEmail",
+        "arquivo": "src/lib/notificacoes/email.ts",
+        "assinatura": "(para: string, assunto: string, html: string, nomeRemetente: string, responderPara?: string) => Promise<{ ok: boolean, mensagemExternaId?: string, erro?: string }>",
+        "dono": "mb-25",
+        "usadoPor": [
+          "mb-27"
+        ]
+      },
+      {
+        "nome": "enviarWhatsappTemplate",
+        "arquivo": "src/lib/notificacoes/whatsapp.ts",
+        "assinatura": "(para: string, template: string, idioma: string, variaveis: Record<string, string>) => Promise<{ ok: boolean, mensagemExternaId?: string, erro?: string }>",
+        "dono": "mb-26",
+        "usadoPor": [
+          "mb-27"
+        ]
+      },
+      {
+        "nome": "validarAssinaturaMeta",
+        "arquivo": "src/lib/notificacoes/whatsapp.ts",
+        "assinatura": "(corpoBruto: string, assinatura: string) => boolean",
+        "dono": "mb-26",
+        "usadoPor": [
+          "mb-29"
+        ]
+      },
+      {
+        "nome": "enviarComprovante",
+        "arquivo": "src/lib/notificacoes/comprovante-service.ts",
+        "assinatura": "(cobrancaId: string) => Promise<void>",
+        "dono": "mb-27",
+        "usadoPor": [
+          "mb-30"
+        ]
+      },
+      {
+        "nome": "reenviarPendentes",
+        "arquivo": "src/lib/notificacoes/comprovante-service.ts",
+        "assinatura": "() => Promise<number>",
+        "dono": "mb-27",
+        "usadoPor": [
+          "mb-28"
+        ]
+      },
+      {
+        "nome": "gerarApiKey",
+        "arquivo": "src/lib/api-key.ts",
+        "assinatura": "() => { valor: string, chaveHash: string }",
+        "dono": "mb-31",
+        "usadoPor": [
+          "mb-32"
+        ]
+      },
+      {
+        "nome": "autenticarApiKey",
+        "arquivo": "src/lib/api-key.ts",
+        "assinatura": "(request: Request) => Promise<{ lojistaId: string, apiKeyId: string }>",
+        "dono": "mb-31",
+        "usadoPor": [
+          "mb-33"
+        ]
+      },
+      {
+        "nome": "gerarRelatorio",
+        "arquivo": "src/lib/relatorios-service.ts",
+        "assinatura": "(lojistaId: string, { inicio, fim }: { inicio: Date, fim: Date }) => Promise<Record<string, unknown>>",
+        "dono": "mb-34",
+        "usadoPor": [
+          "mb-35"
+        ]
+      },
+      {
+        "nome": "paraCsv",
+        "arquivo": "src/lib/relatorios-service.ts",
+        "assinatura": "(relatorio: Record<string, unknown>) => string",
+        "dono": "mb-34",
+        "usadoPor": [
+          "mb-35"
+        ]
+      },
+      {
+        "nome": "exigirAdminPlataforma",
+        "arquivo": "src/lib/admin.ts",
+        "assinatura": "() => Promise<Usuario>",
+        "dono": "mb-37",
+        "usadoPor": [
+          "mb-38"
+        ]
+      }
+    ],
+    "rotas": [
+      {
+        "metodo": "POST",
+        "caminho": "/api/auth/registro",
+        "arquivo": "src/app/api/auth/registro/route.ts",
+        "entrada": "{ nome: string, email: string, senha: string, documento: string, telefone?: string }",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 409,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-5",
+        "usadoPor": [
+          "mb-6"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/auth/login",
+        "arquivo": "src/app/api/auth/login/route.ts",
+        "entrada": "{ email: string, senha: string }",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-5",
+        "usadoPor": [
+          "mb-6"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/auth/logout",
+        "arquivo": "src/app/api/auth/logout/route.ts",
+        "entrada": "void",
+        "saida": "void",
+        "erros": [],
+        "dono": "mb-5",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/auth/sessao",
+        "arquivo": "src/app/api/auth/sessao/route.ts",
+        "entrada": "void",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-5",
+        "usadoPor": [
+          "mb-41",
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/conta/asaas",
+        "arquivo": "src/app/api/conta/asaas/route.ts",
+        "entrada": "void",
+        "saida": "{ statusOnboarding: StatusOnboarding, contaVinculada: boolean }",
+        "erros": [],
+        "dono": "mb-9",
+        "usadoPor": [
+          "mb-41",
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/conta/asaas",
+        "arquivo": "src/app/api/conta/asaas/route.ts",
+        "entrada": "{ asaasApiKey?: string }",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 403,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-9",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/webhooks/asaas",
+        "arquivo": "src/app/api/webhooks/asaas/route.ts",
+        "entrada": "unknown",
+        "saida": "void",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-30",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/produtos",
+        "arquivo": "src/app/api/produtos/route.ts",
+        "entrada": "void",
+        "saida": "Produto[]",
+        "erros": [],
+        "dono": "mb-10",
+        "usadoPor": [
+          "mb-11"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/produtos",
+        "arquivo": "src/app/api/produtos/route.ts",
+        "entrada": "{ tipo: TipoProduto, nome: string, descricao?: string, valorCentavos?: number, metodosPermitidos: MetodoPagamento[] }",
+        "saida": "Produto",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-10",
+        "usadoPor": [
+          "mb-11"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/produtos/:id",
+        "arquivo": "src/app/api/produtos/[id]/route.ts",
+        "entrada": "void",
+        "saida": "Produto",
+        "erros": [
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-10",
+        "usadoPor": [
+          "mb-11"
+        ]
+      },
+      {
+        "metodo": "PATCH",
+        "caminho": "/api/produtos/:id",
+        "arquivo": "src/app/api/produtos/[id]/route.ts",
+        "entrada": "Partial<{ nome: string, descricao: string, valorCentavos: number, metodosPermitidos: MetodoPagamento[] }>",
+        "saida": "Produto",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-10",
+        "usadoPor": [
+          "mb-11"
+        ]
+      },
+      {
+        "metodo": "DELETE",
+        "caminho": "/api/produtos/:id",
+        "arquivo": "src/app/api/produtos/[id]/route.ts",
+        "entrada": "void",
+        "saida": "void",
+        "erros": [],
+        "dono": "mb-10",
+        "usadoPor": [
+          "mb-11"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/links",
+        "arquivo": "src/app/api/links/route.ts",
+        "entrada": "void",
+        "saida": "LinkPagamento[]",
+        "erros": [],
+        "dono": "mb-13",
+        "usadoPor": [
+          "mb-14"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/links",
+        "arquivo": "src/app/api/links/route.ts",
+        "entrada": "{ produtoId: string, valorCentavos?: number, diasVencimento: number, expiraEm?: Date, limiteUsos?: number }",
+        "saida": "LinkPagamento",
+        "erros": [
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-13",
+        "usadoPor": [
+          "mb-14"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/links/:id",
+        "arquivo": "src/app/api/links/[id]/route.ts",
+        "entrada": "void",
+        "saida": "LinkPagamento",
+        "erros": [],
+        "dono": "mb-13",
+        "usadoPor": [
+          "mb-14"
+        ]
+      },
+      {
+        "metodo": "PATCH",
+        "caminho": "/api/links/:id",
+        "arquivo": "src/app/api/links/[id]/route.ts",
+        "entrada": "Partial<{ ativo: boolean, expiraEm: Date, limiteUsos: number }>",
+        "saida": "LinkPagamento",
+        "erros": [],
+        "dono": "mb-13",
+        "usadoPor": [
+          "mb-14"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/cobrancas",
+        "arquivo": "src/app/api/cobrancas/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>[]",
+        "erros": [],
+        "dono": "mb-16",
+        "usadoPor": [
+          "mb-17"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/cobrancas",
+        "arquivo": "src/app/api/cobrancas/route.ts",
+        "entrada": "Record<string, unknown>",
+        "saida": "Cobranca",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 409,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-16",
+        "usadoPor": [
+          "mb-17"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/cobrancas/:id",
+        "arquivo": "src/app/api/cobrancas/[id]/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>",
+        "erros": [],
+        "dono": "mb-16",
+        "usadoPor": [
+          "mb-17"
+        ]
+      },
+      {
+        "metodo": "DELETE",
+        "caminho": "/api/cobrancas/:id",
+        "arquivo": "src/app/api/cobrancas/[id]/route.ts",
+        "entrada": "void",
+        "saida": "void",
+        "erros": [
+          {
+            "status": 409,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-16",
+        "usadoPor": [
+          "mb-17"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/clientes",
+        "arquivo": "src/app/api/clientes/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>[]",
+        "erros": [],
+        "dono": "mb-16",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/checkout/:slug",
+        "arquivo": "src/app/api/checkout/[slug]/route.ts",
+        "entrada": "void",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-20",
+        "usadoPor": [
+          "mb-23"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/checkout/:slug",
+        "arquivo": "src/app/api/checkout/[slug]/route.ts",
+        "entrada": "Record<string, unknown>",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-20",
+        "usadoPor": [
+          "mb-23"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/publico/cobrancas/:id",
+        "arquivo": "src/app/api/publico/cobrancas/[id]/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>",
+        "erros": [
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-21",
+        "usadoPor": [
+          "mb-24"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/publico/cobrancas/:id/boleto",
+        "arquivo": "src/app/api/publico/cobrancas/[id]/boleto/route.ts",
+        "entrada": "void",
+        "saida": "Blob",
+        "erros": [
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-22",
+        "usadoPor": [
+          "mb-23"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/whitelabel",
+        "arquivo": "src/app/api/whitelabel/route.ts",
+        "entrada": "void",
+        "saida": "WhitelabelConfig",
+        "erros": [],
+        "dono": "mb-19",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "PUT",
+        "caminho": "/api/whitelabel",
+        "arquivo": "src/app/api/whitelabel/route.ts",
+        "entrada": "Partial<{ nomeMarca: string, logoUrl: string, corPrimaria: string, corSecundaria: string, emailSuporte: string, mensagemCheckout: string }>",
+        "saida": "WhitelabelConfig",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 403,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-19",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/cron/notificacoes",
+        "arquivo": "src/app/api/cron/notificacoes/route.ts",
+        "entrada": "void",
+        "saida": "{ reenviadas: number }",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-28",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/webhooks/whatsapp",
+        "arquivo": "src/app/api/webhooks/whatsapp/route.ts",
+        "entrada": "void",
+        "saida": "string",
+        "erros": [
+          {
+            "status": 403,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-29",
+        "usadoPor": []
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/webhooks/whatsapp",
+        "arquivo": "src/app/api/webhooks/whatsapp/route.ts",
+        "entrada": "unknown",
+        "saida": "void",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-29",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/api-keys",
+        "arquivo": "src/app/api/api-keys/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>[]",
+        "erros": [],
+        "dono": "mb-32",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/api-keys",
+        "arquivo": "src/app/api/api-keys/route.ts",
+        "entrada": "{ nome: string }",
+        "saida": "Record<string, unknown>",
+        "erros": [],
+        "dono": "mb-32",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "DELETE",
+        "caminho": "/api/api-keys/:id",
+        "arquivo": "src/app/api/api-keys/[id]/route.ts",
+        "entrada": "void",
+        "saida": "void",
+        "erros": [],
+        "dono": "mb-32",
+        "usadoPor": [
+          "mb-42"
+        ]
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/v1/cobrancas",
+        "arquivo": "src/app/api/v1/cobrancas/route.ts",
+        "entrada": "Record<string, unknown>",
+        "saida": "Record<string, unknown>",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-33",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/v1/cobrancas",
+        "arquivo": "src/app/api/v1/cobrancas/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>[]",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-33",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/v1/cobrancas/:id",
+        "arquivo": "src/app/api/v1/cobrancas/[id]/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 404,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-33",
+        "usadoPor": []
+      },
+      {
+        "metodo": "POST",
+        "caminho": "/api/v1/links",
+        "arquivo": "src/app/api/v1/links/route.ts",
+        "entrada": "Record<string, unknown>",
+        "saida": "Record<string, unknown>",
+        "erros": [
+          {
+            "status": 401,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 429,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-33",
+        "usadoPor": []
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/relatorios",
+        "arquivo": "src/app/api/relatorios/route.ts",
+        "entrada": "void",
+        "saida": "unknown",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-35",
+        "usadoPor": [
+          "mb-36"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/admin/taxas",
+        "arquivo": "src/app/api/admin/taxas/route.ts",
+        "entrada": "void",
+        "saida": "ConfigTaxa[]",
+        "erros": [],
+        "dono": "mb-38",
+        "usadoPor": [
+          "mb-39"
+        ]
+      },
+      {
+        "metodo": "PUT",
+        "caminho": "/api/admin/taxas",
+        "arquivo": "src/app/api/admin/taxas/route.ts",
+        "entrada": "ConfigTaxa[]",
+        "saida": "void",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 403,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-38",
+        "usadoPor": [
+          "mb-39"
+        ]
+      },
+      {
+        "metodo": "GET",
+        "caminho": "/api/admin/receitas",
+        "arquivo": "src/app/api/admin/receitas/route.ts",
+        "entrada": "void",
+        "saida": "Record<string, unknown>",
+        "erros": [
+          {
+            "status": 400,
+            "corpo": "{ erro: string }"
+          },
+          {
+            "status": 403,
+            "corpo": "{ erro: string }"
+          }
+        ],
+        "dono": "mb-38",
+        "usadoPor": [
+          "mb-39"
+        ]
+      }
+    ]
+  }
+}

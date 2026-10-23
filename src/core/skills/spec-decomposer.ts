@@ -573,7 +573,8 @@ export class SpecDecomposerSkill {
           `A conferência do NextCode reprovou o plano (rodada ${rodada} de ${ANALISTA_MAX_RODADAS}). ` +
           "Corrija TODOS os erros abaixo e devolva o plano INTEIRO, só o JSON:\n" +
           errors.slice(0, 40).map((e) => `- ${e}`).join("\n") +
-          (errors.length > 40 ? `\n- … e mais ${errors.length - 40}` : ""),
+          (errors.length > 40 ? `\n- … e mais ${errors.length - 40}` : "") +
+          "\nATENÇÃO: Em rotas, 'entrada' e 'saida' DEVEM ser tipos TypeScript válidos (ex: '{ campo?: string }', 'void', 'unknown', 'Blob'). Não use texto informal. Se citar uma entidade ou interface (como Sessao ou ProdutoInput), ela DEVE estar declarada no bloco 'entidades'!",
       });
     }
 
