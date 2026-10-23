@@ -359,23 +359,20 @@ function extractScalarString(yamlText: string, key: string, fallback: string): s
 }
 
 /**
- * Carrega e interpreta `config/politicas-orquestracao.yaml` (ou `docs/rascunhos/politicas-orquestracao.yaml`
- * como fallback), aplicando tipagem estrita sobre os parâmetros do harness.
+ * Carrega e interpreta `config/politicas-orquestracao.yaml`, aplicando tipagem
+ * estrita sobre os parâmetros do harness. Quando o arquivo não existe, usa
+ * o padrão do código (DEFAULT_ORCHESTRATION_POLICY) e registra o motivo.
  */
 export function loadOrchestrationPolicy(rootDir: string = process.cwd()): OrchestrationPolicy {
   const primaryPath = path.join(rootDir, "config", "politicas-orquestracao.yaml");
-  const fallbackPath = path.join(rootDir, "docs", "rascunhos", "politicas-orquestracao.yaml");
-  const targetPath = fs.existsSync(primaryPath)
-    ? primaryPath
-    : fs.existsSync(fallbackPath)
-      ? fallbackPath
-      : null;
-
-  if (!targetPath) {
+  if (!fs.existsSync(primaryPath)) {
+    console.info(
+      `[orchestration-policy] config/politicas-orquestracao.yaml não encontrado em "${rootDir}". Usando DEFAULT_ORCHESTRATION_POLICY do código.`
+    );
     return structuredClone(DEFAULT_ORCHESTRATION_POLICY);
   }
 
-  const raw = fs.readFileSync(targetPath, "utf8");
+  const raw = fs.readFileSync(primaryPath, "utf8");
   const policy = structuredClone(DEFAULT_ORCHESTRATION_POLICY);
 
   policy.versaoPolitica = extractScalarString(raw, "versao_politica", policy.versaoPolitica);

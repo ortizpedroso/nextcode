@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_ORCHESTRATION_POLICY,
   loadOrchestrationPolicy,
   resolveExecutorTierForAttempt,
   isEvaluatorModelIndependent,
@@ -40,6 +41,28 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
     expect(policy.tentativas.reenvioRelatorioContaComoTentativa).toBe(false);
     expect(policy.tentativas.falhaProvedorContaComoTentativa).toBe(false);
     expect(policy.execucaoParalela.paralelismoMaximo).toBe(3);
+  });
+
+  it("A1.0: sem config/politicas-orquestracao.yaml, usa o padrão do código (DEFAULT_ORCHESTRATION_POLICY) e não lê docs/rascunhos/", () => {
+    const tmpEmpty = fs.mkdtempSync(path.join(os.tmpdir(), "nc-policy-empty-"));
+    try {
+      // Cria docs/rascunhos/politicas-orquestracao.yaml fake com valor diferente
+      const fakeDocsDir = path.join(tmpEmpty, "docs", "rascunhos");
+      fs.mkdirSync(fakeDocsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeDocsDir, "politicas-orquestracao.yaml"),
+        'versao_politica: "9.9.9-obsoleta"\n',
+        "utf8"
+      );
+
+      // Sem config/, deve retornar DEFAULT_ORCHESTRATION_POLICY e ignorar docs/rascunhos
+      const policy = loadOrchestrationPolicy(tmpEmpty);
+      expect(policy.versaoPolitica).toBe(DEFAULT_ORCHESTRATION_POLICY.versaoPolitica);
+      expect(policy.versaoPolitica).not.toBe("9.9.9-obsoleta");
+      expect(policy).toEqual(DEFAULT_ORCHESTRATION_POLICY);
+    } finally {
+      fs.rmSync(tmpEmpty, { recursive: true, force: true });
+    }
   });
 
   it("10.1: lê o bloco jev_execucao do arquivo e aplica os padrões exatos quando chaves estão ausentes", () => {
