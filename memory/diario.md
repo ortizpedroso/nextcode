@@ -1,3 +1,15 @@
+## 23/10/2026 (220) — Documento único: rascunho do Antigravity auditado e corrigido; docs/ consolidado
+
+**Fundador:** "monte um documento único… ele pode implementar e você auditar"; "use o documento do Antigravity, continue".
+**Feito (commit):** `docs/NEXTCODE-REFERENCIA.md` reescrito sobre a estrutura do rascunho do Antigravity (§1–§10). O rascunho citava 64 caminhos inexistentes (ex.: `src/lib/crypto.ts`, `secret-redactor.ts`, `analyst-planner.ts`, `AuditLogEntry`, `deepseek-chat`, fases e benches inventados); todos trocados pelos reais, conferidos com `git ls-files`/`git grep` (104 caminhos e 20 símbolos checados). Os 269 arquivos antigos de `docs/` saem da pasta (recuperáveis com `git show cabc2d7:<caminho>`, §10). `CLAUDE.md` passa a apontar só para o documento único. Fila do que falta = §3 (24 itens; itens 6–11 são defeitos conferidos hoje no código: terminal sem bloqueio Windows, apagar qualquer pasta, `reasoning_content` mostrado ao usuário, código morto, caminho inexistente, `etapa1Ativa` fixo).
+**Gateway rodada 8:** BLOQUEADA — DeepSeek sem cota no FreeLLMAPI ("reset ~24h"); não é defeito de código.
+**Sem tsc/vitest:** commit só de documentação (nenhum `.ts` alterado).
+**Onde parou:** documento único pronto.
+**Próximo passo:** §3.1 item 1 (TESTE-E5, partindo do HEAD novo — ver §9.4) e item 3 (comentários de código que citam documentos apagados), um prompt por item para o Antigravity; o Claude audita.
+**Pendências do fundador:** §3.4 (router9/electronhub no FreeLLMAPI, pasta `nextcode-43`, cliques na tela, push do CI); cota/crédito do DeepSeek para retomar o Gateway.
+
+---
+
 ## 23/10/2026 (219) — Prompt do teste independente (Antigravity) e §5.0 com status reais
 
 **Fundador:** "ainda tem dúvida em algum ponto? o objetivo é testar o nextcode, ver os bugs e vulnerabilidades e corrigir… o gateway é somente um teste… me dê o prompt para rodar no Antigravity".
