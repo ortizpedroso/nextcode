@@ -57,6 +57,7 @@ import { readRepairPayload, readAcceptancePayload, supersededByRepair, contractB
 import { runTestBench } from "@/core/execution/test-bench";
 import { generateAcceptanceTests } from "@/core/governance/acceptance-tests";
 import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
+import { renderConformance, type ContratoProjeto } from "@/core/orchestrator/project-contract";
 
 /**
  * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
@@ -412,6 +413,16 @@ export function readNodeMicrobrief(payload?: string | null): MicrobriefAndReport
   }
 }
 
+/** Contrato do projeto gravado no payload do nó (Tarefa A1). */
+export function readNodeContract(payload?: string | null): ContratoProjeto | null {
+  try {
+    const parsed = payload ? JSON.parse(payload) : null;
+    return (parsed?.contrato as ContratoProjeto) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reconstrói o Brief real da etapa para o Auditor Cego. */
 /** Spec completa, arquivos, cluster e REQs desta etapa, gravados no payload pelo decompositor. */
 export function readNodePayload(payload?: string | null): {
@@ -419,6 +430,8 @@ export function readNodePayload(payload?: string | null): {
   nodeFiles: string[];
   cluster?: ClusterKind;
   reqsCobertos?: string[];
+  etapaId?: string;
+  contrato?: ContratoProjeto;
   jevPlan?: {
     nivelModelo?: string;
     source?: string;
@@ -444,6 +457,8 @@ export function readNodePayload(payload?: string | null): {
       reqsCobertos: Array.isArray(parsed?.reqsCobertos)
         ? parsed.reqsCobertos.filter((r: unknown) => typeof r === "string")
         : undefined,
+      etapaId: typeof parsed?.etapaId === "string" ? parsed.etapaId : undefined,
+      contrato: (parsed?.contrato as ContratoProjeto) || undefined,
       jevPlan: parsed?.jevPlan && typeof parsed.jevPlan === "object" ? parsed.jevPlan : undefined,
     };
   } catch {
@@ -1537,8 +1552,28 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     // Só com pasta de projeto vinculada: sem ela o caminho cai em process.cwd() (o próprio NextCode) e o
     // porteiro promoveria arquivos e rodaria o tsc no repositório do harness (sessão sem projeto já não
     // executa em produção — PJ1, SESSAO_SEM_PROJETO).
+    // A1.3: Antes de chamar o porteiro com promoteWithEmpiricalGate(..., { checkOnly: true }),
+    // gera em quarentena o arquivo src/contracts/conformidade/<etapaId>.ts usando
+    // renderConformance(contrato, etapaId) e inclui ele nos arquivos conferidos pelo tsc.
+    // Se o tsc falhar por causa da conformidade, a etapa reprova antes de tocar o projeto.
+    // Na promoção real, esse arquivo é promovido junto para ficar no projeto para as etapas seguintes.
+    const stageContrato = readNodeContract(taskDb.payload) || (nodePayload as any)?.contrato;
+    const stageEtapaId =
+      (nodePayload as any)?.etapaId ||
+      nodeMicrobrief?.idMicrobrief?.replace(/-v\d+$/, "") ||
+      taskDb.id.replace(/-v\d+$/, "");
+    let effectiveScope = [...filesScopeArr];
+    if (stageContrato && stageEtapaId) {
+      const conformanceRelPath = `src/contracts/conformidade/${stageEtapaId}.ts`;
+      const conformanceContent = renderConformance(stageContrato, stageEtapaId);
+      qm.writeFile(taskDb.id, conformanceRelPath, conformanceContent);
+      if (!effectiveScope.includes(conformanceRelPath)) {
+        effectiveScope.push(conformanceRelPath);
+      }
+    }
+
     if (type1Res.passed && !secretGuardRes.blocked && taskDb.session.project?.path) {
-      const porteiro = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr, { checkOnly: true });
+      const porteiro = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, effectiveScope, { checkOnly: true });
       TelemetryLogger.log({
         sessionId: taskDb.sessionId,
         action: porteiro.passed ? "PORTEIRO_OK" : "PORTEIRO_REPROVADO",
@@ -1851,7 +1886,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       qm.purgeWorkspace(taskDb.id);
     } else if (type2Res.verdict === "APPROVED") {
       finalStatus = "completed";
-      const gate = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, filesScopeArr);
+      const gate = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, effectiveScope);
       empiricalBuildResult = gate.buildResult;
       promotionTarget = gate.rolledBack ? null : targetProjectRoot;
       if (gate.preexistingFailure) {

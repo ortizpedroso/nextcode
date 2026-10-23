@@ -308,7 +308,9 @@ export function enforceSkillToolPermission(params: {
       // continua passando pela guarda de segredos. Antes `.env.*` inteiro era bloqueado e a etapa que a
       // Spec mandava criar `.env.example` nunca passava (teste real Multi_Gateway, 18/10, etapa 3).
       (cleanTarget.startsWith(".env.") && !/^\.env\.(example|sample|template)$/.test(cleanTarget)) ||
-      cleanTarget.endsWith("prisma/dev.db")
+      cleanTarget.endsWith("prisma/dev.db") ||
+      cleanTarget === "src/contracts" ||
+      cleanTarget.startsWith("src/contracts/")
     ) {
       return {
         allowed: false,

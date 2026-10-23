@@ -1,3 +1,6 @@
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { SmartRouter, type AvailableKeys } from "@/core/router/smart-router";
@@ -461,6 +464,8 @@ export async function approveSpecAndStart(
                   ? (node.payload as Record<string, unknown>)
                   : { data: node.payload }),
                 intent,
+                contrato: (node.payload as any)?.contrato ?? (decompResult as any)?.contrato,
+                etapaId: (node.payload as any)?.etapaId ?? node.id,
               },
               planFor(node.id)
             )),
@@ -468,6 +473,61 @@ export async function approveSpecAndStart(
         });
         createdTasks.push(dbTask);
       }
+
+      // A1.3: Quando o plano vira TaskNode, o harness grava src/contracts/index.ts na pasta do projeto
+      const targetProjectRoot = session.project?.path;
+      if (targetProjectRoot && decompResult.macrobrief?.contratosTypescript) {
+        const tsconfigPath = path.join(targetProjectRoot, "tsconfig.json");
+        if (fs.existsSync(tsconfigPath)) {
+          try {
+            const rawTsConfig = fs.readFileSync(tsconfigPath, "utf8");
+            let parsedTsConfig: any;
+            try {
+              parsedTsConfig = JSON.parse(rawTsConfig);
+            } catch {
+              const stripped = rawTsConfig.replace(/\/\*[\s\S]*?\*\/|([^:]|^)\/\/.*$/gm, "");
+              parsedTsConfig = JSON.parse(stripped);
+            }
+            if (parsedTsConfig && typeof parsedTsConfig === "object") {
+              parsedTsConfig.compilerOptions = parsedTsConfig.compilerOptions || {};
+              parsedTsConfig.compilerOptions.paths = parsedTsConfig.compilerOptions.paths || {};
+              const paths = parsedTsConfig.compilerOptions.paths;
+              const hasAlias = Object.keys(paths).some((k) => k === "@/*" || k === "@/");
+              if (!hasAlias) {
+                paths["@/*"] = ["./src/*"];
+                fs.writeFileSync(tsconfigPath, JSON.stringify(parsedTsConfig, null, 2), "utf8");
+              }
+            }
+          } catch {
+            // se o tsconfig não for parseável, prossegue sem travar
+          }
+        }
+
+        const contractsDir = path.join(targetProjectRoot, "src", "contracts");
+        if (!fs.existsSync(contractsDir)) {
+          fs.mkdirSync(contractsDir, { recursive: true });
+        }
+        const contractFilePath = path.join(contractsDir, "index.ts");
+        fs.writeFileSync(contractFilePath, decompResult.macrobrief.contratosTypescript, "utf8");
+
+        // Extrai contagens e hash para a trilha CONTRATO_GRAVADO
+        const rawContract = (decompResult as any).contrato;
+        const hash = crypto.createHash("sha256").update(decompResult.macrobrief.contratosTypescript).digest("hex");
+        TelemetryLogger.log({
+          sessionId,
+          action: "CONTRATO_GRAVADO",
+          details: {
+            projectRoot: targetProjectRoot,
+            arquivo: "src/contracts/index.ts",
+            hash,
+            entidades: rawContract?.entidades?.length ?? 0,
+            enums: rawContract?.enums?.length ?? 0,
+            funcoes: rawContract?.funcoes?.length ?? 0,
+            rotas: rawContract?.rotas?.length ?? 0,
+          },
+        });
+      }
+
       tasks = createdTasks;
     }
 

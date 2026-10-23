@@ -150,4 +150,75 @@ stdout | tests/harness/orchestration-policy-and-skills.test.ts > Políticas de O
 #### 4. O que não foi feito
 - Nada do passo A1.2 ficou pendente. Próximo passo é A1.3.
 
+---
+
+### Passo A1.3 — Gravar o contrato, travar para o executor e conferir na promoção
+
+#### 1. O que mudou (arquivo:linha) e hash de partida
+- **Hash de partida:** `aca39bd`
+- **`src/core/skills/skill-runtime.ts:312-314`**:
+  - Adicionado `src/contracts` e `src/contracts/**` à lista de caminhos protegidos do executor com a mensagem de violação `[SKILL PROTECTED PATH] Escrita bloqueada em caminho protegido: "${targetFile}"`.
+- **`src/core/orchestrator/execution-trigger.ts:3, 467-468, 476-522`**:
+  - Quando o plano é aprovado, grava `src/contracts/index.ts` no projeto antes de disparar o grafo.
+  - Confere e garante que o `tsconfig.json` do projeto tenha o alias `@/*` apontando para `./src/*` (adiciona caso falte).
+  - Emite telemetria `CONTRATO_GRAVADO` contendo `projectRoot`, `arquivo: "src/contracts/index.ts"`, `hash` SHA-256 do conteúdo e contagens de entidades, enums, funções e rotas.
+  - Propaga `contrato` e `etapaId` para o payload da `TaskNode`.
+- **`src/core/orchestrator/node-executor.ts:60, 416-424, 446-447, 1555-1576, 1888-1889`**:
+  - Exportada função `readNodeContract(payload)` e adicionados campos `etapaId` e `contrato` ao tipo de retorno de `readNodePayload`.
+  - Antes de chamar o porteiro com `promoteWithEmpiricalGate(..., { checkOnly: true })`, gera em quarentena o arquivo de conformidade `src/contracts/conformidade/<etapaId>.ts` usando `renderConformance(contrato, etapaId)`.
+  - Adiciona `src/contracts/conformidade/<etapaId>.ts` ao `effectiveScope` passado para o porteiro empírico. Se o `tsc` falhar devido à não-conformidade com a assinatura do contrato, a etapa reprova antes de tocar o projeto e sem gastar o avaliador.
+  - Na promoção real (`verdict === "APPROVED"`), o arquivo de conformidade é promovido junto (`effectiveScope`), ficando permanentemente no projeto para resguardar as etapas subsequentes.
+- **`tests/orchestrator/a1-contrato-travado.test.ts`**:
+  - Teste 1: Executor tenta escrever em `src/contracts/index.ts`, `src/contracts/conformidade/etapa_1.ts` e `src/contracts/outro.ts` via `write_file`/`edit_file` e recebe negação `[SKILL PROTECTED PATH]`.
+  - Teste 2: Etapa implementa função com assinatura divergente do contrato (`criarSessao(userId)` sem o papel) e toma reprovação mecânica do porteiro pelo `tsc` do arquivo de conformidade, com rollback dos arquivos.
+  - Teste 3: Etapa implementa a assinatura canônica e passa pelo porteiro `checkOnly: true` e pela promoção real, promovendo tanto a implementação quanto o arquivo de conformidade em `src/contracts/conformidade/etapa_1.ts`.
+
+#### 2. Saída real dos comandos
+
+##### `npx tsc --noEmit`
+```
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+
+(saída vazia, código de retorno 0)
+```
+
+##### `npx vitest run tests/orchestrator/a1-contrato-travado.test.ts`
+```
+ RUN  v2.1.9 C:/projetos/nextcode
+
+ ✓ tests/orchestrator/a1-contrato-travado.test.ts (3 tests) 2512ms
+   ✓ A1.3 — Contrato travado, protegido e conferido mecanicamente pelo porteiro > 2. Uma etapa que implementa função com assinatura diferente do contrato toma reprovação mecânica do porteiro pelo tsc do arquivo de conformidade 1293ms
+   ✓ A1.3 — Contrato travado, protegido e conferido mecanicamente pelo porteiro > 3. Uma etapa válida passa pelo porteiro e tem o arquivo de conformidade promovido 1215ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  06:41:08
+   Duration  3.33s (transform 168ms, setup 22ms, collect 536ms, tests 2.51s, environment 0ms, prepare 73ms)
+
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+```
+
+##### `npx vitest run` (suíte completa)
+```
+ Test Files  164 passed (164)
+      Tests  1062 passed (1062)
+   Start at  06:41:34
+   Duration  203.53s (transform 4.58s, setup 1.60s, collect 34.21s, tests 128.68s, environment 26ms, prepare 12.09s)
+
+FullName                           LastWriteTime
+--------                           -------------
+C:\projetos\nextcode\prisma\dev.db 22/10/2026 18:54:59
+```
+
+#### 3. Desvios
+- Nenhum.
+
+#### 4. O que não foi feito
+- Nada do passo A1.3 ficou pendente. Próximo passo é A1.4.
+
+
 
