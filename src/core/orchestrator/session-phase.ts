@@ -126,7 +126,9 @@ export async function applyPhaseEvent(
       };
     }
 
-    const result = transition(ctx, event, { etapa1Ativa: false });
+    // D-M9 (24/10): Macrobrief ativado como primeira barreira de qualidade.
+    // A skill conferente-macrobrief audita antes do Jev; reprovação volta ao elicitador.
+    const result = transition(ctx, event, { etapa1Ativa: true });
 
     if (!result.ok) {
       await prisma.telemetryLog.create({

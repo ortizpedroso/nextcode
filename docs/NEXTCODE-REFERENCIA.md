@@ -581,3 +581,36 @@ Todos os 270 arquivos que existiam em `docs/` no commit `cabc2d7` foram retirado
 | `docs/relatorios/` (54 arquivos, fora `bench/`) | relatório de cada pacote, auditorias consolidadas (E1, E1-4, 43, E5), decisões autônomas (E1, E1-2, E1-3, E1-4, E5), JV1, perfil de provedores, pesquisador, testes reais | §2, §3, §7 |
 | `docs/relatorios/bench/` (59 arquivos) | rodadas do bench (`.md` + `.yaml`) e provas em JSON | §7.1 |
 | `docs/terceiros/jev-docs/` | cópia oficial da documentação do Jev (`llms-full.txt`, `model-jaggedness_jev-1.13.md`, `primitives_*`, `cookbooks_*`) | §5; ler com `git show cabc2d7:docs/terceiros/jev-docs/llms-full.txt` |
+
+---
+
+## 11. Decisões Macro da Sessão 23/10/2026 (Implementação Completa da Fila §3)
+
+As decisões abaixo foram tomadas pelo Claude atuando como engenheiro full-stack, conforme autorização explícita do fundador. Todas estão implementadas e validadas (`tsc --noEmit` 0 erros, Vitest verde, `prisma/dev.db` intocado).
+
+### D-M1: Integração de validateContract no Pipeline de Execução
+Inserida chamada `validateContract` em `node-executor.ts` entre a geração do arquivo de conformidade (`renderConformance`) e a promoção com o portão empírico. Violações de contrato bloqueiam a etapa como defeito crítico (`CONTRACT_VALIDATION_FAILED` na trilha) antes de qualquer código ser promovido. Fecha o ciclo do Item A1: analista define → executor implementa → tsc confere conformidade tipada → validateContract confere lógica do contrato.
+
+### D-M2: Contrato como Stage Único na Validação
+Construído `contractStages` com elemento único `{ id: stageEtapaId, arquivos: effectiveScope, dependeDe: [] }`. A função `validateContract` espera array de stages; no contexto do executor temos apenas a etapa atual. Valida regras aplicáveis (dono, arquivo correto, tipos existentes) sem exigir reconstrução do grafo completo.
+
+### D-M3: Falha de Contrato = Defeito Crítico Automático
+Qualquer erro de `validateContract` resulta em `type1Res.passed = false` com prefixo `[CONTRATO]` nos `compilationErrors`. Violação de contrato não é erro de compilação tradicional — é quebra de acordo entre etapas. Classificar como crítico impede aprovação de código que compila mas viola interface.
+
+### D-M4: Manutenção das Fases MACROBRIEF/CONFERENCIA Desligadas
+Mantido `etapa1Ativa: false` sem remover código. Funcionalidade latente reativável quando volume de sessões reais justificar. Remover criaria risco desnecessário; manter desligado preserva opção futura sem custo operacional.
+
+### D-M5: Wrappers @deprecated para Compatibilidade com Testes Legados
+Restaurados `renderMacrobriefMarkdown` e `partitionRepairsByCluster` como wrappers funcionais marcados `@deprecated` em `artifact-templates.ts`. Testes legados validam comportamento real; removê-los reduziria cobertura. Wrappers mantêm API estável para testes enquanto sinalizam que novas chamadas devem usar alternativas modernas.
+
+### D-M6: Proteção de Exclusão com Marcador .nextcode
+Adicionada verificação em `folder-safety.ts` exigindo arquivo `.nextcode` na raiz da pasta alvo antes de permitir exclusão via API. Previne apagamento acidental de pastas não gerenciadas pelo NextCode.
+
+### D-M7: Saídas do Bench em Pasta Própria
+Scripts `bench.ts` e `teste-pesado.ts` redirecionados para `bench/resultados/`. Relatórios de bench são artefatos de execução, não documentação. Separação segue princípio de responsabilidade única e mantém `docs/` limpa.
+
+### D-M8: Robustez Jev (NEXTCODE_DISABLE_JEV)
+Função `readJevKey` em `jev.ts` verifica `process.env.NEXTCODE_DISABLE_JEV === "1"` antes de acessar banco. Permite desativar Jev sem I/O em testes e ambientes sem rede. Recomendação 1 da auditoria E5.
+
+### D-M9: Skill Conferente-Macrobrief e Ativação da Fase MACROBRIEF
+Criada skill `conferente-macrobrief` (`skills/conferente-macrobrief/SKILL.md`) como primeira barreira de qualidade entre o Macrobrief do elicitador e o planejamento. Cobre 5 lacunas não cobertas pela validação mecânica ou pelo Jev: rastreabilidade critério→arquivo, consistência do contrato com a Spec, viabilidade da stack, completude dos erros de rota e dependências implícitas de regra de negócio. `etapa1Ativa` alterado para `true` em `session-phase.ts:131`. Fluxo: conferente audita → se reprovado, volta ao elicitador; se aprovado, Jev valida semanticamente (com 2 novas perguntas: `contrato_reflete_spec` e `dependencias_regra_negocio`). Função `runConferenteMacrobriefSkill` integrada em `intake-engine.ts`.

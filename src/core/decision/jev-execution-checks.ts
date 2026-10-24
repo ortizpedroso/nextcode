@@ -1034,6 +1034,25 @@ export const MACROBRIEF_CONFERENCE_QUESTIONS: Record<string, JevQuestionSpec> = 
       false: "improperly exposes backend-only logic, secrets, or internal handlers to public client code",
     },
   },
+  // D-M9 (24/10): perguntas adicionadas para cobrir lacunas entre contrato sintático e intenção da Spec.
+  contrato_reflete_spec: {
+    type: "noul",
+    instructions:
+      "Do the entities, enums and route signatures in `macrobrief.contratosTypescript` faithfully mirror the data models, business rules and acceptance criteria declared in `spec.requisitos`? Check field names, types, optionality and error scenarios.",
+    criteria: {
+      true: "contract types, fields, optionality and error codes match the spec's data models and acceptance criteria exactly",
+      false: "contract diverges from spec: missing fields, wrong types, incorrect optionality, or missing error scenarios described in acceptance criteria",
+    },
+  },
+  dependencias_regra_negocio: {
+    type: "noul",
+    instructions:
+      "For each business rule in `spec.regras` that references roles, permissions or cross-entity constraints, does `macrobrief.etapas` declare explicit dependencies between the stages that own the involved types and the stages that enforce the rule?",
+    criteria: {
+      true: "all business rules that create implicit coupling between stages have corresponding explicit dependeDe declarations in macrobrief.etapas",
+      false: "one or more business rules imply cross-stage coupling that is not reflected in the declared dependency graph",
+    },
+  },
 };
 
 export async function verifyMacrobriefCoverageWithJev(

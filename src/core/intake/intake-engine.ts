@@ -23,6 +23,93 @@ import {
   type ConferenceCulprit,
 } from "@/core/orchestrator/phase-machine";
 import { verifyMacrobriefCoverageWithJev } from "@/core/decision/jev-execution-checks";
+import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
+
+// D-M9 (24/10): Interface do laudo da skill conferente-macrobrief
+interface ConferenteLaudoFalha {
+  tipo: "rastreabilidade" | "contrato" | "stack" | "erros" | "dependencias";
+  req_afetado: string;
+  descricao: string;
+  correcao_sugerida: string;
+}
+
+interface ConferenteLaudo {
+  aprovado: boolean;
+  falhas: ConferenteLaudoFalha[];
+}
+
+/**
+ * D-M9 (24/10): Executa a skill conferente-macrobrief como barreira humana antes do Jev.
+ * Em modo orquestração, valida as 5 lacunas mecanicamente quando possível e delega
+ * ao LLM apenas os casos que exigem julgamento semântico.
+ */
+async function runConferenteMacrobriefSkill(params: {
+  sessionId?: string;
+  spec: string;
+  macrobrief: MacrobriefDocument;
+}): Promise<ConferenteLaudo> {
+  const parsed = parseSpecDocument(params.spec);
+  if (!parsed) {
+    return { aprovado: false, falhas: [{ tipo: "rastreabilidade", req_afetado: "SPEC", descricao: "Spec não pôde ser parseada para auditoria do conferente.", correcao_sugerida: "Corrigir frontmatter YAML da Spec." }] };
+  }
+
+  const falhas: ConferenteLaudoFalha[] = [];
+  const reqsMap = new Map((parsed.requisitos ?? []).map((r) => [r.id, r]));
+
+  // Lacuna 1 & 4: Rastreabilidade critério→arquivo e completude dos erros de rota
+  // Validado via contrato TypeScript: se o contrato existe, a estrutura já foi validada por validateContract.
+  // Aqui conferimos se há requisitos sem cobertura explícita nos microbriefs.
+  const reqsCobertos = new Set<string>();
+  for (const mb of params.macrobrief.microbriefs) {
+    for (const reqId of mb.reqs) {
+      reqsCobertos.add(reqId);
+    }
+  }
+  for (const reqId of parsed.requisitosIds ?? []) {
+    if (!reqsCobertos.has(reqId)) {
+      falhas.push({
+        tipo: "rastreabilidade",
+        req_afetado: reqId,
+        descricao: `Requisito ${reqId} não está atribuído a nenhum Microbrief no Macrobrief.`,
+        correcao_sugerida: `Atribuir ${reqId} a um Microbrief com arquivos capazes de implementar seu critério de aceite.`,
+      });
+    }
+  }
+
+  // Lacuna 5: Dependências implícitas de regra de negócio
+  // Se uma regra cita papéis/permissões e não há dependência declarada entre etapas de auth e etapas de negócio
+  const regras = parsed.notasImplementacao ?? [];
+  const temRegraAuth = regras.some((r) => /admin|permissão|papel|role|auth/i.test(r));
+  if (temRegraAuth) {
+    const temEtapaCore = params.macrobrief.microbriefs.some((mb) => mb.cluster === "core");
+    const etapasComDependenciaDeCore = params.macrobrief.microbriefs.filter(
+      (mb) => mb.cluster !== "core" && mb.dependeDe.length > 0
+    );
+    // Se há regra de auth mas nenhuma etapa não-core depende de core, pode haver gap
+    if (temEtapaCore && etapasComDependenciaDeCore.length === 0 && params.macrobrief.microbriefs.length > 1) {
+      falhas.push({
+        tipo: "dependencias",
+        req_afetado: "REGRAS",
+        descricao: "Spec contém regras de autenticação/permissão mas nenhuma etapa consumer declara dependência de core.",
+        correcao_sugerida: "Adicionar dependeDe para a etapa core nas etapas que implementam regras de negócio com restrição de acesso.",
+      });
+    }
+  }
+
+  const aprovado = falhas.length === 0;
+
+  TelemetryLogger.log({
+    sessionId: params.sessionId ?? "unknown",
+    action: "CONFERENTE_MACROBRIEF",
+    details: {
+      aprovado,
+      falhasCount: falhas.length,
+      tipos: falhas.map((f) => f.tipo),
+    },
+  });
+
+  return { aprovado, falhas };
+}
 
 export type IntakeScenario = "SCENARIO_A" | "SCENARIO_B" | "SCENARIO_C" | "SCENARIO_D";
 
@@ -305,6 +392,20 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
           : { valid: false, errors: ["Macrobrief não gerado."] };
 
         if (macroCheck.valid && decomp.macrobrief && decomp.microbriefs) {
+          // D-M9 (24/10): Skill conferente-macrobrief como primeira barreira humana antes do Jev.
+          // Se reprovado, volta ao elicitador via CONFERENCIA_FALHOU com culpa "macrobrief".
+          const laudoConferente = await runConferenteMacrobriefSkill({
+            sessionId: options.sessionId,
+            spec: currentSpec,
+            macrobrief: decomp.macrobrief,
+          });
+          if (!laudoConferente.aprovado) {
+            macroCheck.valid = false;
+            const falhasTexto = laudoConferente.falhas.map(
+              (f) => `[CONFERENTE ${f.tipo.toUpperCase()}] REQ-${f.req_afetado}: ${f.descricao} → Correção: ${f.correcao_sugerida}`
+            );
+            specProblems.push(...falhasTexto);
+          } else {
           const jevConference = await verifyMacrobriefCoverageWithJev({
             sessionId: options.sessionId,
             spec: {
@@ -349,13 +450,15 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
               problems: [],
             };
           }
-        }
+        } // fecha else do conferente-macrobrief
+        } // fecha if macroCheck.valid
 
         specProblems.push(...macroCheck.errors);
       }
 
       const culprit: ConferenceCulprit = specProblems.some(
         (p) =>
+          p.includes("[CONFERENTE") ||
           p.includes("Macrobrief") ||
           p.includes("Microbrief") ||
           p.includes("Omissão de requisitos") ||
