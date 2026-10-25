@@ -480,3 +480,33 @@ export function parseYamlFrontmatter(
   const texto = `---\n${match[1].trim()}\n---${body ? `\n\n${body}` : ""}`;
   return { root, body, texto };
 }
+
+/** Corta avisos do harness colados no corpo da mensagem do chat (após o objetivo). */
+function trimHarnessNoticesFromObjetivo(objetivo: string): string {
+  const cut = objetivo.search(/\n\n(?:🔧|🛠️|📝|\*\*Premissas do elicitador)/);
+  return (cut >= 0 ? objetivo.slice(0, cut) : objetivo).trim();
+}
+
+/** Re-renderiza a Spec parseada (remove ruído do chat: avisos de conferência, auto-cura, etc.). */
+export function parsedToFrontmatterInput(parsed: ParsedSpec): SpecFrontmatterInput {
+  return {
+    titulo: parsed.titulo ?? "Sem título",
+    status: parsed.status ?? "aguardando_aprovacao",
+    data: parsed.data ?? new Date().toISOString().slice(0, 10),
+    objetivo: trimHarnessNoticesFromObjetivo(parsed.objetivo),
+    stack: parsed.stack,
+    modulos: parsed.modulos,
+    entidades: parsed.entidades,
+    arquivosAfetados: parsed.arquivosAfetados,
+    rotas: parsed.rotas,
+    notasImplementacao: parsed.notasImplementacao,
+    ...(parsed.requisitosIds?.length ? { requisitosIds: parsed.requisitosIds } : {}),
+    ...(parsed.requisitos?.length ? { requisitos: parsed.requisitos } : {}),
+  };
+}
+
+export function canonicalizeSpecDocument(raw: string): string | null {
+  const parsed = parseSpecDocument(raw);
+  if (!parsed) return null;
+  return renderCanonicalSpecDocument(parsedToFrontmatterInput(parsed));
+}

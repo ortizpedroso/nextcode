@@ -248,9 +248,39 @@ Sem export do chat, a lista exata não foi arquivada neste relatório. Origem no
 
 ---
 
+## Incidente — botão “Aprovar Spec” aparentemente morto (2026-10-25 tarde)
+
+### Sintoma
+
+Clicar em **Aprovar Spec Canônica** no modal não liberava a DAG; sem mensagem clara.
+
+### Causas encontradas no código
+
+| # | Causa | Efeito |
+|---|--------|--------|
+| B1 | Modal só tratava `res.ok`; API devolve **400** com `ok: false` | Falha **silenciosa** (usuário acha que o botão não funciona) |
+| B2 | `SESSAO_SEM_PROJETO` | Sessão ad-hoc sem projeto com `path` → aprovação recusada (correto, mas invisível) |
+| B3 | Abrir modal pela mensagem do chat sobrescrevia `canonicalSpec` com texto **mensagem + avisos** (🔧 🛠️ 📝) | Risco de parse/approve instável; servidor já tinha Spec limpa em `Session.canonicalSpec` |
+| B4 | `CONFERENCIA_REPROVADA` / `PERGUNTA_AO_HUMANO` na aprovação (conferência **sombra/ativo**) | 400 com motivo real; antes não aparecia na UI |
+
+### Correção aplicada
+
+- `canonical-spec-modal.tsx`: exibe erro; `canonicalizeSpecDocument()` antes do PATCH.
+- `page.tsx`: ao abrir modal, **prioriza** Spec do servidor se parseável.
+- `approve-spec-messages.ts` + `problems` no JSON 400 de `/api/sessions/[id]`.
+
+### O que fazer agora (fundador)
+
+1. Reiniciar `npm run dev` com a `main` que contém o fix.
+2. Sessão Gateway: **mover para um projeto** com pasta local criada (não ad-hoc).
+3. Clicar aprovar de novo — se falhar, ler a **faixa vermelha** no modal (motivo exato).
+
+---
+
 ## Histórico deste documento
 
 | Data | Alteração |
 |------|-----------|
 | 2026-10-25 | Registro inicial Fase D + P1/P2 |
 | 2026-10-25 | RCA data + RCA arquivos + ordem pipeline + itens para correção + backlog P6 |
+| 2026-10-25 | Incidente botão Aprovar Spec (B1–B4) + fix UI |

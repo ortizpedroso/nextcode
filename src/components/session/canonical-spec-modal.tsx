@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { authFetch } from "@/lib/client-session";
-import { X, Lock, Unlock, CheckCircle2, FileText, Save, Play, Code2 } from "lucide-react";
-import { parseSpecDocument } from "@/core/intake/spec-format";
+import { X, Lock, Unlock, CheckCircle2, FileText, Save, Code2 } from "lucide-react";
+import { canonicalizeSpecDocument, parseSpecDocument } from "@/core/intake/spec-format";
+import { messageForApproveSpecFailure } from "@/core/intake/approve-spec-messages";
 import { SpecSummaryCard } from "./spec-summary-card";
 
 interface CanonicalSpecModalProps {
@@ -42,6 +43,14 @@ export function CanonicalSpecModal({
   const [isApproved, setIsApproved] = useState(specApproved);
   const [approvedHere, setApprovedHere] = useState(false);
   const [showFullDoc, setShowFullDoc] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setContent(specContent || DEFAULT_SPEC);
+    setIsApproved(specApproved);
+    setApprovedHere(false);
+    setApproveError(null);
+  }, [specContent, specApproved, sessionId]);
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
@@ -60,24 +69,45 @@ export function CanonicalSpecModal({
       alert("Atenção: Esta especificação ainda está pendente ou não possui módulos, arquivos e requisitos (REQ-001...) definidos. Descreva seu projeto no chat para a IA gerar a especificação completa antes de aprovar.");
       return;
     }
+    const canonical = canonicalizeSpecDocument(content);
+    if (!canonical) {
+      setApproveError(
+        "Não consegui ler a Spec (YAML). Abra “Editar documento completo”, confira o frontmatter --- … --- ou regenere no chat."
+      );
+      return;
+    }
     setSaving(true);
+    setApproveError(null);
     try {
       const res = await authFetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           specApproved: true,
-          canonicalSpec: content,
+          canonicalSpec: canonical,
         }),
       });
 
-      if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        reason?: string;
+        problems?: string[];
+        error?: string;
+      };
+
+      if (res.ok && data.ok !== false) {
+        setContent(canonical);
         setIsApproved(true);
         setApprovedHere(true);
         await onSpecApproved();
+        return;
       }
+
+      const reason = data.reason || data.error || `HTTP_${res.status}`;
+      setApproveError(messageForApproveSpecFailure(reason, data.problems));
     } catch (err) {
       console.error("Erro ao aprovar Spec Canônica:", err);
+      setApproveError("Falha de rede ao aprovar. Verifique se o servidor está no ar e tente de novo.");
     } finally {
       setSaving(false);
     }
@@ -186,6 +216,12 @@ export function CanonicalSpecModal({
             </div>
           )}
         </div>
+
+        {approveError && (
+          <div className="mx-6 mb-0 px-3 py-2.5 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/40 text-[11px] text-rose-800 dark:text-rose-200 whitespace-pre-wrap">
+            {approveError}
+          </div>
+        )}
 
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50 shrink-0">

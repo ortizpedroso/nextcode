@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { renderCanonicalSpecDocument, parseSpecDocument } from "@/core/intake/spec-format";
+import {
+  canonicalizeSpecDocument,
+  renderCanonicalSpecDocument,
+  parseSpecDocument,
+} from "@/core/intake/spec-format";
 
 describe("spec-format — YAML Frontmatter + Markdown enxuto", () => {
   it("renderiza e re-interpreta todos os campos (stack, modulos, entidades com campos, rotas, arquivos, notas)", () => {
@@ -194,6 +198,25 @@ arquivos:
       "src/app/dashboard/page.tsx",
       "src/lib/dashboard-store.ts",
     ]);
+  });
+
+  it("canonicalizeSpecDocument remove ruído após o YAML (avisos do chat)", () => {
+    const base = renderCanonicalSpecDocument({
+      titulo: "Gateway",
+      status: "aguardando_aprovacao",
+      data: "2026-10-25",
+      objetivo: "Objetivo do gateway.",
+      stack: ["Next.js"],
+      modulos: [{ id: "m1", nome: "M", resumo: "R", arquivos: ["src/a.ts"] }],
+      entidades: [],
+      arquivosAfetados: ["src/a.ts"],
+      requisitos: [{ id: "REQ-001", titulo: "A", criterio: "src/a.ts exporta a()" }],
+    });
+    const noisy = `${base}\n\n🔧 A conferência achou 0 problemas.\n\n🛠️ Correções automáticas.`;
+    const canon = canonicalizeSpecDocument(noisy);
+    expect(canon).not.toBeNull();
+    expect(parseSpecDocument(canon!)?.requisitos).toHaveLength(1);
+    expect(canon).not.toContain("🔧");
   });
 
   it("repara frontmatter truncado no meio de aspas por limite de tokens", () => {

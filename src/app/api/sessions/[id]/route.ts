@@ -136,6 +136,7 @@ export async function PATCH(
             success: false,
             reason: triggerResult.reason,
             error: triggerResult.reason,
+            problems: triggerResult.problems,
             session: currentSession,
           },
           { status: 400 }
