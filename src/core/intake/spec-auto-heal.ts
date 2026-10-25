@@ -184,6 +184,16 @@ export function autoHealSpecDocument(rawOrParsed: string | ParsedSpec): {
     fixesApplied.push(`Data da Spec corrigida para ${hoje} (o modelo escreveu "${spec.data.trim()}").`);
   }
 
+  const requisitosIds =
+    spec.requisitosIds && spec.requisitosIds.length > 0
+      ? spec.requisitosIds
+      : healedReqs.map((r) => r.id).filter(Boolean);
+  if (healedReqs.length > 0 && !(spec.requisitosIds?.length)) {
+    fixesApplied.push(
+      `requisitos_ids preenchido automaticamente a partir de requisitos (${requisitosIds.length} ids).`
+    );
+  }
+
   // 6. Renderiza a Spec canônica corrigida
   const frontmatterInput: SpecFrontmatterInput = {
     titulo: spec.titulo || "Projeto NextCode",
@@ -195,6 +205,7 @@ export function autoHealSpecDocument(rawOrParsed: string | ParsedSpec): {
     entidades: spec.entidades,
     rotas: spec.rotas,
     arquivosAfetados: cleanFiles,
+    requisitosIds,
     requisitos: healedReqs,
     notasImplementacao: spec.notasImplementacao,
   };

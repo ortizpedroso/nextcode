@@ -481,6 +481,12 @@ export function parseYamlFrontmatter(
   return { root, body, texto };
 }
 
+/** Índice REQ-001… exigido pela conferência na aprovação; deriva de `requisitos` se o elicitador omitiu. */
+export function deriveRequisitosIds(parsed: ParsedSpec): string[] {
+  if (parsed.requisitosIds?.length) return parsed.requisitosIds;
+  return (parsed.requisitos ?? []).map((r) => r.id.trim()).filter(Boolean);
+}
+
 /** Corta avisos do harness colados no corpo da mensagem do chat (após o objetivo). */
 function trimHarnessNoticesFromObjetivo(objetivo: string): string {
   const cut = objetivo.search(/\n\n(?:🔧|🛠️|📝|\*\*Premissas do elicitador)/);
@@ -500,7 +506,7 @@ export function parsedToFrontmatterInput(parsed: ParsedSpec): SpecFrontmatterInp
     arquivosAfetados: parsed.arquivosAfetados,
     rotas: parsed.rotas,
     notasImplementacao: parsed.notasImplementacao,
-    ...(parsed.requisitosIds?.length ? { requisitosIds: parsed.requisitosIds } : {}),
+    requisitosIds: deriveRequisitosIds(parsed),
     ...(parsed.requisitos?.length ? { requisitos: parsed.requisitos } : {}),
   };
 }

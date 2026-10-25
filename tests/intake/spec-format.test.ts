@@ -200,6 +200,27 @@ arquivos:
     ]);
   });
 
+  it("canonicalizeSpecDocument deriva requisitos_ids quando só existe requisitos", () => {
+    const base = renderCanonicalSpecDocument({
+      titulo: "Gateway",
+      status: "aguardando_aprovacao",
+      data: "2026-10-25",
+      objetivo: "Obj.",
+      stack: ["Next.js"],
+      modulos: [{ id: "m1", nome: "M", resumo: "R", arquivos: ["src/a.ts"] }],
+      entidades: [],
+      arquivosAfetados: ["src/a.ts"],
+      requisitos: [
+        { id: "REQ-001", titulo: "A", criterio: "src/a.ts exporta a()" },
+        { id: "REQ-002", titulo: "B", criterio: "src/a.ts exporta b()" },
+      ],
+    });
+    expect(base).not.toContain("requisitos_ids:");
+    const canon = canonicalizeSpecDocument(base);
+    expect(canon).toContain("requisitos_ids:");
+    expect(parseSpecDocument(canon!)?.requisitosIds).toEqual(["REQ-001", "REQ-002"]);
+  });
+
   it("canonicalizeSpecDocument remove ruído após o YAML (avisos do chat)", () => {
     const base = renderCanonicalSpecDocument({
       titulo: "Gateway",

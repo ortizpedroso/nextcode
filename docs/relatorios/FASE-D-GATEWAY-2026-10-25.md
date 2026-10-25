@@ -275,6 +275,13 @@ Clicar em **Aprovar Spec Canônica** no modal não liberava a DAG; sem mensagem 
 2. Sessão Gateway: **mover para um projeto** com pasta local criada (não ad-hoc).
 3. Clicar aprovar de novo — se falhar, ler a **faixa vermelha** no modal (motivo exato).
 
+### `requisitos_ids` ausente na Spec Gateway
+
+- **O que você vê:** lista longa `requisitos:` (REQ-001…075) no YAML.
+- **O que a conferência na aprovação exige:** também `requisitos_ids:` (índice plano de ids) — legado do Macrobrief/conferência mecânica.
+- **Por que não apareceu antes:** a revisão da Spec (`checkSpecStructure` no chat) validava `requisitos`, mas **não** `requisitos_ids`; o bloqueio só surgia ao clicar **Aprovar** (`runElicitadorAndAnalistaCycle`).
+- **Fix produto:** auto-cura + `canonicalizeSpecDocument` derivam `requisitos_ids` dos ids em `requisitos` quando falta o bloco.
+
 ---
 
 ## Histórico deste documento

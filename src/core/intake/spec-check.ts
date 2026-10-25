@@ -62,6 +62,10 @@ export function checkSpecStructure(spec: ParsedSpec): string[] {
     problems.push(
       "A Spec não declara nenhum requisito em requisitos (declare REQ-001, REQ-002… com titulo e criterio citando o arquivo)."
     );
+  } else if (!(spec.requisitosIds?.length ?? 0)) {
+    problems.push(
+      "A Spec deve declarar requisitos_ids (REQ-001...) no frontmatter (ou regenere a Spec para o NextCode preencher a partir de requisitos)."
+    );
   } else {
     const seenIds = new Set<string>();
     const filesArr = Array.from(files);
