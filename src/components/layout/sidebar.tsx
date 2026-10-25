@@ -80,8 +80,9 @@ export function Sidebar({
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const [archivedSectionOpen, setArchivedSectionOpen] = useState(false);
 
-  const activeProjects = projects.filter((p) => !p.isArchived);
-  const archivedProjects = projects.filter((p) => p.isArchived);
+  const visibleProjects = projects.filter((p) => !p.isClosed);
+  const activeProjects = visibleProjects.filter((p) => !p.isArchived);
+  const archivedProjects = visibleProjects.filter((p) => p.isArchived);
 
   const toggleExpand = (projectId: string) => {
     setExpandedProjects((prev) => ({
@@ -263,6 +264,7 @@ export function Sidebar({
                         onTogglePin={(p) => onUpdateProject(p.id, { isPinned: !p.isPinned })}
                         onEdit={handleOpenEditModal}
                         onToggleArchive={(p) => onUpdateProject(p.id, { isArchived: !p.isArchived })}
+                        onClose={(p) => onUpdateProject(p.id, { isClosed: true })}
                         onDelete={(p, apagarPasta) => onDeleteProject(p.id, apagarPasta)}
                       />
                     </div>
@@ -347,6 +349,7 @@ export function Sidebar({
                     onTogglePin={(p) => onUpdateProject(p.id, { isPinned: !p.isPinned })}
                     onEdit={handleOpenEditModal}
                     onToggleArchive={(p) => onUpdateProject(p.id, { isArchived: !p.isArchived })}
+                    onClose={(p) => onUpdateProject(p.id, { isClosed: true })}
                     onDelete={(p, apagarPasta) => onDeleteProject(p.id, apagarPasta)}
                   />
                 </div>

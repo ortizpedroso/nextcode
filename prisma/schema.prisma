@@ -58,6 +58,7 @@ model Project {
   path        String?   // Caminho absoluto da pasta na máquina local
   isPinned    Boolean   @default(false)
   isArchived  Boolean   @default(false)
+  isClosed    Boolean   @default(false) // saiu da área de trabalho; a pasta no disco permanece
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   sessions    Session[]

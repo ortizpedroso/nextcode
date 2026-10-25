@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MoreHorizontal, Pin, Edit3, Archive, Trash2, PinOff } from "lucide-react";
+import { MoreHorizontal, Pin, Edit3, Archive, Trash2, PinOff, X } from "lucide-react";
 
 export interface ProjectData {
   id: string;
@@ -10,6 +10,7 @@ export interface ProjectData {
   path?: string | null;
   isPinned: boolean;
   isArchived: boolean;
+  isClosed?: boolean;
 }
 
 interface ProjectActionsMenuProps {
@@ -17,6 +18,7 @@ interface ProjectActionsMenuProps {
   onTogglePin: (project: ProjectData) => void;
   onEdit: (project: ProjectData) => void;
   onToggleArchive: (project: ProjectData) => void;
+  onClose: (project: ProjectData) => void;
   onDelete: (project: ProjectData, apagarPasta: boolean) => void;
 }
 
@@ -25,10 +27,12 @@ export function ProjectActionsMenu({
   onTogglePin,
   onEdit,
   onToggleArchive,
+  onClose,
   onDelete,
 }: ProjectActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,7 +63,7 @@ export function ProjectActionsMenu({
       </button>
 
       {isOpen && (
-        <div className="origin-top-right absolute right-0 mt-1 w-44 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl z-50 py-1 text-xs select-none">
+        <div className="origin-top-right absolute right-0 mt-1 w-56 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl z-50 py-1 text-xs select-none">
           {/* Fixar / Desafixar */}
           <button
             onClick={(e) => {
@@ -107,8 +111,25 @@ export function ProjectActionsMenu({
             className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
           >
             <Archive className="w-3.5 h-3.5 text-slate-400" />
-            <span>{project.isArchived ? "Reabrir projeto" : "Fechar projeto"}</span>
+            <span>{project.isArchived ? "Reabrir" : "Arquivar"}</span>
           </button>
+
+          {!project.isClosed && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+                setShowCloseConfirm(true);
+              }}
+              className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
+            >
+              <X className="w-3.5 h-3.5 text-slate-400" />
+              <span>
+                Fechar
+                <span className="block text-[10px] text-slate-400">Sai da lista. A pasta fica no computador.</span>
+              </span>
+            </button>
+          )}
 
           <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
 
@@ -124,6 +145,40 @@ export function ProjectActionsMenu({
             <Trash2 className="w-3.5 h-3.5 text-rose-500" />
             <span>Apagar projeto</span>
           </button>
+        </div>
+      )}
+
+      {showCloseConfirm && (
+        <div
+          className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 text-slate-900 dark:text-slate-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 w-full max-w-sm shadow-2xl space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Fechar projeto</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              <strong>&quot;{project.name}&quot;</strong> sai da área de trabalho. A pasta continua no computador.
+              Para trazer de volta, abra a mesma pasta.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowCloseConfirm(false)}
+                className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCloseConfirm(false);
+                  onClose(project);
+                }}
+                className="px-3 py-1.5 text-xs rounded-lg bg-[#0066cc] text-white hover:bg-[#005bb5]"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

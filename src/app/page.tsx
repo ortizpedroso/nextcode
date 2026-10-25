@@ -243,8 +243,21 @@ export default function DashboardOrchestrator() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
+        if (data.isClosed && activeProjectId === id) {
+          setActiveProjectId(null);
+          setActiveSessionId(null);
+          setActiveSessionTitle("");
+          setActiveProjectName(null);
+          setTasks([]);
+          setMessages([]);
+        }
         await fetchProjects();
-        setConsoleLogs((prev) => [...prev, `[PROJETO] Dados do projeto ${id.substring(0, 6)} atualizados.`]);
+        setConsoleLogs((prev) => [
+          ...prev,
+          data.isClosed
+            ? `[PROJETO] Projeto fechado. A pasta continua no computador. Abrir a mesma pasta traz de volta.`
+            : `[PROJETO] Dados do projeto ${id.substring(0, 6)} atualizados.`,
+        ]);
       }
     } catch (err) {
       console.error("Erro ao atualizar projeto:", err);

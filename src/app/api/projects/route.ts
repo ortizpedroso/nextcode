@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
       }
       const project = await prisma.project.update({
         where: { id: reopenedProject.id },
-        data: { isArchived: false },
+        data: { isArchived: false, isClosed: false },
         include: {
           sessions: {
             orderBy: { createdAt: "desc" },

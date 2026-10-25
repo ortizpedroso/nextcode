@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import prisma from "@/lib/prisma";
 import { POST } from "@/app/api/projects/route";
+import { PATCH } from "@/app/api/projects/[id]/route";
 import { NextRequest } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
@@ -50,7 +51,7 @@ describe("API /api/projects — POST reabre pasta existente (PJ1.2)", () => {
 
     await prisma.project.update({
       where: { id: json1.project.id },
-      data: { isArchived: true },
+      data: { isArchived: true, isClosed: true },
     });
 
     const req2 = new NextRequest("http://localhost:3000/api/projects", {
@@ -64,6 +65,34 @@ describe("API /api/projects — POST reabre pasta existente (PJ1.2)", () => {
     expect(json2.reopened).toBe(true);
     expect(json2.project.id).toBe(json1.project.id);
     expect(json2.project.isArchived).toBe(false);
+    expect(json2.project.isClosed).toBe(false);
+    expect(fs.existsSync(path.join(tmpFolder, "marker.txt"))).toBe(true);
+  });
+
+  it("fechar sai da área de trabalho e a pasta continua no disco", async () => {
+    fs.writeFileSync(path.join(tmpFolder, "marker.txt"), "keep");
+    const created = await (
+      await POST(
+        new NextRequest("http://localhost:3000/api/projects", {
+          method: "POST",
+          body: JSON.stringify({ name: "Proj Fechar", path: tmpFolder }),
+        })
+      )
+    ).json();
+    const id = created.project.id as string;
+
+    const res = await PATCH(
+      new NextRequest(`http://localhost:3000/api/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isClosed: true }),
+      }),
+      { params: Promise.resolve({ id }) }
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.project.isClosed).toBe(true);
+    expect(json.project.isArchived).toBe(true);
+    expect(await prisma.project.findUnique({ where: { id } })).not.toBeNull();
     expect(fs.existsSync(path.join(tmpFolder, "marker.txt"))).toBe(true);
   });
 

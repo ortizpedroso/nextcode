@@ -218,6 +218,12 @@ export function OpenProjectDialog({
           </div>
         )}
 
+        {!editingProject && tab === "open" && (
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Se esta pasta foi fechada, ela volta para a área de trabalho. Nada é apagado do computador.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">

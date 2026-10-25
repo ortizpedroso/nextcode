@@ -14,19 +14,32 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, path, isPinned, isArchived } = body;
+    const { name, description, path, isPinned, isArchived, isClosed } = body;
 
     const dataToUpdate: Record<string, unknown> = {};
     if (name !== undefined) dataToUpdate.name = String(name).trim();
     if (description !== undefined) dataToUpdate.description = description ? String(description).trim() : null;
     if (path !== undefined) dataToUpdate.path = path ? String(path).trim() : null;
     if (isPinned !== undefined) dataToUpdate.isPinned = Boolean(isPinned);
-    // PJ2b: arquivar = fechar (a fila para; guarda onde parou); desarquivar = reabrir e continuar.
-    if (isArchived !== undefined) {
+    // Arquivar deixa o projeto na lista de fechados. Fechar (isClosed) tira da área de trabalho
+    // e para a fila; a pasta no disco permanece. Abrir a mesma pasta reabre.
+    if (isClosed === true) {
+      const before = await prisma.project.findUnique({ where: { id }, select: { isArchived: true } });
+      if (!before) {
+        return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+      }
+      const { closeProject } = await import("@/core/orchestrator/project-lifecycle");
+      if (!before.isArchived) await closeProject(id);
+      dataToUpdate.isArchived = true;
+      dataToUpdate.isClosed = true;
+    } else if (isArchived !== undefined) {
       const before = await prisma.project.findUnique({ where: { id }, select: { isArchived: true } });
       const { closeProject, reopenProject } = await import("@/core/orchestrator/project-lifecycle");
       if (Boolean(isArchived) && !before?.isArchived) await closeProject(id);
-      else if (!isArchived && before?.isArchived) await reopenProject(id);
+      else if (!isArchived && before?.isArchived) {
+        await reopenProject(id);
+        dataToUpdate.isClosed = false;
+      }
     }
 
     const project = await prisma.project.update({

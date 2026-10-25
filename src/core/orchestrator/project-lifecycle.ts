@@ -50,7 +50,7 @@ export async function closeProject(projectId: string): Promise<WhereStopped | nu
 
 /** Reabre: desarquiva, diz no chat onde parou e, se a sessão estava executando, volta à fila. */
 export async function reopenProject(projectId: string): Promise<WhereStopped | null> {
-  await prisma.project.update({ where: { id: projectId }, data: { isArchived: false } });
+  await prisma.project.update({ where: { id: projectId }, data: { isArchived: false, isClosed: false } });
   const onde = await whereStopped(projectId);
   if (!onde) return null;
   TelemetryLogger.log({ sessionId: onde.sessionId, action: "PROJECT_REOPENED", details: { projectId, fase: onde.fase } });
