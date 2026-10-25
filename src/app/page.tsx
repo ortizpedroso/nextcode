@@ -127,21 +127,22 @@ export default function DashboardOrchestrator() {
     }
   };
 
-  const fetchSessionDetails = useCallback(async (sessionId?: string | null) => {
+  const fetchSessionDetails = useCallback(async (sessionId?: string | null): Promise<string | null> => {
     const targetSessionId = sessionId !== undefined ? sessionId : activeSessionId;
-    if (!targetSessionId) return;
+    if (!targetSessionId) return null;
 
     try {
       const res = await authFetch(`/api/dag?sessionId=${targetSessionId}`);
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const data = await res.json();
 
       if (data.session) {
+        const specFromServer = data.session.canonicalSpec || "";
         setActiveSessionId(data.session.id);
         setActiveSessionTitle(data.session.title);
         setActiveProjectName(data.session.project?.name || null);
         setActiveProjectId(data.session.projectId || null);
-        setCanonicalSpec(data.session.canonicalSpec || "");
+        setCanonicalSpec(specFromServer);
         setIsSpecApproved(Boolean(data.session.specApproved));
         setApprovedSpec(data.session.specApproved ? data.session.canonicalSpec || null : null);
         setTasks(data.tasks || []);
@@ -152,6 +153,7 @@ export default function DashboardOrchestrator() {
           (m: SessionMessage) => m.role === "user" || m.role === "assistant"
         );
         setMessages(cleanMsgs);
+        return specFromServer;
       }
     } catch (err) {
       // Falhas temporárias de rede (ex.: re-compilação do dev server) não devem quebrar a UI
@@ -159,6 +161,7 @@ export default function DashboardOrchestrator() {
         console.warn("Sincronização temporária de sessão pausada (servidor indisponível ou reconectando).");
       }
     }
+    return null;
   }, [activeSessionId]);
 
   const fetchSettings = async () => {
@@ -826,7 +829,9 @@ export default function DashboardOrchestrator() {
         onSaveSettings={() => handleSaveSettings(settingsForm)}
         onCreateDAG={handleSendMessage}
         onExecuteNode={handleExecuteNode}
-        onRefreshTasks={() => fetchSessionDetails(activeSessionId)}
+        onRefreshTasks={async () => {
+          await fetchSessionDetails(activeSessionId);
+        }}
         onRetryNode={handleRetryNode}
         budget={budget}
         onAuthorizeBudget={handleAuthorizeBudget}
@@ -836,15 +841,14 @@ export default function DashboardOrchestrator() {
         onInspectQuarantine={setInspectTaskId}
         onExportAuditReport={handleExportAuditReport}
         approvedSpec={approvedSpec}
-        onOpenSpecModal={(content) => {
-          // Preferir a Spec limpa do servidor; a mensagem do chat traz avisos (conferência, auto-cura) colados no final.
-          const serverSpecOk = Boolean(canonicalSpec.trim() && parseSpecDocument(canonicalSpec));
+        onOpenSpecModal={async (content) => {
+          const freshFromServer = activeSessionId ? await fetchSessionDetails(activeSessionId) : null;
+          const serverSpec = (freshFromServer ?? canonicalSpec).trim();
+          const serverSpecOk = Boolean(serverSpec && parseSpecDocument(serverSpec));
           if (!serverSpecOk) {
             if (content && content.trim()) {
               setCanonicalSpec(content);
-            } else if (!canonicalSpec.trim()) {
-              // Se o usuário clicou no botão "Spec T1" do topo e o servidor ainda não sincronizou canonicalSpec,
-              // procura no histórico da sessão a última mensagem do assistente que seja uma Spec Canônica válida
+            } else if (!serverSpec) {
               const lastSpecMsg = [...messages]
                 .reverse()
                 .find((m) => m.role === "assistant" && parseSpecDocument(m.content) !== null);

@@ -28,6 +28,7 @@ import { clusterNamedByHuman, type ClusterException } from "@/core/intake/cluste
 import type { ElicitadorMacrobrief } from "@/core/intake/macrobrief-elicitador";
 import type { DAGNode } from "@/core/dag/dag-engine";
 import type { ContratoProjeto } from "@/core/orchestrator/project-contract";
+import { canonicalizeSpecDocument } from "@/core/intake/spec-format";
 
 export type ApproveSpecResult =
   | {
@@ -138,8 +139,11 @@ export async function approveSpecAndStart(
 
   // 2. Se canonicalSpec veio no argumento, grava em Session.canonicalSpec.
   // Se a sessão não tiver canonicalSpec não vazia depois disso, recusa com SPEC_AUSENTE sem alterar nada.
-  const effectiveSpec =
+  let effectiveSpec =
     canonicalSpec !== undefined ? String(canonicalSpec) : (session.canonicalSpec ?? "");
+
+  const canon = canonicalizeSpecDocument(effectiveSpec);
+  if (canon) effectiveSpec = canon;
 
   if (
     !effectiveSpec.trim() ||

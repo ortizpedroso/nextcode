@@ -66,10 +66,13 @@ export function CanonicalSpecModal({
 
   const handleApproveAndUnlock = async () => {
     if (!isSpecExecutable) {
-      alert("Atenção: Esta especificação ainda está pendente ou não possui módulos, arquivos e requisitos (REQ-001...) definidos. Descreva seu projeto no chat para a IA gerar a especificação completa antes de aprovar.");
+      const hint = !parsedSpec
+        ? "O navegador não conseguiu interpretar o YAML (Spec muito grande ou formato quebrado). Clique em “Editar documento completo”, confira os delimitadores --- ou use “Salvar rascunho” e regenere no chat."
+        : "Faltam módulos, arquivos_afetados ou requisitos (REQ-001…). Complete no chat antes de aprovar.";
+      setApproveError(hint);
       return;
     }
-    const canonical = canonicalizeSpecDocument(content);
+    const canonical = canonicalizeSpecDocument(content) ?? (content.trim().startsWith("---") ? content : null);
     if (!canonical) {
       setApproveError(
         "Não consegui ler a Spec (YAML). Abra “Editar documento completo”, confira o frontmatter --- … --- ou regenere no chat."
@@ -133,6 +136,17 @@ export function CanonicalSpecModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+      {saving && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-6">
+          <div className="max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-5 py-4 text-center shadow-xl space-y-2">
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">Aprovando Spec…</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Conferência Spec × Macrobrief e preparo do plano. Em projetos grandes (Gateway) isso pode levar{" "}
+              <strong>vários minutos</strong>. Não feche a aba.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl h-[80vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50 shrink-0">
@@ -236,21 +250,18 @@ export function CanonicalSpecModal({
 
           {!isApproved ? (
             <button
+              type="button"
               onClick={handleApproveAndUnlock}
-              disabled={saving || !isSpecExecutable}
+              disabled={saving}
               className={`px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
                 isSpecExecutable
                   ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md hover:shadow-lg cursor-pointer"
-                  : "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700"
+                  : "bg-amber-600 hover:bg-amber-500 text-white shadow-md cursor-pointer"
               }`}
-              title={
-                !isSpecExecutable
-                  ? "A especificação precisa conter módulos e arquivos válidos antes da aprovação."
-                  : "Aprovar Spec e liberar execução da DAG"
-              }
+              title="Aprovar Spec e liberar execução da DAG (Trava T1)"
             >
               <Unlock className="w-4 h-4" />
-              <span>Aprovar Spec Canônica & Liberar Execução DAG (Trava T1)</span>
+              <span>{saving ? "Aprovando…" : "Aprovar Spec Canônica & Liberar Execução DAG (Trava T1)"}</span>
             </button>
           ) : (
             <div className="flex items-center gap-2">

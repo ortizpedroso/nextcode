@@ -6,6 +6,9 @@ import {
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
 
+/** Conferência Macrobrief + elicitador na aprovação (Specs grandes) pode levar vários minutos. */
+export const maxDuration = 600;
+
 // GET fica aberto para a UI local, como as demais rotas de leitura (ver sessions/route.ts).
 export async function GET(
   request: Request,
