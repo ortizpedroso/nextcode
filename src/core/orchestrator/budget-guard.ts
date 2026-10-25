@@ -18,6 +18,11 @@ export const BUDGET_AUTHORIZED_ACTION = "BUDGET_AUTHORIZED";
 const ALERT_MARKER = "Alerta de custo";
 const BLOCK_MARKER = "Teto de custo atingido";
 
+/** Teste real / Fase D: sem pausa por teto (YAML permanece; remova a variável para voltar). */
+export function isBudgetCeilingDisabled(): boolean {
+  return process.env.NEXTCODE_TETO_CUSTO === "desligado";
+}
+
 export async function authorizedExtraUsd(sessionId: string): Promise<number> {
   const rows = await prisma.telemetryLog.findMany({
     where: { sessionId, action: BUDGET_AUTHORIZED_ACTION },
@@ -81,6 +86,19 @@ export async function getSessionBudget(sessionId: string, policy?: Orchestration
   ]);
   const spentUsd = spentUsdForBudgetCeiling(breakdown, p);
   const estimativaPlanoUsd = estimatePlanCostUsd(etapas.total, p);
+  if (isBudgetCeilingDisabled()) {
+    const limitUsd = Number.POSITIVE_INFINITY;
+    const sugestaoAutorizacaoUsd = MIN_AUTHORIZATION_USD;
+    return {
+      spentUsd,
+      limitUsd,
+      alertUsd: limitUsd,
+      status: "ok",
+      breakdown,
+      estimativaPlanoUsd,
+      sugestaoAutorizacaoUsd,
+    };
+  }
   // TR1 (4): o teto acompanha o tamanho do plano (aprovar a Spec = aceitar a estimativa).
   const limitUsd = Math.max(p.orcamento.tetoCustoPorProjetoUsd, estimativaPlanoUsd) + extra;
   const alertUsd = limitUsd * (p.orcamento.alertaPercentualTeto / 100);
@@ -107,6 +125,7 @@ async function postOnce(sessionId: string, marker: string, limitUsd: number, con
  * Confere o teto antes de um lote. Retorna true se a fila pode seguir; false se bloqueou a sessão.
  */
 export async function enforceBudgetBeforeBatch(sessionId: string): Promise<boolean> {
+  if (isBudgetCeilingDisabled()) return true;
   const b = await getSessionBudget(sessionId);
   if (b.status === "ok") return true;
 

@@ -152,4 +152,25 @@ describe("TR1 (4) — teto pelo tamanho do plano e 1 autorização", () => {
     expect(msg?.content).toContain("autorize US$ 1.05");
     expect(msg?.content).toContain("uma autorização cobre o resto do plano");
   });
+
+  it("NEXTCODE_TETO_CUSTO=desligado: execução não para por teto", async () => {
+    const prev = process.env.NEXTCODE_TETO_CUSTO;
+    process.env.NEXTCODE_TETO_CUSTO = "desligado";
+    try {
+      const id = await sessionWithStages(4, 2);
+      await recordLlmCost({
+        sessionId: id,
+        papel: "executor",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        usage: { prompt_tokens: 0, completion_tokens: 600_000 },
+      });
+      const b = await getSessionBudget(id);
+      expect(b.status).toBe("ok");
+      expect(await enforceBudgetBeforeBatch(id)).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.NEXTCODE_TETO_CUSTO;
+      else process.env.NEXTCODE_TETO_CUSTO = prev;
+    }
+  });
 });

@@ -236,7 +236,10 @@ export function DagSidebar({
 
       {/* Custo do projeto (Trava T9 com telemetria e breakdown) */}
       {budget && (() => {
-        const pct = Math.min(100, Math.max(0, (budget.spentUsd / (budget.limitUsd || 1)) * 100));
+        const semTeto = !Number.isFinite(budget.limitUsd);
+        const pct = semTeto
+          ? 0
+          : Math.min(100, Math.max(0, (budget.spentUsd / (budget.limitUsd || 1)) * 100));
         const barColor =
           budget.status === "teto"
             ? "bg-rose-500"
@@ -257,7 +260,8 @@ export function DagSidebar({
             <div className="flex items-center justify-between">
               <span className="font-medium text-slate-700 dark:text-slate-300">Custo do projeto</span>
               <span className="font-semibold font-mono text-slate-900 dark:text-white">
-                {formatUsd(budget.spentUsd)} / US$ {budget.limitUsd.toFixed(2)}
+                {formatUsd(budget.spentUsd)}
+                {semTeto ? " · teto desligado (teste)" : ` / US$ ${budget.limitUsd.toFixed(2)}`}
               </span>
             </div>
 
