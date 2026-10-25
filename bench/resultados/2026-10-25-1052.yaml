@@ -1,0 +1,149 @@
+{
+  "benchmark_timestamp": "2026-10-25-1052",
+  "medias": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 316.6,
+      "aprovadasNa1aMedia": 5,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.227096666,
+      "custoExecutorMedio": 0.071916416,
+      "custoAvaliadorMedio": 0.1330086,
+      "custoJevMedio": 0.000112602,
+      "jevChamadasMedia": 1
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 316.6,
+      "etapas": 5,
+      "aprovadasNa1a": 5,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.071916416,
+        "avaliador": 0.1330086,
+        "jev": 0.000112602,
+        "total": 0.227096666
+      },
+      "avaliadorServedBy": [
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5"
+      ],
+      "avaliadorIndisponivel": 0,
+      "avaliacoesPorProvedor": {
+        "claude": 2
+      },
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1792939648747",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-1792939702341-1",
+          "executorChamadas": 2,
+          "acoesFerramenta": 4,
+          "tentativas": 1,
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 9351,
+          "executorTokensSaida": 5821,
+          "executorUsd": 0.027881392,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.017403
+        },
+        {
+          "nodeId": "task-analista-1792939702341-2",
+          "executorChamadas": 2,
+          "acoesFerramenta": 6,
+          "tentativas": 1,
+          "titulo": "Etapa 2/2: registrar/route.ts, login/route.ts, sessao/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 15670,
+          "executorTokensSaida": 8660,
+          "executorUsd": 0.044035024000000006,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.0239525
+        },
+        {
+          "nodeId": "task-nada-frontend-872304",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: frontend",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-nada-integration-884672",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: integration",
+          "cluster": "integration",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        }
+      ],
+      "tetoEfetivoUsd": 3
+    }
+  ]
+}

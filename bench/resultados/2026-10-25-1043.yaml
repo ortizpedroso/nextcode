@@ -1,0 +1,456 @@
+{
+  "benchmark_timestamp": "2026-10-25-1043",
+  "medias": [
+    {
+      "projeto": "p2",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 382.4,
+      "aprovadasNa1aMedia": 6,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.282998586,
+      "custoExecutorMedio": 0.06287016399999999,
+      "custoAvaliadorMedio": 0.190889,
+      "custoJevMedio": 0.000192822,
+      "jevChamadasMedia": 1
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 0,
+      "tempoMedioSeg": 409.4,
+      "aprovadasNa1aMedia": 5,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.28543635,
+      "custoExecutorMedio": 0.07678748,
+      "custoAvaliadorMedio": 0.17239369999999998,
+      "custoJevMedio": 0.000112602,
+      "jevChamadasMedia": 1
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "execucoes": 1,
+      "faseFinalEntreguePct": 100,
+      "tempoMedioSeg": 187.8,
+      "aprovadasNa1aMedia": 5,
+      "tentativasTotaisMedia": 0,
+      "tscZeroErrosPct": 100,
+      "aceiteMediaPct": 100,
+      "custoTotalMedio": 0.11490391199999998,
+      "custoExecutorMedio": 0.026656432,
+      "custoAvaliadorMedio": 0.0689196,
+      "custoJevMedio": 0.000062832,
+      "jevChamadasMedia": 1
+    }
+  ],
+  "execucoes": [
+    {
+      "projeto": "p2",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 382.4,
+      "etapas": 6,
+      "aprovadasNa1a": 6,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "UI_CHECK_PASSED",
+      "aceite": {
+        "aprovados": 13,
+        "total": 13,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p2\",\"total\":13,\"aprovados\":13,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.06287016399999999,
+        "avaliador": 0.190889,
+        "jev": 0.000192822,
+        "total": 0.282998586
+      },
+      "avaliadorServedBy": [
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5"
+      ],
+      "avaliadorIndisponivel": 0,
+      "avaliacoesPorProvedor": {
+        "claude": 5
+      },
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1792938417873",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-1792938481559-1",
+          "executorChamadas": 3,
+          "acoesFerramenta": 4,
+          "tentativas": 1,
+          "titulo": "Etapa 1/4: lib/tarefas.ts",
+          "cluster": "core",
+          "nivelPlanejado": "rapido",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-flash"
+          ],
+          "executorTokensEntrada": 13665,
+          "executorTokensSaida": 1283,
+          "executorUsd": 0.002741436,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.0259707
+        },
+        {
+          "nodeId": "task-analista-1792938481559-2",
+          "executorChamadas": 2,
+          "acoesFerramenta": 4,
+          "tentativas": 1,
+          "titulo": "Etapa 2/4: tarefas/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 9760,
+          "executorTokensSaida": 1900,
+          "executorUsd": 0.012894112,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.017081
+        },
+        {
+          "nodeId": "task-analista-1792938481559-3",
+          "executorChamadas": 2,
+          "acoesFerramenta": 4,
+          "tentativas": 1,
+          "titulo": "Etapa 3/4: [id]/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 9680,
+          "executorTokensSaida": 2539,
+          "executorUsd": 0.015318952,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.017752
+        },
+        {
+          "nodeId": "task-analista-1792938481559-4",
+          "executorChamadas": 4,
+          "acoesFerramenta": 8,
+          "tentativas": 1,
+          "titulo": "Etapa 4/4: tarefas/page.tsx",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 29011,
+          "executorTokensSaida": 5277,
+          "executorUsd": 0.031915663999999996,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.044558
+        },
+        {
+          "nodeId": "task-nada-integration-f35870",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: integration",
+          "cluster": "integration",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        }
+      ],
+      "tetoEfetivoUsd": 3
+    },
+    {
+      "projeto": "p3",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "BLOQUEADA",
+      "tempoSeg": 409.4,
+      "etapas": 5,
+      "aprovadasNa1a": 5,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p3\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.07678748,
+        "avaliador": 0.17239369999999998,
+        "jev": 0.000112602,
+        "total": 0.28543635
+      },
+      "avaliadorServedBy": [
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5",
+        "claude-sonnet-5-5"
+      ],
+      "avaliadorIndisponivel": 0,
+      "avaliacoesPorProvedor": {
+        "claude": 3
+      },
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1792938812045",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-1792938902608-1",
+          "executorChamadas": 2,
+          "acoesFerramenta": 4,
+          "tentativas": 1,
+          "titulo": "Etapa 1/2: lib/auth.ts",
+          "cluster": "core",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 9550,
+          "executorTokensSaida": 4615,
+          "executorUsd": 0.023694968,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.017506
+        },
+        {
+          "nodeId": "task-analista-1792938902608-2",
+          "executorChamadas": 2,
+          "acoesFerramenta": 7,
+          "tentativas": 1,
+          "titulo": "Etapa 2/2: registrar/route.ts, login/route.ts, sessao/route.ts +1",
+          "cluster": "backend",
+          "nivelPlanejado": "pesado",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 15919,
+          "executorTokensSaida": 10823,
+          "executorUsd": 0.053092512,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.0457615
+        },
+        {
+          "nodeId": "task-nada-frontend-69f3b4",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: frontend",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-nada-integration-161cf2",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: integration",
+          "cluster": "integration",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        }
+      ],
+      "tetoEfetivoUsd": 3
+    },
+    {
+      "projeto": "p4",
+      "variante": "padrao",
+      "repeticao": 1,
+      "faseFinal": "ENTREGUE",
+      "tempoSeg": 187.8,
+      "etapas": 5,
+      "aprovadasNa1a": 5,
+      "tentativasTotais": 0,
+      "tscProjeto": 0,
+      "uiCheck": "ausente",
+      "aceite": {
+        "aprovados": 12,
+        "total": 12,
+        "reprovadosIds": [],
+        "resumoRaw": "RESUMO {\"projeto\":\"p4\",\"total\":12,\"aprovados\":12,\"reprovados\":0}"
+      },
+      "custo": {
+        "executor": 0.026656432,
+        "avaliador": 0.0689196,
+        "jev": 0.000062832,
+        "total": 0.11490391199999998
+      },
+      "avaliadorServedBy": [
+        "claude-sonnet-5-5"
+      ],
+      "avaliadorIndisponivel": 0,
+      "avaliacoesPorProvedor": {
+        "claude": 1
+      },
+      "timeoutsAvaliador": 0,
+      "divergenciasEvidencia": 0,
+      "jevChamadas": 1,
+      "etapasDetalhe": [
+        {
+          "nodeId": "task-scaffold-1792939229015",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Base do projeto: dependências e tsconfig (sem IA)",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-analista-1792939273412-1",
+          "executorChamadas": 4,
+          "acoesFerramenta": 12,
+          "tentativas": 1,
+          "titulo": "Etapa 1/1: tarefas/route.ts, [id]/route.ts",
+          "cluster": "backend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "jev",
+          "executorModelos": [
+            "custom/deepseek-v4-pro"
+          ],
+          "executorTokensEntrada": 28920,
+          "executorTokensSaida": 3938,
+          "executorUsd": 0.026656432,
+          "avaliadorModelos": [
+            "claude-sonnet-5-5"
+          ],
+          "avaliadorUsd": 0.018996
+        },
+        {
+          "nodeId": "task-nada-core-0e31f7",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: core",
+          "cluster": "core",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-nada-frontend-adffae",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: frontend",
+          "cluster": "frontend",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        },
+        {
+          "nodeId": "task-nada-integration-507799",
+          "executorChamadas": 0,
+          "acoesFerramenta": 0,
+          "tentativas": 1,
+          "titulo": "Nada a fazer: integration",
+          "cluster": "integration",
+          "nivelPlanejado": "medio",
+          "fontePlano": "ausente",
+          "executorModelos": [],
+          "executorTokensEntrada": 0,
+          "executorTokensSaida": 0,
+          "executorUsd": 0,
+          "avaliadorModelos": [],
+          "avaliadorUsd": 0
+        }
+      ],
+      "tetoEfetivoUsd": 3
+    }
+  ]
+}

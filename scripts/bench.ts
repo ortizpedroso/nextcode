@@ -311,6 +311,8 @@ async function rodarUmaExecucao(
   fs.copyFileSync(srcDb, copyDb);
 
   process.env.DATABASE_URL = `file:${copyDb.replace(/\\/g, "/")}`;
+  // Bench mede execução ponta a ponta; a porta J4 usava conferência desligada (como vitest.setup).
+  process.env.NEXTCODE_CONFERENCIA_ENTRADA ??= "desligado";
 
   if (variante === "avaliador-deepseek") {
     process.env.EVALUATOR_NEMOTRON_MODEL = "bench-desligado";
@@ -394,19 +396,19 @@ async function rodarUmaExecucao(
         id: "REQ-001",
         titulo: "Store em memória em src/lib/tarefas.ts",
         criterio:
-          "Definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
+          "Em src/lib/tarefas.ts, definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
       },
       {
         id: "REQ-002",
         titulo: "Listagem e criação em src/app/api/tarefas/route.ts",
         criterio:
-          "Exportar GET retornando 200 com array de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
+          "Em src/app/api/tarefas/route.ts, exportar GET retornando 200 com array de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
       },
       {
         id: "REQ-003",
         titulo: "Atualização e remoção em src/app/api/tarefas/[id]/route.ts",
         criterio:
-          "Exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
+          "Em src/app/api/tarefas/[id]/route.ts, exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
       },
     ],
   });
@@ -466,25 +468,25 @@ async function rodarUmaExecucao(
         id: "REQ-001",
         titulo: "Store em memória em src/lib/tarefas.ts",
         criterio:
-          "Definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
+          "Em src/lib/tarefas.ts, definir interface Tarefa (id, titulo, concluida, criadaEm) e exportar listarTarefas, criarTarefa, atualizarTarefa e removerTarefa.",
       },
       {
         id: "REQ-002",
         titulo: "Listagem e criação em src/app/api/tarefas/route.ts",
         criterio:
-          "Exportar GET retornando 200 com a lista de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
+          "Em src/app/api/tarefas/route.ts, exportar GET retornando 200 com a lista de tarefas e POST validando titulo não vazio (400 se inválido, 201 com a tarefa criada).",
       },
       {
         id: "REQ-003",
         titulo: "Atualização e remoção em src/app/api/tarefas/[id]/route.ts",
         criterio:
-          "Exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
+          "Em src/app/api/tarefas/[id]/route.ts, exportar PATCH e DELETE recebendo context com params Promise<{ id: string }>, retornando 404 quando o id não existir.",
       },
       {
         id: "REQ-004",
         titulo: "Tela CRUD em src/app/tarefas/page.tsx",
         criterio:
-          "Componente Client ('use client') com export default que consome /api/tarefas para listar, criar nova tarefa via formulário, marcar como concluída e remover.",
+          "Em src/app/tarefas/page.tsx, componente Client ('use client') com export default que consome /api/tarefas para listar, criar nova tarefa via formulário, marcar como concluída e remover.",
       },
     ],
   });
