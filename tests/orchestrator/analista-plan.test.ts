@@ -127,19 +127,31 @@ describe("A2.2 — analista planeja e o código confere", () => {
     expect(d.nodes.filter((n: any) => n.payload?.microbrief)).toHaveLength(2);
   });
 
-  it("3 rodadas ruins → reserva (heurística) registrada como rodadas_esgotadas", async () => {
+  it("3 rodadas ruins → PLANO_REPROVADO sem heurística (0 etapas)", async () => {
     const router = fakeRouter([planJson(BAD)]);
-    await SpecDecomposerSkill.decomposeWithAnalistaSkill({ specText: SPEC, titulo: "Teste A2.2", files: FILES, smartRouter: router });
+    const d = await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+      specText: SPEC,
+      titulo: "Teste A2.2",
+      files: FILES,
+      smartRouter: router,
+    });
     expect(router.calls).toHaveLength(3);
-    const fb = logSpy.mock.calls.find((c: any) => c[0].action === "ANALISTA_PLAN_FALLBACK");
-    expect(fb?.[0].details.reason).toBe("rodadas_esgotadas");
+    expect(d.nodes).toHaveLength(0);
+    expect(d.planoReprovado?.motivo).toBe("rodadas_esgotadas");
+    expect(logSpy.mock.calls.some((c: any) => c[0].action === "ANALISTA_PLAN_FALLBACK")).toBe(false);
+    expect(actions()).toContain("PLANO_REPROVADO");
   });
 
-  it("modelo fora do ar → reserva registrada (antes voltava calado)", async () => {
+  it("modelo fora do ar → PLANO_REPROVADO (sem heurística)", async () => {
     const router = fakeRouter([new Error("timeout")]);
-    await SpecDecomposerSkill.decomposeWithAnalistaSkill({ specText: SPEC, titulo: "Teste A2.2", files: FILES, smartRouter: router });
-    const fb = logSpy.mock.calls.find((c: any) => c[0].action === "ANALISTA_PLAN_FALLBACK");
-    expect(fb?.[0].details.reason).toBe("exception_or_offline");
+    const d = await SpecDecomposerSkill.decomposeWithAnalistaSkill({
+      specText: SPEC,
+      titulo: "Teste A2.2",
+      files: FILES,
+      smartRouter: router,
+    });
+    expect(d.planoReprovado?.motivo).toBe("exception_or_offline");
+    expect(d.nodes).toHaveLength(0);
   });
 
   it("resposta sem JSON → erro de formato devolvido ao modelo (não volta calado)", async () => {

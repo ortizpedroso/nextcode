@@ -441,8 +441,8 @@ export async function approveSpecAndStart(
 
       const parsedSpec = parseSpecDocument(effectiveSpec);
       const specFilesScope = parsedSpec?.arquivosAfetados;
-      // Spec com arquivos declarados → Analista LLM com validação mecânica T8b e fallback determinístico;
-      // sem arquivos declarados, heurística de domínio.
+      // Spec com arquivos declarados → Analista LLM com T8b; reprovação não cai na heurística (só skipModel em teste).
+      // Sem arquivos declarados, heurística de domínio.
       const decompResult =
         specFilesScope && specFilesScope.length > 0
           ? await SpecDecomposerSkill.decomposeWithAnalistaSkill({
@@ -461,6 +461,20 @@ export async function approveSpecAndStart(
               macrobriefTexto: macrobriefTextoAprovado,
             })
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
+      if (decompResult.planoReprovado) {
+        const motivo = decompResult.planoReprovado.motivo;
+        const detalhe =
+          "**Dono:** analista (plano não aprovado).\n\n" +
+          `Motivo: \`${motivo}\`. Nenhuma etapa foi criada e nada foi gasto em execução.`;
+        const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+        return {
+          ok: true,
+          alreadyStarted: false,
+          phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
+          tasks: [],
+        };
+      }
+
       const rawNodes = decompResult.nodes;
 
       // Jev decide o nível de modelo de cada etapa (uma chamada para todas) e se alguma etapa mistura

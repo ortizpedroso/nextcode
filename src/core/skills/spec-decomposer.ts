@@ -33,6 +33,8 @@ export interface DecompositionResult {
   origemPlano?: "analista" | "heuristica";
   /** Contrato estruturado do plano do analista. A heurística não preenche. */
   contrato?: ContratoProjeto;
+  /** Produção: analista esgotou rodadas ou falhou; nenhuma etapa deve ser criada. */
+  planoReprovado?: { motivo: string; dono: "analista" };
 }
 
 export { extractFilePathsFromText };
@@ -426,6 +428,20 @@ export class SpecDecomposerSkill {
       return baseDecomp;
     }
 
+    const reprovado = (motivo: string, extra: Record<string, unknown> = {}): DecompositionResult => {
+      TelemetryLogger.log({
+        sessionId,
+        action: "PLANO_REPROVADO",
+        details: { motivo, dono: "analista", ...extra },
+      });
+      return {
+        goal: baseDecomp.goal,
+        nodes: [],
+        summary: "Plano do analista reprovado; nenhuma etapa foi criada.",
+        planoReprovado: { motivo, dono: "analista" },
+      };
+    };
+
     const fallback = (reason: string, extra: Record<string, unknown> = {}): DecompositionResult => {
       TelemetryLogger.log({ sessionId, action: "ANALISTA_PLAN_FALLBACK", details: { reason, ...extra } });
       return baseDecomp;
@@ -434,7 +450,7 @@ export class SpecDecomposerSkill {
     const parsedSpec = parseSpecDocument(specText);
     const declaredReqs = parsedSpec?.requisitos ?? [];
     if (declaredReqs.length === 0) {
-      return fallback("spec_sem_requisitos");
+      return reprovado("spec_sem_requisitos");
     }
     const uniqueFiles = Array.from(new Set(files.map((f) => f.trim()).filter(Boolean)));
     const reqIds = declaredReqs.map((r) => r.id);
@@ -444,7 +460,7 @@ export class SpecDecomposerSkill {
     try {
       systemPrompt = buildSkillSystemPrompt(loadRoleSkill("analista"));
     } catch (err) {
-      return fallback("skill_analista_indisponivel", { error: err instanceof Error ? err.message : String(err) });
+      return reprovado("skill_analista_indisponivel", { error: err instanceof Error ? err.message : String(err) });
     }
 
     const userPrompt = [
@@ -505,7 +521,7 @@ export class SpecDecomposerSkill {
           usage: resJson.usage,
         });
       } catch (err) {
-        return fallback("exception_or_offline", { rodada, error: err instanceof Error ? err.message : String(err) });
+        return reprovado("exception_or_offline", { rodada, error: err instanceof Error ? err.message : String(err) });
       }
 
       if (semResposta) {
@@ -601,12 +617,7 @@ export class SpecDecomposerSkill {
       });
     }
 
-    TelemetryLogger.log({
-      sessionId,
-      action: "PLANO_REPROVADO",
-      details: { motivo: "rodadas_esgotadas", rodadas: ANALISTA_MAX_RODADAS, dono: "analista" },
-    });
-    return fallback("rodadas_esgotadas", { rodadas: ANALISTA_MAX_RODADAS });
+    return reprovado("rodadas_esgotadas", { rodadas: ANALISTA_MAX_RODADAS });
   }
 
   /**
