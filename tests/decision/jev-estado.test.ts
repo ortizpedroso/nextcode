@@ -161,9 +161,11 @@ describe("P1.3 — Estado do Jev nunca cortado no meio; score com probabilidades
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     const lines: string[] = [];
+    const stripeBody = "AbCdEfGhIjKlMnOpQrStUvWxYz";
     for (let i = 0; i < 200; i++) {
+      const key = `sk_${"live_"}${stripeBody}${String(i).padStart(4, "0")}`;
       lines.push(
-        `export const k_${i} = "sk_"+"live_AbCdEfGhIjKlMnOpQrStUvWxYz${String(i).padStart(4, "0")}"; // ${"comentario_longo_".repeat(8)}`
+        `export const k_${i} = "${key}"; // ${"comentario_longo_".repeat(8)}`
       );
     }
 
