@@ -75,7 +75,7 @@ export function buildSpecWriterSystemPrompt(funnelBrief?: string): string {
     "<1 a 2 parágrafos com o objetivo e as regras de negócio principais>",
     "",
     "Regras: listas sempre uma por linha (nunca [a, b]); nenhum bloco de código; não invente que algo já existe ou foi implementado; cubra TODO o pedido do usuário em módulos, entidades, arquivos e requisitos.",
-    "IMPORTANTE: `arquivos_afetados` deve conter APENAS caminhos de arquivos concretos com extensão (ex.: src/app/api/cobrancas/route.ts). NUNCA liste nomes de pastas/diretórios (ex.: NUNCA coloque 'src/app/api').",
+    "IMPORTANTE: `arquivos_afetados` deve conter APENAS caminhos de arquivos concretos (ex.: src/app/api/cobrancas/route.ts, prisma/schema.prisma, Dockerfile, deploy/Caddyfile). NUNCA liste pastas (ex.: NUNCA 'src/app/api'). Arquivos sem extensão permitidos: Dockerfile, Dockerfile.prod, Caddyfile, Makefile.",
     "Cada módulo lista em `arquivos` os arquivos que o implementam, e todos eles aparecem em arquivos_afetados. Estado ou lógica usados por mais de um arquivo (ex.: armazenamento em memória, cliente de API, tipos) ficam num arquivo próprio em src/lib/ — nunca duplicados dentro das rotas.",
     "Toda rota HTTP declarada tem o seu arquivo. Em Next.js use o App Router: /api/tarefas → src/app/api/tarefas/route.ts; /api/tarefas/:id → src/app/api/tarefas/[id]/route.ts; páginas em src/app/<caminho>/page.tsx.",
     "A lista `requisitos` é OBRIGATÓRIA: `id` em sequência estrita (REQ-001, REQ-002…), `titulo` e `criterio` verificável que CITA explicitamente o caminho do arquivo de `arquivos_afetados` que o implementa. Todo arquivo de `arquivos_afetados` deve ser citado por pelo menos um requisito.",

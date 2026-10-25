@@ -6,8 +6,18 @@ import {
   type SpecRequirementItem,
 } from "./spec-format";
 
+/** Nomes de arquivo válidos sem extensão (deploy / build). Fase D Gateway: Dockerfile e Caddyfile. */
+const EXTENSIONLESS_FILE_BASENAMES = new Set([
+  "Dockerfile",
+  "Makefile",
+  "makefile",
+  "Caddyfile",
+  "LICENSE",
+  "Containerfile",
+]);
+
 /**
- * Verifica se um caminho aparenta ser um arquivo individual concreto (possui extensão).
+ * Verifica se um caminho aparenta ser um arquivo individual concreto (possui extensão ou nome allowlist).
  * Elimina diretórios soltos que o LLM às vezes lista (ex: "src/app/api").
  */
 export function isConcreteFilePath(path: string): boolean {
@@ -15,6 +25,8 @@ export function isConcreteFilePath(path: string): boolean {
   if (!clean || clean.endsWith("/")) return false;
   const segments = clean.split("/");
   const lastSegment = segments[segments.length - 1];
+  if (/^Dockerfile(\.[a-zA-Z0-9._-]+)?$/.test(lastSegment)) return true;
+  if (EXTENSIONLESS_FILE_BASENAMES.has(lastSegment)) return true;
   if (!lastSegment.includes(".")) return false;
   // SM1 (a): arquivo com ponto no início vale se tiver extensão (".env.example", ".eslintrc.json").
   // Antes era descartado calado — teste real `934939fc`: `.env.example` pedido 2× e removido 3×.

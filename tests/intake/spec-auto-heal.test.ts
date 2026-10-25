@@ -7,6 +7,9 @@ describe("spec-auto-heal — Auto-Cura Mecânica da Spec", () => {
   it("valida caminhos concretos e rejeita diretórios", () => {
     expect(isConcreteFilePath("src/app/api/cobrancas/route.ts")).toBe(true);
     expect(isConcreteFilePath("prisma/schema.prisma")).toBe(true);
+    expect(isConcreteFilePath("Dockerfile")).toBe(true);
+    expect(isConcreteFilePath("deploy/Caddyfile")).toBe(true);
+    expect(isConcreteFilePath("Dockerfile.prod")).toBe(true);
     expect(isConcreteFilePath("src/app/api")).toBe(false);
     expect(isConcreteFilePath("src/app/")).toBe(false);
     expect(isConcreteFilePath("")).toBe(false);
