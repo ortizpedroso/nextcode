@@ -8,7 +8,7 @@
  * - Worker real (startJobWorker): retomadas de SEM_LLM e do avaliador como no app.
  * - Teto: o do sistema (P9, pelo tamanho do plano). Sem autorização extra: bateu o teto, para.
  * - Para em ENTREGUE, BLOQUEADA, PAUSADA por mais de PAUSA_MAX_MIN, ou depois de TEMPO_MAX_H.
- * - Relatório: docs/relatorios/TESTE-PESADO-E1.md (+ .yaml com as etapas).
+ * - Relatório: bench/resultados/TESTE-PESADO-E1.md (+ .yaml com as etapas).
  *
  * Uso: npx tsx scripts/teste-pesado.ts            (roda)
  *      npx tsx scripts/teste-pesado.ts --relatorio (só refaz o relatório a partir da cópia do banco)
@@ -216,7 +216,7 @@ async function relatorio(sessionId: string, motivoFim: string, inicio: number): 
     ),
     "",
   ];
-  const destino = path.join(repoRoot, "docs", "relatorios", "TESTE-PESADO-E1.md");
+  const destino = path.join(repoRoot, "bench", "resultados", "TESTE-PESADO-E1.md");
   fs.writeFileSync(destino, sanitizarSegredos(linhas.join("\n")), "utf8");
   console.log(`[teste-pesado] relatório: ${destino}`);
   await prisma.$disconnect().catch(() => {});

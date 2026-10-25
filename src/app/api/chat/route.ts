@@ -396,6 +396,10 @@ export async function POST(request: NextRequest) {
           refusalText = "⚠️ A Spec Canônica não define arquivos afetados. Complete a arquitetura antes de aprovar.";
         } else if (approvalTriggerResult.reason === "SPEC_INVALIDA_OU_MALFORMATADA") {
           refusalText = "⚠️ O documento de Spec atual está com formatação inválida. Solicite ao assistente a regeneração da Spec antes de aprovar.";
+        } else if (approvalTriggerResult.reason === "PERGUNTA_AO_HUMANO") {
+          refusalText =
+            "Preciso de uma confirmação sua antes de seguir. Responda nomeando o cluster (core, backend, frontend ou integration) se for uma exceção:\n" +
+            (approvalTriggerResult.problems ?? []).map((p) => "- " + p).join("\n");
         } else if (approvalTriggerResult.reason === "CONFERENCIA_REPROVADA") {
           refusalText =
             "⚠️ A conferência entre a Spec e o plano de execução encontrou problemas. Corrija e aprove de novo:\n" +
@@ -809,7 +813,7 @@ export async function POST(request: NextRequest) {
         const resJson = await dispatchRes.response.json().catch(() => ({}));
         if (resJson.choices?.[0]?.message?.content) {
           aiResponseContent = resJson.choices[0].message.content;
-        } else if (resJson.choices?.[0]?.message?.reasoning_content) {
+        } else if (resJson.choices?.[0]?.message?.reasoning_content && resJson.choices[0].message.reasoning_content.trim() !== "") {
           aiResponseContent = resJson.choices[0].message.reasoning_content;
         } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
           aiResponseContent = resJson.candidates[0].content.parts[0].text;

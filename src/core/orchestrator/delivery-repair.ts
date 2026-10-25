@@ -14,11 +14,14 @@ import {
   type DeliveryRepairPayload,
   type RepairContractTest,
 } from "@/core/orchestrator/repair-payload";
+import { SmartRouter } from "@/core/router/smart-router";
+import { readSecret } from "@/core/security/crypto";
+import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
 
 export { readRepairPayload, supersededByRepair, currentRepairRound, type DeliveryRepairPayload } from "@/core/orchestrator/repair-payload";
 
 /**
- * J2b (§5.5; desenho `docs/relatorios/DECISOES-AUTONOMAS-E1-3.md` J1–J8): entrega reprovada na verificação
+ * J2b (§5.5; desenho consolidado em docs/NEXTCODE-REFERENCIA.md §2.6): entrega reprovada na verificação
  * final volta a PLANEJAMENTO com etapas de reparo, até 3 rodadas; depois BLOQUEADA com relatório.
  * O reparo é montado por código, sem LLM (J2): cada lacuna é ligada à etapa dona do arquivo ou do REQ;
  * uma etapa de reparo por etapa dona, partindo do código atual do projeto, com as lacunas como defeitos.
@@ -337,6 +340,58 @@ export type DeliveryRepairOutcome =
       todosComDono?: boolean;
     };
 
+/**
+ * O analista escreve a diretriz do microbrief de correção. Em teste, sem ENABLE_ANALISTA_REPARO,
+ * devolve null e o chamador usa o texto fixo. Em produção, null impede a rodada (não gasta o contador).
+ */
+async function diretrizDoAnalista(sessionId: string, item: RepairPlanItem): Promise<string | null> {
+  if (process.env.NODE_ENV === "test" && process.env.ENABLE_ANALISTA_REPARO !== "true") return null;
+  try {
+    const skill = loadRoleSkill("analista");
+    const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+    const router = new SmartRouter();
+    const provas = item.testes.map((t) => `--- ${t.caminho} ---\n${t.conteudo}`).join("\n\n");
+    const res = await router.dispatchWithFallback({
+      messages: [
+        {
+          role: "system",
+          content:
+            buildSkillSystemPrompt(skill) +
+            "\n\nEscreva SOMENTE a diretriz cirúrgica do microbrief de reparo, em português, no máximo 12 linhas. Não escreva código. O teste que prova o defeito é o contrato: o reparo só vale com ele passando.",
+        },
+        {
+          role: "user",
+          content: `Cluster: ${item.dona.cluster}\nDefeitos:\n${item.defeitos.map((d) => `- ${d}`).join("\n")}\n\nTestes que provam:\n${provas || "(nenhum)"}`,
+        },
+      ],
+      tier: "heavy",
+      maxTokens: 800,
+      sessionId,
+      geminiKey: readSecret(setting?.geminiKey),
+      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+      omniRouteKey: readSecret(setting?.omniRouteKey),
+      stream: false,
+      signal: AbortSignal.timeout(90_000),
+    });
+    const json = await res?.response.json().catch(() => ({}));
+    const text = String(json?.choices?.[0]?.message?.content || "").trim();
+    if (!text) return null;
+    TelemetryLogger.log({
+      sessionId,
+      action: "ANALISTA_REPARO_DIRETRIZ",
+      details: { dona: item.dona.id, chars: text.length },
+    });
+    return text;
+  } catch (err) {
+    TelemetryLogger.log({
+      sessionId,
+      action: "ANALISTA_REPARO_INDISPONIVEL",
+      details: { dona: item.dona.id, erro: String(err).slice(0, 200) },
+    });
+    return null;
+  }
+}
+
 /** Mudança 43.4: rodadas extras que o fundador autorizou nesta sessão (trilha `REPAIR_ROUND_AUTHORIZED`). */
 export async function authorizedExtraRounds(sessionId: string): Promise<number> {
   return prisma.telemetryLog.count({ where: { sessionId, action: "REPAIR_ROUND_AUTHORIZED" } });
@@ -386,6 +441,20 @@ export async function tryStartDeliveryRepair(
     };
   }
 
+  const diretrizes = new Map<string, string>();
+  for (const item of plan.itens) {
+    const texto = await diretrizDoAnalista(sessionId, item);
+    if (!texto && process.env.NODE_ENV !== "test") {
+      return {
+        started: false,
+        tipo: "erro",
+        motivo:
+          "O analista não escreveu o microbrief de correção. A rodada de reparo não foi aberta e o contador não avançou.",
+      };
+    }
+    if (texto) diretrizes.set(item.origemId, texto);
+  }
+
   const rodada = rodadaAnterior + 1;
   const toPlanning = await applyPhaseEvent(
     sessionId,
@@ -413,7 +482,10 @@ export async function tryStartDeliveryRepair(
       origemId: item.origemId,
       etapaAnterior: item.dona.id,
       defeitos: item.defeitos,
-      microbriefReparo: microbriefReparoFor(item, rodada, idProjeto),
+      microbriefReparo: {
+        ...microbriefReparoFor(item, rodada, idProjeto),
+        ...(diretrizes.get(item.origemId) ? { diretrizCirurgica: diretrizes.get(item.origemId)! } : {}),
+      },
       ...(item.testes.length > 0 ? { testesReproducao: item.testes } : {}),
     };
     const originalTitle = item.dona.title.replace(/^Reparo \d+\/\d+ — /, "");

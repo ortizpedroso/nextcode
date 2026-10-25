@@ -990,7 +990,7 @@ async function main() {
   const pad = (n: number) => String(n).padStart(2, "0");
   const timestampStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
 
-  const relatoriosDir = path.join(process.cwd(), "docs", "relatorios", "bench");
+  const relatoriosDir = path.join(process.cwd(), "bench", "resultados");
   fs.mkdirSync(relatoriosDir, { recursive: true });
 
   const mdPath = path.join(relatoriosDir, `${timestampStr}.md`);

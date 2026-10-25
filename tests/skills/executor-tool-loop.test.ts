@@ -1584,7 +1584,7 @@ describe("E5 — testes de aceite da etapa (testador cego ao código) no prompt 
     }
   });
 
-  it("E5 c) §6 item 7: na última tentativa, avaliador aprovando e só o teste cego falhando → etapa segue com a discordância registrada", async () => {
+  it("E5 c) na última tentativa, teste de aceite falhando → etapa reprovada, sem ressalva e sem arquivo promovido", async () => {
     const projectDir = makeTempProjectDir();
     const { task } = await makeStageWithAcceptance(projectDir, 2);
     vi.spyOn(TerminalExecutionEngine, "verifyProjectBuild").mockResolvedValue({ success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 });
@@ -1592,13 +1592,14 @@ describe("E5 — testes de aceite da etapa (testador cego ao código) no prompt 
     mockStage([]);
     try {
       const res = await executeTaskNode(task);
-      expect(res.finalStatus).toBe("completed");
-      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(true);
-      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT")).toHaveLength(1);
+      expect(res.finalStatus).not.toBe("completed");
+      expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(false);
+      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_TESTS_FAILED")).toHaveLength(1);
+      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT")).toHaveLength(0);
     } finally {
       setTestBenchRunnerForTests(null);
     }
-  });
+  }, 30_000);
 });
 
 describe("J20 — arquivo com instrução plantada chega ao executor marcado como dado", () => {

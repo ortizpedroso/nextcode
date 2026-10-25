@@ -47,6 +47,18 @@ export function parseSessionPhaseContext(
   if (parsed.pausaAvaliador && typeof parsed.pausaAvaliador.ate === "string") {
     ctx.pausaAvaliador = parsed.pausaAvaliador;
   }
+  if (Array.isArray(parsed.clusterGapDevolvido)) {
+    ctx.clusterGapDevolvido = parsed.clusterGapDevolvido.filter((g) => typeof g === "string");
+  }
+  if (parsed.clusterGapAguardandoHumano === true) {
+    ctx.clusterGapAguardandoHumano = true;
+  }
+  if (Array.isArray(parsed.excecoesCluster)) {
+    ctx.excecoesCluster = parsed.excecoesCluster.filter(
+      (e): e is { gap: string; cluster: string } =>
+        !!e && typeof e.gap === "string" && typeof e.cluster === "string"
+    );
+  }
 
   return ctx;
 }
@@ -61,8 +73,29 @@ export function serializeSessionPhaseContext(ctx: PhaseContext): string {
     ...(ctx.faseAntesDaPausa ? { faseAntesDaPausa: ctx.faseAntesDaPausa } : {}),
     ...(ctx.faseAntesDoBloqueio ? { faseAntesDoBloqueio: ctx.faseAntesDoBloqueio } : {}),
     ...(ctx.pausaAvaliador ? { pausaAvaliador: ctx.pausaAvaliador } : {}),
+    ...(ctx.clusterGapDevolvido?.length ? { clusterGapDevolvido: ctx.clusterGapDevolvido } : {}),
+    ...(ctx.clusterGapAguardandoHumano ? { clusterGapAguardandoHumano: true } : {}),
+    ...(ctx.excecoesCluster?.length ? { excecoesCluster: ctx.excecoesCluster } : {}),
   };
   return JSON.stringify(data);
+}
+
+/** Grava campos extras do contexto sem mudar a fase e sem gastar volta de conferência. */
+export async function patchSessionPhaseContext(
+  sessionId: string,
+  patch: Partial<PhaseContext>
+): Promise<PhaseContext> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { phase: true, phaseContext: true },
+  });
+  const ctx = parseSessionPhaseContext(session?.phase, session?.phaseContext);
+  const next: PhaseContext = { ...ctx, ...patch, phase: ctx.phase };
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: { phaseContext: serializeSessionPhaseContext(next) },
+  });
+  return next;
 }
 
 export interface ApplyPhaseEventOptions {
@@ -82,7 +115,7 @@ export interface ApplyPhaseEventOptions {
 
 /**
  * Aplica um evento de fase na sessão persistida com controle otimista e trilha append-only:
- * - lê a fase atual e chama transition(ctx, event, { etapa1Ativa: false });
+ * - lê a fase atual e chama transition(ctx, event, { etapa1Ativa: true });
  * - grava com controle otimista: updateMany where { id, phase: <fase lida> } (e phaseContext lido);
  * - se count === 0, relê e tenta UMA vez; se falhar de novo, retorna recusado;
  * - grava com await um TelemetryLog "PHASE_TRANSITION" { from, to, event, effects } ou
@@ -126,8 +159,8 @@ export async function applyPhaseEvent(
       };
     }
 
-    // D-M9 (24/10): Macrobrief ativado como primeira barreira de qualidade.
-    // A skill conferente-macrobrief audita antes do Jev; reprovação volta ao elicitador.
+    // Spec aprovada entra em MACROBRIEF. O gatilho de execução só segue para o executor
+    // depois que o analista entrega o contrato e a conferência mecânica passa.
     const result = transition(ctx, event, { etapa1Ativa: true });
 
     if (!result.ok) {

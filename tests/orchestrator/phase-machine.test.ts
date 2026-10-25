@@ -320,6 +320,37 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
   });
 
   describe('Regra 8: MACROBRIEF e CONFERENCIA (com contadores de falhas)', () => {
+    it('MACROBRIEF + PLANO_REPROVADO bloqueia e avisa, sem voltar ao elicitador', () => {
+      const ctx: PhaseContext = { phase: 'MACROBRIEF', rodadasSemClareza: 0, voltasConferencia: 0 };
+      const res = transition(ctx, { type: 'PLANO_REPROVADO' }, optsEtapa1On);
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.ctx.phase).toBe('BLOQUEADA');
+        expect(res.effects.some((e) => e.type === 'AVISAR_HUMANO' && e.acao === 'ajustar_spec')).toBe(true);
+      }
+    });
+
+    it('Macrobrief aprovado chega ao executor: MACROBRIEF → CONFERENCIA → PLANEJAMENTO → EXECUCAO', () => {
+      let ctx: PhaseContext = { phase: 'SPEC_REVISAO', rodadasSemClareza: 0, voltasConferencia: 0 };
+      const aprovada = transition(ctx, { type: 'SPEC_APROVADA' }, optsEtapa1On);
+      expect(aprovada.ok).toBe(true);
+      if (!aprovada.ok) return;
+      ctx = aprovada.ctx;
+      expect(ctx.phase).toBe('MACROBRIEF');
+      const pronto = transition(ctx, { type: 'MACROBRIEF_PRONTO' }, optsEtapa1On);
+      expect(pronto.ok).toBe(true);
+      if (!pronto.ok) return;
+      ctx = pronto.ctx;
+      const ok = transition(ctx, { type: 'CONFERENCIA_OK' }, optsEtapa1On);
+      expect(ok.ok).toBe(true);
+      if (!ok.ok) return;
+      ctx = ok.ctx;
+      expect(ctx.phase).toBe('PLANEJAMENTO');
+      const plano = transition(ctx, { type: 'PLANO_PRONTO' }, optsEtapa1On);
+      expect(plano.ok).toBe(true);
+      if (plano.ok) expect(plano.ctx.phase).toBe('EXECUCAO');
+    });
+
     it('MACROBRIEF + MACROBRIEF_PRONTO → CONFERENCIA', () => {
       const ctx: PhaseContext = { phase: 'MACROBRIEF', rodadasSemClareza: 0, voltasConferencia: 0 };
       const res = transition(ctx, { type: 'MACROBRIEF_PRONTO' }, optsEtapa1On);

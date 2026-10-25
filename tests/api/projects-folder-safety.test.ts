@@ -32,6 +32,11 @@ describe("P12 (PJ2) — trava de pasta-mãe", () => {
     expect(checkFolderSafeToDelete(process.cwd()).motivo).toContain("NextCode");
     expect(checkFolderSafeToDelete(path.dirname(process.cwd())).ok).toBe(false);
     const d = tmp();
+    // Item 7: sem marcador .nextcode, recusa exclusão
+    expect(checkFolderSafeToDelete(d).ok).toBe(false);
+    expect(checkFolderSafeToDelete(d).motivo).toContain(".nextcode");
+    // Com o marcador .nextcode, permite exclusão
+    fs.writeFileSync(path.join(d, ".nextcode"), "");
     expect(checkFolderSafeToDelete(d).ok).toBe(true);
     expect(checkFolderSafeToDelete(d, { otherProjectPaths: [path.join(d, "x")] }).motivo).toContain("outro projeto cadastrado");
     fs.mkdirSync(path.join(d, "a", "b", ".git"), { recursive: true });

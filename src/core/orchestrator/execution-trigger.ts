@@ -6,7 +6,7 @@ import { parseSpecDocument } from "@/core/intake/spec-format";
 import { SmartRouter, type AvailableKeys } from "@/core/router/smart-router";
 import { readSecret } from "@/core/security/crypto";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
-import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { applyPhaseEvent, parseSessionPhaseContext, patchSessionPhaseContext } from "@/core/orchestrator/session-phase";
 import { enqueueSessionQueueJob } from "@/core/orchestrator/job-queue";
 import type { Phase } from "@/core/orchestrator/phase-machine";
 import type { TaskNode } from "@prisma/client";
@@ -24,6 +24,10 @@ const PLAN_MAX_FILES_PER_STAGE = 4;
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 import { IntakeEngine } from "@/core/intake/intake-engine";
+import { clusterNamedByHuman, type ClusterException } from "@/core/intake/cluster-gaps";
+import type { ElicitadorMacrobrief } from "@/core/intake/macrobrief-elicitador";
+import type { DAGNode } from "@/core/dag/dag-engine";
+import type { ContratoProjeto } from "@/core/orchestrator/project-contract";
 
 export type ApproveSpecResult =
   | {
@@ -63,6 +67,7 @@ export async function approveSpecAndStart(
     select: {
       id: true,
       phase: true,
+      phaseContext: true,
       canonicalSpec: true,
       projectId: true,
       project: {
@@ -232,13 +237,43 @@ export async function approveSpecAndStart(
   }
 
   const policyConf = loadOrchestrationPolicy().jevExecucao.conferenciaEntrada;
+  const phaseCtx = parseSessionPhaseContext(session.phase, session.phaseContext);
+  let macrobriefAprovado: ElicitadorMacrobrief | undefined;
+  let macrobriefTextoAprovado: string | undefined;
   if (policyConf === "ativo" || policyConf === "sombra") {
     try {
+      let excecoes: ClusterException[] = (phaseCtx.excecoesCluster ?? []) as ClusterException[];
+      if (phaseCtx.clusterGapAguardandoHumano && (phaseCtx.clusterGapDevolvido?.length ?? 0) > 0) {
+        const lastUser = await prisma.message.findFirst({
+          where: { sessionId, role: "user" },
+          orderBy: { createdAt: "desc" },
+          select: { content: true },
+        });
+        const named = lastUser ? clusterNamedByHuman(lastUser.content) : null;
+        if (named) {
+          const merged = [...excecoes];
+          for (const gap of phaseCtx.clusterGapDevolvido ?? []) {
+            if (!merged.some((e) => e.gap === gap)) merged.push({ gap: gap as ClusterException["gap"], cluster: named });
+          }
+          excecoes = merged;
+          await patchSessionPhaseContext(sessionId, {
+            excecoesCluster: merged,
+            clusterGapAguardandoHumano: false,
+          });
+          TelemetryLogger.log({
+            sessionId,
+            action: "CLUSTER_EXCECAO_CONFIRMADA",
+            details: { cluster: named, gaps: phaseCtx.clusterGapDevolvido },
+          });
+        }
+      }
       const conf = await IntakeEngine.runElicitadorAndAnalistaCycle({
         initialSpec: effectiveSpec,
         sessionId,
+        clusterGapsJaDevolvidos: phaseCtx.clusterGapDevolvido ?? [],
+        excecoesCluster: excecoes,
       });
-      TelemetryLogger.log({
+      await TelemetryLogger.logAndWait({
         sessionId,
         action: "CONFERENCIA_ENTRADA",
         details: {
@@ -246,18 +281,50 @@ export async function approveSpecAndStart(
           ok: conf.ok,
           cyclesUsed: conf.cyclesUsed,
           problemas: conf.problems.length,
+          pausaSemTentativa: conf.pausaSemTentativa === true,
+          perguntaHumana: conf.perguntaHumana === true,
+          clusterGaps: conf.clusterGaps ?? [],
         },
       });
-      if (policyConf === "ativo" && !conf.ok) {
+      if (!conf.ok) {
+        if (conf.clusterGaps?.length) {
+          const already = new Set(phaseCtx.clusterGapDevolvido ?? []);
+          const novos = conf.clusterGaps.filter((g) => !already.has(g));
+          await patchSessionPhaseContext(sessionId, {
+            clusterGapDevolvido: [...already, ...conf.clusterGaps],
+            clusterGapAguardandoHumano: novos.length === 0,
+          });
+          TelemetryLogger.log({
+            sessionId,
+            action: novos.length > 0 ? "CLUSTER_GAP_DEVOLVIDO" : "CLUSTER_GAP_HUMANO",
+            details: { gaps: conf.clusterGaps, foraDoContador: true },
+          });
+        }
+        if (conf.pausaSemTentativa) {
+          return {
+            ok: false,
+            reason: "PERGUNTA_AO_HUMANO",
+            problems: conf.problems.slice(0, 10),
+          };
+        }
+        if (conf.perguntaHumana) {
+          return {
+            ok: false,
+            reason: "PERGUNTA_AO_HUMANO",
+            problems: conf.problems.slice(0, 10),
+          };
+        }
         return {
           ok: false,
           reason: "CONFERENCIA_REPROVADA",
           problems: conf.problems.slice(0, 10),
         };
       }
+      macrobriefAprovado = conf.macrobriefElicitador;
+      macrobriefTextoAprovado = conf.macrobriefTexto;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      TelemetryLogger.log({
+      await TelemetryLogger.logAndWait({
         sessionId,
         action: "CONFERENCIA_ENTRADA",
         details: {
@@ -265,6 +332,11 @@ export async function approveSpecAndStart(
           erro: errMsg.slice(0, 200),
         },
       });
+      return {
+        ok: false,
+        reason: "CONFERENCIA_REPROVADA",
+        problems: [`A conferência falhou antes do laudo: ${errMsg.slice(0, 300)}`],
+      };
     }
   }
 
@@ -282,7 +354,7 @@ export async function approveSpecAndStart(
     const specApprovedRes = await applyPhaseEvent(
       sessionId,
       { type: "SPEC_APROVADA" },
-      { stopRetryIfPhaseIn: ALREADY_STARTED_PHASES }
+      { stopRetryIfPhaseIn: ["MACROBRIEF", "CONFERENCIA", ...ALREADY_STARTED_PHASES] }
     );
 
     if (!specApprovedRes.ok) {
@@ -384,6 +456,9 @@ export async function approveSpecAndStart(
               omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
               omniRouteKey: readSecret(setting?.omniRouteKey),
               skipModel: process.env.NODE_ENV === "test" && process.env.ENABLE_ANALISTA_LLM !== "true",
+              notasExcecaoCluster: await notasDeExcecaoCluster(sessionId),
+              macrobriefAprovado,
+              macrobriefTexto: macrobriefTextoAprovado,
             })
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
       const rawNodes = decompResult.nodes;
@@ -399,7 +474,8 @@ export async function approveSpecAndStart(
           details: { split: splitRes.split, skipped: splitRes.skipped },
         });
       }
-      const decomposedNodes = splitRes.nodes;
+      const decomposedNodes =
+        decompResult.origemPlano === "analista" ? withNadaAFazer(splitRes.nodes) : splitRes.nodes;
 
       // A2.1: T8b inteira sobre o plano final (depois da divisão). Plano impossível não vira etapa:
       // a sessão fica BLOQUEADA com o relatório (dono: analista), sem gastar executor nem avaliador.
@@ -464,7 +540,7 @@ export async function approveSpecAndStart(
                   ? (node.payload as Record<string, unknown>)
                   : { data: node.payload }),
                 intent,
-                contrato: (node.payload as any)?.contrato ?? (decompResult as any)?.contrato,
+                contrato: (node.payload as any)?.contrato ?? decompResult.contrato,
                 etapaId: (node.payload as any)?.etapaId ?? node.id,
               },
               planFor(node.id)
@@ -510,8 +586,7 @@ export async function approveSpecAndStart(
         const contractFilePath = path.join(contractsDir, "index.ts");
         fs.writeFileSync(contractFilePath, decompResult.macrobrief.contratosTypescript, "utf8");
 
-        // Extrai contagens e hash para a trilha CONTRATO_GRAVADO
-        const rawContract = (decompResult as any).contrato;
+        const rawContract = decompResult.contrato ?? contratoNoPlano(decompResult.nodes);
         const hash = crypto.createHash("sha256").update(decompResult.macrobrief.contratosTypescript).digest("hex");
         TelemetryLogger.log({
           sessionId,
@@ -528,26 +603,41 @@ export async function approveSpecAndStart(
         });
       }
 
+      if (targetProjectRoot && macrobriefTextoAprovado) {
+        const macroDir = path.join(targetProjectRoot, ".nextcode");
+        if (!fs.existsSync(macroDir)) fs.mkdirSync(macroDir, { recursive: true });
+        fs.writeFileSync(path.join(macroDir, "macrobrief.md"), macrobriefTextoAprovado, "utf8");
+      }
+
       tasks = createdTasks;
     }
 
-    // 6. Aplica PLANO_PRONTO (PLANEJAMENTO → EXECUCAO).
-    // Quando result.effects contiver "INICIAR_EXECUCAO", chama enqueueSessionQueueJob(sessionId).
-    const planoRes = await applyPhaseEvent(sessionId, { type: "PLANO_PRONTO" });
-    let jobId: string | undefined;
-    let finalPhase: Phase = "PLANEJAMENTO";
+    // 6. MACROBRIEF → CONFERENCIA → PLANEJAMENTO, e só então PLANO_PRONTO.
+    // CONFERENCIA_OK só chega aqui com laudo aprovado, ou com a conferência desligada
+    // (nesse caso a trilha marca origem conferencia_desligada — não é laudo inventado).
+    const unlocked = await abrirPlanejamento(sessionId, policyConf);
+    if (!unlocked.ok) {
+      return { ok: false, reason: unlocked.reason, problems: unlocked.problems };
+    }
 
-    if (planoRes.ok) {
-      finalPhase = planoRes.ctx.phase;
-      if (planoRes.effects.some((effect) => effect.type === "INICIAR_EXECUCAO")) {
-        jobId = await enqueueSessionQueueJob(sessionId);
-      }
+    const planoRes = await applyPhaseEvent(sessionId, { type: "PLANO_PRONTO" });
+    if (!planoRes.ok) {
+      return {
+        ok: false,
+        reason: planoRes.reason ?? "PLANO_PRONTO_RECUSADO",
+        problems: [`PLANO_PRONTO recusado. A sessão ficou em ${unlocked.phase}.`],
+      };
+    }
+
+    let jobId: string | undefined;
+    if (planoRes.effects.some((effect) => effect.type === "INICIAR_EXECUCAO")) {
+      jobId = await enqueueSessionQueueJob(sessionId);
     }
 
     return {
       ok: true,
       alreadyStarted: false,
-      phase: finalPhase,
+      phase: planoRes.ctx.phase,
       jobId,
       tasks,
     };
@@ -628,4 +718,95 @@ export function withJevPlan(
       aplicarReactPerfCritico: decision.aplicarReactPerfCritico ?? true,
     },
   };
+}
+
+const CLUSTER_KINDS = ["core", "backend", "frontend", "integration"] as const;
+
+/** Cluster sem arquivo no plano do analista vira etapa que não chama modelo nem teste. */
+function withNadaAFazer(nodes: DAGNode[]): DAGNode[] {
+  const present = new Set(nodes.map((n) => n.cluster).filter(Boolean));
+  const extra: DAGNode[] = [];
+  for (const cluster of CLUSTER_KINDS) {
+    if (present.has(cluster)) continue;
+    extra.push({
+      id: `task-nada-${cluster}-${crypto.randomBytes(3).toString("hex")}`,
+      title: `Nada a fazer: ${cluster}`,
+      role: "nada_a_fazer",
+      cluster,
+      status: "pending",
+      dependencies: [],
+      filesScope: [],
+      mcpScope: "",
+      payload: { step: "nada_a_fazer", cluster },
+    });
+  }
+  return extra.length ? [...nodes, ...extra] : nodes;
+}
+
+function contratoNoPlano(nodes: DAGNode[]): ContratoProjeto | undefined {
+  for (const n of nodes) {
+    const p = n.payload;
+    if (p && typeof p === "object" && "contrato" in p) {
+      const c = (p as { contrato?: ContratoProjeto }).contrato;
+      if (c && typeof c === "object") return c;
+    }
+  }
+  return undefined;
+}
+
+async function notasDeExcecaoCluster(sessionId: string): Promise<string | undefined> {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: { phase: true, phaseContext: true },
+  });
+  const ctx = parseSessionPhaseContext(session?.phase, session?.phaseContext);
+  if (!ctx.excecoesCluster?.length) return undefined;
+  return ctx.excecoesCluster
+    .map(
+      (e) =>
+        `Exceção confirmada pelo humano: a lacuna ${e.gap} fica no cluster ${e.cluster}. Não invente arquivo para preencher outro cluster.`
+    )
+    .join("\n");
+}
+
+/**
+ * Leva a sessão até PLANEJAMENTO. CONFERENCIA_OK aqui só corre depois de um laudo
+ * aprovado, ou quando a conferência está desligada (a trilha registra a origem).
+ */
+async function abrirPlanejamento(
+  sessionId: string,
+  modoConferencia: "ativo" | "sombra" | "desligado"
+): Promise<{ ok: true; phase: Phase } | { ok: false; reason: string; problems?: string[] }> {
+  const readPhase = async (): Promise<Phase> => {
+    const s = await prisma.session.findUnique({ where: { id: sessionId }, select: { phase: true } });
+    return (s?.phase as Phase) || "ENTRADA";
+  };
+  let phase = await readPhase();
+  if (phase === "SPEC_REVISAO") {
+    const a = await applyPhaseEvent(sessionId, { type: "SPEC_APROVADA" });
+    if (!a.ok) return { ok: false, reason: a.reason ?? "SPEC_APROVADA_RECUSADA" };
+    phase = a.ctx.phase;
+  }
+  if (phase === "MACROBRIEF") {
+    const m = await applyPhaseEvent(sessionId, { type: "MACROBRIEF_PRONTO" });
+    if (!m.ok) return { ok: false, reason: m.reason ?? "MACROBRIEF_PRONTO_RECUSADO" };
+    phase = m.ctx.phase;
+  }
+  if (phase === "CONFERENCIA") {
+    const c = await applyPhaseEvent(
+      sessionId,
+      { type: "CONFERENCIA_OK" },
+      { extraDetails: { origem: modoConferencia === "desligado" ? "conferencia_desligada" : "laudo_aprovado" } }
+    );
+    if (!c.ok) return { ok: false, reason: c.reason ?? "CONFERENCIA_OK_RECUSADO" };
+    phase = c.ctx.phase;
+  }
+  if (phase !== "PLANEJAMENTO" && phase !== "EXECUCAO") {
+    return {
+      ok: false,
+      reason: "FASE_INESPERADA",
+      problems: [`A sessão está em ${phase} e não entrou em planejamento.`],
+    };
+  }
+  return { ok: true, phase };
 }

@@ -1,7 +1,7 @@
 /**
  * Templates Canônicos e Conferências Mecânicas (Princípio P12 / T2 / T3 / T4 / T8b)
  *
- * Implementa os 5 artefatos de `docs/rascunhos/TEMPLATES.md`:
+ * Implementa os 5 artefatos canônicos do NextCode (Spec, Macrobrief, Microbrief, Relatório, Veredito):
  * 1. Spec com `REQ-001…`
  * 2. Macrobrief (com verificação de cobertura de REQs, partição disjunta de arquivos e DAG sem ciclos)
  * 3. Microbrief enxuto
@@ -1238,53 +1238,6 @@ export function renderMicrobriefMarkdown(
  * Renderiza o Macrobrief em YAML (frontmatter) + Markdown estruturado.
  * Representa a visão condensada da arquitetura do projeto e partição dos Microbriefs.
  */
-export function renderMacrobriefMarkdown(macrobrief: MacrobriefDocument): string {
-  const lines: string[] = [
-    "---",
-    "documento: macrobrief",
-    `id: ${yamlQuoted(macrobrief.idMacrobrief)}`,
-    `projeto: ${yamlQuoted(macrobrief.idProjeto)}`,
-    `spec_versao: ${macrobrief.specVersao}`,
-    "requisitos_totais:",
-    ...macrobrief.requisitosTotais.map((r) => `  - ${r}`),
-    "clusters_ativos:",
-    ...macrobrief.clustersAtivos.map((c) => `  - ${c}`),
-    "microbriefs:",
-  ];
-
-  for (const mb of macrobrief.microbriefs) {
-    lines.push(`  - id: ${yamlQuoted(mb.id)}`);
-    lines.push(`    cluster: ${mb.cluster}`);
-    lines.push(`    depende_de: [${mb.dependeDe.map((d) => yamlQuoted(d)).join(", ")}]`);
-    lines.push(`    arquivos: [${mb.arquivos.map((f) => yamlQuoted(f)).join(", ")}]`);
-    lines.push(`    reqs: [${mb.reqs.join(", ")}]`);
-  }
-
-  lines.push(
-    "---",
-    "",
-    `# Macrobrief: ${macrobrief.idProjeto} (${macrobrief.idMacrobrief})`,
-    "",
-    `Versão da Spec: ${macrobrief.specVersao} | Clusters: ${macrobrief.clustersAtivos.join(", ")}`,
-    "",
-    "## Partição das Etapas (Microbriefs)",
-    ""
-  );
-
-  for (const mb of macrobrief.microbriefs) {
-    const depStr = mb.dependeDe.length > 0 ? ` (depende de: ${mb.dependeDe.join(", ")})` : "";
-    lines.push(`### Etapa \`${mb.id}\` [${mb.cluster}]${depStr}`);
-    lines.push(`- **Requisitos Cobertos:** ${mb.reqs.join(", ")}`);
-    lines.push(`- **Arquivos Atribuídos:** ${mb.arquivos.join(", ")}`);
-    lines.push("");
-  }
-
-  if (macrobrief.contratosTypescript) {
-    lines.push("## Contratos TypeScript e Interfaces", "", "```typescript", macrobrief.contratosTypescript, "```");
-  }
-
-  return lines.join("\n");
-}
 
 export interface DeliveryAuditGap {
   reqId?: string;
@@ -1448,6 +1401,64 @@ export function renderMicrobriefReparoMarkdown(reparo: MicrobriefReparoDocument)
  * - files_scope rigorosamente restrito;
  * - Ordenação de dependências na DAG de reparo (ex.: frontend depende do reparo de backend).
  */
+
+
+/**
+ * @deprecated Apenas para compatibilidade com testes legados.
+ * Renderiza o Macrobrief em YAML (frontmatter) + Markdown estruturado.
+ */
+export function renderMacrobriefMarkdown(macrobrief: MacrobriefDocument): string {
+  const lines: string[] = [
+    "---",
+    "documento: macrobrief",
+    `id: ${yamlQuoted(macrobrief.idMacrobrief)}`,
+    `projeto: ${yamlQuoted(macrobrief.idProjeto)}`,
+    `spec_versao: ${macrobrief.specVersao}`,
+    "requisitos_totais:",
+    ...macrobrief.requisitosTotais.map((r) => `  - ${r}`),
+    "clusters_ativos:",
+    ...macrobrief.clustersAtivos.map((c) => `  - ${c}`),
+    "microbriefs:",
+  ];
+
+  for (const mb of macrobrief.microbriefs) {
+    lines.push(`  - id: ${yamlQuoted(mb.id)}`);
+    lines.push(`    cluster: ${mb.cluster}`);
+    lines.push(`    depende_de: [${mb.dependeDe.map((d) => yamlQuoted(d)).join(", ")}]`);
+    lines.push(`    arquivos: [${mb.arquivos.map((f) => yamlQuoted(f)).join(", ")}]`);
+    lines.push(`    reqs: [${mb.reqs.join(", ")}]`);
+  }
+
+  lines.push(
+    "---",
+    "",
+    `# Macrobrief: ${macrobrief.idProjeto} (${macrobrief.idMacrobrief})`,
+    "",
+    `Versão da Spec: ${macrobrief.specVersao} | Clusters: ${macrobrief.clustersAtivos.join(", ")}`,
+    "",
+    "## Partição das Etapas (Microbriefs)",
+    ""
+  );
+
+  for (const mb of macrobrief.microbriefs) {
+    const depStr = mb.dependeDe.length > 0 ? ` (depende de: ${mb.dependeDe.join(", ")})` : "";
+    lines.push(`### Etapa \`${mb.id}\` [${mb.cluster}]${depStr}`);
+    lines.push(`- **Requisitos Cobertos:** ${mb.reqs.join(", ")}`);
+    lines.push(`- **Arquivos Atribuídos:** ${mb.arquivos.join(", ")}`);
+    lines.push("");
+  }
+
+  if (macrobrief.contratosTypescript) {
+    lines.push("## Contratos TypeScript e Interfaces", "", "```typescript", macrobrief.contratosTypescript, "```");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * @deprecated Apenas para compatibilidade com testes legados.
+ * Particiona o Laudo de Reprovação do JEV em Microbriefs de Reparo específicos por Cluster.
+ */
 export function partitionRepairsByCluster(
   laudo: DeliveryAuditReportDocument,
   idProjeto?: string
@@ -1477,7 +1488,6 @@ export function partitionRepairsByCluster(
     g.lacunas.push(lacuna.descricao);
   }
 
-  // Ordem canônica de execução dos reparos: core -> backend -> integration -> frontend
   const clusterOrder: ClusterKind[] = ["core", "backend", "integration", "frontend"];
   const result: MicrobriefReparoDocument[] = [];
   const generatedRepairIds = new Map<ClusterKind, string>();
@@ -1489,7 +1499,6 @@ export function partitionRepairsByCluster(
     const idReparo = `reparo-${cluster}-v${laudo.specVersao}`;
     generatedRepairIds.set(cluster, idReparo);
 
-    // Determina dependências com reparos de clusters inferiores já gerados
     const depClusters: ClusterKind[] = [];
     if (cluster === "frontend") {
       if (generatedRepairIds.has("backend")) depClusters.push("backend");
@@ -1521,6 +1530,3 @@ export function partitionRepairsByCluster(
 
   return result;
 }
-
-
-

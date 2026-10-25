@@ -84,7 +84,7 @@ describe("P5.4 — Conferência Macrobrief x Spec na Aprovação", () => {
     expect(taskCount).toBe(0);
   });
 
-  it("(b) modo sombra: mesma Spec → segue o fluxo normal e registra CONFERENCIA_ENTRADA com ok: false", async () => {
+  it("(b) modo sombra: mesma Spec → a conferência bloqueia (sombra não deixa passar laudo reprovado)", async () => {
     vi.spyOn(orchestrationPolicyModule, "loadOrchestrationPolicy").mockReturnValue({
       ...orchestrationPolicyModule.DEFAULT_ORCHESTRATION_POLICY,
       jevExecucao: {
@@ -100,11 +100,12 @@ describe("P5.4 — Conferência Macrobrief x Spec na Aprovação", () => {
 
     const res = await approveSpecAndStart(session.id);
 
-    // No modo sombra, segue o fluxo normal de aprovação
-    expect(res.ok).toBe(true);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("CONFERENCIA_REPROVADA");
 
     const sessionDb = await prisma.session.findUnique({ where: { id: session.id } });
-    expect(sessionDb?.specApproved).toBe(true);
+    expect(sessionDb?.phase).toBe("SPEC_REVISAO");
+    expect(sessionDb?.specApproved).toBe(false);
 
     const log = await prisma.telemetryLog.findFirst({
       where: { sessionId: session.id, action: "CONFERENCIA_ENTRADA" },
@@ -114,6 +115,9 @@ describe("P5.4 — Conferência Macrobrief x Spec na Aprovação", () => {
     expect(details.modo).toBe("sombra");
     expect(details.ok).toBe(false);
     expect(details.problemas).toBeGreaterThan(0);
+
+    const taskCount = await prisma.taskNode.count({ where: { sessionId: session.id } });
+    expect(taskCount).toBe(0);
   });
 
   it("(c) modo desligado: runElicitadorAndAnalistaCycle não é chamado", async () => {

@@ -22,6 +22,10 @@ import type { ContratoProjeto } from "../orchestrator/project-contract";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
 
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 export interface ValidationType1Result {
   passed: boolean;
   compilationErrors: string[];
@@ -86,6 +90,8 @@ export interface BlindAuditProblem {
   req?: string;
   arquivoLinha: string;
   descricao: string;
+  /** Gap 3: true quando a falha é uma violação direta do contrato TypeScript (não apenas semântica). */
+  isContractViolation?: boolean;
 }
 
 export interface BlindAuditVerdict {
@@ -687,15 +693,49 @@ export class DualLensAuditor {
         : undefined;
 
       // AV1.3: problemas por severidade (a revisão de engenharia da skill, antes descartada pelo formato).
+      // Gap 3: validação estruturada de violação de contrato (não mais regex frágil).
+      const contrato = options?.contrato ?? null;
       const problemas: BlindAuditProblem[] = Array.isArray(parsed.problemas)
         ? parsed.problemas
-            .filter((p: any) => p && ["critico", "importante", "menor"].includes(p.severidade))
-            .map((p: any) => ({
-              severidade: p.severidade,
-              req: p.req ? String(p.req) : undefined,
-              arquivoLinha: String(p.arquivoLinha || ""),
-              descricao: String(p.descricao || "").slice(0, 400),
-            }))
+            .filter((p: any) => p && ["critico", "importante", "menor"].includes(semAcento(String(p.severidade || ""))))
+            .map((p: any) => {
+              const desc = String(p.descricao || "");
+              // Validação estruturada: verifica se o problema menciona algo que existe no contrato
+              let isContractViolation = false;
+              if (contrato) {
+                // Verifica menções a funções, entidades, enums ou rotas do contrato
+                const mencionaFuncao = contrato.funcoes.some(f =>
+                  desc.toLowerCase().includes(f.nome.toLowerCase()) ||
+                  desc.toLowerCase().includes(f.assinatura.toLowerCase())
+                );
+                const mencionaEntidade = contrato.entidades.some(e =>
+                  desc.toLowerCase().includes(e.nome.toLowerCase())
+                );
+                const mencionaEnum = contrato.enums.some(e =>
+                  desc.toLowerCase().includes(e.nome.toLowerCase())
+                );
+                const mencionaRota = contrato.rotas.some(r =>
+                  desc.toLowerCase().includes(`${r.metodo} ${r.caminho}`.toLowerCase()) ||
+                  desc.toLowerCase().includes(r.caminho.toLowerCase())
+                );
+                // Se o problema menciona algo do contrato E fala de incompatibilidade/divergência
+                const keywordsContrato = /incompat[ií]vel|diverg[eê]nte|diferente|errado|faltando|ausente|tipo.*troca|par[aâ]metro.*extra|retorno.*diferente|assinatura/i;
+                if ((mencionaFuncao || mencionaEntidade || mencionaEnum || mencionaRota) && keywordsContrato.test(desc)) {
+                  isContractViolation = true;
+                }
+              } else {
+                // Fallback: sem contrato disponível, usa palavras-chave genéricas
+                isContractViolation = /contrato|tipo incompat[ií]vel|assinatura|par[aâ]metro|retorno divergente/i.test(desc);
+              }
+              const severidade = isContractViolation ? "critico" : semAcento(String(p.severidade || ""));
+              return {
+                severidade,
+                req: p.req ? String(p.req) : undefined,
+                arquivoLinha: String(p.arquivoLinha || ""),
+                descricao: desc.slice(0, 400),
+                isContractViolation,
+              };
+            })
         : [];
 
       // AV1.3: a evidência do avaliador é conferida como a do executor — "implementado" e todo problema

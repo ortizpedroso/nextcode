@@ -209,6 +209,8 @@ export function parseFinalReview(raw: string | null, expectedReqs: string[], fil
 export async function reviewFinalDelivery(input: {
   sessionId?: string;
   spec: string;
+  /** Macrobrief aprovado (clusters, contratos, microbriefs). O avaliador final lê Spec + Macrobrief + código. */
+  macrobrief?: string;
   files: Record<string, string>;
   dispatch?: FinalReviewDispatch;
   /** Mudança 43.2: pasta do projeto para a bancada reproduzir cada defeito; sem ela, só leitura (como antes). */
@@ -240,7 +242,10 @@ export async function reviewFinalDelivery(input: {
 
   // Sonnet 5.5 e Opus 5.5: 1 milhão de tokens de entrada; 1,2 milhão de caracteres ≈ 350 mil tokens (folga para skill e resposta).
   const maxTotal = Number(process.env.FINAL_REVIEW_MAX_TOTAL_CHARS) || 1_200_000;
-  const total = input.spec.length + Object.values(input.files).reduce((n, c) => n + c.length, 0);
+  const total =
+    input.spec.length +
+    (input.macrobrief?.length ?? 0) +
+    Object.values(input.files).reduce((n, c) => n + c.length, 0);
   if (total > maxTotal) return empty(`não coube: ${total} caracteres (máximo ${maxTotal})`);
 
   const expectedReqs = parseSpecDocument(input.spec)?.requisitosIds ?? [];
@@ -270,7 +275,9 @@ export async function reviewFinalDelivery(input: {
       {
         role: "user",
         content:
-          `[SPEC CANÔNICA]\n${input.spec}\n\n[ARQUIVOS GERADOS]\n${filesBlock}` +
+          `[SPEC CANÔNICA]\n${input.spec}\n\n` +
+          (input.macrobrief ? `[MACROBRIEF]\n${input.macrobrief}\n\n` : "") +
+          `[ARQUIVOS GERADOS]\n${filesBlock}` +
           (previous ? `\n\n[SUA RESPOSTA ANTERIOR FOI DESCARTADA] Motivo: ${previous}. Responda de novo no formato pedido, corrigindo isso.` : ""),
       },
     ]).catch((err): EvaluatorCallResult => ({ content: null, provider: null, model: null, independent: false, failures: [String(err)] }));

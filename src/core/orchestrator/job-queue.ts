@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import prisma from "@/lib/prisma";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import {
@@ -439,9 +441,21 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         const revisaoFinalModo = loadOrchestrationPolicy().execucao.revisaoFinal;
         if (revisaoFinalModo !== "desligado" && deliveryT10.passed && sessionAfterQueue.canonicalSpec) {
           const specFiles = parseSpecDocument(sessionAfterQueue.canonicalSpec)?.arquivosAfetados ?? [];
+          let macrobriefTexto = "";
+          if (projectPath) {
+            try {
+              const macroMd = path.join(projectPath, ".nextcode", "macrobrief.md");
+              const macroJson = path.join(projectPath, ".nextcode", "macrobrief.json");
+              const macroPath = fs.existsSync(macroMd) ? macroMd : macroJson;
+              if (fs.existsSync(macroPath)) macrobriefTexto = fs.readFileSync(macroPath, "utf8");
+            } catch {
+              macrobriefTexto = "";
+            }
+          }
           const review = await reviewFinalDelivery({
             sessionId: job.sessionId,
             spec: sessionAfterQueue.canonicalSpec,
+            macrobrief: macrobriefTexto || undefined,
             files: readProjectFilesContent([...specFiles, "package.json"], projectPath),
             // Mudança 43.2: com a pasta, cada defeito é provado na bancada antes de ir ao reparo.
             projectPath,

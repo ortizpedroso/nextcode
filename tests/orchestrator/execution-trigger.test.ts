@@ -304,7 +304,9 @@ describe("Gatilho Único, Fila Única por Sessão e Reserva Atômica (Passo 4a)"
       expect(steps).toEqual([
         "ENTRADA->ELICITACAO",
         "ELICITACAO->SPEC_REVISAO",
-        "SPEC_REVISAO->PLANEJAMENTO",
+        "SPEC_REVISAO->MACROBRIEF",
+        "MACROBRIEF->CONFERENCIA",
+        "CONFERENCIA->PLANEJAMENTO",
         "PLANEJAMENTO->EXECUCAO",
       ]);
     });

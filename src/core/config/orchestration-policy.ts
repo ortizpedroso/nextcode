@@ -600,6 +600,12 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   if (confEntrRaw === "ativo" || confEntrRaw === "sombra" || confEntrRaw === "desligado") {
     policy.jevExecucao.conferenciaEntrada = confEntrRaw;
   }
+  // A suíte fixa a conferência em desligado para Specs antigas de teste.
+  // Produção não define a variável: vale o YAML (sombra bloqueia laudo reprovado).
+  const confEnv = process.env.NEXTCODE_CONFERENCIA_ENTRADA;
+  if (confEnv === "ativo" || confEnv === "sombra" || confEnv === "desligado") {
+    policy.jevExecucao.conferenciaEntrada = confEnv;
+  }
 
   const guardaCodigoRaw = extractScalarString(
     raw,

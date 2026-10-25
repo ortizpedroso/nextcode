@@ -11,6 +11,8 @@ import * as path from "path";
 const IGNORED_DIRS = new Set(["node_modules", ".git", ".next", ".nextcode", "graphify-out", "dist", "build"]);
 /** Marcadores de "aqui dentro mora outro projeto". */
 const PROJECT_MARKERS = [".git", "package.json"];
+/** Marcador obrigatório para que uma pasta possa ser apagada pela API (segurança contra exclusão acidental). */
+const NEXTCODE_MARKER = ".nextcode";
 /** Profundidade da busca por projetos aninhados (pasta-mãe típica: projetos 1–2 níveis abaixo). */
 const MAX_DEPTH = 3;
 
@@ -52,7 +54,8 @@ export interface FolderSafetyResult {
 /**
  * Pode apagar a pasta inteira deste projeto? Recusa: raiz do disco, pasta do NextCode (ou algo que a
  * contenha), pasta que contém a pasta de OUTRO projeto cadastrado, e pasta com outro projeto dentro
- * (subpasta com `.git` ou `package.json`).
+ * (subpasta com `.git` ou `package.json`). Exige também o marcador `.nextcode` na raiz da pasta alvo
+ * para evitar exclusão acidental de pastas não gerenciadas pelo NextCode.
  */
 export function checkFolderSafeToDelete(
   target: string,
@@ -76,6 +79,11 @@ export function checkFolderSafeToDelete(
   const nested = fs.existsSync(resolved) ? findNestedProject(resolved, 1) : null;
   if (nested) {
     return { ok: false, motivo: `contém outro projeto ou repositório (${nested})` };
+  }
+  // Item 7 (§3.2): exige marcador .nextcode para permitir exclusão via API
+  const markerPath = path.join(resolved, NEXTCODE_MARKER);
+  if (!fs.existsSync(markerPath)) {
+    return { ok: false, motivo: "não possui o marcador de segurança '.nextcode' na raiz" };
   }
   return { ok: true };
 }

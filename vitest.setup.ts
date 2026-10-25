@@ -6,6 +6,10 @@ import path from "path";
 // schema.prisma, então usamos caminho absoluto para evitar ambiguidade.
 const TEST_DB = path.resolve(__dirname, "prisma", "test.db");
 
+// Specs de teste anteriores à conferência bloqueante. Os testes da conferência
+// substituem loadOrchestrationPolicy; o teste do YAML apaga esta variável.
+process.env.NEXTCODE_CONFERENCIA_ENTRADA ??= "desligado";
+
 beforeAll(() => {
   process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${TEST_DB}`;
   if (!process.env.NEXTCODE_AUTH_TOKEN) {

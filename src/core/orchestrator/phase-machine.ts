@@ -1,8 +1,8 @@
 /**
  * Máquina de Fases da Sessão do NextCode (Módulo Puro)
  *
- * @see docs/ARQUITETURA-ORQUESTRACAO.md §3 (Fases da sessão — revisado pós-auditoria)
- * @see docs/PLANO-ETAPA-0.md (Etapa 0 - Passo 1b)
+ * @see docs/NEXTCODE-REFERENCIA.md §4 (Arquitetura) e §4.2 (Fases da sessão)
+ * @see docs/NEXTCODE-REFERENCIA.md §2.1 (Etapa 0 - Passo 1b)
  */
 
 /**
@@ -136,6 +136,15 @@ export interface PhaseContext {
   faseAntesDoBloqueio?: Phase;    // para voltar de BLOQUEADA (§3, regras 7 e 8)
   /** Mudança 24: pausa por avaliador fora do ar — o supervisor só retoma depois de `ate` e com o Claude respondendo. */
   pausaAvaliador?: { ate: string; pausa: number; motivo: string };
+  /**
+   * Lacunas de cluster já devolvidas uma vez ao elicitador.
+   * Essa devolução não entra em `voltasConferencia`.
+   */
+  clusterGapDevolvido?: string[];
+  /** A segunda ocorrência da mesma lacuna está esperando o humano nomear o cluster. */
+  clusterGapAguardandoHumano?: boolean;
+  /** Exceção confirmada: o humano nomeou o cluster que fica com aquele domínio. */
+  excecoesCluster?: Array<{ gap: string; cluster: string }>;
 }
 
 /** Mudança 24: pausas seguidas de 5 min por avaliador fora do ar antes de bloquear. */
@@ -184,6 +193,14 @@ export type TransitionResult =
       allowedEvents: PhaseEvent['type'][];
       allowedIntents?: MessageIntention[];
     };
+
+function blockRejectedPlan(ctx: PhaseContext): TransitionResult {
+  return {
+    ok: true,
+    ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
+    effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)', acao: 'ajustar_spec' }],
+  };
+}
 
 /**
  * Retorna o contexto inicial de uma sessão.
@@ -431,11 +448,14 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   MACROBRIEF: {
-    allowedEvents: ['MACROBRIEF_PRONTO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['MACROBRIEF_PRONTO', 'PLANO_REPROVADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
         return handleSemLlm(ctx);
+      }
+      if (event.type === 'PLANO_REPROVADO') {
+        return blockRejectedPlan(ctx);
       }
       if (event.type === 'MACROBRIEF_PRONTO') {
         return {
@@ -449,7 +469,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   CONFERENCIA: {
-    allowedEvents: ['CONFERENCIA_OK', 'CONFERENCIA_FALHOU', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
+    allowedEvents: ['CONFERENCIA_OK', 'CONFERENCIA_FALHOU', 'PLANO_REPROVADO', 'MENSAGEM_CLASSIFICADA', 'SEM_LLM'],
     allowedIntents: ['duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_LLM') {
@@ -461,6 +481,9 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
           ctx: { ...ctx, phase: 'PLANEJAMENTO', voltasConferencia: 0 },
           effects: [],
         };
+      }
+      if (event.type === 'PLANO_REPROVADO') {
+        return blockRejectedPlan(ctx);
       }
       if (event.type === 'CONFERENCIA_FALHOU') {
         const novasVoltas = ctx.voltasConferencia + 1;
@@ -506,11 +529,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
       }
       // A2.1: plano reprovado na T8b não executa; desbloquear volta à revisão da Spec (replanejar).
       if (event.type === 'PLANO_REPROVADO') {
-        return {
-          ok: true,
-          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)', acao: 'ajustar_spec' }],
-        };
+        return blockRejectedPlan(ctx);
       }
       if (event.type === 'PLANO_PRONTO') {
         return {

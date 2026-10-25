@@ -1,6 +1,6 @@
 /**
  * Adaptador do motor de decisão Jev (TypeSafe AI) — princípio P9: "Jev decide, LLM escreve".
- * Ver docs/ARQUITETURA-ORQUESTRACAO.md (motor de decisão, D6) e docs/rascunhos/JEV-DECISOES.md.
+ * Ver docs/NEXTCODE-REFERENCIA.md §4 (Arquitetura) e §5 (Uso do Jev).
  * Formato conferido contra a API real em 06/10/2026:
  * POST /v1/systemone { model: "jev-1.13.0", state, questions: { <id>: <question> } }
  * → answers.<id>.{ type, choice|score|noul, confidence?, probabilities? }.
@@ -66,6 +66,8 @@ export type JevBatchAnswer =
   | ({ type: "noul" } & JevNoulResult);
 
 async function readJevKey(): Promise<string> {
+  // E5-auditoria rec-1: permite desligar o Jev sem tocar no banco (útil em testes e ambientes sem rede).
+  if (process.env.NEXTCODE_DISABLE_JEV === "1") return "";
   const setting = await prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null);
   return readSecret(setting?.typesafeKey);
 }

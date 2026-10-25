@@ -1,6 +1,7 @@
 import { DAGNode } from "../dag/dag-engine";
 import { extractFilePathsFromText } from "../shared/file-path-extractor";
-import { parseSpecDocument } from "../intake/spec-format";
+import { parseSpecDocument, parseYamlFrontmatter, type YamlValue } from "../intake/spec-format";
+import { errosDePlanoContraMacrobrief, type ElicitadorMacrobrief } from "../intake/macrobrief-elicitador";
 import {
   inferClusterFromFilePath,
   validateMacrobriefMechanical,
@@ -28,6 +29,10 @@ export interface DecompositionResult {
   macrobrief?: MacrobriefDocument;
   microbriefs?: MicrobriefAndReportDocument[];
   t8bCheck?: MechanicalValidationResult;
+  /** "analista" só quando o contrato passou em validateContract. Heurística e fallback não executam. */
+  origemPlano?: "analista" | "heuristica";
+  /** Contrato estruturado do plano do analista. A heurística não preenche. */
+  contrato?: ContratoProjeto;
 }
 
 export { extractFilePathsFromText };
@@ -339,6 +344,8 @@ export class SpecDecomposerSkill {
     }
 
     const clustersEnvolvidos = Array.from(new Set(microbriefs.map((m) => m.cluster)));
+    // Item A1: contratos serão preenchidos pelo analista via decomposeWithAnalistaSkill;
+    // na heurística de reserva, mantemos placeholder seguro até que buildDecompositionFromAnalystPlan receba o contrato.
     const macrobrief: MacrobriefDocument = {
       documento: "macrobrief",
       idMacrobrief: `macro-${stamp}`,
@@ -353,7 +360,7 @@ export class SpecDecomposerSkill {
         arquivos: [...m.arquivosPermitidos.criar, ...m.arquivosPermitidos.modificar],
         reqs: m.reqsCobertos,
       })),
-      contratosTypescript: "// Contratos inferidos dos módulos core da Spec",
+      contratosTypescript: "// Contratos TypeScript serão gerados pelo analista no fluxo A1 (decomposeWithAnalistaSkill)",
     };
 
     const t8bCheck =
@@ -362,6 +369,7 @@ export class SpecDecomposerSkill {
         : { valid: true, errors: [] };
 
     return {
+      origemPlano: "heuristica",
       goal: specText,
       nodes,
       summary: `Spec decomposta em ${nodes.length} etapas (${foundation.length} arquivos de base, ${rest.length} de funcionalidade) nos clusters [${clustersEnvolvidos.join(", ")}].`,
@@ -393,6 +401,11 @@ export class SpecDecomposerSkill {
     omniRouteUrl?: string | null;
     omniRouteKey?: string | null;
     skipModel?: boolean;
+    /** Exceção de cluster confirmada pelo humano: o analista coloca o domínio nesse cluster. */
+    notasExcecaoCluster?: string;
+    /** Macrobrief aprovado pelo conferente. O plano preserva cluster e arquivo. */
+    macrobriefAprovado?: ElicitadorMacrobrief;
+    macrobriefTexto?: string;
   }): Promise<DecompositionResult> {
     const { specText, titulo, files, stack = [], sessionId, smartRouter, skipModel } = options;
 
@@ -446,6 +459,12 @@ export class SpecDecomposerSkill {
       "",
       "--- SPEC CANÔNICA ---",
       specText,
+      ...(options.macrobriefTexto
+        ? ["", "--- MACROBRIEF APROVADO (preserve o cluster de cada arquivo e de cada REQ) ---", options.macrobriefTexto]
+        : []),
+      ...(options.notasExcecaoCluster
+        ? ["", "--- EXCEÇÃO DE CLUSTER CONFIRMADA PELO HUMANO ---", options.notasExcecaoCluster]
+        : []),
     ].join("\n");
 
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -505,20 +524,24 @@ export class SpecDecomposerSkill {
         ? validatePlanStages(parsed.stages, reqIds, textoPorReq, FILES_PER_NODE, uniqueFiles).errors
         : [
             finishReason === "length"
-              ? "[CORTADA] A resposta chegou ao limite de tokens antes de o JSON terminar. Pense pouco, não explique e não repita a Spec: responda só o JSON."
+              ? "[CORTADA] A resposta chegou ao limite de tokens antes de o YAML terminar. Pense pouco, não explique e não repita a Spec: responda só o Markdown com YAML."
               : parsed.error,
           ];
 
       const contractErrors: string[] = [];
       if (parsed.ok) {
         if (!parsed.contrato) {
-          contractErrors.push('[CONTRATO AUSENTE] O JSON do analista deve conter o bloco "contrato" com entidades, enums, funcoes e rotas.');
+          contractErrors.push("[CONTRATO AUSENTE] O plano deve declarar entidades, enums, funcoes e rotas.");
         } else {
           contractErrors.push(...validateContract(parsed.contrato, parsed.stages));
         }
       }
 
-      const errors = [...stageErrors, ...contractErrors];
+      const macroErrors =
+        parsed.ok && options.macrobriefAprovado
+          ? errosDePlanoContraMacrobrief(parsed.stages, parsed.clusters, options.macrobriefAprovado)
+          : [];
+      const errors = [...stageErrors, ...contractErrors, ...macroErrors];
 
       if (parsed.ok && errors.length === 0 && parsed.contrato) {
         const result = buildDecompositionFromAnalystPlan({
@@ -571,7 +594,7 @@ export class SpecDecomposerSkill {
         role: "user",
         content:
           `A conferência do NextCode reprovou o plano (rodada ${rodada} de ${ANALISTA_MAX_RODADAS}). ` +
-          "Corrija TODOS os erros abaixo e devolva o plano INTEIRO, só o JSON:\n" +
+          "Corrija TODOS os erros abaixo e devolva o plano INTEIRO, em Markdown com frontmatter YAML:\n" +
           errors.slice(0, 40).map((e) => `- ${e}`).join("\n") +
           (errors.length > 40 ? `\n- … e mais ${errors.length - 40}` : "") +
           "\nATENÇÃO: Em rotas, 'entrada' e 'saida' DEVEM ser tipos TypeScript válidos (ex: '{ campo?: string }', 'void', 'unknown', 'Blob'). Não use texto informal. Se citar uma entidade ou interface (como Sessao ou ProdutoInput), ela DEVE estar declarada no bloco 'entidades'!",
@@ -659,7 +682,7 @@ export class SpecDecomposerSkill {
       role: "architect",
       status: "pending",
       dependencies: [],
-      filesScope: ["docs/spec-architecture.md"],
+      filesScope: ["docs/NEXTCODE-REFERENCIA.md"],
       mcpScope: "read_file,grep_search",
       payload: { goal, context: scopeContext, step: "architecture" },
     });
@@ -720,8 +743,95 @@ export type AnalystPlanParse =
   | { ok: true; stages: PlanStage[]; clusters: Record<string, ClusterKind>; contrato?: ContratoProjeto }
   | { ok: false; error: string };
 
-/** Lê o JSON do analista. Formato e tipos errados viram um erro só, devolvido ao modelo. */
+function yamlList(v: YamlValue | undefined): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter((s) => s !== "[]");
+  if (typeof v === "string") {
+    const t = v.trim();
+    if (!t || t === "[]") return [];
+    return t.split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+  }
+  return [];
+}
+
+function yamlMaps(v: YamlValue | undefined): Record<string, YamlValue>[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is Record<string, YamlValue> => typeof x === "object" && x !== null && !Array.isArray(x));
+}
+
+function contratoDoYaml(root: Record<string, YamlValue>): ContratoProjeto | undefined {
+  const entidades = yamlMaps(root.entidades).map((e) => ({
+    nome: typeof e.nome === "string" ? e.nome : "",
+    dono: typeof e.dono === "string" ? e.dono : "",
+    campos: yamlMaps(e.campos).map((c) => ({
+      nome: typeof c.nome === "string" ? c.nome : "",
+      tipo: typeof c.tipo === "string" ? c.tipo : "",
+      ...(c.opcional === "true" ? { opcional: true } : {}),
+    })),
+  }));
+  const enums = yamlMaps(root.enums).map((e) => ({
+    nome: typeof e.nome === "string" ? e.nome : "",
+    dono: typeof e.dono === "string" ? e.dono : "",
+    valores: yamlList(e.valores),
+  }));
+  const funcoes = yamlMaps(root.funcoes).map((f) => ({
+    nome: typeof f.nome === "string" ? f.nome : "",
+    arquivo: typeof f.arquivo === "string" ? f.arquivo : "",
+    assinatura: typeof f.assinatura === "string" ? f.assinatura : "",
+    dono: typeof f.dono === "string" ? f.dono : "",
+    usadoPor: yamlList(f.usado_por ?? f.usadoPor),
+  }));
+  const metodos = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+  const rotas = yamlMaps(root.rotas).map((r) => {
+    const metodo = String(r.metodo || "GET").toUpperCase();
+    return {
+      metodo: (metodos.has(metodo) ? metodo : "GET") as "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+      caminho: typeof r.caminho === "string" ? r.caminho : "",
+      arquivo: typeof r.arquivo === "string" ? r.arquivo : "",
+      entrada: typeof r.entrada === "string" ? r.entrada : "void",
+      saida: typeof r.saida === "string" ? r.saida : "void",
+      dono: typeof r.dono === "string" ? r.dono : "",
+      usadoPor: yamlList(r.usado_por ?? r.usadoPor),
+      erros: yamlMaps(r.erros).map((e) => ({
+        status: Number(e.status) || 0,
+        corpo: typeof e.corpo === "string" ? e.corpo : "",
+      })),
+    };
+  });
+  if (entidades.length + enums.length + funcoes.length + rotas.length === 0) return undefined;
+  return { entidades, enums, funcoes, rotas };
+}
+
+function parseAnalystYaml(content: string): AnalystPlanParse | null {
+  const parsed = parseYamlFrontmatter(content);
+  if (!parsed || !Array.isArray(parsed.root.microbriefs)) return null;
+  const stages: PlanStage[] = [];
+  const clusters: Record<string, ClusterKind> = {};
+  for (const [i, m] of yamlMaps(parsed.root.microbriefs).entries()) {
+    const id = typeof m.id === "string" && m.id.trim() ? m.id.trim() : "";
+    if (!id) return { ok: false, error: `[FORMATO] A etapa na posição ${i + 1} não tem "id".` };
+    if (clusters[id]) return { ok: false, error: `[FORMATO] O id "${id}" aparece em mais de uma etapa.` };
+    const cluster = typeof m.cluster === "string" ? m.cluster.trim() : "";
+    if (!ANALYST_CLUSTERS.includes(cluster as ClusterKind)) {
+      return { ok: false, error: `[FORMATO] Etapa "${id}": cluster "${cluster}" inválido (use ${ANALYST_CLUSTERS.join(", ")}).` };
+    }
+    clusters[id] = cluster as ClusterKind;
+    stages.push({
+      id,
+      arquivos: yamlList(m.arquivos).map((f) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim()),
+      reqs: yamlList(m.reqs).map((r) => r.toUpperCase()),
+      dependeDe: yamlList(m.depende_de ?? m.dependeDe),
+    });
+  }
+  if (stages.length === 0) return { ok: false, error: '[FORMATO] "microbriefs" ausente ou vazio.' };
+  return { ok: true, stages, clusters, contrato: contratoDoYaml(parsed.root) };
+}
+
+/** Lê o plano do analista em Markdown com YAML. JSON antigo ainda é aceito. */
 export function parseAnalystPlan(content: string): AnalystPlanParse {
+  if (/documento:\s*plano/.test(content) || /(^|\n)microbriefs:/.test(content)) {
+    const yaml = parseAnalystYaml(content);
+    if (yaml) return yaml;
+  }
   const match = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/(\{[\s\S]*"microbriefs"[\s\S]*\})/);
   if (!match) return { ok: false, error: '[FORMATO] A resposta não tem o JSON {"microbriefs": [...]}.' };
   let raw: any;
@@ -830,6 +940,12 @@ export function buildDecompositionFromAnalystPlan(params: {
     return Array.from(new Set(files));
   };
 
+  const planoStages = ordered.map((s) => ({
+    id: s.id.replace(/-v\d+$/, ""),
+    arquivos: [...s.arquivos],
+    dependeDe: (s.dependeDe ?? []).map((d) => d.replace(/-v\d+$/, "")),
+  }));
+
   const nodes: DAGNode[] = [scaffold];
   const microbriefs: MicrobriefAndReportDocument[] = [];
   ordered.forEach((s, i) => {
@@ -897,6 +1013,9 @@ export function buildDecompositionFromAnalystPlan(params: {
         cluster,
         reqsCobertos: [...s.reqs],
         microbrief,
+        etapaId: s.id.replace(/-v\d+$/, ""), // Gap 4: id da etapa do plano (dono do contrato)
+        contrato, // Gap 4: ContratoProjeto completo para validação no executor
+        planoStages, // grafo inteiro: validateContract não vê um único dono
       },
     });
   });
@@ -923,11 +1042,13 @@ export function buildDecompositionFromAnalystPlan(params: {
   };
 
   return {
+    origemPlano: "analista",
     goal: specText,
     nodes,
     summary: `Spec planejada pelo Analista em ${ordered.length} etapas, aprovada pela Trava T8b.`,
     macrobrief,
     microbriefs,
+    contrato,
     t8bCheck: { valid: true, errors: [] },
   };
 }

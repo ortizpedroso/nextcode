@@ -26,6 +26,10 @@ export interface TerminalExecutionResult {
  */
 export class SandboxedTerminalSkill {
   private static BLACKLIST_PATTERNS = [
+    /\brd\s+\/s/i,
+    /\bdel\s+\/s/i,
+    /Remove-Item\s+-Recurse/i,
+    /Get-ChildItem\s+env:/i,
     /rm\s+-rf\s+[\/\*]/i,
     /mkfs/i,
     /dd\s+if=/i,

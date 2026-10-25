@@ -35,7 +35,7 @@ describe("IntakeEngine com Conferência do JEV (Trava T8a / T8b)", () => {
   });
 
   it("deve aprovar ciclo quando o JEV aprovar a conferência do Macrobrief", async () => {
-    vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev").mockResolvedValue({
+    const sweep = vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev").mockResolvedValue({
       aprovado: true,
       confiancaMedia: 0.95,
       scores: {
@@ -59,33 +59,18 @@ describe("IntakeEngine com Conferência do JEV (Trava T8a / T8b)", () => {
     expect(result.finalPhaseContext.phase).toBe("PLANEJAMENTO");
     expect(result.finalPhaseContext.voltasConferencia).toBe(0);
     expect(result.problems).toHaveLength(0);
+    expect(result.macrobriefTexto).toContain("documento: macrobrief");
+    expect(sweep).not.toHaveBeenCalled();
   });
 
-  it("deve registrar falha da conferência pelo JEV, alimentar onRepairCycle e bloquear na 4ª volta", async () => {
-    vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev").mockResolvedValue({
-      aprovado: false,
-      confiancaMedia: 0.70,
-      scores: {
-        coberturaRequisitos: 0.60,
-        fidelidadeSemContradicao: 0.90,
-        semEscopoInventado: 0.90,
-        suficienciaArquivos: 0.90,
-        ordemDependenciasValida: 0.90,
-        isolamentoSeguranca: 0.90,
-      },
-      apontamentos: [
-        "Omissão de requisitos: o Macrobrief não atribui todas as funcionalidades exigidas na Spec (score: 0.60).",
-      ],
-      jevDisponivel: true,
-    });
+  it("laudo com falha volta ao elicitador e bloqueia na 4ª volta, sem a varredura de cobertura do Jev", async () => {
+    const sweep = vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev");
 
     let repairCyclesExecuted = 0;
     const onRepairCycle = vi.fn().mockImplementation((cycle, culprit, problems, spec) => {
       repairCyclesExecuted++;
       expect(culprit).toBe("macrobrief");
-      expect(problems).toContain(
-        "Omissão de requisitos: o Macrobrief não atribui todas as funcionalidades exigidas na Spec (score: 0.60)."
-      );
+      expect(problems.some((p: string) => p.includes("[CONFERENTE]"))).toBe(true);
       return spec;
     });
 
@@ -93,12 +78,18 @@ describe("IntakeEngine com Conferência do JEV (Trava T8a / T8b)", () => {
       sessionId: "session-falha",
       initialSpec: specValida,
       onRepairCycle,
+      laudoInjetado: {
+        aprovado: false,
+        falhas: [{ req: "REQ-001", tipo: "cobertura", descricao: "REQ sem dono no cluster.", correcao: "Atribua o REQ." }],
+        incertos: [],
+      },
     });
 
+    expect(sweep).not.toHaveBeenCalled();
     expect(result.ok).toBe(false);
     expect(result.finalPhaseContext.phase).toBe("BLOQUEADA");
     expect(result.finalPhaseContext.voltasConferencia).toBe(4);
-    expect(repairCyclesExecuted).toBe(3); // 3 tentativas de reparo com retorno ao Elicitador
-    expect(result.problems[0]).toContain("Omissão de requisitos");
+    expect(repairCyclesExecuted).toBe(3);
+    expect(result.problems[0]).toContain("[CONFERENTE]");
   });
 });

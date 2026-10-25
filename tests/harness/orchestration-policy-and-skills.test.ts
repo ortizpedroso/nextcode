@@ -66,7 +66,11 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
   });
 
   it("10.1: lê o bloco jev_execucao do arquivo e aplica os padrões exatos quando chaves estão ausentes", () => {
+    const confEnv = process.env.NEXTCODE_CONFERENCIA_ENTRADA;
+    delete process.env.NEXTCODE_CONFERENCIA_ENTRADA;
     const policy = loadOrchestrationPolicy();
+    if (confEnv === undefined) delete process.env.NEXTCODE_CONFERENCIA_ENTRADA;
+    else process.env.NEXTCODE_CONFERENCIA_ENTRADA = confEnv;
     expect(policy.jevExecucao).toEqual({
       diagnosticoFalha: "ativo",
       bloqueioSpecAmbigua: "ativo",

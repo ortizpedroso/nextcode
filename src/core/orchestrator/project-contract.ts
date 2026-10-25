@@ -564,3 +564,79 @@ export function renderConformance(contrato: ContratoProjeto, etapaId: string): s
   lines.push("");
   return lines.join("\n");
 }
+
+/**
+ * Grafo de etapas implícito no contrato: cada dono e cada consumidor vira etapa,
+ * o arquivo do símbolo entra nos arquivos do dono, e quem usa depende do dono.
+ * Usado quando o nó não traz `planoStages` (plano heurístico). O plano do analista
+ * deve passar o grafo real, com `dependeDe` do plano.
+ */
+export function stagesFromContract(
+  contrato: ContratoProjeto,
+  current?: ContractStageRef
+): ContractStageRef[] {
+  const arquivos = new Map<string, Set<string>>();
+  const deps = new Map<string, Set<string>>();
+  const ensure = (id: string) => {
+    if (!id) return;
+    if (!arquivos.has(id)) arquivos.set(id, new Set());
+    if (!deps.has(id)) deps.set(id, new Set());
+  };
+  for (const e of contrato.entidades ?? []) ensure(e.dono);
+  for (const e of contrato.enums ?? []) ensure(e.dono);
+  for (const f of contrato.funcoes ?? []) {
+    ensure(f.dono);
+    if (f.arquivo) arquivos.get(f.dono)?.add(normalizePath(f.arquivo));
+    for (const u of f.usadoPor ?? []) {
+      ensure(u);
+      if (u && u !== f.dono) deps.get(u)?.add(f.dono);
+    }
+  }
+  for (const r of contrato.rotas ?? []) {
+    ensure(r.dono);
+    if (r.arquivo) arquivos.get(r.dono)?.add(normalizePath(r.arquivo));
+    for (const u of r.usadoPor ?? []) {
+      ensure(u);
+      if (u && u !== r.dono) deps.get(u)?.add(r.dono);
+    }
+  }
+  if (current?.id) {
+    ensure(current.id);
+    for (const f of current.arquivos ?? []) arquivos.get(current.id)?.add(normalizePath(f));
+    for (const d of current.dependeDe ?? []) {
+      ensure(d);
+      if (d !== current.id) deps.get(current.id)?.add(d);
+    }
+  }
+  return [...arquivos.keys()].map((id) => ({
+    id,
+    arquivos: [...(arquivos.get(id) ?? [])],
+    dependeDe: [...(deps.get(id) ?? [])],
+  }));
+}
+
+/** Prefere o grafo gravado no plano; senão deriva o grafo do próprio contrato. */
+export function contractStagesForNode(
+  contrato: ContratoProjeto,
+  etapaId: string,
+  arquivosEtapa: string[],
+  planoStages: unknown
+): ContractStageRef[] {
+  if (Array.isArray(planoStages) && planoStages.length > 0) {
+    const stages: ContractStageRef[] = [];
+    for (const raw of planoStages) {
+      if (!raw || typeof raw !== "object") continue;
+      const s = raw as { id?: unknown; arquivos?: unknown; dependeDe?: unknown };
+      if (typeof s.id !== "string" || !s.id.trim()) continue;
+      stages.push({
+        id: s.id.replace(/-v\d+$/, ""),
+        arquivos: Array.isArray(s.arquivos) ? s.arquivos.filter((f): f is string => typeof f === "string") : [],
+        dependeDe: Array.isArray(s.dependeDe)
+          ? s.dependeDe.filter((d): d is string => typeof d === "string").map((d) => d.replace(/-v\d+$/, ""))
+          : [],
+      });
+    }
+    if (stages.length > 0) return stages;
+  }
+  return stagesFromContract(contrato, { id: etapaId, arquivos: arquivosEtapa, dependeDe: [] });
+}

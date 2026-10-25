@@ -1,6 +1,6 @@
 /**
  * Catálogo Executável de Decisões do Jev (`M1` a `M5`)
- * Implementa as decisões documentadas em `docs/rascunhos/JEV-DECISOES.md`:
+ * Implementa as decisões documentadas na arquitetura do NextCode (motor de decisão P9):
  * - M1: Intenção da mensagem na Spec (`intencao_mensagem` + `aprovacao_sem_condicoes`)
  * - M2: Clareza da Spec antes de mostrar ao usuário (`clareza_requisitos` + `escopo_fechado` + `sem_contradicoes_internas`)
  * - M3: Planejamento em lote dos Microbriefs (`complexidade_microbrief`, `precisa_dividir_microbrief`, `cluster_microbrief`, `skill_apoio_principal`, `aplicar_taste_skill_publico`, `aplicar_react_perf_critico`)
@@ -20,6 +20,87 @@ import { isExplicitSpecApproval } from "@/core/intake/approval-intent";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { Phase, MessageIntention } from "@/core/orchestrator/phase-machine";
 import { isStatusRequest, classifyMessageDeterministic } from "@/core/orchestrator/message-intent";
+
+// ============================================================================
+// M1b — Decisão de Incertezas do Laudo Conferente (Gap 4)
+// ============================================================================
+
+export interface MacrobriefUncertaintyDecision {
+  resolvido: boolean;
+  respostas: Array<{ req: string; resposta: "sim" | "nao"; confianca: number }>;
+  source: "jev" | "fallback_fail_closed";
+}
+
+/**
+ * Gap 4: Ativa a pontuação do Jev para resolver ambiguidades marcadas pela Skill Conferente.
+ * Recebe a lista de `incertos` do laudo JSON e devolve decisões estruturadas.
+ * Fail-closed: se o Jev não responder, reprova o macrobrief.
+ */
+export async function decideMacrobriefUncertainty(params: {
+  incertos: Array<{ req: string; pergunta: string }>;
+  sessionId?: string | null;
+  policy?: OrchestrationPolicy;
+}): Promise<MacrobriefUncertaintyDecision> {
+  if (params.incertos.length === 0) {
+    return { resolvido: true, respostas: [], source: "jev" };
+  }
+
+  const policy = params.policy ?? DEFAULT_ORCHESTRATION_POLICY;
+  const lim = policy.jevLimiares.clarezaSpec; // reusa limiares de confiança
+
+  const questions: Record<string, JevQuestionSpec> = {};
+  for (const incerto of params.incertos) {
+    questions[incerto.req] = {
+      type: "noul",
+      instructions: incerto.pergunta,
+      criteria: {
+        true: "A interpretação mais segura para a implementação é positiva (fazer).",
+        false: "A interpretação mais segura é negativa (não fazer ou pedir esclarecimento humano).",
+      },
+    };
+  }
+
+  const batch = await askJevBatch({
+    purpose: "m1b_conferente_incertos",
+    state: JSON.stringify({ incertos: params.incertos }),
+    questions,
+    sessionId: params.sessionId,
+  });
+
+  if (batch) {
+    const respostas: Array<{ req: string; resposta: "sim" | "nao"; confianca: number }> = [];
+    let allResolved = true;
+
+    for (const incerto of params.incertos) {
+      const ans = batch[incerto.req];
+      if (ans?.type === "noul") {
+        // Threshold de decisão: >= 0.65 considera resolvido
+        const resolvido = ans.noul >= 0.65 || ans.noul <= 0.35;
+        if (!resolvido) allResolved = false;
+        respostas.push({
+          req: incerto.req,
+          resposta: ans.noul >= 0.5 ? "sim" : "nao",
+          confianca: ans.symmetricConfidence,
+        });
+      } else {
+        allResolved = false;
+      }
+    }
+
+    return {
+      resolvido: allResolved,
+      respostas,
+      source: "jev",
+    };
+  }
+
+  // Gap 4: Fail-closed — se o Jev falhar, reprova o macrobrief
+  return {
+    resolvido: false,
+    respostas: params.incertos.map((i) => ({ req: i.req, resposta: "nao" as "nao", confianca: 0 })),
+    source: "fallback_fail_closed",
+  };
+}
 
 // ============================================================================
 // M2 — Clareza da Spec Antes de Mostrar ao Usuário
@@ -447,7 +528,7 @@ export async function measureJevSelectorComparison(params: {
     policy,
   });
 
-  // Preços de referência documentados em docs/rascunhos/JEV-DECISOES.md e LLM-GATEWAYS.md:
+  // Preços de referência documentados em docs/NEXTCODE-REFERENCIA.md §5 e §1.3 e LLM-GATEWAYS.md:
   // - DeepSeek (pesado): US$ 0.28 / 1M input, US$ 0.42 / 1M output
   // - FreeLLMAPI (rapido / medio): US$ 0.00 (cota gratuita)
   // - Jev SystemOne (jev-1.13.0): US$ 0.042 / 1M input (output grátis)

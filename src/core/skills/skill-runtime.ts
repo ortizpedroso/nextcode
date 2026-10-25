@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ClusterKind } from "@/core/config/orchestration-policy";
 
-export type SkillRoleKind = "elicitador" | "analista" | "executor" | "avaliador" | "testador";
+export type SkillRoleKind = "elicitador" | "analista" | "executor" | "avaliador" | "testador" | "conferente";
 
 export interface SkillLocalReference {
   caminho: string;
@@ -184,8 +184,8 @@ export function loadRoleSkill(
   const name = extractStringField(fm, "name") || path.basename(path.dirname(fullPath));
   const papelRaw = extractStringField(fm, "papel") || "executor";
   // S3 (mudança 44): papel desconhecido falha fechado — antes virava "executor" calado, com escrita no escopo.
-  if (!["elicitador", "analista", "executor", "avaliador", "testador"].includes(papelRaw)) {
-    throw new Error(`skill "${name}": papel "${papelRaw}" não é um papel do harness (elicitador, analista, executor, avaliador, testador)`);
+  if (!["elicitador", "analista", "executor", "avaliador", "testador", "conferente"].includes(papelRaw)) {
+    throw new Error(`skill "${name}": papel "${papelRaw}" não é um papel do harness (elicitador, analista, executor, avaliador, testador, conferente)`);
   }
   const papel = papelRaw as SkillRoleKind;
 

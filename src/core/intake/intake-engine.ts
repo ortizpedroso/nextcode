@@ -9,11 +9,10 @@
 
 import { renderCanonicalSpecDocument, parseSpecDocument } from "./spec-format";
 import { checkSpecStructure } from "./spec-check";
-import { loadRoleSkill } from "@/core/skills/skill-runtime";
-import { SpecDecomposerSkill, type DecompositionResult } from "@/core/skills/spec-decomposer";
+import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runtime";
+import type { DecompositionResult } from "@/core/skills/spec-decomposer";
 import {
   validateSpecMechanical,
-  validateMacrobriefMechanical,
   type MacrobriefDocument,
   type MicrobriefAndReportDocument,
 } from "@/core/templates/artifact-templates";
@@ -22,94 +21,20 @@ import {
   type PhaseContext,
   type ConferenceCulprit,
 } from "@/core/orchestrator/phase-machine";
-import { verifyMacrobriefCoverageWithJev } from "@/core/decision/jev-execution-checks";
-import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
-
-// D-M9 (24/10): Interface do laudo da skill conferente-macrobrief
-interface ConferenteLaudoFalha {
-  tipo: "rastreabilidade" | "contrato" | "stack" | "erros" | "dependencias";
-  req_afetado: string;
-  descricao: string;
-  correcao_sugerida: string;
-}
-
-interface ConferenteLaudo {
-  aprovado: boolean;
-  falhas: ConferenteLaudoFalha[];
-}
-
-/**
- * D-M9 (24/10): Executa a skill conferente-macrobrief como barreira humana antes do Jev.
- * Em modo orquestração, valida as 5 lacunas mecanicamente quando possível e delega
- * ao LLM apenas os casos que exigem julgamento semântico.
- */
-async function runConferenteMacrobriefSkill(params: {
-  sessionId?: string;
-  spec: string;
-  macrobrief: MacrobriefDocument;
-}): Promise<ConferenteLaudo> {
-  const parsed = parseSpecDocument(params.spec);
-  if (!parsed) {
-    return { aprovado: false, falhas: [{ tipo: "rastreabilidade", req_afetado: "SPEC", descricao: "Spec não pôde ser parseada para auditoria do conferente.", correcao_sugerida: "Corrigir frontmatter YAML da Spec." }] };
-  }
-
-  const falhas: ConferenteLaudoFalha[] = [];
-  const reqsMap = new Map((parsed.requisitos ?? []).map((r) => [r.id, r]));
-
-  // Lacuna 1 & 4: Rastreabilidade critério→arquivo e completude dos erros de rota
-  // Validado via contrato TypeScript: se o contrato existe, a estrutura já foi validada por validateContract.
-  // Aqui conferimos se há requisitos sem cobertura explícita nos microbriefs.
-  const reqsCobertos = new Set<string>();
-  for (const mb of params.macrobrief.microbriefs) {
-    for (const reqId of mb.reqs) {
-      reqsCobertos.add(reqId);
-    }
-  }
-  for (const reqId of parsed.requisitosIds ?? []) {
-    if (!reqsCobertos.has(reqId)) {
-      falhas.push({
-        tipo: "rastreabilidade",
-        req_afetado: reqId,
-        descricao: `Requisito ${reqId} não está atribuído a nenhum Microbrief no Macrobrief.`,
-        correcao_sugerida: `Atribuir ${reqId} a um Microbrief com arquivos capazes de implementar seu critério de aceite.`,
-      });
-    }
-  }
-
-  // Lacuna 5: Dependências implícitas de regra de negócio
-  // Se uma regra cita papéis/permissões e não há dependência declarada entre etapas de auth e etapas de negócio
-  const regras = parsed.notasImplementacao ?? [];
-  const temRegraAuth = regras.some((r) => /admin|permissão|papel|role|auth/i.test(r));
-  if (temRegraAuth) {
-    const temEtapaCore = params.macrobrief.microbriefs.some((mb) => mb.cluster === "core");
-    const etapasComDependenciaDeCore = params.macrobrief.microbriefs.filter(
-      (mb) => mb.cluster !== "core" && mb.dependeDe.length > 0
-    );
-    // Se há regra de auth mas nenhuma etapa não-core depende de core, pode haver gap
-    if (temEtapaCore && etapasComDependenciaDeCore.length === 0 && params.macrobrief.microbriefs.length > 1) {
-      falhas.push({
-        tipo: "dependencias",
-        req_afetado: "REGRAS",
-        descricao: "Spec contém regras de autenticação/permissão mas nenhuma etapa consumer declara dependência de core.",
-        correcao_sugerida: "Adicionar dependeDe para a etapa core nas etapas que implementam regras de negócio com restrição de acesso.",
-      });
-    }
-  }
-
-  const aprovado = falhas.length === 0;
-
-  TelemetryLogger.log({
-    sessionId: params.sessionId ?? "unknown",
-    action: "CONFERENTE_MACROBRIEF",
-    details: {
-      aprovado,
-      falhasCount: falhas.length,
-      tipos: falhas.map((f) => f.tipo),
-    },
-  });
-
-  return { aprovado, falhas };
-}
+import { decideMacrobriefUncertainty } from "@/core/decision/jev-decisions";
+import { SmartRouter, type DispatchMessage } from "@/core/router/smart-router";
+import prisma from "@/lib/prisma";
+import { readSecret } from "@/core/security/crypto";
+import { detectClusterGaps, type ClusterException } from "@/core/intake/cluster-gaps";
+import { callElicitadorClaude } from "@/core/llm/elicitador-claude";
+import { recordLlmCost } from "@/core/llm/cost";
+import {
+  classificarTextoDeMacrobrief,
+  documentoDeMacrobrief,
+  macrobriefFixoDaSpec,
+  textoParaOConferente,
+  type ElicitadorMacrobrief,
+} from "@/core/intake/macrobrief-elicitador";
 
 export type IntakeScenario = "SCENARIO_A" | "SCENARIO_B" | "SCENARIO_C" | "SCENARIO_D";
 
@@ -124,12 +49,21 @@ export interface IntakeAnalysisResult {
 export interface ElicitadorAnalistaCycleOptions {
   sessionId?: string;
   initialSpec: string;
+  /** Lacunas já devolvidas uma vez ao elicitador (não contam em voltasConferencia). */
+  clusterGapsJaDevolvidos?: string[];
+  excecoesCluster?: ClusterException[];
   onRepairCycle?: (
     cycleNumber: number,
     culprit: ConferenceCulprit,
     problems: string[],
     currentSpec: string
   ) => Promise<string> | string;
+  /** Laudo pronto, só em teste: o ciclo não chama o modelo do conferente. */
+  laudoInjetado?: {
+    aprovado: boolean;
+    falhas: Array<{ req: string; tipo: string; descricao: string; correcao: string }>;
+    incertos: Array<{ req: string; pergunta: string }>;
+  };
 }
 
 export interface ElicitadorAnalistaCycleResult {
@@ -140,9 +74,79 @@ export interface ElicitadorAnalistaCycleResult {
   finalPhaseContext: PhaseContext;
   finalSpec: string;
   macrobrief?: MacrobriefDocument;
+  /** Texto único do Macrobrief, Markdown com YAML, o que o conferente leu. */
+  macrobriefTexto?: string;
+  macrobriefElicitador?: ElicitadorMacrobrief;
   microbriefs?: MicrobriefAndReportDocument[];
   decomposition?: DecompositionResult;
   problems: string[];
+  /** Jev não respondeu o incerto: pergunta ao humano, sem gastar volta. */
+  pausaSemTentativa?: boolean;
+  /** A mesma lacuna de cluster voltou: o humano precisa nomear o cluster. */
+  perguntaHumana?: boolean;
+  clusterGaps?: string[];
+}
+
+async function escreverMacrobriefDoElicitador(spec: string, sessionId?: string): Promise<string | null> {
+  const skill = loadRoleSkill("elicitador");
+  const messages: DispatchMessage[] = [
+    {
+      role: "system",
+      content:
+        buildSkillSystemPrompt(skill) +
+        "\n\nA Spec já foi aprovada. Escreva SOMENTE o Macrobrief, em Markdown com frontmatter YAML, no formato da skill. Sem contrato TypeScript e sem etapas.",
+    },
+    { role: "user", content: spec },
+  ];
+  const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+  const claudeKey = readSecret(setting?.claudeKey);
+  if (claudeKey) {
+    const claude = await callElicitadorClaude({ messages, claudeKey });
+    if (claude.ok && claude.text.trim()) {
+      await recordLlmCost({
+        sessionId,
+        papel: "elicitador",
+        provider: "claude",
+        model: claude.model,
+        usage: claude.usage,
+      }).catch(() => 0);
+      return claude.text;
+    }
+  }
+  try {
+    const smartRouter = new SmartRouter();
+    const dispatchRes = await smartRouter.dispatchWithFallback({
+      messages,
+      tier: "heavy",
+      geminiKey: readSecret(setting?.geminiKey),
+      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+      omniRouteKey: readSecret(setting?.omniRouteKey),
+      stream: false,
+    });
+    if (!dispatchRes) return null;
+    const resJson = await dispatchRes.response.json().catch(() => ({}));
+    const content = String(resJson.choices?.[0]?.message?.content || "");
+    await recordLlmCost({
+      sessionId,
+      papel: "elicitador",
+      provider: String(dispatchRes.providerUsed),
+      model: String(dispatchRes.modelUsed || ""),
+      usage: resJson.usage,
+    }).catch(() => 0);
+    return content.trim() ? content : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonObject(content: string): unknown {
+  const trimmed = content.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const raw = (fenced ? fenced[1] : trimmed).trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("sem objeto JSON");
+  return JSON.parse(raw.slice(start, end + 1));
 }
 
 export class IntakeEngine {
@@ -381,60 +385,200 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
       }
 
       if (specProblems.length === 0 && parsed) {
-        const decomp = SpecDecomposerSkill.decomposeSpec(
-          currentSpec,
-          parsed.titulo,
-          parsed.arquivosAfetados,
-          parsed.stack
-        );
-        const macroCheck = decomp.macrobrief
-          ? validateMacrobriefMechanical(decomp.macrobrief, parsed.requisitosIds ?? [])
-          : { valid: false, errors: ["Macrobrief não gerado."] };
+        const reqIds =
+          parsed.requisitosIds && parsed.requisitosIds.length > 0
+            ? parsed.requisitosIds
+            : (parsed.requisitos ?? []).map((r) => r.id);
+        const skipElicitador =
+          process.env.NODE_ENV === "test" && process.env.ENABLE_ELICITADOR_MACROBRIEF !== "true";
+        const textoGerado = skipElicitador
+          ? macrobriefFixoDaSpec(parsed).texto
+          : (await escreverMacrobriefDoElicitador(currentSpec, options.sessionId)) ?? "";
+        const classificado = classificarTextoDeMacrobrief(textoGerado, parsed.arquivosAfetados ?? [], reqIds);
+        if (classificado.tipo === "pausa") {
+          return {
+            ok: false,
+            cyclesUsed,
+            elicitadorSkillLoaded: elicitadorSkill.name,
+            analistaSkillLoaded: analistaSkill.name,
+            finalPhaseContext: ctx,
+            finalSpec: currentSpec,
+            pausaSemTentativa: true,
+            problems: [classificado.motivo],
+          };
+        }
+        if (classificado.tipo === "reprovado") {
+          specProblems.push(...classificado.erros);
+        }
+        const macroDoc = classificado.tipo === "valido" ? classificado.doc : null;
+        const macroTexto = classificado.tipo === "valido" ? classificado.texto : "";
+        const macrobrief = macroDoc ? documentoDeMacrobrief(macroDoc, parsed.titulo) : undefined;
 
-        if (macroCheck.valid && decomp.macrobrief && decomp.microbriefs) {
-          // D-M9 (24/10): Skill conferente-macrobrief como primeira barreira humana antes do Jev.
-          // Se reprovado, volta ao elicitador via CONFERENCIA_FALHOU com culpa "macrobrief".
-          const laudoConferente = await runConferenteMacrobriefSkill({
-            sessionId: options.sessionId,
-            spec: currentSpec,
-            macrobrief: decomp.macrobrief,
+        if (macroDoc && macrobrief) {
+          const gaps = detectClusterGaps({
+            arquivos: parsed.arquivosAfetados ?? [],
+            requisitosTexto: (parsed.requisitos ?? [])
+              .map((r) => `${r.titulo} ${r.criterio}`)
+              .join("\n"),
+            notas: parsed.notasImplementacao ?? [],
+            entidades: parsed.entidades?.length ?? 0,
+            clustersPresentes: macroDoc.clustersAtivos,
+            excecoes: options.excecoesCluster,
           });
-          if (!laudoConferente.aprovado) {
-            macroCheck.valid = false;
-            const falhasTexto = laudoConferente.falhas.map(
-              (f) => `[CONFERENTE ${f.tipo.toUpperCase()}] REQ-${f.req_afetado}: ${f.descricao} → Correção: ${f.correcao_sugerida}`
+          if (gaps.length > 0) {
+            const already = new Set(options.clusterGapsJaDevolvidos ?? []);
+            const novos = gaps.filter((g) => !already.has(g.gap));
+            const perguntaHumana = novos.length === 0;
+            return {
+              ok: false,
+              cyclesUsed,
+              elicitadorSkillLoaded: elicitadorSkill.name,
+              analistaSkillLoaded: analistaSkill.name,
+              finalPhaseContext: ctx,
+              finalSpec: currentSpec,
+              macrobrief,
+              macrobriefTexto: macroTexto,
+              macrobriefElicitador: macroDoc,
+              problems: gaps.map((g) => `[${g.gap}] ${g.pergunta}`),
+              perguntaHumana,
+              clusterGaps: gaps.map((g) => g.gap),
+            };
+          }
+
+          // Gap 2: Chamada real à Skill Conferente via modelo
+          const conferenteSkill = loadRoleSkill("conferente-macrobrief");
+          const conferenteSystemPrompt = buildSkillSystemPrompt(conferenteSkill, { includeLocalReferences: true });
+
+          interface ConferenteLaudo {
+            aprovado: boolean;
+            falhas: Array<{ req: string; tipo: string; descricao: string; correcao: string }>;
+            incertos: Array<{ req: string; pergunta: string }>;
+          }
+
+          let laudoConferente: ConferenteLaudo = {
+            aprovado: true,
+            falhas: [],
+            incertos: [],
+          };
+          let pausaConferente: string | null = null;
+
+          // Em teste o laudo mecânico (lacunas + T8) vale, para a suíte não depender de chave.
+          // Produção chama o modelo. ENABLE_CONFERENTE_LLM=true força a chamada também em teste.
+          const skipConferenteLlm =
+            options.laudoInjetado != null ||
+            (process.env.NODE_ENV === "test" && process.env.ENABLE_CONFERENTE_LLM !== "true");
+
+          if (options.laudoInjetado) {
+            laudoConferente = options.laudoInjetado;
+          } else if (!skipConferenteLlm) {
+          // Gap 1 e 2: Chamar o conferente com as chaves do banco (não env), no tier forte, e extrair choices[0].message.content
+          const setting = await prisma.setting.findUnique({ where: { id: "default" } });
+          const smartRouter = new SmartRouter();
+          const messages: DispatchMessage[] = [
+            { role: "system", content: conferenteSystemPrompt },
+            {
+              role: "user",
+              content: textoParaOConferente(currentSpec, macroTexto),
+            },
+          ];
+
+          try {
+            const dispatchRes = await smartRouter.dispatchWithFallback({
+              messages,
+              tier: "heavy", // Skill pede nivel_modelo: forte
+              geminiKey: readSecret(setting?.geminiKey),
+              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
+              stream: false,
+            });
+
+            if (dispatchRes) {
+              const resJson = await dispatchRes.response.json().catch(() => ({}));
+              const content = resJson.choices?.[0]?.message?.content || "";
+
+              if (!content) {
+                pausaConferente = "O conferente não devolveu o laudo.";
+              } else {
+                try {
+                  const parsedLaudo = extractJsonObject(content) as {
+                    aprovado?: unknown;
+                    falhas?: unknown;
+                    incertos?: unknown;
+                  };
+                  laudoConferente = {
+                    aprovado: parsedLaudo.aprovado === true, // Ausente ≠ true
+                    falhas: Array.isArray(parsedLaudo.falhas) ? parsedLaudo.falhas : [],
+                    incertos: Array.isArray(parsedLaudo.incertos) ? parsedLaudo.incertos : [],
+                  };
+                } catch {
+                  pausaConferente = "O laudo do conferente não é um JSON válido.";
+                }
+              }
+            } else {
+              pausaConferente = "O modelo do conferente não respondeu.";
+            }
+          } catch (err) {
+            console.warn("[INTAKE] Exceção ao chamar conferente-macrobrief:", err);
+            pausaConferente = "O modelo do conferente não respondeu.";
+          }
+          }
+
+          if (pausaConferente) {
+            return {
+              ok: false,
+              cyclesUsed,
+              elicitadorSkillLoaded: elicitadorSkill.name,
+              analistaSkillLoaded: analistaSkill.name,
+              finalPhaseContext: ctx,
+              finalSpec: currentSpec,
+              macrobrief,
+              macrobriefTexto: macroTexto,
+              macrobriefElicitador: macroDoc,
+              pausaSemTentativa: true,
+              problems: [pausaConferente],
+            };
+          }
+
+          // Se houver falhas, reprova imediatamente
+          if (laudoConferente.falhas.length > 0 || laudoConferente.aprovado !== true) {
+            const falhas =
+              laudoConferente.falhas.length > 0
+                ? laudoConferente.falhas
+                : [{ req: "GERAL", tipo: "reprovado", descricao: "Laudo reprovado.", correcao: "Reescreva o Macrobrief." }];
+            specProblems.push(
+              ...falhas.map(
+                (f) => `[CONFERENTE] REQ ${f.req} (${f.tipo}): ${f.descricao} → Correção: ${f.correcao}`
+              )
             );
-            specProblems.push(...falhasTexto);
-          } else {
-          const jevConference = await verifyMacrobriefCoverageWithJev({
-            sessionId: options.sessionId,
-            spec: {
-              titulo: parsed.titulo,
-              stack: parsed.stack,
-              requisitos: (parsed.requisitos ?? []).map((r) => ({
-                id: r.id,
-                titulo: r.titulo,
-                criterio: r.criterio,
-              })),
-              regras: parsed.notasImplementacao ?? [],
-            },
-            macrobrief: {
-              idMacrobrief: decomp.macrobrief.idMacrobrief,
-              etapas: decomp.macrobrief.microbriefs.map((mb) => ({
-                id: mb.id,
-                cluster: mb.cluster,
-                arquivos: mb.arquivos,
-                reqs: mb.reqs,
-                dependeDe: mb.dependeDe,
-              })),
-              contratosTypescript: decomp.macrobrief.contratosTypescript,
-            },
-          });
+          }
 
-          if (!jevConference.aprovado) {
-            macroCheck.valid = false;
-            specProblems.push(...jevConference.apontamentos);
-          } else {
+          // Se houver incertezas, resolver via Jev — GAP 2 (Flow): decisão agora dirige o fluxo
+          if (laudoConferente.incertos.length > 0) {
+            const decisaoJev = await decideMacrobriefUncertainty({
+              incertos: laudoConferente.incertos,
+              sessionId: options.sessionId,
+            });
+            if (!decisaoJev.resolvido) {
+              // Jev calado ou incerto: pergunta ao humano pela voz do elicitador.
+              // Não gasta volta de conferência (o contexto local não avança).
+              return {
+                ok: false,
+                cyclesUsed,
+                elicitadorSkillLoaded: elicitadorSkill.name,
+                analistaSkillLoaded: analistaSkill.name,
+                finalPhaseContext: ctx,
+                finalSpec: currentSpec,
+                macrobrief,
+                macrobriefTexto: macroTexto,
+                macrobriefElicitador: macroDoc,
+                pausaSemTentativa: true,
+                problems: laudoConferente.incertos.map(
+                  (i) => `[INCERTEZA] REQ ${i.req}: ${i.pergunta}`
+                ),
+              };
+            }
+          }
+
+          if (laudoConferente.aprovado === true && laudoConferente.falhas.length === 0 && specProblems.length === 0) {
             const okStep = transition(ctx, { type: "CONFERENCIA_OK" }, { etapa1Ativa: true });
             if (okStep.ok) ctx = okStep.ctx;
             return {
@@ -444,16 +588,13 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
               analistaSkillLoaded: analistaSkill.name,
               finalPhaseContext: ctx,
               finalSpec: currentSpec,
-              macrobrief: decomp.macrobrief,
-              microbriefs: decomp.microbriefs,
-              decomposition: decomp,
+              macrobrief,
+              macrobriefTexto: macroTexto,
+              macrobriefElicitador: macroDoc,
               problems: [],
             };
           }
-        } // fecha else do conferente-macrobrief
-        } // fecha if macroCheck.valid
-
-        specProblems.push(...macroCheck.errors);
+        }
       }
 
       const culprit: ConferenceCulprit = specProblems.some(

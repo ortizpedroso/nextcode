@@ -57,7 +57,7 @@ import { readRepairPayload, readAcceptancePayload, supersededByRepair, contractB
 import { runTestBench } from "@/core/execution/test-bench";
 import { generateAcceptanceTests } from "@/core/governance/acceptance-tests";
 import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
-import { renderConformance, type ContratoProjeto } from "@/core/orchestrator/project-contract";
+import { renderConformance, validateContract, contractStagesForNode, type ContratoProjeto } from "@/core/orchestrator/project-contract";
 
 /**
  * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
@@ -987,14 +987,37 @@ export async function executeTaskNode(
   // Etapa de base (M1): sem IA, sem quarentena e sem auditor — só prepara o ambiente para o
   // código das próximas etapas ser compilado de verdade.
   let scaffoldStack: string[] | null = null;
+  let nadaAFazerCluster: string | null = null;
   try {
     const parsedPayload = taskDb.payload ? JSON.parse(taskDb.payload) : null;
     if (parsedPayload?.step === "scaffold") scaffoldStack = Array.isArray(parsedPayload.stack) ? parsedPayload.stack : [];
+    if (parsedPayload?.step === "nada_a_fazer") nadaAFazerCluster = String(parsedPayload.cluster ?? "");
   } catch {
     /* payload malformado: segue como etapa comum */
   }
   if (scaffoldStack) {
     return runScaffoldNode(taskDb, scaffoldStack);
+  }
+  if (nadaAFazerCluster !== null) {
+    const done = await prisma.taskNode.update({
+      where: { id: taskDb.id },
+      data: {
+        status: "completed",
+        result: JSON.stringify({ nadaAFazer: true, cluster: nadaAFazerCluster || null }),
+      },
+    });
+    TelemetryLogger.log({
+      sessionId: taskDb.sessionId,
+      action: "CLUSTER_NADA_A_FAZER",
+      details: { nodeId: taskDb.id, cluster: nadaAFazerCluster || null },
+    });
+    return {
+      success: true,
+      claimed: true,
+      executedTask: done,
+      finalStatus: "completed",
+      promotionTarget: null,
+    };
   }
 
   let projectContextBlock = "";
@@ -1589,6 +1612,27 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       if (!effectiveScope.includes(conformanceRelPath)) {
         effectiveScope.push(conformanceRelPath);
       }
+      // A1 (D-M1/D-M2/D-M3): validação mecânica do contrato contra a etapa atual.
+      // Violação de contrato = defeito crítico antes do portão empírico.
+      let planoStages: unknown;
+      try {
+        planoStages = JSON.parse(taskDb.payload || "{}").planoStages;
+      } catch {
+        planoStages = undefined;
+      }
+      const contractStages = contractStagesForNode(stageContrato, stageEtapaId, effectiveScope, planoStages);
+      const contractErrors = validateContract(stageContrato, contractStages);
+      if (contractErrors.length > 0) {
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "CONTRACT_VALIDATION_FAILED",
+          details: { nodeId: taskDb.id, etapaId: stageEtapaId, errors: contractErrors.slice(0, 10) },
+        });
+        type1Res.passed = false;
+        type1Res.compilationErrors.push(
+          `[CONTRATO] Violação do contrato TypeScript (${contractErrors.length} erro(s)): ${contractErrors[0]}`
+        );
+      }
     }
 
     if (type1Res.passed && !secretGuardRes.blocked && taskDb.session.project?.path) {
@@ -1735,6 +1779,78 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           },
         });
         validatedExecutorReport = null;
+      }
+    }
+
+    // O executor já entregou o turno. O autoteste (tsc já rodou no porteiro; aqui os testes de
+    // aceite e os testes que provam o reparo) roda ANTES do avaliador. Falha não chama o avaliador
+    // e conta tentativa, também na última. `entregue_pelo_executor` é a alegação; `aprovada` só
+    // depois do veredito.
+    let autotesteJaVerde = false;
+    const gateTestsAntes = [...(repairPayload?.testesReproducao ?? []), ...(acceptance?.testes ?? [])];
+    if (type1Res.passed && !secretGuardRes.blocked) {
+      TelemetryLogger.log({
+        sessionId: taskDb.sessionId,
+        action: "ENTREGUE_PELO_EXECUTOR",
+        details: { nodeId: taskDb.id, attempt: newAttempts, status: "entregue_pelo_executor" },
+      });
+    }
+    if (type1Res.passed && !secretGuardRes.blocked && gateTestsAntes.length && taskDb.session.project?.path) {
+      const acceptancePathsAntes = new Set((acceptance?.testes ?? []).map((t) => `.nextcode-repro/${t.caminho}`));
+      const probe = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, effectiveScope);
+      if (!probe.passed) {
+        type1Res.passed = false;
+        type1Res.compilationErrors.push(
+          `[AUTOTESTE ${empiricalStageLabel(probe.failedStage)}] ${probe.failureLine ?? "falhou"}`
+        );
+      } else {
+        const contractAntes = await runTestBench(targetProjectRoot, contractBenchRequest(gateTestsAntes));
+        qm.rollbackPromotion(taskDb.id);
+        if (touchesPrismaSchema(filesScopeArr)) await regeneratePrismaClient(targetProjectRoot);
+        if (!contractAntes.ok) {
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "REPAIR_CONTRACT_UNAVAILABLE",
+            details: { nodeId: taskDb.id, stage: contractAntes.stage, error: contractAntes.error, quando: "antes_do_avaliador" },
+          });
+        } else {
+          const todasAntes = [
+            ...contractAntes.files.filter((f) => f.loadError).map((f) => ({ file: f.file, txt: `${f.file} não carregou: ${f.loadError}` })),
+            ...contractAntes.cases.filter((c) => c.status === "failed").map((c) => ({ file: c.file, txt: `${c.file} › ${c.name}: ${c.failure ?? ""}` })),
+          ];
+          const falhasAceiteAntes = todasAntes.filter((f) => acceptancePathsAntes.has(f.file)).map((f) => f.txt);
+          const falhasOutrosAntes = todasAntes.filter((f) => !acceptancePathsAntes.has(f.file)).map((f) => f.txt);
+          const falhasAntes = [
+            ...falhasOutrosAntes.map((f) => `teste do contrato ainda falha — ${f}`),
+            ...falhasAceiteAntes.map((f) => `teste de aceite falha — ${f}`),
+          ];
+          if (falhasAceiteAntes.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "ACCEPTANCE_TESTS_FAILED",
+              details: { nodeId: taskDb.id, falhas: falhasAceiteAntes.slice(0, 10).map((f) => f.slice(0, 300)) },
+            });
+          } else if ((acceptance?.testes ?? []).length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "ACCEPTANCE_TESTS_PASSED",
+              details: { nodeId: taskDb.id, casos: contractAntes.cases.length },
+            });
+          }
+          if (repairPayload?.testesReproducao?.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: falhasOutrosAntes.length ? "REPAIR_CONTRACT_FAILED" : "REPAIR_CONTRACT_PASSED",
+              details: { nodeId: taskDb.id, casos: contractAntes.cases.length },
+            });
+          }
+          if (falhasAntes.length) {
+            type1Res.passed = false;
+            type1Res.testFailures.push(...falhasAntes.slice(0, 10));
+          } else {
+            autotesteJaVerde = true;
+          }
+        }
       }
     }
 
@@ -1923,7 +2039,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       // E5: o portão roda também os testes de aceite da etapa (visíveis e escondidos).
       const gateTests = [...(repairPayload?.testesReproducao ?? []), ...(acceptance?.testes ?? [])];
       const acceptancePaths = new Set((acceptance?.testes ?? []).map((t) => `.nextcode-repro/${t.caminho}`));
-      if (gate.passed && !gate.rolledBack && gateTests.length) {
+      if (gate.passed && !gate.rolledBack && gateTests.length && !autotesteJaVerde) {
         const contract = await runTestBench(targetProjectRoot, contractBenchRequest(gateTests));
         if (!contract.ok) {
           // Bancada fora (Docker parado): não trava a etapa; fica o veredito do avaliador e a verificação final.
@@ -1938,12 +2054,11 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           if (falhasAceite.length) {
             TelemetryLogger.log({
               sessionId: taskDb.sessionId,
-              action: wouldReachBlockThreshold && falhas.length === 0 ? "ACCEPTANCE_DISAGREEMENT" : "ACCEPTANCE_TESTS_FAILED",
+              action: "ACCEPTANCE_TESTS_FAILED",
               details: { nodeId: taskDb.id, falhas: falhasAceite.slice(0, 10).map((f) => f.slice(0, 300)) },
             });
-            // §6 item 7 (decidido com dado, 22/10): na ÚLTIMA tentativa, avaliador aprovando e só o teste cego
-            // falhando, a etapa não trava — vai com ressalva e a revisão final (com código e bancada) decide.
-            if (!(wouldReachBlockThreshold && falhas.length === 0)) falhas = [...falhas, ...falhasAceite.map((f) => `teste de aceite falha — ${f}`)];
+            // Teste de aceite que falha reprova a etapa em qualquer tentativa. O avaliador não cobre o teste.
+            falhas = [...falhas, ...falhasAceite.map((f) => `teste de aceite falha — ${f}`)];
           } else if ((acceptance?.testes ?? []).length) {
             TelemetryLogger.log({ sessionId: taskDb.sessionId, action: "ACCEPTANCE_TESTS_PASSED", details: { nodeId: taskDb.id, casos: contract.cases.length } });
           }
@@ -1979,6 +2094,12 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
           },
         });
         finalStatus = wouldReachBlockThreshold ? "blocked" : "failed";
+      } else {
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "ETAPA_APROVADA",
+          details: { nodeId: taskDb.id, attempt: newAttempts, status: "aprovada" },
+        });
       }
     } else {
       finalStatus = wouldReachBlockThreshold && !evaluatorOutageFreeRetry ? "blocked" : "failed";

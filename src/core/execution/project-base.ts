@@ -1,5 +1,5 @@
 /**
- * Etapa de base do projeto (M1 — docs/PLANO-ETAPA-0.md, revisão de 06/10): sem IA.
+ * Etapa de base do projeto (M1 — docs/NEXTCODE-REFERENCIA.md §2.1): sem IA.
  *
  * Antes do primeiro executor, o projeto-alvo recebe o que é preciso para o código gerado ser
  * COMPILADO de verdade: package.json com as dependências da stack declarada na Spec, tsconfig e

@@ -159,7 +159,7 @@ export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string 
 // com um nível de aninhamento (ex.: entidades -> campos), o suficiente para o
 // schema desta Spec sem precisar de uma dependência de YAML completa.
 
-type YamlValue = string | YamlValue[] | { [key: string]: YamlValue };
+export type YamlValue = string | YamlValue[] | { [key: string]: YamlValue };
 
 interface YamlLine {
   indent: number;
@@ -185,6 +185,14 @@ const ROOT_KEYS = new Set([
   "notas_implementacao",
   "requisitos_ids",
   "requisitos",
+  "documento",
+  "spec_versao",
+  "clusters_ativos",
+  "clusters",
+  "microbriefs",
+  "enums",
+  "funcoes",
+  "contrato",
 ]);
 
 function parseYamlList(lines: YamlLine[], start: number, indent: number): [YamlValue[], number] {
@@ -444,4 +452,31 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
     objetivo,
     raw: content,
   };
+}
+
+/**
+ * Frontmatter YAML + corpo Markdown, o mesmo recipiente da Spec.
+ * Serve ao Macrobrief do elicitador e ao plano do analista.
+ */
+export function parseYamlFrontmatter(
+  content: string
+): { root: Record<string, YamlValue>; body: string; texto: string } | null {
+  if (!content?.trim()) return null;
+  let trimmed = content.trim();
+  const fence = trimmed.match(/```(?:ya?ml|markdown|md)?[ \t]*\r?\n([\s\S]*?)\r?\n?```/i);
+  if (fence) trimmed = fence[1].trim();
+  if (!trimmed.startsWith("---")) {
+    const idx = trimmed.search(/(?:^|\r?\n)---\r?\n/);
+    if (idx >= 0) trimmed = trimmed.slice(idx).replace(/^[\r\n]+/, "");
+  }
+  if (!trimmed.startsWith("---") && /^(documento|microbriefs|clusters)\s*:/m.test(trimmed)) {
+    trimmed = `---\n${trimmed}\n---`;
+  }
+  if (!trimmed.startsWith("---")) return null;
+  const match = trimmed.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) return null;
+  const [root] = parseYamlMapping(toYamlLines(match[1]), 0, 0);
+  const body = match[2].trim();
+  const texto = `---\n${match[1].trim()}\n---${body ? `\n\n${body}` : ""}`;
+  return { root, body, texto };
 }

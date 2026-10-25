@@ -134,36 +134,28 @@ describe("Teste Pesado de Estresse: SaaS Completo, Decomposição Real e Confer�
     expect(macrobriefMd).toContain("REQ-004");
     expect(macrobriefMd).toContain("# Macrobrief:");
 
-    // 4. Executa o ciclo de intake com conferência do JEV
+    const sweep = vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev");
+    // 4. O ciclo confere o Macrobrief do elicitador. A varredura de cobertura do Jev não entra neste portão.
     const cycleResult = await IntakeEngine.runElicitadorAndAnalistaCycle({
       sessionId: "sessao-saas-pesada",
       initialSpec: saasSpecDoc,
     });
 
-    expect(cycleResult.ok).toBe(true);
-    expect(cycleResult.finalPhaseContext.phase).toBe("PLANEJAMENTO");
+    // A nota da Spec cita "API" e nenhum arquivo é de backend: a lacuna volta uma vez, fora do contador.
+    expect(cycleResult.ok).toBe(false);
+    expect(cycleResult.clusterGaps).toContain("backend_ausente");
     expect(cycleResult.finalPhaseContext.voltasConferencia).toBe(0);
-    expect(cycleResult.problems).toHaveLength(0);
-    expect(cycleResult.microbriefs).toBeDefined();
-    expect(cycleResult.microbriefs!.length).toBeGreaterThan(0);
+    expect(cycleResult.macrobriefTexto).toContain("documento: macrobrief");
+    expect(cycleResult.macrobriefTexto).toContain("REQ-001");
+    expect(sweep).not.toHaveBeenCalled();
   });
 
-  it("deve detectar e barrar no JEV se o Macrobrief omitir isolamento de segurança ou inventar escopo", async () => {
-    // JEV reprova em 2 critérios cruciais: isolamento de segurança e escopo inventado
-    vi.spyOn(jevClient, "askJevBatch").mockResolvedValue({
-      cobertura_requisitos: { type: "noul", noul: 0.90, confidence: 0.90 },
-      fidelidade_sem_contradicao: { type: "noul", noul: 0.90, confidence: 0.90 },
-      sem_escopo_inventado: { type: "noul", noul: 0.65, confidence: 0.65 }, // falha (< 0.80)
-      suficiencia_arquivos: { type: "noul", noul: 0.85, confidence: 0.85 },
-      ordem_dependencias_valida: { type: "noul", noul: 0.85, confidence: 0.85 },
-      isolamento_seguranca: { type: "noul", noul: 0.50, confidence: 0.50 }, // falha grave (< 0.80)
-    });
-
+  it("laudo reprovado esgota as voltas e não chama a varredura de cobertura do Jev", async () => {
+    const sweep = vi.spyOn(jevExecutionChecks, "verifyMacrobriefCoverageWithJev");
     let repairCalls = 0;
-    const onRepairCycle = vi.fn().mockImplementation((cycle, culprit, problems, currentSpec) => {
+    const onRepairCycle = vi.fn().mockImplementation((_cycle, culprit, problems, currentSpec) => {
       repairCalls++;
       expect(culprit).toBe("macrobrief");
-      expect(problems.some((p: string) => p.includes("Risco de segurança/isolamento"))).toBe(true);
       expect(problems.some((p: string) => p.includes("Invenção de escopo"))).toBe(true);
       return currentSpec;
     });
@@ -172,13 +164,19 @@ describe("Teste Pesado de Estresse: SaaS Completo, Decomposição Real e Confer�
       sessionId: "sessao-saas-pesada-falha",
       initialSpec: saasSpecDoc,
       onRepairCycle,
+      excecoesCluster: [{ gap: "backend_ausente", cluster: "backend" }],
+      laudoInjetado: {
+        aprovado: false,
+        falhas: [{ req: "REQ-001", tipo: "escopo", descricao: "Invenção de escopo no cluster.", correcao: "Use só arquivos da Spec." }],
+        incertos: [],
+      },
     });
 
-    // Com o JEV reprovando continuamente, deve esgotar os 3 ciclos e bloquear na 4ª volta
+    expect(sweep).not.toHaveBeenCalled();
     expect(cycleResult.ok).toBe(false);
     expect(cycleResult.finalPhaseContext.phase).toBe("BLOQUEADA");
     expect(cycleResult.finalPhaseContext.voltasConferencia).toBe(4);
     expect(repairCalls).toBe(3);
-    expect(cycleResult.problems.some((p) => p.includes("Risco de segurança/isolamento"))).toBe(true);
+    expect(cycleResult.problems.some((p) => p.includes("Invenção de escopo"))).toBe(true);
   });
 });
