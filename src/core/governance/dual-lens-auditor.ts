@@ -115,7 +115,8 @@ export interface BlindAuditVerdict {
  */
 export function fileLineRefExists(ref: string, codeContentMap: Record<string, string>): boolean {
   // Aceita texto em volta ("src/a.ts:10 implementa x"); exige arquivo e linha reais.
-  const m = String(ref || "").match(/([A-Za-z0-9_.\/@\[\]()-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?/);
+  // Extensão opcional: Dockerfile, Makefile, deploy/Caddyfile (sem .ext) são válidos na etapa 8+.
+  const m = String(ref || "").match(/([A-Za-z0-9_.\/@\[\]()-]+(?:\.[A-Za-z0-9]+)?):(\d+)(?:-(\d+))?/);
   if (!m) return false;
   const norm = normalizeScopePath(m[1]);
   const content = Object.entries(codeContentMap).find(([k]) => normalizeScopePath(k) === norm)?.[1];
@@ -294,7 +295,10 @@ export class DualLensAuditor {
             compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] O componente ${filePath} deve conter uma exportação padrão ("export default function ...").`);
           }
         } else if (cleanFileLower.endsWith("route.ts") || cleanFileLower.endsWith("route.js")) {
-          const hasHttpMethod = /export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/i.test(content);
+          const hasHttpMethod =
+            /export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)/i.test(content) ||
+            /export\s+const\s+(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*=/i.test(content) ||
+            /export\s*\{[^}]*\b(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\b[^}]*\}/i.test(content);
           if (!hasHttpMethod) {
             compilationErrors.push(`[NEXT.JS APP ROUTER ERROR] A rota de API ${filePath} deve exportar pelo menos um método HTTP (GET, POST, PUT, DELETE, PATCH).`);
           }
@@ -973,12 +977,29 @@ export class DualLensAuditor {
           }
         }
 
+        const hasImportantBlocking = (blindVerdict.problemas ?? []).some(
+          (p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap)
+        );
         const hasCriticalDivergence = reqDivergences.some(
           (d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista"
         );
-        const verdict: "APPROVED" | "REJECTED" =
-          blindVerdict.implemented && !hasCriticalDivergence ? "APPROVED" : "REJECTED";
+        const implemented = blindVerdict.implemented && !hasImportantBlocking;
+        const verdict: "APPROVED" | "REJECTED" = implemented && !hasCriticalDivergence ? "APPROVED" : "REJECTED";
         const effectiveRawVerdict = verdict === "REJECTED" ? "REPROVADO" : blindVerdict.rawVerdict;
+
+        if (hasImportantBlocking && blindVerdict.reqVerdicts) {
+          for (const rv of blindVerdict.reqVerdicts) {
+            if (rv.status === "implementado") {
+              const matchingProblem = (blindVerdict.problemas ?? []).find(
+                (p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap)
+              );
+              if (matchingProblem) {
+                rv.status = "parcial";
+                break;
+              }
+            }
+          }
+        }
 
         const hasReqContext = Boolean(
           (blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0) ||
@@ -1024,6 +1045,10 @@ export class DualLensAuditor {
           .filter((d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista")
           .map((d) => d.detalhe)
           .join("; ");
+        const importantBlockingDetails = (blindVerdict.problemas ?? [])
+          .filter((p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap))
+          .map((p: any) => `[importante] ${p.arquivoLinha}: ${p.descricao}`)
+          .join("; ");
 
         return {
           verdict,
@@ -1040,12 +1065,12 @@ export class DualLensAuditor {
           lens2CrossVerification,
           rejectionReason:
             verdict === "REJECTED"
-              ? !blindVerdict.implemented
+              ? !implemented
                 ? `Auditoria cega (LLM) concluiu que o Brief NÃO foi implementado: ${blindVerdict.justification}${
                     blindVerdict.missingRequirements.length
                       ? ` | Pendências: ${blindVerdict.missingRequirements.join("; ")}`
                       : ""
-                  }`
+                  }${importantBlockingDetails ? ` | Problemas importantes: ${importantBlockingDetails}` : ""}`
                 : `Divergência crítica na Lente 2: ${criticalDivDetails}`
               : undefined,
           method: "llm_blind",
