@@ -650,7 +650,7 @@ export class DualLensAuditor {
           ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
           "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
           "REGRA INEGOCIÁVEL DE CONTRATO: qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) — função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente — é OBRIGATORIAMENTE um defeito CRÍTICO ('severidade':'critico') e reprova a etapa (implemented: false). " +
-          "Só problema critico reprova; importante aprova com ressalva e vira correção da próxima rodada; menor só registra. Problema que você considerou e descartou não entra na lista. Diga também em fatoQueGarante qual fato do código garante que a etapa está certa e em nivelProva como chegou a ele: dito | arquivo_linha | falha_descartada | executado | reproduzido." +
+          "Problema critico reprova; importante com arquivo e linha existentes também reprova; menor só registra. Problema que você considerou e descartou não entra na lista. Diga também em fatoQueGarante qual fato do código garante que a etapa está certa e em nivelProva como chegou a ele: dito | arquivo_linha | falha_descartada | executado | reproduzido." +
           skillBlock,
       },
       {
@@ -759,10 +759,34 @@ export class DualLensAuditor {
       const criticos = problemas.filter((p) => p.severidade === "critico");
       const importantes = problemas.filter((p) => p.severidade === "importante");
 
+      // F1.2: O requisito citado no problema importante não permanece implementado; vira parcial
+      if (importantes.length > 0 && reqVerdicts) {
+        for (const p of importantes) {
+          let updated = false;
+          if (p.req) {
+            for (const rv of reqVerdicts) {
+              if (rv.id === p.req && rv.status === "implementado") {
+                rv.status = "parcial";
+                updated = true;
+              }
+            }
+          }
+          if (!updated) {
+            for (const rv of reqVerdicts) {
+              if (rv.status === "implementado") {
+                rv.status = "parcial";
+                break;
+              }
+            }
+          }
+        }
+      }
+
       // Se houver reqVerdicts explícitos e algum estiver parcial ou ausente, implemented é false (P12)
+      // F1.2: problema importante com arquivo e linha existentes também reprova a etapa
       const hasIncompleteReq = reqVerdicts ? reqVerdicts.some((r) => r.status !== "implementado") : false;
       const effectiveImplemented =
-        hasIncompleteReq || criticos.length > 0 ? false : Boolean(parsed.implemented);
+        hasIncompleteReq || criticos.length > 0 || importantes.length > 0 ? false : Boolean(parsed.implemented);
 
       const ressalvasFinais = [
         ...(ressalvas ?? []),
@@ -780,7 +804,7 @@ export class DualLensAuditor {
       const missing = Array.isArray(parsed.missingRequirements)
         ? parsed.missingRequirements.slice(0, 10).map((r: unknown) => String(r))
         : [];
-      const bloqueantes = criticos.map(
+      const bloqueantes = [...criticos, ...importantes].map(
         (p) => `[${p.severidade}] ${p.arquivoLinha}: ${p.descricao}`
       );
 
@@ -977,29 +1001,12 @@ export class DualLensAuditor {
           }
         }
 
-        const hasImportantBlocking = (blindVerdict.problemas ?? []).some(
-          (p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap)
-        );
         const hasCriticalDivergence = reqDivergences.some(
           (d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista"
         );
-        const implemented = blindVerdict.implemented && !hasImportantBlocking;
+        const implemented = blindVerdict.implemented;
         const verdict: "APPROVED" | "REJECTED" = implemented && !hasCriticalDivergence ? "APPROVED" : "REJECTED";
         const effectiveRawVerdict = verdict === "REJECTED" ? "REPROVADO" : blindVerdict.rawVerdict;
-
-        if (hasImportantBlocking && blindVerdict.reqVerdicts) {
-          for (const rv of blindVerdict.reqVerdicts) {
-            if (rv.status === "implementado") {
-              const matchingProblem = (blindVerdict.problemas ?? []).find(
-                (p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap)
-              );
-              if (matchingProblem) {
-                rv.status = "parcial";
-                break;
-              }
-            }
-          }
-        }
 
         const hasReqContext = Boolean(
           (blindVerdict.reqVerdicts && blindVerdict.reqVerdicts.length > 0) ||
@@ -1045,10 +1052,6 @@ export class DualLensAuditor {
           .filter((d) => d.tipoDivergencia === "alucinacao_grave" || d.tipoDivergencia === "divergencia_otimista")
           .map((d) => d.detalhe)
           .join("; ");
-        const importantBlockingDetails = (blindVerdict.problemas ?? [])
-          .filter((p: any) => p.severidade === "importante" && fileLineRefExists(p.arquivoLinha, codeContentMap))
-          .map((p: any) => `[importante] ${p.arquivoLinha}: ${p.descricao}`)
-          .join("; ");
 
         return {
           verdict,
@@ -1070,7 +1073,7 @@ export class DualLensAuditor {
                     blindVerdict.missingRequirements.length
                       ? ` | Pendências: ${blindVerdict.missingRequirements.join("; ")}`
                       : ""
-                  }${importantBlockingDetails ? ` | Problemas importantes: ${importantBlockingDetails}` : ""}`
+                  }`
                 : `Divergência crítica na Lente 2: ${criticalDivDetails}`
               : undefined,
           method: "llm_blind",
