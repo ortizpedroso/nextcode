@@ -45,6 +45,21 @@ describe("A2.1 — T8b confere arquivo citado × escopo da etapa", () => {
     expect(r.valid).toBe(true);
   });
 
+  it("validateFinalPlan com arquivosDaSpec reprova arquivo da Spec fora do plano", () => {
+    const nodes = [
+      {
+        id: "n1",
+        dependencies: [],
+        payload: {
+          microbrief: { reqsCobertos: ["REQ-001"], arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] } },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes, ["REQ-001"], { "REQ-001": "src/a.ts src/b.ts" }, 4, ["src/a.ts", "src/b.ts"]);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("ARQUIVO SEM ETAPA") && e.includes("src/b.ts"))).toBe(true);
+  });
+
   it("validateFinalPlan soma as regras antigas da T8b (REQ sem etapa)", () => {
     const nodes = [
       {
@@ -141,5 +156,133 @@ describe("A2.1c — caminho com colchetes (rota dinâmica) entra na conferência
     const r = checkPlanScope([a, b], { "REQ-026": "src/app/api/checkout/[slug]/route.ts expõe GET usando src/lib/x.ts" });
     expect(r.valid).toBe(false);
     expect(r.errors[0]).toContain('"src/app/api/checkout/[slug]/route.ts"');
+  });
+});
+
+describe("F1.1 — junção de contratos no plano (interfacesProduz × interfacesConsome)", () => {
+  it("Dois nós com Microbrief: A produz FnCriarCobranca e B consome FnCriar → valid é false, erro contém [F1 JUNCAO] e FnCriar", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export type FnCriarCobranca = (id: string) => void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export type FnCriar = (id: string) => void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]") && e.includes("FnCriar"))).toBe(true);
+  });
+
+  it("Os dois lados com o mesmo export type FnCriar = (id: string) => void → nenhum erro contém [F1 JUNCAO]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export type FnCriar = (id: string) => void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export type FnCriar = (id: string) => void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
+  });
+
+  it("B consome export function criar(a: string): void e A produz export function criar(a: number): void → erro contém declaração diferente", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export function criar(a: number): void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export function criar(a: string): void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]") && e.includes("declaração diferente"))).toBe(true);
+  });
+
+  it("interfacesConsome: ['src/lib/x.ts'] não gera [F1 JUNCAO]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/lib/x.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "src/lib/x.ts",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["src/lib/x.ts"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/lib/x.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
   });
 });

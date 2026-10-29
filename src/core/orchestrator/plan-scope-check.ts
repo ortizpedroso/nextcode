@@ -90,16 +90,141 @@ export function planStagesFromNodes(
   return { stages, microbriefs: withMb.map((x) => x.mb) };
 }
 
-/** T8b inteira sobre o plano final (depois da divisão pelo Jev): regras antigas + as do A2.1. */
+export interface ExportDeclaration {
+  name: string;
+  header: string;
+}
+
+/**
+ * F1.1 — Extrai declarações com nomes de export (type, interface, function, class, const, enum).
+ * O cabeçalho é o trecho do export até antes de {, ou até o fim da linha, com espaços colapsados.
+ * Campo ausente, string vazia ou texto sem a palavra export não gera declaração.
+ */
+export function extractExportDeclarations(text: string): ExportDeclaration[] {
+  if (!text || typeof text !== "string" || !text.includes("export")) {
+    return [];
+  }
+  const results: ExportDeclaration[] = [];
+  const lines = text.split(/\r?\n/);
+  const exportRegex = /(?:^|\s)export\s+(?:(?:declare|async|abstract)\s+)?(type|interface|function|class|const|enum)\s+([A-Za-z0-9_$]+)/;
+
+  for (const line of lines) {
+    if (!line.includes("export")) continue;
+    const trimmed = line.trim();
+    if (trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+      continue;
+    }
+    const match = line.match(exportRegex);
+    if (!match || match.index === undefined) continue;
+
+    const name = match[2];
+    const exportIndex = line.indexOf("export", match.index);
+    if (exportIndex === -1) continue;
+
+    let raw = line.slice(exportIndex);
+    const braceIndex = raw.indexOf("{");
+    if (braceIndex !== -1) {
+      raw = raw.slice(0, braceIndex);
+    }
+    const header = raw.trim().replace(/;$/, "").replace(/\s+/g, " ");
+    results.push({ name, header });
+  }
+
+  return results;
+}
+
+function getConsumedDeclarations(mb?: MicrobriefAndReportDocument): ExportDeclaration[] {
+  if (!mb || !Array.isArray(mb.interfacesConsome)) return [];
+  const decls: ExportDeclaration[] = [];
+  for (const item of mb.interfacesConsome) {
+    if (typeof item === "string" && item.includes("export")) {
+      decls.push(...extractExportDeclarations(item));
+    }
+  }
+  return decls;
+}
+
+function getProducedDeclarations(mb?: MicrobriefAndReportDocument): ExportDeclaration[] {
+  if (!mb || typeof mb.interfacesProduz !== "string" || !mb.interfacesProduz.includes("export")) {
+    return [];
+  }
+  return extractExportDeclarations(mb.interfacesProduz);
+}
+
+/**
+ * F1.1 — Confere junção de contratos entre etapas:
+ * Para cada etapa, para cada export consumido:
+ * - Deve ser produzido por ao menos um ancestral (direto ou indireto).
+ * - O cabeçalho deve bater com o cabeçalho produzido.
+ */
+export function checkExportJunctions(
+  stages: PlanStage[],
+  microbriefsByStageId: Map<string, MicrobriefAndReportDocument>
+): string[] {
+  const errors: string[] = [];
+  const byId = new Map(stages.map((s) => [s.id, s]));
+
+  const producedByStage = new Map<string, ExportDeclaration[]>();
+  for (const stage of stages) {
+    const mb = microbriefsByStageId.get(stage.id);
+    producedByStage.set(stage.id, getProducedDeclarations(mb));
+  }
+
+  for (const stage of stages) {
+    const mb = microbriefsByStageId.get(stage.id);
+    const consumed = getConsumedDeclarations(mb);
+    if (consumed.length === 0) continue;
+
+    const ancestorIds = ancestorsOf(stage.id, byId);
+
+    const producedInAncestors = new Map<string, string[]>();
+    for (const ancId of ancestorIds) {
+      const decls = producedByStage.get(ancId) ?? [];
+      for (const d of decls) {
+        const list = producedInAncestors.get(d.name) ?? [];
+        list.push(d.header);
+        producedInAncestors.set(d.name, list);
+      }
+    }
+
+    const seenSymbols = new Set<string>();
+
+    for (const { name, header } of consumed) {
+      if (seenSymbols.has(name)) continue;
+      seenSymbols.add(name);
+
+      const headersProduced = producedInAncestors.get(name);
+      if (!headersProduced || headersProduced.length === 0) {
+        errors.push(`[F1 JUNCAO] etapa ${stage.id} consome "${name}", que nenhuma dependência produz.`);
+      } else if (!headersProduced.includes(header)) {
+        errors.push(`[F1 JUNCAO] etapa ${stage.id} consome "${name}" com declaração diferente da produzida.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+/** T8b inteira sobre o plano final (depois da divisão pelo Jev): regras antigas + as do A2.1 + F1.1 junção. */
 export function validateFinalPlan(
   nodes: { id: string; dependencies?: string[]; payload?: unknown }[],
   reqIds: string[],
   textoPorReq: Record<string, string>,
-  maxFilesPerStage: number
+  maxFilesPerStage: number,
+  arquivosDaSpec?: string[]
 ): PlanScopeCheckResult {
-  const { stages } = planStagesFromNodes(nodes);
+  const { stages, microbriefs } = planStagesFromNodes(nodes);
   if (stages.length === 0) return { valid: true, errors: [] };
-  return validatePlanStages(stages, reqIds, textoPorReq, maxFilesPerStage);
+  const base = validatePlanStages(stages, reqIds, textoPorReq, maxFilesPerStage, arquivosDaSpec);
+
+  const microbriefsByStageId = new Map<string, MicrobriefAndReportDocument>();
+  for (let i = 0; i < stages.length; i++) {
+    microbriefsByStageId.set(stages[i].id, microbriefs[i]);
+  }
+  const junctionErrors = checkExportJunctions(stages, microbriefsByStageId);
+
+  const errors = [...base.errors, ...junctionErrors];
+  return { valid: errors.length === 0, errors };
 }
 
 /**
