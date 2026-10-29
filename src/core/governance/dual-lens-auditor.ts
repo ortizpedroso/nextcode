@@ -61,6 +61,7 @@ export interface ValidationType2Result {
   nivelProva?: BlindAuditVerdict["nivelProva"];
   rawVerdict?: "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
   ressalvas?: string[];
+  problemas?: BlindAuditProblem[];
   reqVerdicts?: ReqBlindVerdictItem[];
   reqDivergences?: ReqLens2DivergenceItem[];
   lens2ByReq?: ReqLens2ComparisonItem[];
@@ -102,7 +103,7 @@ export interface BlindAuditVerdict {
   ressalvas?: string[];
   reqVerdicts?: ReqBlindVerdictItem[];
   problemas?: BlindAuditProblem[];
-  /** TR1 (11): problemas `importante` — viram lista de correção da próxima rodada, não reprovam. */
+  /** F1.2: problemas `importante` com citação válida reprovam a etapa e viram correções; `menor` não reprova. */
   correcoesSugeridas?: string[];
   /** TR1 (11): o fato que garante a etapa certa e o nível em que foi provado (escala do blast-radius). */
   fatoQueGarante?: string;
@@ -1057,6 +1058,7 @@ export class DualLensAuditor {
           verdict,
           rawVerdict: effectiveRawVerdict,
           ressalvas: blindVerdict.ressalvas,
+          problemas: blindVerdict.problemas,
           correcoesSugeridas: blindVerdict.correcoesSugeridas,
           fatoQueGarante: blindVerdict.fatoQueGarante,
           nivelProva: blindVerdict.nivelProva,

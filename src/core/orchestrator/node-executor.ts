@@ -308,6 +308,9 @@ export function verifyProjectDeliveryT10(opts: {
     if (parsedResult?.empiricalBuildPassed === false) {
       anyEmpiricalBuildFailed = true;
     }
+    if (parsedResult?.auditVerdict === "HUMAN_RESUME_SKIP" || parsedResult?.skippedRepair) {
+      continue;
+    }
 
     if (Array.isArray(parsedResult?.reqVerdicts) && parsedResult.reqVerdicts.length > 0) {
       for (const rv of parsedResult.reqVerdicts) {
@@ -318,7 +321,10 @@ export function verifyProjectDeliveryT10(opts: {
         }
       }
     } else if (t.status === "completed" && parsedResult?.auditVerdict === "APPROVED") {
-      for (const reqId of payload.reqsCobertos ?? []) {
+      const repair = readRepairPayload(t.payload);
+      const repairReqs = repair?.microbriefReparo?.reqsAlvo ?? [];
+      const covered = repairReqs.length > 0 ? repairReqs : (payload.reqsCobertos ?? []);
+      for (const reqId of covered) {
         approvedReqsSet.add(reqId);
       }
     }
@@ -1128,13 +1134,23 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   // Governança: O Executor NUNCA recebe a Spec Canônica completa quando o Microbrief existir.
   // Ele recebe exclusivamente o Microbrief da etapa (Markdown + YAML) e os contratos das dependências.
   if (nodeMicrobrief) {
+    let microbriefContent = renderMicrobriefMarkdown(nodeMicrobrief, { titulo: taskDb.title, spec: nodePayload.goal });
+    // F1.3: problemas menores de dependências concluídas que citam símbolos consumidos por esta etapa
+    const resultadosDependencias = await lerResultadosDependencias(taskDb);
+    const secaoMenores = secaoMenoresConsumidos(
+      nodeMicrobrief.interfacesConsome,
+      resultadosDependencias
+    );
+    if (secaoMenores) {
+      microbriefContent += "\n## Ressalvas da dependência que esta etapa consome\n" + secaoMenores.split("\n").map(l => `- ${l}`).join("\n");
+    }
     dispatchMessages.push({
       role: "system",
       content:
         "MICROBRIEF DESTA ETAPA (contrato: o Avaliador julga cada REQ abaixo contra estes critérios):\n\n" +
-        renderMicrobriefMarkdown(nodeMicrobrief, { titulo: taskDb.title, spec: nodePayload.goal }),
+        microbriefContent
     });
-  } else if (nodePayload.goal) {
+    } else if (nodePayload.goal) {
     // Fallback restrito apenas para nós legados que não possuem Microbrief gerado
     dispatchMessages.push({
       role: "system",
@@ -1939,7 +1955,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       // se resolvem esperando → bloqueia na hora. Mais de MAX_PAUSAS_AVALIADOR pausas seguidas → bloqueia.
       if (!evaluatorOutageFreeRetry && !secretGuardRes.blocked) {
         qm.purgeWorkspace(taskDb.id);
-        const falhas = blindAuditDispatch.lastFailures;
+        const falhas =
+          blindAuditDispatch.lastFailures.length > 0
+            ? blindAuditDispatch.lastFailures
+            : (type2Res.descartes ?? []).slice(0, 6);
         const definitivo = isEvaluatorAccessFailure(falhas);
         const pausa = evaluatorOutageStreak - MAX_FREE_EVALUATOR_RETRIES;
         const ate = new Date(Date.now() + EVALUATOR_PAUSE_MS);
@@ -2334,6 +2353,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       auditVerdict: secretGuardRes.blocked ? "REJECTED" : type2Res.verdict,
       rawVerdict: secretGuardRes.blocked ? "REPROVADO" : type2Res.rawVerdict,
       ressalvas: type2Res.ressalvas,
+      problemas: type2Res.problemas,
       correcoesSugeridas: type2Res.correcoesSugeridas,
       fatoQueGarante: type2Res.fatoQueGarante,
       nivelProva: type2Res.nivelProva,
@@ -2428,4 +2448,88 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     evaluatorSkillUsed,
     promotionTarget,
   };
+}
+
+/**
+ * F1.3: lê os resultados das dependências concluídas desta etapa para extrair problemas menores.
+ */
+async function lerResultadosDependencias(
+  taskDb: TaskNode & { session: { project?: { path?: string | null } | null } }
+): Promise<Array<{ problemas?: Array<{ severidade?: string; arquivoLinha?: string; descricao?: string }> } | null | undefined>> {
+  const all = await prisma.taskNode.findMany({
+    where: { sessionId: taskDb.sessionId, specVersion: taskDb.specVersion },
+    select: { id: true, dependencies: true, status: true, result: true },
+  });
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const depIds: string[] = JSON.parse(taskDb.dependencies || "[]");
+  const resultados: Array<{ problemas?: Array<{ severidade?: string; arquivoLinha?: string; descricao?: string }> } | null | undefined> = [];
+  for (const depId of depIds) {
+    const dep = byId.get(depId);
+    if (!dep || dep.status !== "completed") continue;
+    try {
+      const res = dep.result ? JSON.parse(dep.result) : null;
+      resultados.push(res);
+    } catch {
+      resultados.push(null);
+    }
+  }
+  return resultados;
+}
+
+/**
+ * F1.3: extrai problemas menores de dependências concluídas que citam símbolos consumidos por esta etapa.
+ */
+export function secaoMenoresConsumidos(
+  interfacesConsome: string[] | undefined,
+  resultadosDependencias: Array<{ problemas?: Array<{ severidade?: string; arquivoLinha?: string; descricao?: string }> } | null | undefined>
+): string | null {
+  if (!interfacesConsome || interfacesConsome.length === 0) {
+    return null;
+  }
+
+  // Extrair nomes dos símbolos exportados (ignora "Json")
+  const simbolos = new Set<string>();
+  for (const iface of interfacesConsome) {
+    const regex = /export\s+(?:async\s+)?(?:function|type|interface|class|const|enum)\s+(\w+)/g;
+    let match;
+    while ((match = regex.exec(iface)) !== null) {
+      const nome = match[1];
+      if (nome !== "Json") {
+        simbolos.add(nome);
+      }
+    }
+  }
+
+  if (simbolos.size === 0) {
+    return null;
+  }
+
+  // Coletar problemas menores das dependências
+  const linhasMenores = new Set<string>();
+  for (const dep of resultadosDependencias) {
+    if (!dep?.problemas) continue;
+    for (const p of dep.problemas) {
+      if (p.severidade !== "menor") continue;
+      const texto = `${p.arquivoLinha ?? ""} ${p.descricao ?? ""}`;
+      for (const simbolo of simbolos) {
+        // Verifica se o símbolo aparece como identificador inteiro (não parte de outro nome)
+        const regexIdentificador = new RegExp(`\\b${escapeRegExp(simbolo)}\\b`);
+        if (regexIdentificador.test(texto)) {
+          const linha = `[menor] ${p.arquivoLinha}: ${p.descricao}`;
+          linhasMenores.add(linha);
+          break;
+        }
+      }
+    }
+  }
+
+  if (linhasMenores.size === 0) {
+    return null;
+  }
+
+  return Array.from(linhasMenores).join("\n");
+}
+
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
