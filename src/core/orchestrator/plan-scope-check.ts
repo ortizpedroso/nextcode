@@ -190,6 +190,7 @@ export function checkExportJunctions(
     const seenSymbols = new Set<string>();
 
     for (const { name, header } of consumed) {
+      if (name === "Json") continue; // Tipo interno embutido pelo template de contratos do harness
       if (seenSymbols.has(name)) continue;
       seenSymbols.add(name);
 
