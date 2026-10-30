@@ -1,6 +1,11 @@
-## 30/10/2026 (268) — Decisões E5-D21/D2 + achados 2–5 (pacote em andamento)
-**Veredito:** fundador concordou passo 0; implementado **D2/D4** (importante ancorado sem prova bloqueia), **J20** ampliado, fixtures `requisitos_ids`, **D21** documentado em `decisoes.md` e comentário no executor.
-**Próximo passo:** `tsc` + `vitest` 2×; commit do pacote; passos 5–6 E5; Gate 1.
+## 30/10/2026 (269) — Baseline E5 + passo 6 (pacote pós-e10099c)
+**Veredito:** **ACEITO COM RESSALVAS** — suite ainda não 100% verde; achados E5 2–4 fechados; T1 Spec sem REQ corrigido.
+**Prova:** `npx tsc --noEmit` saída 0. Vitest 2×: **~1145/1167** passando (**22–24** falhas em testes de integração). `controles-autoteste-e5.ts` → `P1 ref passa: true (10/10)`. Helper `mock-blind-audit.ts` (AV1.3). Skills com `referencias_locais_fixas`. `spec-patch` → `requisitos_ids`.
+**Próximo passo:** estabilizar 7 arquivos de integração restantes; Gate 1; WIP conferente (stash) separado.
+---
+## 30/10/2026 (268) — Decisões E5-D21/D2 + achados 2–4 (`e10099c`)
+**Veredito:** pacote commitado.
+**Prova:** `npx tsc --noEmit` saída 0. Vitest focado (spec-check, j20, aviso-diagnostico) verde. Decisões em `memory/decisoes.md`.
 ---
 ## 30/10/2026 (267) — Saneamento harness (619193c) — fundador aprovou
 **Veredito:** pacote **fechado** para o objetivo imediato (HEAD compila limpo); item 7 **§3.3** ainda pede re-baseline E5 (`vitest` completo 2×) e decisões D21/fixtures.

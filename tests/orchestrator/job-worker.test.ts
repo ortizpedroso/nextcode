@@ -16,6 +16,13 @@ import {
   superviseExecutionQueue,
 } from "@/core/orchestrator/job-worker";
 import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+
+const blindAuditHttpContent = mockBlindAuditJson({
+  justification: "Código de acordo com o brief.",
+  fatoQueGarante: "index.ts:1",
+  reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "index.ts:1" }],
+});
 
 let server: http.Server;
 let baseUrl: string;
@@ -120,11 +127,7 @@ beforeAll(async () => {
                   {
                     message: {
                       role: "assistant",
-                      content: JSON.stringify({
-                        implemented: true,
-                        missingRequirements: [],
-                        justification: "Código de acordo com o brief.",
-                      }),
+                      content: blindAuditHttpContent,
                     },
                   },
                 ],

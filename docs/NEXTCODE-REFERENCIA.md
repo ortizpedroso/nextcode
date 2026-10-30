@@ -262,7 +262,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 ### 3.3 Prova (não é correção de código)
 | # | Item | Quando |
 |---|---|---|
-| 7 | **TESTE-E5:** relatório `7869124`; saneamento `619193c`; decisões fundador 30/10 — **D21** aceite estrito; **D2/D4** importante ancorado sem prova não `ENTREGUE` (`delivery-diagnosis`, `job-queue`). **Aberto:** re-baseline passo 2 (`vitest` 2×), passos 5–6, achados J20/fixtures fechados no código | Gate 1 (item 8) depois |
+| 7 | **TESTE-E5:** relatório `7869124`; saneamento `619193c`; decisões **D21/D2/D4** + achados 2–4 no código (commits `e10099c` e baseline). Passo 6 autoteste: P1 **10/10**. **Aberto:** vitest suite ~**22** falhas em testes de integração (`end-to-end-harness-plan`, `execution-trigger`, …); J3 passo 6 opcional | Gate 1 (item 8) depois |
 | 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas | os itens 1 e 2 já estão aceitos (diário 263). Continua bancada, não correção do harness |
 
 **DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).

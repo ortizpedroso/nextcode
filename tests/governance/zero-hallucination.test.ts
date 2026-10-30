@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { ZeroHallucinationEngine } from "@/core/governance/zero-hallucination-loop";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
 
 describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () => {
   it("deve rejeitar respostas com erros de sintaxe CSS e interceptar falsas alegações da IA", async () => {
@@ -31,8 +32,8 @@ describe("ZeroHallucinationEngine — Empirical Verification & Grounding", () =>
 
   // Trava T5: sem veredito da Lente Cega nada é promovido — os testes de promoção fornecem
   // um auditor cego que aprova.
-  const approvingBlindAudit = async () =>
-    JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok" });
+  const approvingBlindAudit = async (fato = "src/lib/x.ts:1") =>
+    mockBlindAuditJson({ fatoQueGarante: fato, reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: fato }] });
 
   it("deve aprovar e promover patches limpos com 0 erros sintáticos", async () => {
     const tmpProjectPath = fs.mkdtempSync(path.join(os.tmpdir(), "zero-halluc-test-"));
@@ -51,7 +52,7 @@ export function add(a: number, b: number): number {
         rawAiResponse,
         "crie a funcao add",
         tmpProjectPath,
-        approvingBlindAudit
+        () => approvingBlindAudit("src/utils/math.ts:4")
       );
 
       expect(res.passed).toBe(true);
@@ -80,7 +81,7 @@ export default function FinancialPage() {
         rawAiResponse,
         "implemente o modulo financeiro",
         tmpProjectPath,
-        approvingBlindAudit
+        () => approvingBlindAudit("src/app/dashboard/finance/page.tsx:3")
       );
 
       expect(res.passed).toBe(true);
@@ -103,7 +104,8 @@ export function sum(a: number, b: number): number {
   return a + b;
 }
 \`\`\``;
-      const dispatchFn = async () => JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok" });
+      const dispatchFn = async () =>
+        mockBlindAuditJson({ fatoQueGarante: "src/utils/sum.ts:3", reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/utils/sum.ts:3" }] });
 
       const res = await ZeroHallucinationEngine.processAndVerifyResponse(
         taskId,

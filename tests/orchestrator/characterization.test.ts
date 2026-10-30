@@ -12,6 +12,13 @@ import type { AddressInfo } from "net";
 import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { POST } from "@/app/api/dag/route";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+
+const blindAuditHttpContent = mockBlindAuditJson({
+  justification: "Código de acordo com o brief.",
+  fatoQueGarante: "index.ts:1",
+  reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "index.ts:1" }],
+});
 
 import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
@@ -73,11 +80,7 @@ beforeAll(async () => {
                 {
                   message: {
                     role: "assistant",
-                    content: JSON.stringify({
-                      implemented: true,
-                      missingRequirements: [],
-                      justification: "Código de acordo com o brief.",
-                    }),
+                    content: blindAuditHttpContent,
                   },
                 },
               ],

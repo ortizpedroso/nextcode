@@ -13,6 +13,13 @@ import { SmartRouter, type DispatchOptions } from "@/core/router/smart-router";
 import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { startJobWorker, stopJobWorker } from "@/core/orchestrator/job-worker";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+
+const blindAuditHttpContent = mockBlindAuditJson({
+  justification: "Código de acordo com o brief.",
+  fatoQueGarante: "index.ts:1",
+  reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "index.ts:1" }],
+});
 import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 
 vi.mock("@/core/security/local-auth", () => ({
@@ -143,11 +150,7 @@ beforeAll(async () => {
                   {
                     message: {
                       role: "assistant",
-                      content: JSON.stringify({
-                        implemented: true,
-                        missingRequirements: [],
-                        justification: "Código de acordo com o brief.",
-                      }),
+                      content: blindAuditHttpContent,
                     },
                   },
                 ],

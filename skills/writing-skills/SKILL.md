@@ -1,6 +1,14 @@
 ---
 name: writing-skills
 description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
+referencias_locais_fixas:
+  - caminho: skills/writing-skills/references/CLAUDE_MD_TESTING.md
+  - caminho: skills/writing-skills/references/anthropic-best-practices.md
+  - caminho: skills/writing-skills/references/bulletproofing.md
+  - caminho: skills/writing-skills/references/discovery.md
+  - caminho: skills/writing-skills/references/flowcharts.md
+  - caminho: skills/writing-skills/references/persuasion-principles.md
+  - caminho: skills/writing-skills/references/testing-skills-with-subagents.md
 ---
 
 # Writing Skills

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { secaoMenoresConsumidos } from "@/core/orchestrator/node-executor";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
 
 describe("F1.3: problemas menores de dependências no Microbrief", () => {
   it("retorna null quando não há interfacesConsome", () => {
@@ -98,11 +99,9 @@ describe("F1.3: problemas menores de dependências no Microbrief", () => {
       "feito",
       CODE,
       async () =>
-        JSON.stringify({
-          implemented: true,
-          missingRequirements: [],
-          justification: "ok",
+        mockBlindAuditJson({
           reqVerdicts: [ok],
+          fatoQueGarante: "src/lib/soma.ts:1",
           problemas: [problemaMenor],
         }),
       { expectedReqs: ["REQ-001"] }

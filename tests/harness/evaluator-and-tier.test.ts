@@ -4,6 +4,7 @@ import { readPlannedTier } from "@/core/orchestrator/node-executor";
 import { resolveExecutorTierForAttempt } from "@/core/config/orchestration-policy";
 import { dispatchStrongEvaluator, resetEvaluatorState } from "@/core/llm/evaluator-models";
 import type { GatewayConfig } from "@/core/llm/gateways";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
 
 const type1Ok = { passed: true, compilationErrors: [], lintWarnings: [], securityViolations: [] } as never;
 const code = { "src/lib/x.ts": "export const x = 1;\n" };
@@ -18,8 +19,9 @@ describe("Veredito por REQ obrigatório", () => {
     const calls: number[] = [];
     const res = await DualLensAuditor.validateType2(type1Ok, "# brief", "ok", code, async () => {
       calls.push(1);
-      return JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok",
-        reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/x.ts:1" }] });
+      return mockBlindAuditJson({
+        reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/x.ts:1" }],
+      });
     }, { expectedReqs: ["REQ-001", "REQ-002"] });
     expect(calls.length).toBe(2); // perguntou de novo
     expect(res.verdict).toBe("REJECTED");
@@ -27,10 +29,12 @@ describe("Veredito por REQ obrigatório", () => {
 
   it("todos os REQ julgados como implementado → aprovado; REQ inventado é ignorado", async () => {
     const res = await DualLensAuditor.validateType2(type1Ok, "# brief", "ok", code, async () =>
-      JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: [
-        { id: "REQ-001", status: "implementado", evidencia: "src/lib/x.ts:1" },
-        { id: "REQ-999", status: "ausente", evidencia: "-" },
-      ] }), { expectedReqs: ["REQ-001"] });
+      mockBlindAuditJson({
+        reqVerdicts: [
+          { id: "REQ-001", status: "implementado", evidencia: "src/lib/x.ts:1" },
+          { id: "REQ-999", status: "ausente", evidencia: "-" },
+        ],
+      }), { expectedReqs: ["REQ-001"] });
     expect(res.verdict).toBe("APPROVED");
     expect(res.reqVerdicts?.map((r) => r.id)).toEqual(["REQ-001"]);
   });

@@ -152,6 +152,7 @@ export function applySpecPatch(previousSpecRaw: string, patch: SpecPatch): SpecP
     arquivosAfetados: arquivos,
     rotas,
     notasImplementacao: notas,
+    requisitosIds: reqs.map((r) => r.id),
     requisitos: reqs,
   };
   return { ok: true, spec: renderCanonicalSpecDocument(input), erros: [], resumo };

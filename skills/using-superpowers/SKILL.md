@@ -1,6 +1,14 @@
 ---
 name: using-superpowers
 description: Use when starting any conversation - establishes how to find and use skills, requiring skill invocation before ANY response including clarifying questions
+referencias_locais_fixas:
+  - caminho: skills/using-superpowers/references/antigravity-tools.md
+  - caminho: skills/using-superpowers/references/claude-code-tools.md
+  - caminho: skills/using-superpowers/references/codex-tools.md
+  - caminho: skills/using-superpowers/references/gemini-tools.md
+  - caminho: skills/using-superpowers/references/hermes-tools.md
+  - caminho: skills/using-superpowers/references/muse-tools.md
+  - caminho: skills/using-superpowers/references/pi-tools.md
 ---
 
 <SUBAGENT-STOP>

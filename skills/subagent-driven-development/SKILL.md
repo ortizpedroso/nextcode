@@ -1,6 +1,14 @@
 ---
 name: subagent-driven-development
 description: Use when executing implementation plans with independent tasks in the current session
+referencias_locais_fixas:
+  - caminho: skills/subagent-driven-development/references/batching.md
+  - caminho: skills/subagent-driven-development/references/cannot-verify.md
+  - caminho: skills/subagent-driven-development/references/final-review.md
+  - caminho: skills/subagent-driven-development/references/fix-loop.md
+  - caminho: skills/subagent-driven-development/references/handling-reports.md
+  - caminho: skills/subagent-driven-development/references/preflight.md
+  - caminho: skills/subagent-driven-development/references/resuming.md
 ---
 
 # Subagent-Driven Development

@@ -3,6 +3,7 @@ import { IntakeEngine } from "@/core/intake/intake-engine";
 import { BriefBuilder } from "@/core/brief/brief-builder";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
 import { IncidentReporter } from "@/core/governance/incident-reporter";
 import { DAGEngine, DAGNode } from "@/core/dag/dag-engine";
 import { extractFilePathsFromText, SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
@@ -135,7 +136,11 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       const res1 = DualLensAuditor.validateType1(codeMap);
 
       const dispatchFn = async () =>
-        JSON.stringify({ implemented: true, missingRequirements: [], justification: "Soma implementada conforme Brief." });
+        mockBlindAuditJson({
+          justification: "Soma implementada conforme Brief.",
+          fatoQueGarante: "src/good.ts:1",
+          reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/good.ts:1" }],
+        });
 
       const res2 = await DualLensAuditor.validateType2(
         res1,
@@ -209,7 +214,7 @@ describe("NextCode v5 Governance & Multi-Agent Architecture", () => {
       const flakyDispatchFn = async () => {
         calls++;
         if (calls === 1) throw new Error("timeout");
-        return JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok" });
+        return mockBlindAuditJson({ fatoQueGarante: "src/good.ts:1", reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/good.ts:1" }] });
       };
 
       const res2 = await DualLensAuditor.validateType2(res1, "# Brief", "feito", codeMap, flakyDispatchFn);

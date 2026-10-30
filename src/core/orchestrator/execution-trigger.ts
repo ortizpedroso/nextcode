@@ -160,10 +160,7 @@ export async function approveSpecAndStart(
     if (!parsedForApproval) {
       return { ok: false, reason: "SPEC_INVALIDA_OU_MALFORMATADA" };
     }
-    if (
-      effectiveSpec.includes("requisitos:") &&
-      (!parsedForApproval.requisitos || parsedForApproval.requisitos.length === 0)
-    ) {
+    if ((parsedForApproval.requisitos?.length ?? 0) === 0) {
       return { ok: false, reason: "SPEC_SEM_REQUISITOS" };
     }
     if (!parsedForApproval.modulos || parsedForApproval.modulos.length === 0) {

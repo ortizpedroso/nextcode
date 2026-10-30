@@ -16,6 +16,13 @@ import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 import { UniversalDocsFetcher, createDefaultResearchBudget } from "@/core/intake/universal-docs-fetcher";
 import { measureJevSelectorComparison } from "@/core/decision/jev-decisions";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+
+function blindOkFromPrompt(sys: string): string {
+  const reqVerdicts = reqsVerdictsFromPrompt(sys);
+  const ev = reqVerdicts[0]?.evidencia ?? "arquivo:1";
+  return mockBlindAuditJson({ reqVerdicts, fatoQueGarante: ev });
+}
 
 /** Veredito por REQ obrigatório: o avaliador falso julga todos os REQ que o prompt pede. */
 function reqsVerdictsFromPrompt(sys: string): { id: string; status: "implementado"; evidencia: string }[] {
@@ -185,7 +192,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
       const sys = opts.messages.map((m) => m.content).join("\n");
       if (sys.includes("Auditor Cego")) {
-        return makeOkDispatch(JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: reqsVerdictsFromPrompt(sys) }));
+        return makeOkDispatch(blindOkFromPrompt(sys));
       }
       const scope = opts.messages.find((m) => m.content.includes("Escopo de Arquivos:"))?.content || "";
       const code = scope.includes(files[1])
@@ -258,14 +265,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       }
       const sys = opts.messages.map((m) => m.content).join("\n");
       if (sys.includes("Auditor Cego")) {
-        return makeOkDispatch(
-          JSON.stringify({
-            implemented: true,
-            missingRequirements: [],
-            justification: "Função saudar implementada com tipagem estrita.",
-            reqVerdicts: reqsVerdictsFromPrompt(sys),
-          })
-        );
+        return makeOkDispatch(blindOkFromPrompt(sys));
       }
       return makeOkDispatch(
         [
@@ -497,14 +497,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       if (sys.includes("Auditor Cego")) {
         const matchSkill = sys.match(/\[INSTRUÇÕES DECLARATIVAS DA SKILL ([^\]]+)\]/);
         if (matchSkill) observedAuditorSkills.push(matchSkill[1]);
-        return makeOkDispatch(
-          JSON.stringify({
-            implemented: true,
-            missingRequirements: [],
-            justification: "Todos os REQs da etapa implementados e tipados.",
-            reqVerdicts: reqsVerdictsFromPrompt(sys),
-          })
-        );
+        return makeOkDispatch(blindOkFromPrompt(sys));
       }
 
       const matchExecSkill = sys.match(/\[SKILL DECLARATIVA DO PAPEL: ([^\]]+)\]/);
@@ -662,15 +655,12 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       frontendCodeMap,
       async (messages) => {
         frontendSystemPrompt = messages.find((m) => m.role === "system")?.content || "";
-        return JSON.stringify({
-          implemented: true,
-          missingRequirements: [],
+        return mockBlindAuditJson({
           justification: "REQ-003 implementado; ressalva menor de acessibilidade no input.",
           rawVerdict: "APROVADO_COM_RESSALVA",
           ressalvas: ["Adicionar label explícito associado ao input de título"],
-          reqVerdicts: [
-            { id: "REQ-003", status: "implementado", evidencia: "src/app/notas/page.tsx:3" },
-          ],
+          fatoQueGarante: "src/app/notas/page.tsx:3",
+          reqVerdicts: [{ id: "REQ-003", status: "implementado", evidencia: "src/app/notas/page.tsx:3" }],
         });
       },
       { cluster: "frontend", expectedReqs: ["REQ-003"], isPublicPage: false }
@@ -908,14 +898,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       const user = opts.messages.find((m) => m.role === "user")?.content || "";
 
       if (sys.includes("Auditor Cego")) {
-        return makeOkDispatch(
-          JSON.stringify({
-            implemented: true,
-            missingRequirements: [],
-            justification: "Requisitos do Gateway implementados e compilados.",
-            reqVerdicts: reqsVerdictsFromPrompt(sys),
-          })
-        );
+        return makeOkDispatch(blindOkFromPrompt(sys));
       }
 
       if (!user.includes("src/app/api/gateway/route.ts") || user.includes("lib/gateway-client.ts (Escopo")) {
@@ -1019,11 +1002,10 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       const allContent = opts.messages.map((m) => m.content).join("\n");
       if (allContent.includes("Auditor Cego")) {
         return makeOkDispatch(
-          JSON.stringify({
-            implemented: true,
-            missingRequirements: [],
+          mockBlindAuditJson({
             justification: "REQ-001 implementado.",
-            reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/saudar.ts:1-3" }],
+            fatoQueGarante: "src/lib/saudar.ts:1",
+            reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/lib/saudar.ts:1" }],
           })
         );
       }
@@ -1214,13 +1196,10 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       "```typescript\n// file: src/app/api/notas/route.ts\nexport async function GET() { return new Response('[]'); }\n```",
       codeMap,
       async () =>
-        JSON.stringify({
-          implemented: true,
-          missingRequirements: [],
+        mockBlindAuditJson({
           justification: "REQ-001 implementado.",
-          reqVerdicts: [
-            { id: "REQ-001", status: "implementado", evidencia: "src/app/api/notas/route.ts:1" },
-          ],
+          fatoQueGarante: "src/app/api/notas/route.ts:1",
+          reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/app/api/notas/route.ts:1" }],
         }),
       {
         cluster: "backend",

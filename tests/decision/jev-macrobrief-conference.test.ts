@@ -38,9 +38,9 @@ describe("verifyMacrobriefCoverageWithJev (T8a - Bateria Estratégica Fan-Out)",
     vi.restoreAllMocks();
   });
 
-  it("deve conter exatamente 6 perguntas estratégicas na bateria", () => {
+  it("deve conter 8 perguntas estratégicas na bateria (D-M9 inclui contrato e regra de negócio)", () => {
     const keys = Object.keys(MACROBRIEF_CONFERENCE_QUESTIONS);
-    expect(keys).toHaveLength(6);
+    expect(keys).toHaveLength(8);
     expect(keys).toEqual([
       "cobertura_requisitos",
       "fidelidade_sem_contradicao",
@@ -48,10 +48,12 @@ describe("verifyMacrobriefCoverageWithJev (T8a - Bateria Estratégica Fan-Out)",
       "suficiencia_arquivos",
       "ordem_dependencias_valida",
       "isolamento_seguranca",
+      "contrato_reflete_spec",
+      "dependencias_regra_negocio",
     ]);
   });
 
-  it("deve aprovar Macrobrief quando todas as 6 perguntas do JEV superarem os limiares", async () => {
+  it("deve aprovar Macrobrief quando todas as perguntas do JEV superarem os limiares", async () => {
     vi.spyOn(jevClient, "askJevBatch").mockResolvedValue({
       cobertura_requisitos: { type: "noul", noul: 0.95, confidence: 0.95 },
       fidelidade_sem_contradicao: { type: "noul", noul: 0.92, confidence: 0.92 },
@@ -59,6 +61,8 @@ describe("verifyMacrobriefCoverageWithJev (T8a - Bateria Estratégica Fan-Out)",
       suficiencia_arquivos: { type: "noul", noul: 0.85, confidence: 0.85 },
       ordem_dependencias_valida: { type: "noul", noul: 0.90, confidence: 0.90 },
       isolamento_seguranca: { type: "noul", noul: 0.91, confidence: 0.91 },
+      contrato_reflete_spec: { type: "noul", noul: 0.90, confidence: 0.90 },
+      dependencias_regra_negocio: { type: "noul", noul: 0.90, confidence: 0.90 },
     });
 
     const logSpy = vi.spyOn(TelemetryLogger, "log");
@@ -95,6 +99,8 @@ describe("verifyMacrobriefCoverageWithJev (T8a - Bateria Estratégica Fan-Out)",
       suficiencia_arquivos: { type: "noul", noul: 0.85, confidence: 0.85 },
       ordem_dependencias_valida: { type: "noul", noul: 0.85, confidence: 0.85 },
       isolamento_seguranca: { type: "noul", noul: 0.85, confidence: 0.85 },
+      contrato_reflete_spec: { type: "noul", noul: 0.85, confidence: 0.85 },
+      dependencias_regra_negocio: { type: "noul", noul: 0.85, confidence: 0.85 },
     });
 
     const result = await verifyMacrobriefCoverageWithJev({
@@ -120,6 +126,8 @@ describe("verifyMacrobriefCoverageWithJev (T8a - Bateria Estratégica Fan-Out)",
       suficiencia_arquivos: { type: "noul", noul: 0.90, confidence: 0.90 },
       ordem_dependencias_valida: { type: "noul", noul: 0.60, confidence: 0.60 }, // falha (< 0.80)
       isolamento_seguranca: { type: "noul", noul: 0.55, confidence: 0.55 }, // falha (< 0.80)
+      contrato_reflete_spec: { type: "noul", noul: 0.90, confidence: 0.90 },
+      dependencias_regra_negocio: { type: "noul", noul: 0.90, confidence: 0.90 },
     });
 
     const result = await verifyMacrobriefCoverageWithJev({

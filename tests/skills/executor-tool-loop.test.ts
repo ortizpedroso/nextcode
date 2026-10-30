@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import prisma from "@/lib/prisma";
+import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
 import { SmartRouter, type DispatchResult } from "@/core/router/smart-router";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
 import { runOnce } from "@/core/orchestrator/job-worker";
@@ -95,17 +96,10 @@ const VALID_REPORT_YAML = [
   '    como: "Funcao greet implementada em src/greet.ts"',
 ].join("\n");
 
-const EVALUATOR_PASS_JSON = JSON.stringify({
-  implemented: true,
-  missingRequirements: [],
+const EVALUATOR_PASS_JSON = mockBlindAuditJson({
   justification: "Todos os requisitos implementados.",
-  reqVerdicts: [
-    {
-      id: "REQ-001",
-      status: "implementado",
-      evidencia: "src/greet.ts:1 implementa greet",
-    },
-  ],
+  fatoQueGarante: "src/greet.ts:1",
+  reqVerdicts: [{ id: "REQ-001", status: "implementado", evidencia: "src/greet.ts:1" }],
 });
 
 async function setupSingleTaskSession(projectDir: string) {
