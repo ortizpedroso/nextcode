@@ -17,7 +17,7 @@ import {
 } from "@/core/decision/jev-decisions";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { splitNodesByJev } from "@/core/orchestrator/node-split";
-import { validateFinalPlan } from "@/core/orchestrator/plan-scope-check";
+import { validateFinalPlan, atribuirInfraAoDono } from "@/core/orchestrator/plan-scope-check";
 
 /** Mesmo teto de arquivos por etapa do decompositor (`FILES_PER_NODE`, spec-decomposer.ts). */
 const PLAN_MAX_FILES_PER_STAGE = 4;
@@ -499,12 +499,34 @@ export async function approveSpecAndStart(
       // a sessão fica BLOQUEADA com o relatório (dono: analista), sem gastar executor nem avaliador.
       const reqsDaSpec = parsedSpec?.requisitos ?? [];
       if (reqsDaSpec.length > 0) {
+        const infraRes = atribuirInfraAoDono(decomposedNodes, parsedSpec?.arquivosAfetados ?? []);
+        if (infraRes.errors.length > 0) {
+          TelemetryLogger.log({
+            sessionId,
+            action: "PLANO_REPROVADO",
+            details: { etapas: decomposedNodes.length, erros: infraRes.errors.length, amostra: infraRes.errors.slice(0, 20) },
+          });
+          const detalhe =
+            "**Dono:** analista (erro do plano).\n\n" +
+            `O plano tem ${infraRes.errors.length} problema(s); nenhuma etapa foi criada e nada foi gasto em execução:\n` +
+            infraRes.errors.slice(0, 15).map((e) => "- " + e).join("\n") +
+            (infraRes.errors.length > 15 ? `\n- … e mais ${infraRes.errors.length - 15}` : "");
+          const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+          return {
+            ok: true,
+            alreadyStarted: false,
+            phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
+            tasks: [],
+          };
+        }
+
         const textoPorReq = Object.fromEntries(reqsDaSpec.map((r) => [r.id, `${r.titulo} ${r.criterio}`]));
         const planCheck = validateFinalPlan(
           decomposedNodes,
           reqsDaSpec.map((r) => r.id),
           textoPorReq,
-          PLAN_MAX_FILES_PER_STAGE
+          PLAN_MAX_FILES_PER_STAGE,
+          parsedSpec?.arquivosAfetados
         );
         TelemetryLogger.log({
           sessionId,

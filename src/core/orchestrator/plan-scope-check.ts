@@ -229,9 +229,111 @@ export function validateFinalPlan(
 }
 
 /**
+ * 1. Dono de infra no plano, antes da execução.
+ * Atribui Dockerfile, docker-compose.yml, docker-compose.prod.yml e prisma/migrations
+ * à etapa dona apropriada (com package.json ou prisma/schema.prisma) alterando os nós in-place.
+ */
+export function atribuirInfraAoDono(
+  nodes: Array<{ id: string; filesScope?: string[]; payload?: unknown }>,
+  arquivosDaSpec: string[]
+): { errors: string[] } {
+  const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+  const specNorm = new Set(arquivosDaSpec.map(norm));
+  const errors: string[] = [];
+
+  const nodeContainsFile = (n: { filesScope?: string[]; payload?: unknown }, target: string): boolean => {
+    const fsFiles = (n.filesScope ?? []).map(norm);
+    if (fsFiles.includes(target)) return true;
+    const mb = (n.payload as { microbrief?: MicrobriefAndReportDocument } | undefined)?.microbrief;
+    if (mb?.arquivosPermitidos) {
+      const mbFiles = [
+        ...(mb.arquivosPermitidos.criar ?? []),
+        ...(mb.arquivosPermitidos.modificar ?? []),
+      ].map(norm);
+      if (mbFiles.includes(target)) return true;
+    }
+    return false;
+  };
+
+  const addFileToNode = (n: { filesScope?: string[]; payload?: unknown }, file: string) => {
+    if (!n.filesScope) {
+      n.filesScope = [];
+    }
+    const currentFs = n.filesScope.map(norm);
+    if (!currentFs.includes(norm(file))) {
+      n.filesScope.push(file);
+    }
+
+    const mb = (n.payload as { microbrief?: MicrobriefAndReportDocument } | undefined)?.microbrief;
+    if (mb?.arquivosPermitidos) {
+      if (!mb.arquivosPermitidos.criar) {
+        mb.arquivosPermitidos.criar = [];
+      }
+      const currentMbCriar = mb.arquivosPermitidos.criar.map(norm);
+      const currentMbMod = (mb.arquivosPermitidos.modificar ?? []).map(norm);
+      if (!currentMbCriar.includes(norm(file)) && !currentMbMod.includes(norm(file))) {
+        mb.arquivosPermitidos.criar.push(file);
+      }
+    }
+  };
+
+  // Arquivos de infra com dona package.json
+  const infraPkg = ["Dockerfile", "docker-compose.yml", "docker-compose.prod.yml"];
+  for (const f of infraPkg) {
+    if (!specNorm.has(norm(f))) continue;
+
+    // Se alguma etapa já tem o arquivo, não mexe nem duplica
+    const alreadyHas = nodes.some((n) => nodeContainsFile(n, norm(f)));
+    if (alreadyHas) continue;
+
+    // Procura etapa com package.json
+    const dono = nodes.find((n) => nodeContainsFile(n, "package.json"));
+    if (dono) {
+      addFileToNode(dono, f);
+    } else {
+      errors.push(`[PLANO INFRA] "${f}" está na Spec e não há etapa com package.json para ser dona.`);
+    }
+  }
+
+  // Arquivos de infra com dona prisma/schema.prisma
+  const infraPrisma = ["prisma/migrations"];
+  for (const f of infraPrisma) {
+    if (!specNorm.has(norm(f))) continue;
+
+    // Se alguma etapa já tem o arquivo, não mexe nem duplica
+    const alreadyHas = nodes.some((n) => nodeContainsFile(n, norm(f)));
+    if (alreadyHas) continue;
+
+    // Procura etapa com prisma/schema.prisma
+    const dono = nodes.find((n) => nodeContainsFile(n, "prisma/schema.prisma"));
+    if (dono) {
+      addFileToNode(dono, f);
+    } else {
+      errors.push(`[PLANO INFRA] "${f}" está na Spec e não há etapa com prisma/schema.prisma para ser dona.`);
+    }
+  }
+
+  return { errors };
+}
+
+/**
  * T8b sobre etapas soltas (plano do analista antes de virar nó). Com `arquivosDaSpec`, também confere
  * que todo arquivo da Spec está em alguma etapa e que nenhuma etapa inventa arquivo.
  */
+/** Arquivos de infra/ci/docs que a Spec pode citar mas não precisam de etapa própria. */
+const INFRA_FILES = new Set([
+  // Infra / deploy
+  "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+  ".dockerignore", "fly.toml", "railway.json", "vercel.json",
+  "Procfile", "render.yaml", "netlify.toml",
+  // CI/CD
+  ".github/workflows/ci.yml", ".github/workflows/ci.yaml",
+  ".gitlab-ci.yml", ".circleci/config.yml",
+  // Docs / config
+  "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE",
+  ".env.example", ".gitignore", ".editorconfig",
+]);
+
 export function validatePlanStages(
   stages: PlanStage[],
   reqIds: string[],
@@ -244,7 +346,9 @@ export function validatePlanStages(
     const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
     const spec = new Set(arquivosDaSpec.map(norm));
     const planned = new Set(stages.flatMap((s) => s.arquivos.map(norm)));
-    for (const f of spec) if (!planned.has(f)) extra.push(`[T8b ARQUIVO SEM ETAPA] "${f}" está na Spec e em nenhuma etapa.`);
+    // Arquivos de infra citados na Spec são válidos mesmo sem etapa própria.
+    const specSemInfra = [...spec].filter((f) => !INFRA_FILES.has(f));
+    for (const f of specSemInfra) if (!planned.has(f)) extra.push(`[T8b ARQUIVO SEM ETAPA] "${f}" está na Spec e em nenhuma etapa.`);
     for (const f of planned) if (!spec.has(f)) extra.push(`[T8b ARQUIVO INVENTADO] "${f}" não está na lista de arquivos da Spec.`);
   }
   const macrobrief: MacrobriefDocument = {

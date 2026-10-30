@@ -112,14 +112,35 @@ export function montarDependenciasDaFila(tasks: Array<{ id: string; status: stri
   const bloqueios: Array<{ taskId: string; idsDesconhecidos: string[]; erro: string }> = [];
 
   for (const t of tasks) {
-    let rawDeps: string[] = [];
+    const rawStr = (t.dependencies ?? "").trim();
+    if (!rawStr || rawStr === "[]") {
+      porId.set(t.id, []);
+      continue;
+    }
+
+    let rawDeps: string[];
+    let parseError = false;
     try {
-      rawDeps = JSON.parse(t.dependencies || "[]");
-      if (!Array.isArray(rawDeps)) {
+      const parsed = JSON.parse(rawStr);
+      if (!Array.isArray(parsed)) {
+        parseError = true;
         rawDeps = [];
+      } else {
+        rawDeps = parsed;
       }
     } catch {
+      parseError = true;
       rawDeps = [];
+    }
+
+    if (parseError) {
+      bloqueios.push({
+        taskId: t.id,
+        idsDesconhecidos: ["<dependencies ilegível>"],
+        erro: "DEPENDENCIA_DESCONHECIDA",
+      });
+      porId.set(t.id, []);
+      continue;
     }
 
     const idsDesconhecidos = rawDeps.filter((depId) => !knownIds.has(depId));

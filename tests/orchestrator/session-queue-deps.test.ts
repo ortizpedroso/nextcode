@@ -68,7 +68,7 @@ describe("session-queue-deps - montarDependenciasDaFila (item 5c)", () => {
     expect(porId.get("etapa-2")).toEqual(["etapa-1"]);
   });
 
-  it("lida com dependencies nulas ou inválidas sem lançar erro", () => {
+  it("dependencies vazia continua lista vazia sem bloqueio; JSON inválido entra em bloqueios", () => {
     const tasks = [
       { id: "etapa-1", status: "completed", dependencies: "" },
       { id: "etapa-2", status: "pending", dependencies: "json-invalido" },
@@ -76,8 +76,12 @@ describe("session-queue-deps - montarDependenciasDaFila (item 5c)", () => {
 
     const { porId, bloqueios } = montarDependenciasDaFila(tasks);
 
-    expect(bloqueios).toHaveLength(0);
     expect(porId.get("etapa-1")).toEqual([]);
     expect(porId.get("etapa-2")).toEqual([]);
+
+    expect(bloqueios).toHaveLength(1);
+    expect(bloqueios[0].taskId).toBe("etapa-2");
+    expect(bloqueios[0].idsDesconhecidos).toEqual(["<dependencies ilegível>"]);
+    expect(bloqueios[0].erro).toBe("DEPENDENCIA_DESCONHECIDA");
   });
 });

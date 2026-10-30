@@ -39,7 +39,13 @@ import {
   describeUnverifiedBuild,
 } from "@/core/orchestrator/node-executor";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
-import { isResumeCommand, resumeBlockedSession, isAuthorizeRoundCommand, authorizeRepairRound } from "@/core/orchestrator/session-resume";
+import {
+  isResumeCommand,
+  resumeBlockedSession,
+  isAuthorizeRoundCommand,
+  authorizeRepairRound,
+  isRecheckDeliveryCommand,
+} from "@/core/orchestrator/session-resume";
 import { pickBlockedCulprit } from "@/core/orchestrator/blocked-culprit";
 import {
   classifyMessage,
@@ -52,6 +58,7 @@ import {
 } from "@/core/orchestrator/spec-draft";
 import { maskSecretsForJev } from "@/core/governance/secret-guard";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
+import { textoVisivelDaResposta } from "@/core/llm/visible-model-text";
 import { hasExistingSourceCode } from "@/core/project/source-files";
 import { redactSecretsInChatWithJev } from "@/core/governance/secret-guard";
 import type { Phase } from "@/core/orchestrator/phase-machine";
@@ -311,9 +318,16 @@ export async function POST(request: NextRequest) {
       const authorized = await authorizeRepairRound(activeSessionId, "chat");
       return respondDeterministically(authorized.ok ? `▶️ ${authorized.message}` : `⚠️ ${authorized.message}`);
     }
-    if (phaseBefore === "BLOQUEADA" && isResumeCommand(targetPrompt)) {
+    if (phaseBefore === "BLOQUEADA" && (isResumeCommand(targetPrompt) || isRecheckDeliveryCommand(targetPrompt))) {
       const resumed = await resumeBlockedSession(activeSessionId, "chat");
       return respondDeterministically(resumed.ok ? `▶️ ${resumed.message}` : `⚠️ ${resumed.message}`);
+    }
+    if (phaseBefore === "VERIFICACAO" && isRecheckDeliveryCommand(targetPrompt)) {
+      const { enqueueSessionQueueJob } = await import("@/core/orchestrator/job-queue");
+      await enqueueSessionQueueJob(activeSessionId);
+      return respondDeterministically(
+        "▶️ Verificação final (T10) enfileirada de novo — build, ui-check e revisão rodam sobre o código no disco."
+      );
     }
 
     // 4. Pacote P4: Fan-Out Especulativo Unificado do Jev na Entrada do Chat (~100ms)
@@ -811,10 +825,9 @@ export async function POST(request: NextRequest) {
         effectiveTier = dispatchRes.tierTag;
 
         const resJson = await dispatchRes.response.json().catch(() => ({}));
-        if (resJson.choices?.[0]?.message?.content) {
-          aiResponseContent = resJson.choices[0].message.content;
-        } else if (resJson.choices?.[0]?.message?.reasoning_content && resJson.choices[0].message.reasoning_content.trim() !== "") {
-          aiResponseContent = resJson.choices[0].message.reasoning_content;
+        const visibleChoiceText = textoVisivelDaResposta(resJson.choices?.[0]?.message);
+        if (visibleChoiceText !== null) {
+          aiResponseContent = visibleChoiceText;
         } else if (resJson.candidates?.[0]?.content?.parts?.[0]?.text) {
           aiResponseContent = resJson.candidates[0].content.parts[0].text;
         } else if (typeof resJson.choices?.[0]?.text === "string" && resJson.choices[0].text) {

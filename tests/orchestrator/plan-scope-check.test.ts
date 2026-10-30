@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkPlanScope, validateFinalPlan, type PlanStage } from "@/core/orchestrator/plan-scope-check";
+import { checkPlanScope, validateFinalPlan, atribuirInfraAoDono, type PlanStage } from "@/core/orchestrator/plan-scope-check";
 import { transition } from "@/core/orchestrator/phase-machine";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
@@ -284,5 +284,113 @@ describe("F1.1 — junção de contratos no plano (interfacesProduz × interface
     ];
     const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/lib/x.ts", "REQ-002": "src/b.ts" }, 4);
     expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
+  });
+});
+
+describe("1. Dono de infra no plano, antes da execução (atribuirInfraAoDono)", () => {
+  it("Spec com Dockerfile, etapa com Microbrief que cria package.json e não tem Dockerfile → depois da função, criar e filesScope contêm Dockerfile, errors vazio", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("Dockerfile");
+  });
+
+  it("Spec com prisma/migrations, etapa com prisma/schema.prisma → prisma/migrations entra nessa etapa", () => {
+    const nodes = [
+      {
+        id: "etapa-db",
+        filesScope: ["prisma/schema.prisma"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["prisma/schema.prisma"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["prisma/schema.prisma", "prisma/migrations"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).toContain("prisma/migrations");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("prisma/migrations");
+  });
+
+  it("Spec com Dockerfile e nenhuma etapa com package.json → um erro [PLANO INFRA], e nenhuma etapa recebe Dockerfile", () => {
+    const nodes = [
+      {
+        id: "etapa-outro",
+        filesScope: ["src/app/page.tsx"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/app/page.tsx"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["src/app/page.tsx", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]).toBe('[PLANO INFRA] "Dockerfile" está na Spec e não há etapa com package.json para ser dona.');
+    expect(nodes[0].filesScope).not.toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+
+  it("Spec sem Dockerfile → ninguém ganha Dockerfile e errors fica vazio", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "src/index.ts"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).not.toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+
+  it("Etapa que já tem Dockerfile → a lista não duplica", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json", "Dockerfile"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json", "Dockerfile"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope?.filter((f) => f === "Dockerfile")).toHaveLength(1);
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar.filter((f: string) => f === "Dockerfile")).toHaveLength(1);
   });
 });
