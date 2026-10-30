@@ -1,6 +1,6 @@
 ## 30/10/2026 (272) — Re-baseline E5 + suíte 1167/1167 (autonomia fundador)
 **Veredito:** `npx vitest run` **2×** → **175** arquivos, **1167/1167**; `npx tsc --noEmit` saída 0. Relatórios: `docs/relatorios/SESSAO-2026-10-30-claude-implementacao.md` e `...-decisoes-fundador.md`.
-**Feito:** flaky `runOnce` com `onlySessionIds` (executor-tool-loop j, job-worker retomada); commit do pacote harness+T10+recovered (se aplicável). `controles-autoteste-e5.ts` → P1 ref **11/11**.
+**Feito:** flaky `runOnce` com `onlySessionIds` (executor-tool-loop j, job-worker retomada); commit **`1aee3d7`**. `controles-autoteste-e5.ts` → P1 ref **11/11**.
 **Pendente macro:** restaurar NTFS `tests/orchestrator/`; Gate 1 Gateway; push origin.
 ---
 ## 30/10/2026 (271) — E2E harness + step-4b verdes
