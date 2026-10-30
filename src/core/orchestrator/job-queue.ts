@@ -15,9 +15,18 @@ import { recheckFinalBuild } from "@/core/governance/empirical-gate";
 import { reviewFinalDelivery, type FinalDefect } from "@/core/governance/final-reviewer";
 import { loadPriorProofs } from "@/core/orchestrator/prior-proofs";
 import { officialDocsBlockForSession } from "@/core/intake/official-docs-research";
-import { verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
+import { confirmDeliveryTriageWithJev, verifyProjectDeliveryWithJev } from "@/core/decision/jev-execution-checks";
+import { humanActionFromTriage, triageDeliveryLacunas, lacunasSoAmbienteOuHarness } from "@/core/orchestrator/delivery-triage";
 import { renderDeliveryAuditReportMarkdown } from "@/core/templates/artifact-templates";
-import { runUiCheck, pagesFromSpecFiles, describeUiCheckFailure, type UiCheckReport } from "@/core/execution/ui-check";
+import {
+  runUiCheck,
+  pagesFromSpecFiles,
+  describeUiCheckFailure,
+  uiCheckFailureGap,
+  uiCheckHarnessAmbienteFailure,
+  type UiCheckReport,
+} from "@/core/execution/ui-check";
+import { diagnoseUiCheckAmbiente } from "@/core/execution/project-verification-env";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
@@ -343,12 +352,19 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       where: { id: job.sessionId },
       include: { project: true },
     });
-    if (sessionAfterQueue?.phase === "EXECUCAO") {
+    // T10: fila vazia com DAG completa — inclusive retomada em VERIFICACAO (ambiente corrigido, ui-check não rodou).
+    const runFinalDelivery =
+      sessionAfterQueue &&
+      queueResult.allCompleted &&
+      (sessionAfterQueue.phase === "EXECUCAO" || sessionAfterQueue.phase === "VERIFICACAO");
+    if (runFinalDelivery) {
       const hasBlockedNode = queueResult.tasks.some((t) => t.status === "blocked");
-      if (hasBlockedNode) {
+      if (hasBlockedNode && sessionAfterQueue.phase === "EXECUCAO") {
         await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" }, { avisoJaPostado: true });
-      } else if (queueResult.allCompleted) {
-        await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
+      } else if (!hasBlockedNode) {
+        if (sessionAfterQueue.phase === "EXECUCAO") {
+          await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
+        }
         const deliveryT10 = verifyProjectDeliveryT10({
           canonicalSpec: sessionAfterQueue.canonicalSpec,
           projectPath: sessionAfterQueue.project?.path,
@@ -362,6 +378,17 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         let uiBuildDefects: Array<{ arquivo: string | null; defeito: string }> = [];
         const projectPath = sessionAfterQueue.project?.path;
         let finalBuildErrorLines: string[] = [];
+        if (projectPath) {
+          const { ensureVerificationRuntimeEnv } = await import("@/core/execution/project-verification-env");
+          const ensured = ensureVerificationRuntimeEnv(projectPath);
+          if (ensured.length > 0) {
+            TelemetryLogger.log({
+              sessionId: job.sessionId,
+              action: "T10_RUNTIME_ENV_ENSURED",
+              details: { ensured, artifact: ".nextcode/verification.env" },
+            });
+          }
+        }
         // Mudança 34: build reprovado só por etapas do meio → confere o projeto final de novo.
         if (!deliveryT10.buildVerified && deliveryT10.specFilesComplete && projectPath) {
           const recheck = await recheckFinalBuild(projectPath);
@@ -386,7 +413,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
                 detalheAviso:
                   `**Causa:** ${recheck.ambiente}.\n\n` +
                   "Não é erro de código nem da Spec: o NextCode não conseguiu rodar a conferência de tipos do projeto final " +
-                  "(no Windows, `0xC0000142` costuma ser falta de memória). Libere memória e retome.",
+                  "(no Windows, `0xC0000142` ou saída 1 sem mensagem costuma ser falta de memória — feche contêineres Docker/ui-check pesados se estiverem rodando). Libere memória e **Retome**.",
               }
             );
             return await prisma.job.findUnique({ where: { id: jobId } });
@@ -400,8 +427,9 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
               deliveryT10.buildVerified = true;
               deliveryT10.passed = deliveryT10.specFilesComplete && deliveryT10.allReqsApproved;
             } else {
+              const rotulo = recheck.failedNextBuild ? "Build Next (next build) do projeto final" : "Type-check do projeto final";
               deliveryT10.gaps.push(
-                `Type-check do projeto final com ${recheck.errors.length} erro(s); primeiros: ${recheck.errors.slice(0, 5).join(" | ")}`
+                `${rotulo} com ${recheck.errors.length} erro(s); primeiros: ${recheck.errors.slice(0, 5).join(" | ")}`
               );
             }
           }
@@ -418,7 +446,12 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           });
           if (!uiCheck.ok) {
             deliveryT10.passed = false;
-            deliveryT10.gaps.push(`Verificação de tela reprovada (${uiCheck.stage}).`);
+            deliveryT10.gaps.push(
+              uiCheckFailureGap({
+                ...uiCheck,
+                outDir: uiCheck.outDir ?? path.join(projectPath, ".nextcode", "ui-check"),
+              })
+            );
             // Erro do next build com arquivo → defeito da etapa dona (J2b), em vez de lacuna sem dono.
             uiBuildDefects = (uiCheck.buildErrors ?? []).map((e) => ({
               arquivo: e.arquivo,
@@ -472,7 +505,15 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             .filter((d) => d.prova === "reproduzido" && d.teste && !d.teste.existente)
             .map((d) => ({ caminho: d.teste!.caminho, conteudo: d.teste!.conteudo, req: d.req, arquivo: d.arquivo, defeito: d.defeito }));
           if (novasProvas.length > 0) {
-            await TelemetryLogger.logAndWait({ sessionId: job.sessionId, action: "FINAL_REVIEW_PROOFS", details: { provas: novasProvas } }).catch(() => {});
+            try {
+              await TelemetryLogger.logAndWait({
+                sessionId: job.sessionId,
+                action: "FINAL_REVIEW_PROOFS",
+                details: { provas: novasProvas },
+              });
+            } catch {
+              /* telemetria não bloqueia entrega */
+            }
           }
           finalReviewSummary = {
             modo: revisaoFinalModo,
@@ -629,6 +670,64 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             { extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, revisaoFinal: finalReviewSummary } }
           );
         } else {
+          // Paridade T10: falha de harness ui-check (Docker, env, NO_SECRET) para antes do reparo LLM —
+          // evita rodadas em rotas quando o `next start` do contêiner não espelha o `.env` do projeto.
+          if (uiCheck && !uiCheck.ok && uiCheckHarnessAmbienteFailure(uiCheck)) {
+            const ambiente = diagnoseUiCheckAmbiente({
+              ...uiCheck,
+              outDir: uiCheck.outDir ?? (projectPath ? path.join(projectPath, ".nextcode", "ui-check") : undefined),
+            }).causa;
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "FALHA_AMBIENTE" },
+              {
+                extraDetails: {
+                  deliveryT10,
+                  uiCheck: { stage: uiCheck.stage, error: uiCheck.error },
+                  ambienteT10: ambiente,
+                },
+                detalheAviso:
+                  `${describeUiCheckFailure(uiCheck)}\n\n` +
+                  `**Causa:** ${ambiente ?? "verificação de tela (ambiente T10)"} — **não** é defeito de código para reparo automático. ` +
+                  "Confira Docker Desktop, `.env` do projeto-alvo e reinicie o NextCode se acabou de atualizar o harness; depois **Retome**.",
+              }
+            );
+            return await prisma.job.findUnique({ where: { id: jobId } });
+          }
+          // PJ2b: se só há lacunas de ambiente/harness, não gasta rodada de reparo de código.
+          if (lacunasSoAmbienteOuHarness({
+            buildErrorLines: finalBuildErrorLines,
+            outrasLacunas: deliveryT10.gaps.filter(
+              (g) =>
+                !g.startsWith("Arquivos da Spec ausentes") &&
+                !g.startsWith("Requisitos não aprovados") &&
+                !g.startsWith("Type-check do projeto final") &&
+                !g.startsWith("Falha na verificação empírica de build") &&
+                !g.startsWith("revisão final") &&
+                !finalReviewGaps.has(g) &&
+                !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
+            ),
+            defeitosDeArquivo: [...finalReviewDefects, ...uiBuildDefects].map((d) => d.defeito),
+            arquivosAusentes: deliveryT10.missingFiles,
+            reqsNaoAprovados: deliveryT10.unapprovedReqs,
+          })) {
+            TelemetryLogger.log({
+              sessionId: job.sessionId,
+              action: "DELIVERY_REPAIR_ROUND_CREDITED",
+              details: { motivo: "causa dominante ambiente ou harness" },
+            });
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "FALHA_AMBIENTE" },
+              {
+                detalheAviso:
+                  "**Causa:** falhas apenas de ambiente ou harness detectadas.\n" +
+                  "Não é defeito de código — a rodada de reparo **não foi consumida**. Corrija o ambiente e **Retome**.",
+              }
+            );
+            return await prisma.job.findUnique({ where: { id: jobId } });
+          }
+          try {
           // J2b: com dono para cada lacuna (e rodada disponível), volta ao planejamento com etapas de reparo.
           const repair = await tryStartDeliveryRepair(job.sessionId, {
             missingFiles: deliveryT10.missingFiles,
@@ -649,6 +748,45 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             ),
             fileDefects: [...finalReviewDefects, ...uiBuildDefects],
           }, { perguntasSpec: finalReviewQuestions });
+          const outrasLacunasT10 = deliveryT10.gaps.filter(
+            (g) =>
+              !g.startsWith("revisão final") &&
+              !g.startsWith("teste do projeto falha") &&
+              !finalReviewGaps.has(g) &&
+              !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
+          );
+          const triagem = triageDeliveryLacunas({
+            buildErrorLines: finalBuildErrorLines,
+            outrasLacunas: outrasLacunasT10,
+            semDonoReparo: !repair.started && repair.tipo === "sem_dono" ? (repair.semDono ?? []) : [],
+            perguntasSpecCount: finalReviewQuestions.length,
+            reparoTipo: repair.started ? "aberto" : repair.tipo,
+            reparoTodosComDono: !repair.started && repair.tipo === "esgotado" ? repair.todosComDono : undefined,
+          });
+          const triagemEntregaModo = loadOrchestrationPolicy().jevExecucao.triagemEntrega;
+          const jevTriage =
+            triagemEntregaModo !== "desligado"
+              ? await confirmDeliveryTriageWithJev({
+                  sessionId: job.sessionId,
+                  modo: triagemEntregaModo,
+                  dominanteHeuristica: triagem.dominante === "outro" ? "codigo" : triagem.dominante,
+                  amostraErros: [
+                    ...finalBuildErrorLines.slice(0, 8),
+                    ...outrasLacunasT10.slice(0, 4),
+                    ...(!repair.started && repair.tipo === "sem_dono" ? (repair.semDono ?? []).slice(0, 4) : []),
+                  ],
+                  reparoTipo: repair.started ? "aberto" : repair.tipo,
+                })
+              : null;
+          TelemetryLogger.log({
+            sessionId: job.sessionId,
+            action: "DELIVERY_TRIAGE_SUMMARY",
+            details: {
+              reparoAberto: repair.started,
+              triagem,
+              jev: jevTriage,
+            },
+          });
           if (!repair.started) {
             // Mudança 43.4: aviso montado com o diagnóstico (o que sobrou, com prova; a Spec está certa?;
             // progresso) e o caminho certo — rodada extra autorizada ou a pergunta exata sobre a Spec.
@@ -656,23 +794,43 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             const diag = buildDeliveryDiagnosis({
               defeitos: [...finalReviewDefects, ...uiBuildDefects],
               perguntasSpec: finalReviewQuestions,
-              outrasLacunas: deliveryT10.gaps.filter(
-                (g) =>
-                  !g.startsWith("revisão final") &&
-                  !g.startsWith("teste do projeto falha") &&
-                  // Mudança 44: todo defeito da revisão final (inclusive "prova anterior ainda falha") já aparece acima.
-                  !finalReviewGaps.has(g) &&
-                  !(uiBuildDefects.length > 0 && g.startsWith("Verificação de tela reprovada"))
-              ),
+              outrasLacunas: outrasLacunasT10,
               progresso,
               reparo: repair,
+              triagem,
             });
             await applyPhaseEvent(
               job.sessionId,
               { type: diag.evento },
               {
-                extraDetails: { specCompleteness: queueResult.specCompleteness, deliveryT10, reparo: repair.motivo, diagnostico: diag.evento },
+                extraDetails: {
+                  specCompleteness: queueResult.specCompleteness,
+                  deliveryT10,
+                  reparo: repair.motivo,
+                  diagnostico: diag.evento,
+                  triagem,
+                },
                 detalheAviso: diag.detalhe,
+                acaoHumano: humanActionFromTriage(triagem, false),
+              }
+            );
+          }
+          } catch (deliveryHandlerErr) {
+            const em =
+              deliveryHandlerErr instanceof Error ? deliveryHandlerErr.message : String(deliveryHandlerErr);
+            TelemetryLogger.log({
+              sessionId: job.sessionId,
+              action: "T10_DELIVERY_HANDLER_CRASH",
+              details: { error: em.slice(0, 500) },
+            });
+            await applyPhaseEvent(
+              job.sessionId,
+              { type: "FALHA_REPETIDA" },
+              {
+                detalheAviso:
+                  `**Falha ao processar a verificação final (T10):** \`${em.slice(0, 400)}\`\n\n` +
+                  "Se o código do NextCode foi atualizado recentemente, **reinicie o servidor** e clique **Retomar**.",
+                acaoHumano: "retomar",
               }
             );
           }
