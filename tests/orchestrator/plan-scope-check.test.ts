@@ -393,4 +393,62 @@ describe("1. Dono de infra no plano, antes da execução (atribuirInfraAoDono)",
     const mb = (nodes[0].payload as any).microbrief;
     expect(mb.arquivosPermitidos.criar.filter((f: string) => f === "Dockerfile")).toHaveLength(1);
   });
+
+  it("Primeiro nó: base, filesScope: ['package.json', 'tsconfig.json'], payload: { step: 'scaffold' }, sem Microbrief. Segundo nó: Microbrief com criar: ['package.json']. Spec com Dockerfile. Depois da função, a base não tem Dockerfile; o segundo nó tem Dockerfile em filesScope e em criar; errors vazio.", () => {
+    const baseNode = {
+      id: "base-scaffold",
+      filesScope: ["package.json", "tsconfig.json"],
+      payload: { step: "scaffold" },
+    };
+    const secondNode = {
+      id: "etapa-real",
+      filesScope: [],
+      payload: {
+        microbrief: {
+          reqsCobertos: ["REQ-001"],
+          arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+        },
+      },
+    };
+    const nodes = [baseNode, secondNode];
+    const specFiles = ["package.json", "tsconfig.json", "Dockerfile"];
+
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+
+    expect(res.errors).toEqual([]);
+    expect(baseNode.filesScope).not.toContain("Dockerfile");
+    expect((baseNode.payload as any).microbrief).toBeUndefined();
+    expect(secondNode.filesScope).toContain("Dockerfile");
+    const mb = (secondNode.payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("Dockerfile");
+  });
+
+  it("Só a base tem package.json. Spec com Dockerfile. errors tem [PLANO INFRA] e a base não recebe Dockerfile.", () => {
+    const baseNode = {
+      id: "base-scaffold",
+      filesScope: ["package.json", "tsconfig.json"],
+      payload: { step: "scaffold" },
+    };
+    const secondNode = {
+      id: "etapa-outra",
+      filesScope: ["src/app/page.tsx"],
+      payload: {
+        microbrief: {
+          reqsCobertos: ["REQ-001"],
+          arquivosPermitidos: { criar: ["src/app/page.tsx"], modificar: [], lerContratos: [] },
+        },
+      },
+    };
+    const nodes = [baseNode, secondNode];
+    const specFiles = ["package.json", "tsconfig.json", "src/app/page.tsx", "Dockerfile"];
+
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]).toBe('[PLANO INFRA] "Dockerfile" está na Spec e não há etapa com package.json para ser dona.');
+    expect(baseNode.filesScope).not.toContain("Dockerfile");
+    expect(secondNode.filesScope).not.toContain("Dockerfile");
+    expect((secondNode.payload as any).microbrief.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
 });
+

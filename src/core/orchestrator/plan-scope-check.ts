@@ -232,6 +232,9 @@ export function validateFinalPlan(
  * 1. Dono de infra no plano, antes da execução.
  * Atribui Dockerfile, docker-compose.yml, docker-compose.prod.yml e prisma/migrations
  * à etapa dona apropriada (com package.json ou prisma/schema.prisma) alterando os nós in-place.
+ * Dona é a primeira etapa que tem Microbrief (payload.microbrief.arquivosPermitidos) e
+ * contém o arquivo âncora em filesScope ou em criar/modificar.
+ * Etapa sem Microbrief e etapa com payload.step === "scaffold" não é dona.
  */
 export function atribuirInfraAoDono(
   nodes: Array<{ id: string; filesScope?: string[]; payload?: unknown }>,
@@ -240,6 +243,13 @@ export function atribuirInfraAoDono(
   const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
   const specNorm = new Set(arquivosDaSpec.map(norm));
   const errors: string[] = [];
+
+  const isEligibleOwner = (n: { filesScope?: string[]; payload?: unknown }): boolean => {
+    const p = n.payload as { step?: string; microbrief?: MicrobriefAndReportDocument } | undefined;
+    if (p?.step === "scaffold") return false;
+    if (!p?.microbrief?.arquivosPermitidos) return false;
+    return true;
+  };
 
   const nodeContainsFile = (n: { filesScope?: string[]; payload?: unknown }, target: string): boolean => {
     const fsFiles = (n.filesScope ?? []).map(norm);
@@ -282,12 +292,12 @@ export function atribuirInfraAoDono(
   for (const f of infraPkg) {
     if (!specNorm.has(norm(f))) continue;
 
-    // Se alguma etapa já tem o arquivo, não mexe nem duplica
+    // Se alguma etapa elegível ou não já tem o arquivo, não mexe nem duplica
     const alreadyHas = nodes.some((n) => nodeContainsFile(n, norm(f)));
     if (alreadyHas) continue;
 
-    // Procura etapa com package.json
-    const dono = nodes.find((n) => nodeContainsFile(n, "package.json"));
+    // Procura primeira etapa elegível (com Microbrief e não scaffold) com package.json
+    const dono = nodes.find((n) => isEligibleOwner(n) && nodeContainsFile(n, "package.json"));
     if (dono) {
       addFileToNode(dono, f);
     } else {
@@ -304,8 +314,8 @@ export function atribuirInfraAoDono(
     const alreadyHas = nodes.some((n) => nodeContainsFile(n, norm(f)));
     if (alreadyHas) continue;
 
-    // Procura etapa com prisma/schema.prisma
-    const dono = nodes.find((n) => nodeContainsFile(n, "prisma/schema.prisma"));
+    // Procura primeira etapa elegível (com Microbrief e não scaffold) com prisma/schema.prisma
+    const dono = nodes.find((n) => isEligibleOwner(n) && nodeContainsFile(n, "prisma/schema.prisma"));
     if (dono) {
       addFileToNode(dono, f);
     } else {
@@ -320,20 +330,6 @@ export function atribuirInfraAoDono(
  * T8b sobre etapas soltas (plano do analista antes de virar nó). Com `arquivosDaSpec`, também confere
  * que todo arquivo da Spec está em alguma etapa e que nenhuma etapa inventa arquivo.
  */
-/** Arquivos de infra/ci/docs que a Spec pode citar mas não precisam de etapa própria. */
-const INFRA_FILES = new Set([
-  // Infra / deploy
-  "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
-  ".dockerignore", "fly.toml", "railway.json", "vercel.json",
-  "Procfile", "render.yaml", "netlify.toml",
-  // CI/CD
-  ".github/workflows/ci.yml", ".github/workflows/ci.yaml",
-  ".gitlab-ci.yml", ".circleci/config.yml",
-  // Docs / config
-  "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE",
-  ".env.example", ".gitignore", ".editorconfig",
-]);
-
 export function validatePlanStages(
   stages: PlanStage[],
   reqIds: string[],
@@ -346,9 +342,7 @@ export function validatePlanStages(
     const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
     const spec = new Set(arquivosDaSpec.map(norm));
     const planned = new Set(stages.flatMap((s) => s.arquivos.map(norm)));
-    // Arquivos de infra citados na Spec são válidos mesmo sem etapa própria.
-    const specSemInfra = [...spec].filter((f) => !INFRA_FILES.has(f));
-    for (const f of specSemInfra) if (!planned.has(f)) extra.push(`[T8b ARQUIVO SEM ETAPA] "${f}" está na Spec e em nenhuma etapa.`);
+    for (const f of spec) if (!planned.has(f)) extra.push(`[T8b ARQUIVO SEM ETAPA] "${f}" está na Spec e em nenhuma etapa.`);
     for (const f of planned) if (!spec.has(f)) extra.push(`[T8b ARQUIVO INVENTADO] "${f}" não está na lista de arquivos da Spec.`);
   }
   const macrobrief: MacrobriefDocument = {
