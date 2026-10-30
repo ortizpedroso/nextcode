@@ -75,8 +75,12 @@ Estes números são daquela data. O estado conferido em 30/10 está na §1.4.
   - Executor: `deepseek-v4-pro`, ou `deepseek-flash` no nível `rapido` com confiança ≥ 0,85.
   - Avaliador da etapa, testador e revisão final: Claude Sonnet 5.5, com Opus 5.5 de reserva (`src/core/llm/evaluator-models.ts`).
 
-### 1.4 Estado conferido em 30/10/2026
-Último commit auditado: `d1c0045` (diário 263). Itens 4 e 6 implementados na working tree (diário 264), ainda sem commit. A árvore de trabalho segue suja; isso é esperado e não entra nesta lista. Versões no `package.json`: Next `^15.0.3`, Prisma `^5.22.0`, Vitest `^2.1.9`. A contagem de testes de 23/10 não foi remedida nesta data.
+### 1.4 Estado conferido em 30/10/2026 (tarde — diário 274)
+Últimos commits auditados: `1aee3d7` (harness E2E + `orchestrator_recovered` + T10 `review.ressalvas`), estabilização Windows (diário 273). Versões no `package.json`: Next `^15.0.3`, Prisma `^5.22.0`, Vitest `^2.1.9`.
+
+**Suíte (prova 30/10):** `npx tsc --noEmit` saída 0. `npx vitest run` → **175** arquivos, **1167/1167** testes (2× consecutivas verdes, diário 273). `vitest.config.ts` exclui `tests/orchestrator/**` (pasta NTFS corrompida); cobertura equivalente em `tests/orchestrator_recovered/`. Passo 6 autoteste: P1 ref **11/11** (`scripts/controles-autoteste-e5.ts`, diário 272).
+
+**Próximo macro:** Gate 1 Gateway (§3.3 item 8); restaurar `tests/orchestrator/` após reparo de disco.
 
 O que o código faz hoje, conferido arquivo a arquivo:
 - Spec aprovada entra em `MACROBRIEF` (`etapa1Ativa: true` em `session-phase.ts`). Com a flag falsa, o código iria direto a `PLANEJAMENTO`.
@@ -243,11 +247,13 @@ Commits `1f5234f`…`bacbd2e`; relatórios `AUDITORIA-E5`, `IMPLEMENTADO-E5`, `D
 
 **Auditorias Fases A–C (25/10):** o caminho com roteador usa o analista; a heurística só volta sem roteador ou com modelo desligado. Bench P1–P4 e replay Gateway: detalhe numérico em `bench/resultados/` e `memory/diario.md`. Prompts de auditoria apagados de `docs/` (§10).
 
+**Fechamento TESTE-E5 vitest (30/10, diário 274):** re-baseline **1167/1167**; harness E2E com mock de promoção empírica + `reapplyPromotion`; correção T10 `review.ressalvas ?? []`; testes de orquestrador em `tests/orchestrator_recovered/`; isolamento de fila com `runOnce(..., { onlySessionIds })`. Commits `1aee3d7` e estabilização Windows (diário 273).
+
 ---
 
 ## 3. O que falta fazer (fila por relevância)
 
-Atualizado em 30/10 (diário 264). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
+Atualizado em 30/10 tarde (diário 274). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
 
 O contrato do analista (o antigo A1) **já existe**: `renderContractTs` grava `src/contracts/`, cada etapa gera conformidade e o `tsc` confere, e divergência de contrato no avaliador é `critico`. A reserva sem analista ainda grava uma frase fixa (`spec-decomposer.ts`, heurística). Isso não justifica refazer o A1. Os itens 1, 2 e 3 da fila anterior estão no código (diário 263). O que o harness ainda não pega: citação de uma linha real de código errado, e critério da Spec escrito em prosa, sem `nome(arg1, arg2)` na mesma linha.
 
@@ -262,7 +268,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 ### 3.3 Prova (não é correção de código)
 | # | Item | Quando |
 |---|---|---|
-| 7 | **TESTE-E5:** relatório `7869124`; saneamento `619193c`; decisões **D21/D2/D4** + achados 2–4 no código (commits `e10099c` e baseline). Passo 6 autoteste: P1 **10/10**. **Aberto:** vitest suite ~**22** falhas em testes de integração (`end-to-end-harness-plan`, `execution-trigger`, …); J3 passo 6 opcional | Gate 1 (item 8) depois |
+| 7 | **TESTE-E5 (vitest / harness):** **fechado 30/10** — relatório `7869124`, saneamento `619193c`, achados 2–4 e baseline (`e10099c`, `1aee3d7`); suíte **1167/1167** (2×); E2E `end-to-end-harness-plan` 11/11; auditoria Claude: relatórios `docs/relatorios/SESSAO-2026-10-30-claude-*.md`, veredito diário **274**. **Opcional:** J3 passo 6 com LLM real (custo) | — |
 | 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas | os itens 1 e 2 já estão aceitos (diário 263). Continua bancada, não correção do harness |
 
 **DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).

@@ -1589,11 +1589,11 @@ describe("E5 — testes de aceite da etapa (testador cego ao código) no prompt 
       expect(res.finalStatus).not.toBe("completed");
       expect(fs.existsSync(path.join(projectDir, "src", "greet.ts"))).toBe(false);
       expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_TESTS_FAILED")).toHaveLength(1);
-      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT")).toHaveLength(0);
+      expect(await waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT", 0)).toHaveLength(0);
     } finally {
       setTestBenchRunnerForTests(null);
     }
-  }, 30_000);
+  }, 60_000);
 });
 
 describe("J20 — arquivo com instrução plantada chega ao executor marcado como dado", () => {

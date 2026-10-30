@@ -1,3 +1,24 @@
+## 30/10/2026 (274) — Item 7 §3.3 fechado (TESTE-E5 vitest) + doc + push
+**Veredito auditoria Claude (§9):** **ACEITO** — vitest/harness E5 encerrado; item 8 (Gate 1) continua pendente de cota/sessão real.
+**Feito:** `docs/NEXTCODE-REFERENCIA.md` §1.4, §2.9, §3.3 item 7; `docs/relatorios/TESTE-E5-fechamento-vitest-2026-10-30.md`; commit estabilização 273; `git push origin main` (se rede ok).
+**Prova:** 273 (1167/1167 ×2) + pré-push 30/10 tarde: `npx vitest run` → 175/175 arquivos, 1167/1167, 488 s (`vitest-run-pre-push.log`).
+**Próximo:** Gate 1 Gateway (`4d019f00` / Spec equivalente); chkdsk + restaurar `tests/orchestrator/`.
+---
+## 30/10/2026 (273) — Re-baseline E5 100% verde (2× consecutivas 1167/1167)
+**Veredito:** `npx tsc --noEmit` saída 0 (limpo). `npx vitest run` executado 2× consecutivas na raiz com 100% verde:
+- **1ª Rodada:** Test Files 175 passed (175) | Tests 1167 passed (1167) | Duração: 372.21s
+- **2ª Rodada:** Test Files 175 passed (175) | Tests 1167 passed (1167) | Duração: 526.67s
+**Feito (diff mínimo de estabilização contra timeouts/flakiness sob carga no Windows):**
+1. `tests/orchestrator_recovered/job-worker.test.ts`:
+   - `cleanupWorkerTestRecords`: limpeza incondicional de `prisma.job.deleteMany({})` entre testes para evitar resíduo de jobs de processos filhos caídos;
+   - Teste 6: timeout de ciclo aumentado de 95ms para 200ms;
+   - Teste 8: `waitRunningDeadline` aumentado de 8s para 20s e `waitDoneDeadline` aumentado de 10s para 25s (timeout total 60s) para absorver o tempo de inicialização a frio do `npx tsx` no Windows.
+2. `tests/skills/executor-tool-loop.test.ts`:
+   - Teste `E5 c`: timeout elevado para 60_000ms e checagem de ausência com `waitForTelemetryLogs(task.sessionId, "ACCEPTANCE_DISAGREEMENT", 0)` evitando polling desnecessário por log inexistente.
+**Travas de Governança:**
+- `prisma/dev.db` intocado (`quinta-feira, 29 de outubro de 2026 05:52:10`).
+- Commitado na sequência 274 (autonomia fundador).
+---
 ## 30/10/2026 (272) — Re-baseline E5 + suíte 1167/1167 (autonomia fundador)
 **Veredito:** `npx vitest run` **2×** → **175** arquivos, **1167/1167**; `npx tsc --noEmit` saída 0. Relatórios: `docs/relatorios/SESSAO-2026-10-30-claude-implementacao.md` e `...-decisoes-fundador.md`.
 **Feito:** flaky `runOnce` com `onlySessionIds` (executor-tool-loop j, job-worker retomada); commit **`1aee3d7`**. `controles-autoteste-e5.ts` → P1 ref **11/11**.

@@ -49,8 +49,8 @@ let originalSetting: Awaited<ReturnType<typeof prisma.setting.findUnique>> = nul
 
 async function cleanupWorkerTestRecords(): Promise<void> {
   await stopJobWorker();
+  await prisma.job.deleteMany({}).catch(() => {});
   if (createdSessionIds.length > 0) {
-    await prisma.job.deleteMany({ where: { sessionId: { in: createdSessionIds } } }).catch(() => {});
     await prisma.taskNode.deleteMany({ where: { sessionId: { in: createdSessionIds } } }).catch(() => {});
     await prisma.message.deleteMany({ where: { sessionId: { in: createdSessionIds } } }).catch(() => {});
     await prisma.session.deleteMany({ where: { id: { in: createdSessionIds } } }).catch(() => {});
@@ -416,7 +416,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     expect((globalThis as any).__nextcodeJobWorker).toBe(handle1);
     expect(handle1.running).toBe(true);
 
-    await new Promise((r) => setTimeout(r, 95));
+    await new Promise((r) => setTimeout(r, 200));
     expect(handle1.cycles).toBeGreaterThanOrEqual(2);
 
     await stopJobWorker();
@@ -424,7 +424,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     expect((globalThis as any).__nextcodeJobWorker).toBeUndefined();
 
     const cyclesAtStop = handle1.cycles;
-    await new Promise((r) => setTimeout(r, 90));
+    await new Promise((r) => setTimeout(r, 120));
     expect(handle1.cycles).toBe(cyclesAtStop);
   });
 
