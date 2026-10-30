@@ -21,7 +21,7 @@ import { loadRoleSkill, buildSkillSystemPrompt } from "@/core/skills/skill-runti
 export { readRepairPayload, supersededByRepair, currentRepairRound, type DeliveryRepairPayload } from "@/core/orchestrator/repair-payload";
 
 /**
- * J2b (§5.5; desenho consolidado em docs/NEXTCODE-REFERENCIA.md §2.6): entrega reprovada na verificação
+ * J2b (desenho em docs/NEXTCODE-REFERENCIA.md §2.9): entrega reprovada na verificação
  * final volta a PLANEJAMENTO com etapas de reparo, até 3 rodadas; depois BLOQUEADA com relatório.
  * O reparo é montado por código, sem LLM (J2): cada lacuna é ligada à etapa dona do arquivo ou do REQ;
  * uma etapa de reparo por etapa dona, partindo do código atual do projeto, com as lacunas como defeitos.
@@ -131,7 +131,13 @@ export function infraPathsCitedIn(text: string): string[] {
 /** Dockerfile, compose ou Prisma/migrations — candidatos ao microbrief de encaixe quando não há etapa dona. */
 export function isEncaixeInfraPath(file: string): boolean {
   const n = norm(file);
-  return n === "dockerfile" || n.includes("docker-compose") || n.startsWith("prisma/");
+  return (
+    n === "dockerfile" ||
+    n.includes("docker-compose") ||
+    n.startsWith("prisma/") ||
+    /^postcss\.config\.(?:mjs|js|cjs)$/i.test(n) ||
+    n === ".env.example"
+  );
 }
 
 export function infraEncaixeFilesIn(text: string): string[] {
@@ -766,7 +772,7 @@ export async function tryStartDeliveryRepair(
           ? `\n\n**Pergunta(s) sobre a Spec para você** (não vão para o reparo de código):\n${opts.perguntasSpec.map((q) => `- ${q}`).join("\n")}`
           : "") +
         (plan.itens.some((i) => i.origemId.endsWith(ENCAIXE_INFRA_ORIGEM))
-          ? `\n\n**Microbrief de encaixe** aberto para infra sem etapa dona (Dockerfile, compose ou migrations). O executor recebe esse microbrief nesta rodada.`
+          ? `\n\n**Microbrief de encaixe** aberto para infra sem etapa dona (Dockerfile, compose, migrations, PostCSS ou .env.example). O executor recebe esse microbrief nesta rodada.`
           : "") +
         (plan.semDono.length > 0
           ? `\n\n**Encaixe pendente (${plan.semDono.length})** — lacuna(s) que não citam arquivo de infra e não têm etapa dona. Esta rodada corrige o que tem dona e o encaixe de infra, se houver:\n${plan.semDono

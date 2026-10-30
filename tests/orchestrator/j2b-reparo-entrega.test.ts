@@ -156,6 +156,23 @@ describe("J2b — plano de reparo ligado à etapa dona (sem LLM)", () => {
     expect(plan.itens[0].origemId).not.toContain("encaixe-infra");
   });
 
+  it("postcss.config.mjs sem etapa dona vira microbrief de encaixe", () => {
+    const pagina = node({ id: "api", filesScope: JSON.stringify(["src/lib/auth.ts"]) });
+    const plan = planDeliveryRepair([pagina], {
+      ...noGaps,
+      fileDefects: [
+        {
+          arquivo: null,
+          defeito: "revisão final [critico] postcss.config.mjs: falta @tailwindcss/postcss. REQ-002",
+        },
+      ],
+    });
+    expect(plan.semDono).toEqual([]);
+    expect(plan.itens).toHaveLength(1);
+    expect(plan.itens[0].origemId).toBe("s-encaixe-infra");
+    expect(repairScopeOf(plan.itens[0])).toEqual(expect.arrayContaining(["postcss.config.mjs"]));
+  });
+
   it("Dockerfile e migrations sem etapa dona viram microbrief de encaixe", () => {
     const pagina = node({ id: "ui", filesScope: JSON.stringify(["src/app/page.tsx"]) });
     const plan = planDeliveryRepair([pagina], {

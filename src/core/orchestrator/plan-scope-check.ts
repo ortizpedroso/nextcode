@@ -206,6 +206,26 @@ export function checkExportJunctions(
   return errors;
 }
 
+/** Infra atribuída pelo plano (atribuirInfraAoDono) não entra no teto de 4 arquivos por etapa (item 4). */
+export const STAGE_CAP_INFRA_EXCEPTIONS = new Set([
+  "dockerfile",
+  "docker-compose.yml",
+  "docker-compose.prod.yml",
+  "prisma/migrations",
+]);
+
+export function normPlanPath(f: string): string {
+  return f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
+}
+
+export function filesCountedForStageCap(arquivos: string[]): number {
+  return arquivos.filter((f) => !STAGE_CAP_INFRA_EXCEPTIONS.has(normPlanPath(f).toLowerCase())).length;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const IGNORED_TYPE_IDENTIFIERS = new Set([
   "string", "number", "boolean", "void", "null", "undefined",
   "any", "unknown", "Promise", "Date", "Record", "Array",
@@ -241,7 +261,7 @@ export function checkContractSignatureParameters(
 
   for (const f of allFuncoes) {
     const fnName = f.nome;
-    const fnWordRegex = new RegExp(`\\b${fnName}\\b`, "g");
+    const fnWordRegex = new RegExp(`\\b${escapeRegExp(fnName)}\\b`, "g");
     const sigWordRegex = (word: string) => new RegExp(`\\b${word}\\b`);
 
     for (const text of reqTexts) {
@@ -428,7 +448,9 @@ export function validatePlanStages(
     microbriefs: stages.map((s) => ({ id: s.id, cluster: "core", dependeDe: s.dependeDe, arquivos: s.arquivos, reqs: s.reqs })),
     contratosTypescript: "",
   };
-  const base = validateMacrobriefMechanical(macrobrief, reqIds, maxFilesPerStage);
+  const base = validateMacrobriefMechanical(macrobrief, reqIds, maxFilesPerStage, {
+    filesCountedForCap: filesCountedForStageCap,
+  });
   const scope = checkPlanScope(stages, textoPorReq);
   const errors = [...extra, ...base.errors, ...scope.errors];
   return { valid: errors.length === 0, errors };

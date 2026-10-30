@@ -308,8 +308,10 @@ export function validateSpecMechanical(
 export function validateMacrobriefMechanical(
   macrobrief: MacrobriefDocument,
   specRequisitosIds: string[],
-  maxFilesPerMicrobrief: number = 3
+  maxFilesPerMicrobrief: number = 3,
+  opts?: { filesCountedForCap?: (arquivos: string[]) => number }
 ): MechanicalValidationResult {
+  const countForCap = opts?.filesCountedForCap ?? ((arquivos: string[]) => arquivos.length);
   const errors: string[] = [];
 
   const specSet = new Set(specRequisitosIds);
@@ -336,9 +338,10 @@ export function validateMacrobriefMechanical(
     if (mb.arquivos.length === 0) {
       errors.push(`[MACROBRIEF] O Microbrief "${mb.id}" não declara nenhum arquivo.`);
     }
-    if (mb.arquivos.length > maxFilesPerMicrobrief) {
+    const counted = countForCap(mb.arquivos);
+    if (counted > maxFilesPerMicrobrief) {
       errors.push(
-        `[MACROBRIEF] O Microbrief "${mb.id}" declara ${mb.arquivos.length} arquivos (máximo permitido: ${maxFilesPerMicrobrief}).`
+        `[MACROBRIEF] O Microbrief "${mb.id}" declara ${counted} arquivos (máximo permitido: ${maxFilesPerMicrobrief}).`
       );
     }
     for (const rawFile of mb.arquivos) {

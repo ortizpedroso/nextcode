@@ -88,6 +88,47 @@ describe("AV1.3 — evidência do avaliador conferida e problemas por severidade
     expect(r.verdict).toBe("REJECTED");
   });
 
+  it("aprovação sem nivelProva é descartada como aprovação sem prova", async () => {
+    const calls = { n: 0 };
+    const r = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      fatoQueGarante: "src/lib/soma.ts:2",
+      reqVerdicts: [ok],
+    }, calls);
+    expect(calls.n).toBe(2);
+    expect(r.verdict).toBe("REJECTED");
+  });
+
+  it("aprovação com nivelProva: 'falha_descartada' é descartada", async () => {
+    const calls = { n: 0 };
+    const r = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      fatoQueGarante: "src/lib/soma.ts:2",
+      nivelProva: "falha_descartada",
+      reqVerdicts: [ok],
+    }, calls);
+    expect(calls.n).toBe(2);
+    expect(r.verdict).toBe("REJECTED");
+  });
+
+  it("importante com linha real não exige fatoQueGarante e não dispara descarte de aprovação", async () => {
+    const calls = { n: 0 };
+    const r = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      reqVerdicts: [ok],
+      problemas: [{ severidade: "importante", arquivoLinha: "src/lib/soma.ts:1", descricao: "imp" }],
+    }, calls);
+    expect(calls.n).toBe(1);
+    expect(r.verdict).toBe("REJECTED");
+    expect(r.rawVerdict).toBe("REPROVADO");
+  });
+
   it("aprovação com fatoQueGarante: 'src/lib/soma.ts:2' e nivelProva: 'arquivo_linha' segue APROVADO quando não há problema bloqueante", async () => {
     const r = await judge({
       implemented: true,

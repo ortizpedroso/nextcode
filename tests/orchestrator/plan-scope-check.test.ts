@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { checkPlanScope, validateFinalPlan, atribuirInfraAoDono, type PlanStage } from "@/core/orchestrator/plan-scope-check";
+import {
+  checkPlanScope,
+  validateFinalPlan,
+  atribuirInfraAoDono,
+  filesCountedForStageCap,
+  type PlanStage,
+} from "@/core/orchestrator/plan-scope-check";
 import { transition } from "@/core/orchestrator/phase-machine";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
@@ -512,6 +518,68 @@ describe("1. Dono de infra no plano, antes da execução (atribuirInfraAoDono)",
     expect(baseNode.filesScope).not.toContain("Dockerfile");
     expect(secondNode.filesScope).not.toContain("Dockerfile");
     expect((secondNode.payload as any).microbrief.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+});
+
+describe("4. Teto de arquivos por etapa com exceção de infra do plano", () => {
+  it("filesCountedForStageCap ignora Dockerfile e migrations atribuídos pelo plano", () => {
+    const arquivos = [
+      "src/a.ts",
+      "src/b.ts",
+      "src/c.ts",
+      "src/d.ts",
+      "Dockerfile",
+      "prisma/migrations",
+    ];
+    expect(filesCountedForStageCap(arquivos)).toBe(4);
+  });
+
+  it("etapa com 4 arquivos de código + Dockerfile atribuído passa no T8b (máx. 4 na conta)", () => {
+    const nodes = [
+      {
+        id: "pkg",
+        filesScope: ["package.json", "src/a.ts", "src/b.ts", "src/c.ts"],
+        payload: {
+          microbrief: {
+            arquivosPermitidos: {
+              criar: ["package.json", "src/a.ts", "src/b.ts", "src/c.ts"],
+              modificar: [],
+              lerContratos: [],
+            },
+            reqsCobertos: ["REQ-001"],
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "src/a.ts", "src/b.ts", "src/c.ts", "Dockerfile"];
+    atribuirInfraAoDono(nodes as any, specFiles);
+    const textoPorReq = { "REQ-001": "API" };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4, specFiles);
+    expect(r.valid).toBe(true);
+    expect(r.errors.some((e) => e.includes("[MACROBRIEF]") && e.includes("arquivos"))).toBe(false);
+  });
+
+  it("etapa com 5 arquivos de código continua inválida mesmo com Dockerfile", () => {
+    const nodes = [
+      {
+        id: "pkg",
+        filesScope: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts", "Dockerfile"],
+        payload: {
+          microbrief: {
+            arquivosPermitidos: {
+              criar: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts", "Dockerfile"],
+              modificar: [],
+              lerContratos: [],
+            },
+            reqsCobertos: ["REQ-001"],
+          },
+        },
+      },
+    ];
+    const textoPorReq = { "REQ-001": "API" };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('[MACROBRIEF] O Microbrief "pkg" declara 5 arquivos'))).toBe(true);
   });
 });
 

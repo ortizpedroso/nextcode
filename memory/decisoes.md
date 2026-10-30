@@ -82,3 +82,6 @@ Fundador: "concordo". Ordem: teste pesado agora → depois, junto do PJ2: aviso 
 
 ## 19/10 — Execução autônoma 2 (mudança 26, subir para produção)
 Fundador: "pense de forma macro a resolver todos os problemas do projeto para que ele suba para produção… implementar, testar, corrigir… o que for para eu decidir, você vai decidir por mim". Checklist P1–P13 (§5.0); decisões delegadas D1–D42 em `docs/relatorios/DECISOES-AUTONOMAS-E1-2.md` — **delegadas, não confirmadas uma a uma pelo fundador** (auditoria do Cursor pendente). Ficaram para depois: JV1 completo, redesenho do Jev na Spec (E2), A1, J3, E5, PJ2b; TR1 (6), (7), (10).
+
+## 30/10 — Item 6 (PostCSS e `.env.example` no encaixe pós-T10)
+Fundador: "corrija logo… vamos até o fim". Decisão do auditor: **entram no microbrief `encaixe-infra`** pela mesma lista fechada de `isEncaixeInfraPath` (postcss.config e `.env.example`), sem alargar regex genérico de caminho. `fallbackInfraOwner` no plano continua como antes; só o encaixe depois da T10 deixa de bloquear com `Dono: analista` quando a lacuna cita só esses arquivos.
