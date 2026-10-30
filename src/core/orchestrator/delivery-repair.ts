@@ -25,9 +25,14 @@ export { readRepairPayload, supersededByRepair, currentRepairRound, type Deliver
  * final volta a PLANEJAMENTO com etapas de reparo, até 3 rodadas; depois BLOQUEADA com relatório.
  * O reparo é montado por código, sem LLM (J2): cada lacuna é ligada à etapa dona do arquivo ou do REQ;
  * uma etapa de reparo por etapa dona, partindo do código atual do projeto, com as lacunas como defeitos.
- * Lacuna que não liga a nenhuma etapa → não repara (BLOQUEADA, "Dono: analista").
+ * Lacuna que não liga a nenhuma etapa → encaixe/analista; **não** impede reparo das lacunas que têm dona.
+ * Infra sem dona (Dockerfile, compose, prisma/migrations) abre microbrief de encaixe (§3.1 item 5a),
+ * em vez do aviso genérico "Dono: analista".
  */
 export const MAX_DELIVERY_REPAIR_ROUNDS = 3;
+
+/** Origem sintética do microbrief de encaixe (§3.1 item 5a). O id do nó leva o sessionId na frente. */
+export const ENCAIXE_INFRA_ORIGEM = "encaixe-infra";
 
 export interface DeliveryGaps {
   missingFiles: string[];
@@ -61,12 +66,40 @@ export interface RepairPlan {
   semDono: string[];
 }
 
-type TaskLike = Pick<TaskNode, "id" | "title" | "role" | "status" | "filesScope" | "payload" | "createdAt">;
+type TaskLike = Pick<
+  TaskNode,
+  "id" | "sessionId" | "specVersion" | "title" | "role" | "status" | "filesScope" | "payload" | "createdAt"
+>;
 
 const norm = (f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").toLowerCase();
 
+/** Chave estável para `src/contracts/conformidade/mb-b1.ts` ↔ etapa `b1`, `B1`, `mb-b1`. */
+export function conformidadeEtapaKey(id: string): string {
+  const n = norm(id).replace(/\.ts$/, "");
+  return n.startsWith("mb-") ? n.slice(3) : n;
+}
+
+function taskMatchesConformidadeEtapa(task: TaskLike, fileStem: string): boolean {
+  const want = conformidadeEtapaKey(fileStem);
+  const payload = readNodePayload(task.payload);
+  if (payload.etapaId && conformidadeEtapaKey(payload.etapaId) === want) return true;
+  const mb = readNodeMicrobrief(task.payload)?.idMicrobrief?.replace(/-v\d+$/, "");
+  if (mb && conformidadeEtapaKey(mb) === want) return true;
+  const rep = readRepairPayload(task.payload);
+  if (rep?.origemId) {
+    // Reparo herda a dona original (mesmo escopo / etapaId).
+    const orig = tasksById.get(rep.origemId);
+    if (orig && taskMatchesConformidadeEtapa(orig, fileStem)) return true;
+  }
+  const title = norm(task.title);
+  if (title.includes(want) || title.includes(`mb-${want}`) || title.includes(`/${fileStem}`)) return true;
+  return false;
+}
+
+let tasksById = new Map<string, TaskLike>();
+
 /** Caminhos de código citados num texto (`src/a.ts:5`, `` `lib/b.tsx` ``), sem arquivos de teste. */
-const CODE_REF_RE = /(?:^|[\s`'"(\[])((?:[\w.@-]+\/)*[\w.@\[\]()-]+\.(?:ts|tsx|js|jsx|mjs|prisma))\b/g;
+const CODE_REF_RE = /(?:^|[\s`'"(\[])((?:[\w.@-]+\/)*[\w.@\[\]()-]+\.(?:ts|tsx|js|jsx|mjs|prisma|css|yml|yaml))\b/g;
 export function codeFilesCitedIn(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(CODE_REF_RE)) {
@@ -75,6 +108,61 @@ export function codeFilesCitedIn(text: string): string[] {
     if (!out.some((o) => norm(o) === norm(f))) out.push(f);
   }
   return out;
+}
+
+/** Infra/deploy citada na revisão final (sem extensão .ts ou fora de src/). */
+export function infraPathsCitedIn(text: string): string[] {
+  const out: string[] = [];
+  const push = (f: string) => {
+    if (!out.some((o) => norm(o) === norm(f))) out.push(f);
+  };
+  if (/\bDockerfile\b/.test(text)) push("Dockerfile");
+  if (/docker-compose\.prod\.yml/i.test(text)) push("docker-compose.prod.yml");
+  else if (/docker-compose\.yml/i.test(text)) push("docker-compose.yml");
+  if (/postcss\.config\.(?:mjs|js|cjs)/i.test(text)) push("postcss.config.mjs");
+  if (/\.env\.example/i.test(text)) push(".env.example");
+  if (/prisma\/migrations/i.test(text)) {
+    push("prisma/schema.prisma");
+    push("prisma/migrations");
+  }
+  return out;
+}
+
+/** Dockerfile, compose ou Prisma/migrations — candidatos ao microbrief de encaixe quando não há etapa dona. */
+export function isEncaixeInfraPath(file: string): boolean {
+  const n = norm(file);
+  return n === "dockerfile" || n.includes("docker-compose") || n.startsWith("prisma/");
+}
+
+export function infraEncaixeFilesIn(text: string): string[] {
+  return infraPathsCitedIn(text).filter(isEncaixeInfraPath);
+}
+
+/** Arquivos citados num defeito (código + infra). */
+export function pathsCitedInDefect(text: string): string[] {
+  return [...codeFilesCitedIn(text), ...infraPathsCitedIn(text)];
+}
+
+function fallbackInfraOwner(file: string, candidates: TaskLike[]): TaskLike | undefined {
+  const nf = norm(file);
+  if (nf === "dockerfile" || nf.includes("docker-compose")) {
+    return candidates.find((t) =>
+      scopeOf(t).some((f) => {
+        const x = norm(f);
+        return x === "dockerfile" || x.includes("docker-compose") || x === "package.json";
+      })
+    );
+  }
+  if (nf.includes("postcss") || nf.endsWith("globals.css")) {
+    return (
+      candidates.find((t) => scopeOf(t).some((f) => /globals\.css|postcss|tailwind/i.test(f))) ??
+      candidates.find((t) => scopeOf(t).some((f) => f.includes("src/app")))
+    );
+  }
+  if (nf.includes("prisma") || nf === ".env.example") {
+    return candidates.find((t) => scopeOf(t).some((f) => /prisma\/schema|prisma\/seed|\.env/i.test(f)));
+  }
+  return undefined;
 }
 
 /** Arquivo de uma linha `error TS` (`src/a.ts(54,7): error TS…` ou `src/a.ts:54:7 - error TS…`). */
@@ -107,14 +195,47 @@ function extraScopeFor(dona: TaskLike, defeitos: string[], ownerOfFile: (f: stri
     const real = scopeOf(dono).find((x) => norm(x) === norm(f)) ?? f;
     if (!out.some((x) => norm(x) === norm(real))) out.push(real);
   }
+  for (const f of defeitos.flatMap(infraPathsCitedIn)) {
+    if (!isEncaixeInfraPath(f) || escopo.includes(norm(f))) continue;
+    if (!out.some((x) => norm(x) === norm(f))) out.push(f);
+  }
   return out;
 }
 
 function ownerFinder(tasks: TaskLike[]) {
+  tasksById = new Map(tasks.map((t) => [t.id, t]));
   const candidates = tasks
     .filter((t) => t.role !== "scaffold" && t.status === "completed")
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  return (file: string) => candidates.find((t) => scopeOf(t).some((f) => norm(f) === norm(file)));
+  return (file: string) => {
+    const nf = norm(file);
+    const conf = /^src\/contracts\/conformidade\/(.+)\.ts$/.exec(nf);
+    if (conf) {
+      const stem = conf[1];
+      const dona = candidates.find((t) => taskMatchesConformidadeEtapa(t, stem));
+      if (dona) return dona;
+    }
+    const inScope = candidates.find((t) => scopeOf(t).some((f) => norm(f) === nf));
+    if (inScope) return inScope;
+    // Arquivo citado no escopo com path relativo diferente (./src/…)
+    return (
+      candidates.find((t) => scopeOf(t).some((f) => norm(f).endsWith(nf) || nf.endsWith(norm(f)))) ??
+      fallbackInfraOwner(file, candidates)
+    );
+  };
+}
+
+function ownerForDefect(
+  ownerOfFile: (f: string) => TaskLike | undefined,
+  arquivo: string | null | undefined,
+  defeito: string
+): TaskLike | undefined {
+  const paths = arquivo ? [arquivo] : pathsCitedInDefect(defeito);
+  for (const p of paths) {
+    const o = ownerOfFile(p);
+    if (o) return o;
+  }
+  return undefined;
 }
 
 /** Acrescenta arquivos ao escopo de uma etapa (filesScope, Microbrief "modificar" e Microbrief de reparo). */
@@ -195,7 +316,7 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   }
   for (const d of gaps.fileDefects ?? []) {
     const teste = d.teste ? { caminho: d.teste.caminho, conteudo: d.teste.conteudo, existente: d.teste.existente, saida: d.saida } : undefined;
-    const owner = d.arquivo ? ownerOfFile(d.arquivo) : undefined;
+    const owner = ownerForDefect(ownerOfFile, d.arquivo, d.defeito);
     // Mudança 44: problema "importante" só acompanha o reparo; sem etapa dona, fica de fora (não vira "sem dono").
     if (!owner && d.defeito.startsWith("revisão final [importante]")) continue;
     const item = add(owner, d.defeito, undefined, teste);
@@ -207,9 +328,59 @@ export function planDeliveryRepair(tasks: TaskLike[], gaps: DeliveryGaps): Repai
   for (const req of gaps.unapprovedReqs) add(ownerOfReq(req), `${req} não aprovado (veredito do avaliador abaixo de "implementado")`, req);
   // Sem detalhe do build: só é lacuna sem dono se não houver outra coisa a reparar (a próxima verificação mostra).
   if (gaps.buildGapWithoutDetail && byOwner.size === 0) semDono.push("falha de build sem a lista de erros");
-  semDono.push(...gaps.otherGaps);
+  const uiEnvGap = (g: string) =>
+    /^Verificação de tela reprovada \((install|docker|copy|start|preflight)\)/.test(g) || /Ambiente T10:/i.test(g);
+  for (const g of gaps.otherGaps) {
+    if (uiEnvGap(g)) continue;
+    const owner = ownerForDefect(ownerOfFile, null, g);
+    if (owner) add(owner, g);
+    else semDono.push(g);
+  }
 
-  return { itens: Array.from(byOwner.values()), semDono };
+  const encaixeGaps = semDono.filter((g) => infraEncaixeFilesIn(g).length > 0);
+  const semDonoResto = semDono.filter((g) => infraEncaixeFilesIn(g).length === 0);
+  if (encaixeGaps.length > 0) {
+    const files: string[] = [];
+    for (const g of encaixeGaps) {
+      for (const f of infraEncaixeFilesIn(g)) {
+        if (!files.some((x) => norm(x) === norm(f))) files.push(f);
+      }
+    }
+    const sid = tasks[0]?.sessionId || "sem-sessao";
+    const origemId = `${sid}-${ENCAIXE_INFRA_ORIGEM}`;
+    const agora = tasks[0]?.createdAt ?? new Date();
+    const dona = {
+      id: origemId,
+      sessionId: sid,
+      specVersion: tasks[0]?.specVersion ?? 0,
+      title: "Encaixe infra",
+      role: "worker",
+      cluster: "backend",
+      filesScope: JSON.stringify(files),
+      attempts: 0,
+      maxAttempts: 3,
+      quarantinePath: null,
+      status: "completed",
+      dependencies: "[]",
+      mcpScope: null,
+      payload: "{}",
+      result: null,
+      failureHistory: "[]",
+      createdAt: agora,
+      updatedAt: agora,
+    } as TaskNode;
+    const reqs = [...new Set(encaixeGaps.flatMap((g) => g.match(/REQ-\d+/g) ?? []))];
+    byOwner.set(origemId, {
+      dona,
+      origemId,
+      defeitos: encaixeGaps,
+      reqs,
+      testes: [],
+      escopoExtra: [],
+    });
+  }
+
+  return { itens: Array.from(byOwner.values()), semDono: semDonoResto };
 }
 
 const MAX_REGRESSION_PROOFS_PER_STAGE = 6;
@@ -302,12 +473,56 @@ export function repairDependencies(itens: RepairPlanItem[], idOf: (i: RepairPlan
         if (other === item || !scopeOf(other.dona).some((x) => norm(x) === norm(f))) continue;
         const a = idOf(item);
         const b = idOf(other);
-        if (deps.get(b)!.includes(a) || deps.get(a)!.includes(b)) continue;
+        if (deps.get(a)!.includes(b)) continue;
         deps.get(a)!.push(b);
       }
     }
   }
   return deps;
+}
+
+export function repairDependencyGraphHasCycle(deps: Map<string, string[]>): boolean {
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const dfs = (n: string): boolean => {
+    if (visiting.has(n)) return true;
+    if (visited.has(n)) return false;
+    visiting.add(n);
+    for (const d of deps.get(n) ?? []) {
+      if (dfs(d)) return true;
+    }
+    visiting.delete(n);
+    visited.add(n);
+    return false;
+  };
+  for (const n of deps.keys()) {
+    if (dfs(n)) return true;
+  }
+  return false;
+}
+
+/**
+ * Garante DAG executável na rodada de reparo: se escopoExtra gerar ciclo, encadeia por origemId com overlap de arquivo.
+ */
+export function acyclicRepairDependencies(
+  itens: RepairPlanItem[],
+  idOf: (i: RepairPlanItem) => string
+): { deps: Map<string, string[]>; cycleBroken: boolean } {
+  const raw = repairDependencies(itens, idOf);
+  if (!repairDependencyGraphHasCycle(raw)) return { deps: raw, cycleBroken: false };
+  const sorted = [...itens].sort((a, b) => a.origemId.localeCompare(b.origemId));
+  const deps = new Map<string, string[]>(sorted.map((i) => [idOf(i), []]));
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const cur = sorted[i];
+    const prevScope = new Set(repairScopeOf(prev).map(norm));
+    const overlap =
+      repairScopeOf(cur).some((f) => prevScope.has(norm(f))) ||
+      cur.escopoExtra.some((f) => prevScope.has(norm(f))) ||
+      prev.escopoExtra.some((f) => repairScopeOf(cur).some((c) => norm(c) === norm(f)));
+    if (overlap) deps.get(idOf(cur))!.push(idOf(prev));
+  }
+  return { deps, cycleBroken: true };
 }
 
 function microbriefReparoFor(item: RepairPlanItem, rodada: number, idProjeto: string): MicrobriefReparoDocument {
@@ -322,15 +537,19 @@ function microbriefReparoFor(item: RepairPlanItem, rodada: number, idProjeto: st
     filesScope: repairScopeOf(item),
     reqsAlvo: item.reqs.length > 0 ? item.reqs : reqsOf(item.dona),
     diretrizCirurgica:
-      "A verificação final do projeto inteiro reprovou a entrega com os defeitos abaixo, nos arquivos desta etapa. " +
-      "Parta do código ATUAL desses arquivos (mostrado abaixo) e corrija só o que os defeitos apontam, com edit_file; " +
-      "não reescreva do zero e não mexa no que já funciona. Confira com run_check typecheck antes do finish.",
+      item.origemId.endsWith(ENCAIXE_INFRA_ORIGEM)
+        ? "Lacunas de infra (Dockerfile, docker-compose ou prisma/migrations) sem etapa dona no plano. " +
+          "Parta do código ATUAL desses arquivos e corrija só o escopo deste microbrief (imagem, compose, schema e migrations). " +
+          "Não reescreva o aplicativo. Confira com run_check typecheck antes do finish."
+        : "A verificação final do projeto inteiro reprovou a entrega com os defeitos abaixo, nos arquivos desta etapa. " +
+          "Parta do código ATUAL desses arquivos (mostrado abaixo) e corrija só o que os defeitos apontam, com edit_file; " +
+          "não reescreva do zero e não mexa no que já funciona. Confira com run_check typecheck antes do finish.",
     lacunasParaSanar: item.defeitos,
   };
 }
 
 export type DeliveryRepairOutcome =
-  | { started: true; rodada: number; etapas: number }
+  | { started: true; rodada: number; etapas: number; semDonoPendente?: string[] }
   | {
       started: false;
       motivo: string;
@@ -338,6 +557,8 @@ export type DeliveryRepairOutcome =
       tipo: "esgotado" | "sem_dono" | "erro";
       /** No "esgotado": todos os defeitos têm etapa dona (código) → cabe autorizar mais uma rodada. */
       todosComDono?: boolean;
+      /** No "sem_dono": lacunas que não ligaram a etapa dona (triagem T10). */
+      semDono?: string[];
     };
 
 /**
@@ -373,7 +594,7 @@ async function diretrizDoAnalista(sessionId: string, item: RepairPlanItem): Prom
       stream: false,
       signal: AbortSignal.timeout(90_000),
     });
-    const json = await res?.response.json().catch(() => ({}));
+    const json = res?.response ? await res.response.json().catch(() => ({})) : {};
     const text = String(json?.choices?.[0]?.message?.content || "").trim();
     if (!text) return null;
     TelemetryLogger.log({
@@ -430,29 +651,38 @@ export async function tryStartDeliveryRepair(
     };
   }
 
-  if (plan.semDono.length > 0 || plan.itens.length === 0) {
+  if (plan.itens.length === 0) {
     TelemetryLogger.log({ sessionId, action: "DELIVERY_REPAIR_NO_OWNER", details: { semDono: plan.semDono.slice(0, 20) } });
     return {
       started: false,
       tipo: "sem_dono",
+      semDono: plan.semDono,
       motivo:
         "**Dono:** analista — há lacuna que não pertence a nenhuma etapa do plano, então o reparo automático não abre:\n" +
         (plan.semDono.length > 0 ? plan.semDono.slice(0, 15).map((g) => `- ${g}`).join("\n") : "- (nenhuma lacuna ligável)"),
     };
   }
+  if (plan.semDono.length > 0) {
+    TelemetryLogger.log({
+      sessionId,
+      action: "DELIVERY_REPAIR_PARTIAL_SEM_DONO",
+      details: { semDono: plan.semDono.slice(0, 20), etapasComDono: plan.itens.length },
+    });
+  }
 
   const diretrizes = new Map<string, string>();
   for (const item of plan.itens) {
     const texto = await diretrizDoAnalista(sessionId, item);
-    if (!texto && process.env.NODE_ENV !== "test") {
-      return {
-        started: false,
-        tipo: "erro",
-        motivo:
-          "O analista não escreveu o microbrief de correção. A rodada de reparo não foi aberta e o contador não avançou.",
-      };
+    if (texto) {
+      diretrizes.set(item.origemId, texto);
+    } else {
+      // Microbrief mecânico (lacunasParaSanar + diretriz padrão em microbriefReparoFor) — não bloqueia a rodada se o LLM falhar.
+      TelemetryLogger.log({
+        sessionId,
+        action: "ANALISTA_REPARO_FALLBACK",
+        details: { origemId: item.origemId, defeitos: item.defeitos.length },
+      });
     }
-    if (texto) diretrizes.set(item.origemId, texto);
   }
 
   const rodada = rodadaAnterior + 1;
@@ -466,7 +696,10 @@ export async function tryStartDeliveryRepair(
   const idProjeto = session?.title || sessionId;
   await attachRegressionProofs(sessionId, plan.itens, session?.project?.path);
   const repairId = (i: RepairPlanItem) => `${i.origemId}-reparo${rodada}`;
-  const deps = repairDependencies(plan.itens, repairId);
+  const { deps, cycleBroken } = acyclicRepairDependencies(plan.itens, repairId);
+  if (cycleBroken) {
+    TelemetryLogger.log({ sessionId, action: "DELIVERY_REPAIR_DEPS_CYCLE_BROKEN", details: { etapas: plan.itens.length } });
+  }
   for (const item of plan.itens) {
     const base = (() => {
       try {
@@ -532,6 +765,15 @@ export async function tryStartDeliveryRepair(
         (opts.perguntasSpec?.length
           ? `\n\n**Pergunta(s) sobre a Spec para você** (não vão para o reparo de código):\n${opts.perguntasSpec.map((q) => `- ${q}`).join("\n")}`
           : "") +
+        (plan.itens.some((i) => i.origemId.endsWith(ENCAIXE_INFRA_ORIGEM))
+          ? `\n\n**Microbrief de encaixe** aberto para infra sem etapa dona (Dockerfile, compose ou migrations). O executor recebe esse microbrief nesta rodada.`
+          : "") +
+        (plan.semDono.length > 0
+          ? `\n\n**Encaixe pendente (${plan.semDono.length})** — lacuna(s) que não citam arquivo de infra e não têm etapa dona. Esta rodada corrige o que tem dona e o encaixe de infra, se houver:\n${plan.semDono
+              .slice(0, 6)
+              .map((g) => `- ${g.slice(0, 280)}`)
+              .join("\n")}`
+          : "") +
         `\n\nNada muda na Spec. Se a entrega continuar reprovada depois da rodada ${limite}, a sessão para e eu aviso com o diagnóstico.`,
     },
   });
@@ -540,5 +782,10 @@ export async function tryStartDeliveryRepair(
   if (toExecution.ok && toExecution.effects.some((e) => e.type === "INICIAR_EXECUCAO")) {
     await enqueueSessionQueueJob(sessionId);
   }
-  return { started: true, rodada, etapas: plan.itens.length };
+  return {
+    started: true,
+    rodada,
+    etapas: plan.itens.length,
+    ...(plan.semDono.length > 0 ? { semDonoPendente: plan.semDono } : {}),
+  };
 }

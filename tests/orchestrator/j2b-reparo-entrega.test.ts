@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import prisma from "../../src/lib/prisma.js";
 import type { TaskNode } from "@prisma/client";
-import { planDeliveryRepair, fileOfTsErrorLine, MAX_DELIVERY_REPAIR_ROUNDS } from "../../src/core/orchestrator/delivery-repair.js";
+import {
+  planDeliveryRepair,
+  fileOfTsErrorLine,
+  MAX_DELIVERY_REPAIR_ROUNDS,
+  tryStartDeliveryRepair,
+  repairScopeOf,
+} from "../../src/core/orchestrator/delivery-repair.js";
 import { enqueueSessionQueueJob, claimJob, executeClaimedJob } from "../../src/core/orchestrator/job-queue.js";
 import * as sessionQueueModule from "../../src/core/orchestrator/session-queue.js";
 import * as nodeExecutorModule from "../../src/core/orchestrator/node-executor.js";
@@ -50,6 +56,31 @@ describe("J2b — plano de reparo ligado à etapa dona (sem LLM)", () => {
     expect(fileOfTsErrorLine("Found 2 errors.")).toBeNull();
   });
 
+  it("erro TS em src/contracts/conformidade/<etapaId>.ts liga à etapa com mesmo etapaId no payload", () => {
+    const n1 = node({
+      payload: JSON.stringify({ etapaId: "mb-b2", reqsCobertos: ["REQ-001"] }),
+    });
+    const plan = planDeliveryRepair([n1], {
+      ...noGaps,
+      buildErrorLines: ["src/contracts/conformidade/mb-b2.ts(20,14): error TS2322: route handler"],
+    });
+    expect(plan.itens).toHaveLength(1);
+    expect(plan.itens[0].dona.id).toBe("n1");
+    expect(plan.semDono).toHaveLength(0);
+  });
+
+  it("conformidade mb-b1 liga quando payload.etapaId é só b1 (contrato)", () => {
+    const n1 = node({
+      payload: JSON.stringify({ etapaId: "b1", reqsCobertos: ["REQ-010"] }),
+    });
+    const plan = planDeliveryRepair([n1], {
+      ...noGaps,
+      buildErrorLines: ["src/contracts/conformidade/mb-b1.ts(11,14): error TS2322: FnCriarCobranca"],
+    });
+    expect(plan.semDono).toHaveLength(0);
+    expect(plan.itens[0].dona.id).toBe("n1");
+  });
+
   it("erro de tipo, arquivo ausente e REQ reprovado vão para a etapa dona; sem dono fica de fora", () => {
     const n1 = node({});
     const n2 = node({ id: "n2", title: "Etapa 2/2", filesScope: JSON.stringify(["src/y.ts"]), payload: JSON.stringify({ reqsCobertos: ["REQ-002"] }) });
@@ -81,6 +112,68 @@ describe("J2b — plano de reparo ligado à etapa dona (sem LLM)", () => {
     const plan = planDeliveryRepair([base], { ...noGaps, missingFiles: ["package.json"], otherGaps: ["Verificação de tela reprovada (build)."] });
     expect(plan.itens).toHaveLength(0);
     expect(plan.semDono).toHaveLength(2);
+  });
+
+  it("lacuna sem dono + defeito com dona → plano abre reparo só do que tem dona (parcial)", () => {
+    const n1 = node({ id: "n1", filesScope: JSON.stringify(["src/lib/x.ts"]) });
+    const plan = planDeliveryRepair([n1], {
+      ...noGaps,
+      fileDefects: [{ arquivo: "src/lib/x.ts", defeito: "REQ-001 parcial" }],
+      otherGaps: ["lacuna Jev sem arquivo citável"],
+    });
+    expect(plan.itens).toHaveLength(1);
+    expect(plan.semDono).toContain("lacuna Jev sem arquivo citável");
+  });
+
+  it("defeito crítico citando Dockerfile e migrations liga à etapa do schema e amplia o escopo", () => {
+    const scaffold = node({ id: "sc", role: "scaffold", filesScope: JSON.stringify(["package.json", "Dockerfile"]) });
+    const prisma = node({ id: "p2", filesScope: JSON.stringify(["prisma/schema.prisma"]) });
+    const plan = planDeliveryRepair([scaffold, prisma], {
+      ...noGaps,
+      fileDefects: [
+        {
+          arquivo: null,
+          defeito:
+            "revisão final [critico] Dockerfile:34-37: A imagem roda prisma migrate deploy, mas prisma/migrations está vazio.",
+        },
+      ],
+    });
+    expect(plan.semDono).toEqual([]);
+    expect(plan.itens.map((i) => i.dona.id)).toEqual(["p2"]);
+    expect(plan.itens[0].defeitos[0]).toContain("Dockerfile");
+    expect(plan.itens[0].escopoExtra).toEqual(expect.arrayContaining(["Dockerfile", "prisma/migrations"]));
+  });
+
+  it("Dockerfile com etapa que tem package.json fica nessa etapa", () => {
+    const pkg = node({ id: "pkg", filesScope: JSON.stringify(["package.json", "tsconfig.json"]) });
+    const plan = planDeliveryRepair([pkg], {
+      ...noGaps,
+      fileDefects: [{ arquivo: null, defeito: "revisão final [critico] Dockerfile:10: imagem sem usuário não-root." }],
+    });
+    expect(plan.semDono).toEqual([]);
+    expect(plan.itens).toHaveLength(1);
+    expect(plan.itens[0].dona.id).toBe("pkg");
+    expect(plan.itens[0].origemId).not.toContain("encaixe-infra");
+  });
+
+  it("Dockerfile e migrations sem etapa dona viram microbrief de encaixe", () => {
+    const pagina = node({ id: "ui", filesScope: JSON.stringify(["src/app/page.tsx"]) });
+    const plan = planDeliveryRepair([pagina], {
+      ...noGaps,
+      fileDefects: [
+        {
+          arquivo: null,
+          defeito: "revisão final [critico] Dockerfile:34-37: prisma/migrations está vazio. REQ-009",
+        },
+      ],
+    });
+    expect(plan.semDono).toEqual([]);
+    expect(plan.itens).toHaveLength(1);
+    expect(plan.itens[0].origemId).toBe("s-encaixe-infra");
+    expect(plan.itens[0].reqs).toEqual(["REQ-009"]);
+    expect(repairScopeOf(plan.itens[0])).toEqual(
+      expect.arrayContaining(["Dockerfile", "prisma/schema.prisma", "prisma/migrations"])
+    );
   });
 
   it("T10 julga o reparo concluído, não a etapa que ele substituiu", () => {
@@ -180,6 +273,46 @@ describe("J2b — fila: VERIFICACAO reprovada abre o reparo ou bloqueia com rela
     expect(msg).toContain("Autorizar mais uma rodada");
   });
 
+  it("infra sem dono abre microbrief de encaixe e não avisa 'Dono: analista'", async () => {
+    const session = await prisma.session.create({ data: { title: "J2b encaixe", phase: "VERIFICACAO" } });
+    created.push(session.id);
+    await prisma.taskNode.create({
+      data: {
+        id: `${session.id}-pagina`,
+        sessionId: session.id,
+        title: "Etapa tela",
+        role: "worker",
+        status: "completed",
+        filesScope: JSON.stringify(["src/app/page.tsx"]),
+        payload: JSON.stringify({ reqsCobertos: ["REQ-001"] }),
+      },
+    });
+    const out = await tryStartDeliveryRepair(session.id, {
+      ...noGaps,
+      fileDefects: [
+        {
+          arquivo: null,
+          defeito: "revisão final [critico] docker-compose.yml:12: serviço sem healthcheck; prisma/migrations vazio.",
+        },
+      ],
+    });
+    expect(out.started).toBe(true);
+    if (!out.started) return;
+    expect(out.etapas).toBe(1);
+    const reparo = await prisma.taskNode.findFirst({
+      where: { sessionId: session.id, id: { contains: "encaixe-infra" } },
+    });
+    expect(reparo?.status).toBe("pending");
+    const mb = JSON.parse(reparo!.payload!).reparoEntrega.microbriefReparo;
+    expect(mb.documento).toBe("microbrief_reparo");
+    expect(mb.filesScope).toEqual(expect.arrayContaining(["docker-compose.yml", "prisma/schema.prisma", "prisma/migrations"]));
+    expect(mb.diretrizCirurgica).toMatch(/infra/i);
+    const msg = (await prisma.message.findMany({ where: { sessionId: session.id } })).map((m) => m.content).join("\n");
+    expect(msg).toContain("Microbrief de encaixe");
+    expect(msg).not.toContain("**Dono:** analista");
+    expect((await prisma.session.findUnique({ where: { id: session.id } }))?.phase).toBe("EXECUCAO");
+  });
+
   it("lacuna sem dono → BLOQUEADA com 'Dono: analista', nenhum reparo criado", async () => {
     const s = await sessionWith([{ id: "n1", filesScope: JSON.stringify(["src/outro.ts"]) }]);
     await runJob(s.id);
@@ -234,6 +367,27 @@ describe("44 — defeito que cita outro arquivo de código leva esse arquivo ao 
     const deps = repairDependencies(plan.itens, (i) => `${i.dona.id}-r`);
     expect(deps.get("n4-r")).toEqual(["n20-r"]);
     expect(deps.get("n20-r")).toEqual([]);
+  });
+
+  it("dependências cíclicas na rodada são linearizadas (DAG executável)", async () => {
+    const { acyclicRepairDependencies, repairDependencies } = await import("../../src/core/orchestrator/delivery-repair.js");
+    const mk = (id: string, scope: string[], extra: string[]) =>
+      ({
+        dona: node({ id, filesScope: JSON.stringify(scope) }),
+        origemId: id,
+        defeitos: ["d"],
+        reqs: [],
+        testes: [],
+        escopoExtra: extra,
+      }) as import("../../src/core/orchestrator/delivery-repair.js").RepairPlanItem;
+    const a = mk("a", ["src/a.ts"], ["src/b.ts"]);
+    const b = mk("b", ["src/b.ts"], ["src/a.ts"]);
+    const raw = repairDependencies([a, b], (i) => `${i.origemId}-r`);
+    expect(raw.get("a-r")?.includes("b-r") || raw.get("b-r")?.includes("a-r")).toBe(true);
+    const { deps, cycleBroken } = acyclicRepairDependencies([a, b], (i) => `${i.origemId}-r`);
+    expect(cycleBroken).toBe(true);
+    expect(deps.get("a-r")).toEqual([]);
+    expect(deps.get("b-r")).toEqual(["a-r"]);
   });
 });
 
