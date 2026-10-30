@@ -4,7 +4,7 @@
 > 1. `memory/diario.md` — onde paramos;
 > 2. `memory/decisoes.md` — o que o fundador já decidiu (não contradizer; em dúvida, perguntar);
 > 3. `memory/medicoes.md` — números reais já medidos (não estimar de novo);
-> 4. `docs/NEXTCODE-REFERENCIA.md` — documento único: o que foi feito, **o que falta (§3, fila única)**, protocolo Antigravity implementa / Claude audita (§9). Histórico antigo: `git show cabc2d7:<caminho>` (§10).
+> 4. `docs/NEXTCODE-REFERENCIA.md` — documento único: o que foi feito, **o que falta (§3, fila por relevância)**, protocolo Antigravity implementa / Claude audita (§9). Histórico antigo: `git show cabc2d7:<caminho>` (§10).
 > **Ao terminar qualquer passo:** atualize o diário. Histórico bruto: transcrições em `~/.claude/projects/C--projetos-nextcode/*.jsonl`.
 
 ## Regras do fundador (obrigatórias)

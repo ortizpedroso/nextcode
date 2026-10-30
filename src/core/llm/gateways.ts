@@ -1,5 +1,5 @@
 /**
- * Gateways de LLM compatíveis com OpenAI (FreeLLMAPI e OmniRoute) — ver docs/LLM-GATEWAYS.md.
+ * Gateways de LLM compatíveis com OpenAI (FreeLLMAPI e OmniRoute). O desenho está em docs/NEXTCODE-REFERENCIA.md.
  *
  * Os dois gateways JÁ fazem roteamento entre provedores, cooldown e controle de cota. O NextCode
  * não reimplementa nada disso: escolhe o gateway pela ordem configurada, classifica a falha
@@ -10,6 +10,7 @@ import prisma from "@/lib/prisma";
 import { readSecret, writeSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
 import { ensureVerifiedOmniModels } from "@/core/router/omni-model-discovery";
+import { extractAssistantTextFromCompletion } from "@/core/llm/chat-completion-text";
 
 export type GatewayId = "freellmapi" | "omniroute" | "deepseek";
 export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "omniroute", "deepseek"];
@@ -391,11 +392,11 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
 
   if (attempt.ok) {
     const json = await attempt.response.json().catch(() => ({}));
-    const content = json?.choices?.[0]?.message?.content;
+    const content = extractAssistantTextFromCompletion(json);
     health.latencyMs = attempt.latencyMs;
     health.servedBy = attempt.servedBy;
     health.httpStatus = 200;
-    health.chatOk = typeof content === "string";
+    health.chatOk = content.length > 0;
     if (!health.chatOk) {
       health.error = "O gateway respondeu 200, mas sem texto de resposta.";
       health.action = "Verifique o modelo configurado.";

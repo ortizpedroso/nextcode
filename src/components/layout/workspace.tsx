@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Layers,
   MessageSquare,
@@ -99,6 +99,20 @@ interface WorkspaceProps {
   onRunGraphify?: (messageId: string, projectId: string) => void;
   graphifyRunningMessageId?: string | null;
   graphifyResults?: Record<string, GraphifyRunOutcome>;
+}
+
+/** Horário local compacto para o thread (pt-BR). */
+function formatMessageTime(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 /** Selo da mensagem: por onde a resposta saiu (tierTag do roteador) ou o modo pedido pelo usuário. */
@@ -205,6 +219,13 @@ export function Workspace({
   // (padrao "near bottom": so auto-rola se ele ja estava proximo do final).
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const lastAssistantMessageAt = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant" && messages[i].createdAt) return messages[i].createdAt!;
+    }
+    return null;
+  }, [messages]);
   const userHasScrolledUpRef = useRef(false);
 
   // Monitora scroll manual do usuario para detectar se ele subiu propositalmente para ler o historico
@@ -359,7 +380,7 @@ export function Workspace({
                       { label: "Telemetria", icon: Activity, onClick: onOpenTelemetryModal, color: "text-indigo-600 dark:text-indigo-400" },
                       { label: "Cotas", icon: Zap, onClick: onOpenQuotaModal, color: "text-amber-600 dark:text-amber-400" },
                       { label: "Skills", icon: Sparkles, onClick: onOpenSkillsModal, color: "text-purple-600 dark:text-purple-400" },
-                      { label: "Benchmark", icon: BarChart3, onClick: onOpenBenchmarkModal, color: "text-emerald-600 dark:text-emerald-400" },
+                      { label: "Simulação", icon: BarChart3, onClick: onOpenBenchmarkModal, color: "text-emerald-600 dark:text-emerald-400" },
                       { label: "Busca", icon: Search, onClick: onOpenSearchModal, color: "text-cyan-600 dark:text-cyan-400" },
                       { label: "MCP Tools", icon: Wrench, onClick: onOpenMcpToolsModal, color: "text-[#0066cc] dark:text-blue-400" },
                       { label: "Revisões", icon: History, onClick: onOpenRevisionsModal, color: "text-indigo-600 dark:text-indigo-400" },
@@ -438,7 +459,18 @@ export function Workspace({
                                 ? "Notificação DAG"
                                 : "NextCode Engine"}
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
+                              {formatMessageTime(msg.createdAt) && (
+                                <time
+                                  dateTime={msg.createdAt}
+                                  className={`text-[10px] tabular-nums whitespace-nowrap ${
+                                    msg.role === "user" ? "text-white/70" : "text-slate-400 dark:text-slate-500"
+                                  }`}
+                                  title={msg.createdAt}
+                                >
+                                  {formatMessageTime(msg.createdAt)}
+                                </time>
+                              )}
                               {msg.tier && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1 bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700">
                                   {tierBadgeLabel(msg.tier)}
@@ -542,6 +574,24 @@ export function Workspace({
                   </>
                 )}
               </div>
+
+              {(lastAssistantMessageAt || (loading && chatLoadingKind)) && (
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 text-right px-1 pb-1 tabular-nums">
+                  {loading && chatLoadingKind ? (
+                    <span className="inline-flex items-center gap-1.5 justify-end">
+                      <RefreshCw className="w-3 h-3 animate-spin text-[#0066cc]" aria-hidden />
+                      Aguardando resposta…
+                      {lastAssistantMessageAt && (
+                        <span className="opacity-80">
+                          (última · {formatMessageTime(lastAssistantMessageAt)})
+                        </span>
+                      )}
+                    </span>
+                  ) : lastAssistantMessageAt ? (
+                    <>Última resposta · {formatMessageTime(lastAssistantMessageAt)}</>
+                  ) : null}
+                </p>
+              )}
 
               {/* Componente PromptBar com Seletor Discreto */}
               <PromptBar

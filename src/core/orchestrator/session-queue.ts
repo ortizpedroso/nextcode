@@ -160,6 +160,11 @@ export function montarDependenciasDaFila(tasks: Array<{ id: string; status: stri
   return { porId, bloqueios };
 }
 
+/** O aviso de tentativas esgotadas não cabe quando o bloqueio já tem este nome. */
+export function deveAvisarTentativasEsgotadas(erro: string | undefined): boolean {
+  return erro !== "DEPENDENCIA_DESCONHECIDA";
+}
+
 /**
  * Executa a fila de nós da DAG de uma sessão no servidor:
  * recuperação de nós zumbis, laço de lotes (até 3 em paralelo),
@@ -243,7 +248,9 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
           }
         }
         for (const b of tarefasParaBloquear) {
-          await reportBlockedNodeToHuman(sessionId, b.taskId);
+          if (deveAvisarTentativasEsgotadas(b.erro)) {
+            await reportBlockedNodeToHuman(sessionId, b.taskId);
+          }
         }
       }
     }

@@ -87,7 +87,7 @@ export interface FinalReviewResult {
 export type FinalReviewDispatch = (messages: { role: "system" | "user"; content: string }[]) => Promise<EvaluatorCallResult>;
 
 /**
- * Controles de 21/10 (`scripts/controles-avaliador-final-j3.ts`, `docs/relatorios/bench/2026-10-21-j3-controles-avaliador-final.json`):
+ * Controles de 21/10 (`scripts/controles-avaliador-final-j3.ts`; o JSON saiu do disco, recuperar com git show cabc2d7:docs/relatorios/bench/2026-10-21-j3-controles-avaliador-final.json):
  * Opus 5.5 e Sonnet 5.5 acertaram 8/8 (P1 correto 5/5; integração, stub e P4 reprovados pelo defeito certo);
  * Sonnet US$ 0,118 × Opus US$ 0,259 → fica o mais barato que passou, Opus de reserva.
  */

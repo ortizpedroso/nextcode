@@ -1,3 +1,30 @@
+## 30/10/2026 (265) — FreeLLMAPI sem electronhub/router9
+**Veredito:** item 14 da §3.5 **já estava feito** no painel; a referência estava desatualizada.
+**Prova:** `GET http://localhost:3100/v1/models` com a chave do NextCode → HTTP 200, 303 modelos, 0 ocorrências de `electronhub`/`router9` no JSON. `probeGateway("freellmapi")` → `servedBy: custom/deepseek-v4-pro`.
+**Nota:** testes em `rota-paga-routed-via.test.ts` continuam simulando `electronhub/` para provar que o NextCode recusa revenda nos papéis críticos; isso não significa que o proxy ainda ofereça essa rota.
+---
+## 30/10/2026 (264) — Ressalvas 263 + itens 4 e 6 + auditoria 9–11
+**Veredito:** pacote harness commitado em `72dc5d9`; higiene 9–11 + referência no commit seguinte.
+**Prova:** `npx tsc --noEmit` saída 0. Vitest → 4 arquivos, 67 testes, passou (`av13` 13, `plan-scope-check` 27, `j2b-reparo-entrega` 21, `session-queue-deps` 6). Com `deveAvisarTentativasEsgotadas` sempre `true`, o caso de dependência desconhecida fica vermelho; restaurado.
+**O que mudou:** testes AV1.3 (`nivelProva` ausente, `falha_descartada`, `importante` sem `fatoQueGarante`); `escapeRegExp` em `checkContractSignatureParameters`; item 4 `filesCountedForStageCap`; item 6 `isEncaixeInfraPath` (decisão em `memory/decisoes.md`); itens 9–11 auditados **ACEITO**.
+**Próximo passo:** item 7 (TESTE-E5) e Gate 1 (bancada).
+---
+## 30/10/2026 (263) — Auditoria das três travas (§3.1)
+**Veredito:** ✅ **ACEITO COM RESSALVAS**
+**Prova:** commit `d1c00457fa6a2879ff91c6af83e487285afd405b`. `npx tsc --noEmit` saída 0. Vitest nos três arquivos → 40/40. Revert das três travas reprova os casos novos; arquivos restaurados.
+**Próximo passo:** itens 4 e 6 (feitos em `72dc5d9`).
+---
+## 30/10/2026 (262) — Itens 9, 10 e 11 sem cruzar o pacote da outra LLM
+**O que mudou:** dependência desconhecida não chama `reportBlockedNodeToHuman`. Benchmark na UI/API marcado como simulação. Comentários apontam `docs/NEXTCODE-REFERENCIA.md` em vez de `docs/LLM-GATEWAYS.md`.
+**Prova:** `npx vitest run tests/orchestrator/session-queue-deps.test.ts` → 6/6.
+---
+## 30/10/2026 (261) — Referência conferida com o código
+**O que mudou:** `docs/NEXTCODE-REFERENCIA.md` alinhado ao código (MACROBRIEF, `.nextcode`, reasoning, encaixe, §3 reordenada).
+**Próximo passo:** travas §3.1 (depois `d1c0045`).
+---
+## 30/10/2026 (260) — Fila da referência reordenada por relevância
+**O que mudou:** §3 de `docs/NEXTCODE-REFERENCIA.md` reordenada por efeito na entrega; feito vs aberto separado (§3.6).
+---
 ## 24/10/2026 (243) — Auditoria do TESTE-E5 (Frentes 5, 7, 8 e 9 Concluídas)
 
 **Veredito:** ✅ **APROVADO** (todos os 6 requisitos cumpridos e comprovados no código e na infraestrutura).

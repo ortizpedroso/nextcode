@@ -63,16 +63,17 @@ export async function POST(req: NextRequest) {
         totalEstimatedCostUSD: Number(totalEstimatedCostUSD.toFixed(4)),
         recommendation:
           model.includes("omniroute")
-            ? "Recomendado para máximo throughput e menor custo"
+            ? "Coeficiente fixo de custo baixo. Nenhum modelo foi chamado."
             : model.includes("sonnet")
-            ? "Recomendado para tarefas críticas de altíssima complexidade"
-            : "Recomendado para respostas ultra-rápidas (Fast-tier)",
+            ? "Coeficiente fixo de custo alto. Nenhum modelo foi chamado."
+            : "Coeficiente fixo de latência baixa. Nenhum modelo foi chamado.",
       };
     });
 
     return NextResponse.json({
       sessionId,
       sessionTitle: session.title,
+      simulado: true,
       benchmarkDate: new Date().toISOString(),
       results: benchmarkResults,
     });

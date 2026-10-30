@@ -52,6 +52,7 @@ import {
   type GatewayConfig,
   type GatewayFailureKind,
 } from "../llm/gateways";
+import { extractAssistantTextFromCompletion } from "../llm/chat-completion-text";
 import prisma from "@/lib/prisma";
 
 export function resolveOmniRouteUrl(rawUrl?: string): string {
@@ -818,7 +819,7 @@ export class SmartRouter {
         allowedRoutedViaPrefixes.length > 0 &&
         !allowedRoutedViaPrefixes.some((p) => attempt.servedBy.toLowerCase().startsWith(p.toLowerCase()))
       ) {
-        await attempt.response.body?.cancel().catch(() => {});
+        if (attempt.response.body) await attempt.response.body.cancel().catch(() => {});
         TelemetryLogger.log({
           sessionId,
           action: "llm.gateway_failure",
@@ -831,6 +832,32 @@ export class SmartRouter {
           },
         });
         return { failedKind: "bad_request" };
+      }
+      if (!stream) {
+        const peek = await attempt.response.clone().json().catch(() => null);
+        const text = extractAssistantTextFromCompletion(peek);
+        if (!text) {
+          if (attempt.response.body) await attempt.response.body.cancel().catch(() => {});
+          const finish = peek?.choices?.[0]?.finish_reason ?? "";
+          const detail = finish
+            ? `HTTP 200 sem texto (finish_reason=${finish})`
+            : "HTTP 200 sem message.content nem reasoning_content";
+          lastGatewayFailure = `${label}: ${detail}`;
+          console.warn(`[ROUTER] ${lastGatewayFailure}. Tentando a próxima rota.`);
+          TelemetryLogger.log({
+            sessionId,
+            action: "llm.gateway_failure",
+            details: {
+              gateway: gw.id,
+              requestedModel: model,
+              kind: "bad_request",
+              status: 200,
+              detail,
+              servedBy: attempt.servedBy,
+            },
+          });
+          return { failedKind: "bad_request" };
+        }
       }
       lastGatewayFailure = "";
       console.log(`[ROUTER] Chamada processada via ${label} (${attempt.servedBy}, ${attempt.latencyMs}ms).`);
@@ -991,7 +1018,7 @@ export class SmartRouter {
           idleTimer = setTimeout(() => {
             streamBroken = true;
             try {
-              omniRes.body?.cancel().catch(() => {});
+              if (omniRes.body) void omniRes.body.cancel().catch(() => {});
             } catch {
               /* body já fechado */
             }
@@ -1118,7 +1145,7 @@ export class SmartRouter {
     }
 
     // ----------------------------------------------------
-    // TENTATIVA 1: gateways LLM em ordem de prioridade (FreeLLMAPI, OmniRoute) — docs/LLM-GATEWAYS.md
+    // TENTATIVA 1: gateways LLM em ordem de prioridade (FreeLLMAPI, OmniRoute). Desenho em docs/NEXTCODE-REFERENCIA.md.
     // ----------------------------------------------------
     const gateways = options.gateways ?? (await loadGatewayConfigs().catch(() => [] as GatewayConfig[]));
     // OmniRoute sempre participa (salvo se desativado explicitamente): é a rota legada e os testes

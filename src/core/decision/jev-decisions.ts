@@ -528,7 +528,7 @@ export async function measureJevSelectorComparison(params: {
     policy,
   });
 
-  // Preços de referência documentados em docs/NEXTCODE-REFERENCIA.md §5 e §1.3 e LLM-GATEWAYS.md:
+  // Preços de referência documentados em docs/NEXTCODE-REFERENCIA.md §5 e §1.3.
   // - DeepSeek (pesado): US$ 0.28 / 1M input, US$ 0.42 / 1M output
   // - FreeLLMAPI (rapido / medio): US$ 0.00 (cota gratuita)
   // - Jev SystemOne (jev-1.13.0): US$ 0.042 / 1M input (output grátis)

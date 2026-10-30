@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { montarDependenciasDaFila } from "@/core/orchestrator/session-queue";
+import { montarDependenciasDaFila, deveAvisarTentativasEsgotadas } from "@/core/orchestrator/session-queue";
 
 describe("session-queue-deps - montarDependenciasDaFila (item 5c)", () => {
   it("duas etapas; a segunda depende de 'id-que-nao-existe' e a primeira está completed → bloqueios contém a segunda e 'id-que-nao-existe'; porId da segunda não é o id da primeira", () => {
@@ -83,5 +83,10 @@ describe("session-queue-deps - montarDependenciasDaFila (item 5c)", () => {
     expect(bloqueios[0].taskId).toBe("etapa-2");
     expect(bloqueios[0].idsDesconhecidos).toEqual(["<dependencies ilegível>"]);
     expect(bloqueios[0].erro).toBe("DEPENDENCIA_DESCONHECIDA");
+  });
+
+  it("dependência desconhecida não pede o aviso de tentativas esgotadas", () => {
+    expect(deveAvisarTentativasEsgotadas("DEPENDENCIA_DESCONHECIDA")).toBe(false);
+    expect(deveAvisarTentativasEsgotadas(undefined)).toBe(true);
   });
 });

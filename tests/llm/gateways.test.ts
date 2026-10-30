@@ -1,6 +1,7 @@
 /**
- * Gateways LLM (docs/LLM-GATEWAYS.md): ordem, classificação de falha, passagem ao próximo
+ * Gateways LLM: ordem, classificação de falha, passagem ao próximo
  * gateway e diagnóstico real — com servidores HTTP falsos de FreeLLMAPI e OmniRoute.
+ * O desenho está em docs/NEXTCODE-REFERENCIA.md.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import http from "http";

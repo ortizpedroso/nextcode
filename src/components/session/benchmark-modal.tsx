@@ -21,7 +21,6 @@ interface BenchmarkModalProps {
 
 export function BenchmarkModal({ sessionId, onClose }: BenchmarkModalProps) {
   const [results, setResults] = useState<BenchmarkResult[]>([]);
-  const [sessionTitle, setSessionTitle] = useState("");
   const [loading, setLoading] = useState(true);
 
   const runBenchmark = async () => {
@@ -35,7 +34,6 @@ export function BenchmarkModal({ sessionId, onClose }: BenchmarkModalProps) {
       const data = await res.json();
       if (res.ok && Array.isArray(data.results)) {
         setResults(data.results);
-        setSessionTitle(data.sessionTitle || "Sessão Ativa");
       }
     } catch (err) {
       console.error("Erro ao rodar benchmark:", err);
@@ -59,10 +57,10 @@ export function BenchmarkModal({ sessionId, onClose }: BenchmarkModalProps) {
             </div>
             <div>
               <h2 className="font-bold text-slate-900 dark:text-white text-sm">
-                Simulador & Benchmark Comparativo de DAG
+                Simulação de benchmark
               </h2>
               <span className="text-[11px] text-slate-400">
-                Sessão: <strong className="text-slate-700 dark:text-slate-200">{sessionTitle || sessionId.substring(0, 8)}</strong>
+                Estes números não foram medidos. Não são resultado de execução.
               </span>
             </div>
           </div>
@@ -84,7 +82,7 @@ export function BenchmarkModal({ sessionId, onClose }: BenchmarkModalProps) {
             </div>
           ) : results.length === 0 ? (
             <div className="p-6 text-center text-slate-400 text-xs italic bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-              Não foi possível gerar dados de benchmark para esta sessão.
+              A simulação não devolveu números para esta sessão.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -129,7 +127,7 @@ export function BenchmarkModal({ sessionId, onClose }: BenchmarkModalProps) {
                   </div>
 
                   <p className="text-[10.5px] text-slate-500 italic bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200/80 dark:border-slate-800">
-                    💡 {item.recommendation}
+                    Simulação, não é medida. {item.recommendation}
                   </p>
                 </div>
               ))}

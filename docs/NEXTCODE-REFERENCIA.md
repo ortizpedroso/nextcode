@@ -1,7 +1,7 @@
 # NextCode — Documento Único de Referência (o que foi feito e o que falta fazer)
 
 > **Fonte única do projeto NextCode (`C:\projetos\nextcode`).**
-> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
+> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. **Atualizado 30/10/2026:** a §3 está em ordem de relevância (o que ainda muda uma entrega vem primeiro). O A1 do analista, o F1, o 5a–5c e o dono de infra no plano já estão no código. O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
 > - Toda melhoria aprovada entra **aqui antes** de ser executada (regra 1 do `CLAUDE.md`).
 > - Os documentos antigos saíram da pasta e continuam recuperáveis com `git show cabc2d7:<caminho>` (lista na §10).
 > - Registro de cada passo: `memory/diario.md`. Decisões do fundador: `memory/decisoes.md`. Números medidos: `memory/medicoes.md`.
@@ -9,8 +9,8 @@
 ## Índice
 1. Visão geral, regras e estado atual
 2. O que foi feito (linha do tempo)
-3. **O que falta fazer (fila única, em ordem)**
-4. Arquitetura (fases, travas, papéis)
+3. **O que falta fazer (fila por relevância)**
+4. Arquitetura (fases, travas, papéis, organograma, fluxo)
 5. Uso do Jev
 6. Templates e memória do projeto
 7. Benchmarks e o Gateway real
@@ -41,7 +41,27 @@ Cada papel é uma skill em `skills/<nome>/SKILL.md`, e o harness aplica as trava
 7. Nenhum segredo em texto puro e nenhum segredo sai da máquina (máscara `maskSecretsForJev` em `src/core/governance/secret-guard.ts`; cifra `enc:v2` em `src/core/security/crypto.ts`).
 8. Papéis críticos só em modelo pago; o avaliador nunca é da família do executor; gratuito só no fim e nunca aprova sozinho.
 
-### 1.3 Estado em 23/10/2026 (HEAD `cabc2d7`)
+### 1.2.1 Conversa longa (agente / fundador)
+- Se o thread ficar **muito longo** (muitas rodadas, Gateway, vários bloqueios), **resumir** objetivo macro, estado da sessão (id, fase, último bloqueio) e **abrir chat novo** com esse resumo — reduz confusão e “alucinar” contexto antigo.
+- O resumo operacional da sessão continua no **SQLite** (fases, DAG, telemetria), não só no chat.
+
+### 1.2.2 Documentação: um só referencial
+| Mantém | Papel |
+|---|---|
+| **`docs/NEXTCODE-REFERENCIA.md`** | **Única referência** de arquitetura, fila, travas e melhorias aprovadas |
+| `memory/diario.md`, `memory/decisoes.md`, `memory/medicoes.md` | Diário operacional (não substituem a referência) |
+| `config/politicas-orquestracao.yaml` | Política executável (comentários apontam para §4 aqui) |
+| `skills/*/SKILL.md` | Contrato de cada papel |
+
+| Não manter como referência paralela | Ação |
+|---|---|
+| `docs/PROMPT-AUDITORIA-*.md`, `docs/ENTREGA-TRIAGEM.md`, `docs/relatorios/*`, `docs/arquitetura-pipeline.html`, `memory/MEMORIAL-GATEWAY-ENTREGA.md` | Conteúdo **resumido neste doc** (§2.9); arquivo **apagado** (§10); histórico no git; HTML exportado fica cópia local do fundador |
+| Specs/planos duplicados fora da Spec canônica da sessão | Não criar; pedido = Spec aprovada no servidor |
+
+Melhoria aprovada entra **só** em `NEXTCODE-REFERENCIA.md` **antes** de codar (regra 1).
+
+### 1.3 Retrato de 23/10/2026 (HEAD da época `cabc2d7`)
+Estes números são daquela data. O estado conferido em 30/10 está na §1.4.
 - **Suíte:** 162 arquivos / 1045 testes no `vitest`; `tsc` 0; `next build` ok. Versões: Next `^15.0.3`, Prisma `^5.22.0`, Vitest `^2.1.9`.
 - **Dependências:** `npm audit --omit=dev` → 0 vulnerabilidades (restam 13 só em desenvolvimento).
 - **Bench P1–P4 (J4, 22/10):** 8/8 ENTREGUE, aceite 47/47. Com Jev o custo foi US$ 0,75; sem Jev, US$ 1,00. Arquivos: `bench/2026-10-22-1538`, `-1628`, `-1835`.
@@ -54,6 +74,20 @@ Cada papel é uma skill em `skills/<nome>/SKILL.md`, e o harness aplica as trava
   - Analista: `deepseek-v4-pro`, via FreeLLMAPI `custom/`.
   - Executor: `deepseek-v4-pro`, ou `deepseek-flash` no nível `rapido` com confiança ≥ 0,85.
   - Avaliador da etapa, testador e revisão final: Claude Sonnet 5.5, com Opus 5.5 de reserva (`src/core/llm/evaluator-models.ts`).
+
+### 1.4 Estado conferido em 30/10/2026
+Último commit auditado: `d1c0045` (diário 263). Itens 4 e 6 implementados na working tree (diário 264), ainda sem commit. A árvore de trabalho segue suja; isso é esperado e não entra nesta lista. Versões no `package.json`: Next `^15.0.3`, Prisma `^5.22.0`, Vitest `^2.1.9`. A contagem de testes de 23/10 não foi remedida nesta data.
+
+O que o código faz hoje, conferido arquivo a arquivo:
+- Spec aprovada entra em `MACROBRIEF` (`etapa1Ativa: true` em `session-phase.ts`). Com a flag falsa, o código iria direto a `PLANEJAMENTO`.
+- O analista, quando há roteador, escreve o plano e o contrato. Sem roteador, ou com o modelo desligado em teste, `decomposeWithAnalistaSkill` ainda devolve a heurística. A função interna `fallback` está definida e não é chamada.
+- `renderContractTs` grava o contrato; a etapa gera `src/contracts/conformidade/`; `validateContract` roda no executor (`CONTRACT_VALIDATION_FAILED`) e, se o payload tem `planoStages`, usa o grafo inteiro, não uma etapa isolada.
+- `importante` com arquivo e linha reais reprova a etapa (F1.2). `critico` também. `menor` não muda o veredito.
+- Apagar a pasta do projeto passa por `checkFolderSafeToDelete`, que recusa a pasta sem o arquivo `.nextcode` na raiz. A rota só chama `fs.rmSync` depois dessa recusa.
+- `NEXTCODE_DISABLE_JEV=1` faz `readJevKey` devolver vazio (`jev.ts`). Em 23/10 essa variável não existia.
+- O chat da tela não publica `reasoning_content`. `extractAssistantTextFromCompletion` também não lê esse campo: `content` vazio devolve vazio; `candidates` e `choices[0].text` continuam (diário 263).
+- A triagem da entrega roda depois de `tryStartDeliveryRepair`. Lacuna só de ambiente ou harness volta antes, com `FALHA_AMBIENTE`, e não abre reparo.
+- T8b conta no máximo 4 arquivos de código por etapa; `Dockerfile`, compose e `prisma/migrations` atribuídos pelo plano não entram nessa conta (diário 264).
 
 ---
 
@@ -119,7 +153,7 @@ Passos P1 a P13, um commit cada, de `fbda610` a `835e98f`:
   - oscilação repete o turno e a pausa guarda o progresso;
   - regra do harness vira "Dono: harness".
 - **Avaliação:**
-  - só `critico` reprova;
+  - só `critico` reprova (regra da época; desde o F1.2, `importante` com arquivo e linha reais também reprova, §3.6);
   - cache de prompt no avaliador (`buildAnthropicCachedBody`).
 - **Custo e controle:**
   - teto pelo plano: max(US$ 0,50; etapas × 0,35 × 1,5);
@@ -180,64 +214,110 @@ Commits `1f5234f`…`bacbd2e`; relatórios `AUDITORIA-E5`, `IMPLEMENTADO-E5`, `D
   - **44.13 E6:** CI (`.github/workflows/ci.yml`, ainda não publicado), imagens fixadas por digest, OmniRoute em `127.0.0.1`, produção com 0 vulnerabilidades.
 - **Mudança 45:** o escritor de testes da revisão final consulta a documentação oficial antes de transformar uma dúvida de integração em pergunta (`buildWriterPrompt` com `docsOficiais`).
 
+### 2.9 Entrega, triagem, T10 e bench Gateway (Out/2026)
+
+**Princípio:** melhorar o **motor NextCode**; o **Gateway** (`C:\projetos\gateway_multiplataforma`) é bancada real — patch manual no Gateway não substitui correção do harness.
+
+**Triagem da entrega** (`src/core/orchestrator/delivery-triage.ts`): após a T10 falhar, classifica lacunas em `ambiente` | `codigo` | `harness` | `spec`; emite `DELIVERY_TRIAGE_SUMMARY`; Jev `triagem_entrega` em **sombra** (`config/politicas-orquestracao.yaml`). O resumo sai em `job-queue.ts` **depois** de `tryStartDeliveryRepair`. Se a lacuna é só ambiente ou harness, o código volta **antes** do reparo, grava `DELIVERY_REPAIR_ROUND_CREDITED` e emite `FALHA_AMBIENTE`. Telemetria útil: `DELIVERY_REPAIR_NO_OWNER`, `FINAL_BUILD_RECHECK`, `JEV_DELIVERY_TRIAGE_SOMBRA`. **Operação:** ler o bloco *Triagem da entrega* no aviso; **Retomar** se dominante `ambiente`; não tratar todo “sem dono” como “Dono: analista”.
+
+| Classe | Sinais típicos | Ação preferida |
+|---|---|---|
+| ambiente | TS2307/7016, módulos ausentes, install | Harness install + **Retomar** |
+| codigo | defeitos J3 com prova, etapa dona | J2b + microbrief do dono |
+| harness | `src/contracts/conformidade`, sem dono no DAG | Microbrief analista / contrato |
+| spec | perguntas da revisão final | Responder no chat / patch Spec |
+
+**Harness T10 / ambiente:** `project-verification-env.ts`; `empirical-gate.ts` / `terminal-execution-engine.ts` preferem `npm run typecheck`; recheck com retry (`final-build-recheck.test.ts`). UI-check: `docker/ui-check/run.sh`, Playwright ~1.63.6. T10 após 30/30 etapas em `EXECUCAO` (`job-queue.ts`).
+
+**Reparo J2b (Out/2026):** `delivery-repair.ts` — reparo **parcial** quando só parte das lacunas é `semDono`; `pathsCitedInDefect`; dependências acíclicas (`acyclicRepairDependencies`); testes `j2b-reparo-entrega.test.ts`. Dono de reserva: Dockerfile e compose procuram etapa com `package.json`; PostCSS e `globals.css` procuram etapa com CSS/Tailwind ou `src/app`; Prisma e `.env.example` procuram etapa com schema, seed ou `.env`. O microbrief sintético `encaixe-infra` só nasce para Dockerfile, compose e `prisma/` (§3.6). Sem essa etapa, PostCSS e `.env.example` continuam `semDono`.
+
+**Encaixe 5a (29/10):** lacuna `semDono` que cita Dockerfile, compose ou `prisma/migrations` abre uma etapa `*-encaixe-infra-reparoN` com microbrief mecânico (diretriz de infra). Não usa o aviso genérico `**Dono:** analista`. Etapa com `package.json` continua dona do Dockerfile; etapa com `prisma/schema.prisma` continua dona das migrations e recebe o Dockerfile no escopo extra. Lacuna sem arquivo de infra segue bloqueando com `Dono: analista`.
+
+**F1 — junção de contrato (aprovado 29/10):** F1.1, F1.2 e F1.3 aceitos com ressalvas (diário 250, 251 e 253). O plano é inválido quando uma etapa consome um `export` que nenhuma dependência produz, ou produz com outra declaração. `importante` com arquivo e linha reais não convive com requisito `implementado`. `menor` que cita símbolo de `interfacesConsome` entra no Microbrief da etapa seguinte (`secaoMenoresConsumidos`). Porta em teste, sem sessão Gateway.
+
+**Motor 27/10 (entrega Gateway + harness):** T8b `validateFinalPlan(..., arquivosAfetados)` no trigger; `recheckFinalBuild` com `next build` após `tsc` ok (`NEXTCODE_FINAL_NEXT_BUILD=0` na vitest); nós `HUMAN_RESUME_SKIP` não contam REQ na T10; reparo aprovado sem `reqVerdicts` usa `reqsAlvo` do microbrief. No Gateway (disco): tarifas sem top-level await (`garantirTarifasCarregadas`); rotas Next 15 com `params: Promise<…>` — prova `typecheck` + `build` verdes no disco.
+
+**Sessão Gateway registrada até 30/10** (não relida no banco nesta data): `ba675f79-30f3-4937-9712-44daade9bc66`. Ocorrências anotadas: `FALHA_AMBIENTE`; ciclo DAG em nós `reparo6` (correção ops one-off `scripts/tmp-fix-reparo6-cycle.ts`); `REPARO_ESGOTADO` / `BLOQUEADA` com J3 + lacunas sem dono (Dockerfile/migrations). Esses commits do harness não reabrem essa sessão. Operação, se ela ainda estiver bloqueada: **Retomar** ambiente, **autorizar rodada** para código, responder REQ no chat (ex. REQ-009, REQ-080).
+
+**UI:** timestamps no chat (`src/components/layout/workspace.tsx`).
+
+**Auditorias Fases A–C (25/10):** o caminho com roteador usa o analista; a heurística só volta sem roteador ou com modelo desligado. Bench P1–P4 e replay Gateway: detalhe numérico em `bench/resultados/` e `memory/diario.md`. Prompts de auditoria apagados de `docs/` (§10).
+
 ---
 
-## 3. O que falta fazer (fila única, em ordem)
+## 3. O que falta fazer (fila por relevância)
 
-Ordem de execução: 3.1 → 3.2 → 3.3 → 3.4 → 3.5. Cada item vira um prompt para o Antigravity (§9). O Claude audita e só depois marca ✅ aqui. Item novo só entra com data, motivo e evidência.
+Atualizado em 30/10 (diário 264). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
 
-### 3.1 Agora
-**Regra de foco (fundador, 23/10):** um item por vez, até a porta; só então o seguinte. Nada novo entra no meio sem registro aqui.
+O contrato do analista (o antigo A1) **já existe**: `renderContractTs` grava `src/contracts/`, cada etapa gera conformidade e o `tsc` confere, e divergência de contrato no avaliador é `critico`. A reserva sem analista ainda grava uma frase fixa (`spec-decomposer.ts`, heurística). Isso não justifica refazer o A1. Os itens 1, 2 e 3 da fila anterior estão no código (diário 263). O que o harness ainda não pega: citação de uma linha real de código errado, e critério da Spec escrito em prosa, sem `nome(arg1, arg2)` na mesma linha.
 
-| # | Item | Porta (pronto quando) |
+### 3.1 Muda o que sai como pronto
+Vazio nesta data. Os três itens desta seção passaram para a §3.6.
+
+### 3.2 Trava a sessão (não entrega código errado)
+Vazio nesta data. Itens 4 e 6 passaram para a §3.6 (diário 264).
+
+Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso é de propósito. Não é item de correção.
+
+### 3.3 Prova (não é correção de código)
+| # | Item | Quando |
 |---|---|---|
-| **A1** | **Macrobrief com contratos de verdade** (decidido 23/10 pelo fundador, depois do DG1). Causa medida: o campo `contratosTypescript` do Macrobrief (`artifact-templates.ts:64`) recebe frase fixa (`spec-decomposer.ts:350`, `:847`) e o "consome/produz" do Microbrief é só lista de arquivos (`spec-decomposer.ts:802`); por isso 5 de 6 defeitos do Gateway nascem na fronteira entre etapas. Correção: o **analista** preenche o contrato (template fixo: entidades/campos, enums, funções exportadas com assinatura, rotas com entrada/saída/erros, dono e quem usa); o **código** confere e grava em `src/contracts/` (travado para o executor); cada etapa gera um arquivo de conformidade que o `tsc` confere; **testador, executor e avaliador** recebem a fatia do contrato; violação de contrato = `critico`. Passos A1.0–A1.6 no prompt (§9.5) | P1–P4 sem regressão (47/47) **e** controle mecânico: o código real dos defeitos do Gateway (`papel === "admin"`, `criarSessao` sem papel) reprova no `tsc` contra o contrato; depois o item 2 (Gate 1) com o Gateway replanejado |
-| 1 | **TESTE-E5:** teste independente das mudanças 43–45 (§9.4) | 🌓 auditado 23/10 (diário 221): passos 1–3 aceitos (tsc/vitest 2×; 12/12 testes falham sem a correção); **faltam** frentes 5 (dados que saem na T7), 7 (skills), 8 (`npm audit` + portas/digest do compose), 9 (cenário de entrega errada com E5-D2/D21), passo 5 decisão por decisão e passo 6 (controles com LLM). O "achado 4g" foi descartado: `NEXTCODE_DISABLE_JEV` não existe no código (nasceu no rascunho) |
-| 2 | **Gate 1 do Gateway (E3/P10), depois do A1:** replanejar a Spec do `4d019f00` com contrato (sessão nova, mesma Spec) quando o DeepSeek tiver cota ou crédito; a sessão antiga fica como comparação (`npx tsx scripts/retomar-sessao.ts 4d019f00 --rodada-extra --motivo "..."`) | `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas; aceite escrito do Gate 1 |
-| 2a | **DG1 — diagnóstico dos defeitos do Gateway** (só leitura) | ✅ auditado 23/10 (diário 221; relatório `git show df21912:docs/relatorios/DIAG-GATEWAY-DEFEITOS.md`): script `scripts/diag-gateway-defeitos.ts` reexecutado na cópia, tabela confere com a trilha. Resultado: dos 6 defeitos provados na última revisão, **5 são de integração entre etapas**; **6/6 aprovados como `implementado`** pelo avaliador da etapa; em 2 (REQ-063, webhook do REQ-018/053) o avaliador **escreveu o defeito nas ressalvas e aprovou** — efeito da regra P7 (só `critico` reprova; `importante` vira ressalva); autoteste E5 não rodou (etapas de 21/10, antes do E5; e o E5 não roda em etapa de reparo por desenho, `node-executor.ts:1185`) |
-| 3 | **Consertar o que a consolidação deixou apontando para arquivos apagados:** `CLAUDE.md` (linhas 7 e 12) e comentários em `src/core/decision/jev-decisions.ts:3,450`, `src/core/decision/jev.ts:3`, `src/core/templates/artifact-templates.ts:4`, `src/core/governance/final-reviewer.ts:90`, `src/core/orchestrator/delivery-repair.ts:21`, `src/core/llm/gateways.ts:2`, `src/core/router/smart-router.ts:1121`, `src/core/orchestrator/phase-machine.ts:4-5`, `src/core/execution/project-base.ts:2`, `tests/llm/gateways.test.ts:2`, `scripts/teste-pesado.ts:11` | `git grep` sem citação de documento apagado (fora do git) |
-| 4 | **Reserva da política desatualizada:** `src/core/config/orchestration-policy.ts:367` lê `docs/rascunhos/politicas-orquestracao.yaml` quando `config/` falta, mas essa cópia é antiga e diferente (sem `roteamento_papeis_criticos`). Tirar a reserva (falhar fechado com o padrão do código) e apagar o arquivo | teste: sem `config/`, a política é a do código; arquivo removido |
-| 5 | **Saídas do bench fora de `docs/`:** `scripts/bench.ts` e `scripts/teste-pesado.ts` gravam em `docs/relatorios/` e recriam a pasta | relatórios gerados em pasta própria (ex.: `bench/resultados/`), citada aqui |
+| 7 | **TESTE-E5** incompleto: frentes 5 (dados na T7), 7 (skills), 8 (`npm audit` e portas/digest do compose), 9 (entrega errada), passos 5 e 6. Passos 1–3 aceitos em 23/10 (diário 221). O achado "4g" daquela auditoria dizia que `NEXTCODE_DISABLE_JEV` não existia; hoje existe (`jev.ts`, §1.4) | os itens 1 e 2 já estão aceitos (diário 263). O teste não mexe no portão |
+| 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas | os itens 1 e 2 já estão aceitos (diário 263). Continua bancada, não correção do harness |
 
-### 3.2 Defeitos e dívidas conferidos no código (23/10)
-| # | Item | Onde |
+**DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).
+
+### 3.4 Higiene (não muda a entrega)
+| # | Item | Porta |
 |---|---|---|
-| 6 | Terminal sem bloqueio de comandos Windows (`rd /s`, `del /s`, `Remove-Item -Recurse`, `set`/`Get-ChildItem env:`) — achado C9 de 12/10 | `src/core/skills/sandboxed-terminal.ts:28` |
-| 7 | "Apagar pasta" ainda apaga qualquer `project.path` (fora a trava de pasta-mãe); proposta: só pasta criada pelo NextCode (marcador `.nextcode`) — achado C10 | `src/app/api/projects/[id]/route.ts:80-115` |
-| 8 | Chat mostra `reasoning_content` (raciocínio interno) como resposta quando `content` vem vazio | `src/app/api/chat/route.ts:812-813` |
-| 9 | Código morto ou desligado: `CONTINGENCY_EXECUTOR_MODELS` (`src/core/llm/paid-routing.ts:23`), benchmark simulado `/api/dag/benchmark` (+ `benchmark-modal.tsx`), `partitionRepairsByCluster` e `renderMacrobriefMarkdown` sem uso em produção | remover com teste verde |
-| 10 | Caminho inexistente `docs/spec-architecture.md` | `src/core/skills/spec-decomposer.ts:618` |
-| 11 | Fases `MACROBRIEF`/`CONFERENCIA` existem, mas `etapa1Ativa` está fixo `false` (`session-phase.ts:129`): decidir entre ligar e remover | decisão do fundador |
+| 9 | Citações de documento apagado em comentários de código e no `CLAUDE.md` | feito e auditado (diário 264): `docs/LLM-GATEWAYS.md` saiu de `gateways.ts`, `gateways.test.ts`, `smart-router.ts` e `jev-decisions.ts`. O JSON do J3 em `final-reviewer.ts` ficou como recuperação no git |
+| 10 | Benchmark simulado em `/api/dag/benchmark` | feito e auditado (diário 264): menu Simulação, modal avisa que não é medida, resposta `simulado: true` |
+| 11 | Aviso duplo do 5c | feito e auditado (diário 264): `deveAvisarTentativasEsgotadas` impede `reportBlockedNodeToHuman` quando o erro é `DEPENDENCIA_DESCONHECIDA` |
 
-### 3.3 Portas em modo sombra (dependem de dados reais)
+### 3.5 Sem código agora
 | # | Item | O que falta |
 |---|---|---|
-| 12 | `conferencia_entrada: sombra` (P5.4) | ≥ 5 aprovações reais com `CONFERENCIA_ENTRADA` e 0 recusa indevida; antes, montar fixture de Spec canônica nos testes (8 arquivos usam Spec antiga) |
-| 13 | `roteamento_falha: sombra` (A3) | decidir com mais sessões reais; hoje só o `plan_error` mecânico age |
+| 12 | `conferencia_entrada: sombra` | ≥ 5 aprovações reais com `CONFERENCIA_ENTRADA` e 0 recusa indevida |
+| 13 | `roteamento_falha: sombra` | mais sessões reais; hoje só o `plan_error` mecânico age |
+| 14 | ~~Desligar `router9` e `electronhub` no painel do FreeLLMAPI~~ | **feito pelo fundador** (confirmado 30/10: `GET /v1/models` → 303 modelos, 0 ocorrências de `electronhub`/`router9`; `probeGateway` serviu por `custom/deepseek-v4-pro`) |
+| 15 | Apagar a pasta vazia `C:\projetos\nextcode-43` | ação do fundador |
+| 16 | Smoke da tela: Retomar, Reabrir entrega, Autorizar rodada, Fechar/Reabrir projeto, "Gerando Spec…" | ação do fundador |
+| 17 | `git push` do CI | quando o fundador autorizar |
 
-### 3.4 Ações do fundador
-| # | Ação |
+### 3.6 Já no código — não reabrir
+| Item | Estado |
 |---|---|
-| 14 | Desligar `router9` e `electronhub` no painel do FreeLLMAPI: são revenda e já receberam pedido (regra 7) |
-| 15 | Apagar a pasta vazia `C:\projetos\nextcode-43` pelo Explorer |
-| 16 | Clicar na tela: Retomar, Reabrir entrega, Autorizar mais uma rodada, Fechar/Reabrir projeto, indicador "Gerando Spec…" (P5c.4); Fase 8 V2 (Spec cara não trava o 1º lote) |
-| 17 | Autorizar `git push` do CI quando quiser |
+| A1 no fluxo do analista | `renderContractTs`, fatia por etapa, conformidade no `tsc`, violação = `critico`. A heurística sem analista ainda é placeholder |
+| F1.1 junção | aceito com ressalvas (diário 250, `5e3ca69`, `00cb73a`). O nome `Json` do preâmbulo não é conferido |
+| F1.2 portão | aceito com ressalvas (diário 251, `7e67329`, `2e60215`). `importante` com arquivo e linha reais reprova. Sem `req`, o primeiro `implementado` vira `parcial` e a etapa segue `REJECTED` |
+| F1.3 ressalva na etapa seguinte | aceito com ressalvas (diário 253, `101d5e6`). O teste não cobre a chamada no executor |
+| 5b crédito de rodada | aceito com ressalvas (diário 255, `7f051d8`). Ambiente ou harness não abre reparo. O `if` da fila não tem teste |
+| 5c id inexistente e JSON ilegível | aceito com ressalvas (diário 256, `1234d3c`; JSON no `db449a1`). O `update` da fila não tem teste. O aviso de tentativas esgotadas não sai nesse bloqueio (`deveAvisarTentativasEsgotadas`) |
+| 5a encaixe pós-T10 | aceito com ressalvas (diário 257, `a5c5465`). Dockerfile, compose, `prisma/migrations`. PostCSS e `.env.example` entram no encaixe pós-T10 (diário 264, mesma lista fechada que `isEncaixeInfraPath`) |
+| Teto 4 arquivos + infra | diário 264. Contam só arquivos que não são `Dockerfile`, `docker-compose.yml`, `docker-compose.prod.yml` nem `prisma/migrations` atribuídos pelo plano. Cinco arquivos de código continuam inválidos |
+| Dono no plano | aceito (diário 259, `5c16162`). Base sem Microbrief não é dona. Arquivo que já está só na base não é copiado; o T8b reprova o plano |
+| Aprovação sem prova | aceito com ressalvas (diário 263, `d1c0045`). `nivelProva` `dito`, ausente ou `falha_descartada`, ou `fatoQueGarante` sem linha real, descarta a resposta quando o veredito interno seria implementado. Citar uma linha real de código errado continua passando |
+| Assinatura da Spec | aceito com ressalvas (diário 263, `d1c0045`). `nome(arg1, arg2)` na linha do REQ exige esses identificadores em `contrato.funcoes[].assinatura`, senão `[CONTRATO ASSINATURA]`. Prosa sem parênteses não dispara. O mesmo `export` dos dois lados continua sem `[F1 JUNCAO]` |
+| Raciocínio interno | aceito com ressalvas (diário 263, `d1c0045`). `extractAssistantTextFromCompletion` não lê `reasoning_content`. `content` vazio devolve vazio |
+| Chat sem raciocínio | `db449a1`. A rota do chat usa `textoVisivelDaResposta`. Os outros papéis passam por `extractAssistantTextFromCompletion`, que também ignora `reasoning_content` |
+| Apagar pasta | `checkFolderSafeToDelete` exige o arquivo `.nextcode` na raiz antes de `fs.rmSync` (`folder-safety.ts`, rota `projects/[id]`) |
+| Política, bench, terminal, fase | yaml ausente cai em `DEFAULT_ORCHESTRATION_POLICY`; bench em `bench/resultados/`; terminal bloqueia `rd /s`, `del /s`, `Remove-Item -Recurse`, `Get-ChildItem env:`; `etapa1Ativa` está ligado |
 
-### 3.5 Depois do Gate 1
+### 3.7 Depois do Gate 1
 | # | Item | Gatilho |
 |---|---|---|
-| 17a | **Rito curto para correção pequena** (1–3 arquivos, sem REQ novo): Spec de correção de uma tela, 1 clique, uma etapa, sem analista LLM; T1 continua (fundador aceitou 23/10 deixar para depois do Gate 1) | depois do Gate 1 |
-| 18 | Dependências de desenvolvimento (13): `vitest` 5, `tailwind` 4 — mudança própria com bench | qualquer momento |
-| 19 | E6: Trivy no CI, HTTPS local | antes de expor na rede |
-| 20 | Memória do projeto (M20) acumulando contratos/decisões/lições, não copiando a Spec | 2ª sessão real no mesmo projeto |
-| 21 | E4 J18/J19 (contexto por linha, skill sugerida) | só se as chamadas do executor passarem de 10 por etapa |
-| 22 | P9 aprendizado (J26/R10) | ≥ 3 entregas reais |
-| 23 | P10 Gates 2…n do Gateway | depois do Gate 1 |
-| 24 | Roteiro da arquitetura: checklist por REQ na tela, custo antes de aprovar, entrega por Git, proveniência, PostgreSQL/multiusuário, cliente MCP e catálogo (D7, D8, D10), Laya (D6), Exa (D2) | etapas 2–5 |
+| 18 | Rito curto para correção pequena (1–3 arquivos, sem REQ novo): uma tela, um clique, uma etapa, sem analista LLM; T1 continua | depois do Gate 1 |
+| 19 | `vitest` 5 e `tailwind` 4, com bench próprio | qualquer momento, fora da fila 3.1 |
+| 20 | E6: Trivy no CI, HTTPS local | antes de expor na rede |
+| 21 | Memória do projeto (M20): contratos, decisões e lições, sem copiar a Spec | 2ª sessão real no mesmo projeto |
+| 22 | E4 J18/J19 (contexto por linha, skill sugerida) | só se o executor passar de 10 chamadas por etapa |
+| 23 | P9 aprendizado (J26/R10) | ≥ 3 entregas reais |
+| 24 | Gates 2…n do Gateway | depois do Gate 1 |
+| 25 | Roteiro da arquitetura: checklist por REQ na tela, custo antes de aprovar, entrega por Git, proveniência, PostgreSQL/multiusuário, cliente MCP e catálogo, Laya, Exa | etapas 2–5 |
 
 ---
 
-## 4. Arquitetura (síntese de `ARQUITETURA-ORQUESTRACAO.md`)
+## 4. Arquitetura (documento único — antes `ARQUITETURA-ORQUESTRACAO.md`, consolidado aqui)
 
 ### 4.1 Princípios
 O harness decide e o LLM propõe. Skill ensina, nunca autoriza. Os princípios práticos:
@@ -256,7 +336,7 @@ O harness decide e o LLM propõe. Skill ensina, nunca autoriza. Os princípios p
 `ENTRADA, CONVERSA, INTERVENCAO, ELICITACAO, ELICITACAO_CORRECAO, SPEC_REVISAO, MACROBRIEF, CONFERENCIA, PLANEJAMENTO, EXECUCAO, PAUSADA, BLOQUEADA, VERIFICACAO, ENTREGUE`.
 
 Caminhos principais:
-- Spec aprovada → `PLANEJAMENTO` (o `etapa1Ativa: false` pula `MACROBRIEF`/`CONFERENCIA`) → `EXECUCAO` → `VERIFICACAO` → `ENTREGUE`.
+- Spec aprovada → `MACROBRIEF` (`etapa1Ativa: true` em `session-phase.ts`) → `CONFERENCIA` → `PLANEJAMENTO` → `EXECUCAO` → `VERIFICACAO` → `ENTREGUE`. Com a flag falsa, a Spec aprovada iria direto a `PLANEJAMENTO`.
 - Entrega reprovada → reparo J2b (até 3 rodadas) → `BLOQUEADA` com aviso.
 - `ENTREGUE` → `REABRIR_ENTREGA`.
 
@@ -267,7 +347,7 @@ Caminhos principais:
 | T2 | escopo de arquivos por etapa |
 | T3 | trilha `TelemetryLog`, só acrescenta |
 | T4 | quarentena + `tsc`/ESLint + rollback |
-| T5 | duas lentes (cega por REQ + conferência mecânica com o relatório); avaliador de outra família |
+| T5 | duas lentes (cega por REQ + conferência mecânica com o relatório); avaliador de outra família; `critico` reprova; `importante` com arquivo e linha reais também reprova (F1.2) |
 | T6 | 3 tentativas, depois bloqueio + relatório ao humano |
 | T7 | pesquisa só em fonte oficial, com guarda de injeção |
 | T8a/T8b | Spec × plano: todo REQ coberto, nenhum inventado, escopo, sem ciclo |
@@ -281,6 +361,135 @@ Caminhos principais:
 - Executores `executor-core|backend|frontend|integration` (DeepSeek) → código, no máximo 8 ações por turno.
 - Avaliadores `avaliador-*` (Claude Sonnet → Opus) → veredito por REQ.
 - `avaliador-final` (Claude) → revisão do projeto inteiro, com reprodução na bancada.
+
+### 4.5 Organograma (spec original × NextCode Out/2026)
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │           Humano (Human-in-the-Loop)     │
+                    │  Aprovar Spec · Retomar · Autorizar      │
+                    │  rodada · Re-tentar · Responder REQ      │
+                    └─────────────────┬───────────────────────┘
+                                      │
+┌─────────────────────────────────────▼─────────────────────────────────────┐
+│  Orquestrador (código): phase-machine · job-queue · job-worker · triagem   │
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      │
+     Fase 1 — Concepção                │                Artefatos
+     ─────────────────                 │                ─────────
+     Elicitador (skill) ──────────────┼──► Spec canônica (REQ-nnn)
+     [Macrobrief + Conferente] *      │    Macrobrief (opcional; ver *)
+     JEV (peneira, clareza — sombra)  │
+                                      │
+     Fase 2 — Plano                   │
+     ───────────────                  │
+     Analista (skill) ────────────────┼──► Plano → N etapas (DAG)
+     T8b plan-scope-check             │    Microbrief por etapa/cluster
+     Contrato projeto **             │    `src/contracts/` + conformidade por etapa
+                                      │
+     Fase 3 — Por etapa (DAG)        │
+     ─────────────────────           │
+     Testador (aceite) ──────────────┼──► Testes de aceite / repro
+     Executor (cluster) ─────────────┼──► Código (quarentena + escopo T2)
+     Autoteste harness ──────────────┼──► tsc/ESLint empírico (T4)
+     Avaliador cego (2 lentes) ──────┼──► Veredito por REQ (T5, família ≠ executor)
+     T6: máx. 3 tentativas/etapa     │
+                                      │
+     Fase 4 — Entrega (T10)          │
+     ─────────────────────           │
+     Build/typecheck projeto final   │    `.nextcode/verification.env` (runtime T10)
+     ui-check (Docker)               │    Bancada test-bench (sem rede)
+     Avaliador final (J3) ───────────┼──► Defeitos + perguntas Spec
+     Triagem entrega                 │
+     Reparo J2b (≤3 + autorizadas)   │    Microbrief reparo; dono por arquivo/REQ/infra
+     [Encaixe analista]              │    Infra sem dono → microbrief `encaixe-infra` (§3.6)
+                                      │
+     ENTREGUE · BLOQUEADA · PAUSADA  │
+```
+
+\* **`etapa1Ativa: true`** (`session-phase.ts`): Spec aprovada entra em `MACROBRIEF`. A flag falsa é que pula para `PLANEJAMENTO`.  
+\** **Contrato do analista** já está no código (§3.6). O que falta nessa fronteira é a §3.1. **Encaixe de infra** sem dono abre microbrief na rodada de reparo só para Dockerfile, compose e `prisma/` (§3.6).
+
+### 4.6 Fluxo lógico atualizado (Mermaid)
+
+Substitui o diagrama da “Especificação de Arquitetura” original, com fila persistente, T10 e reparo J2b.
+
+```mermaid
+flowchart TD
+    Start([Pedido do usuário]) --> Entrada[ENTRADA / Elicitação]
+    Entrada --> SpecOk{Spec aprovada<br/>pelo humano? T1}
+    SpecOk -- Não --> SpecRev[SPEC_REVISAO / chat elicitador]
+    SpecRev --> SpecOk
+
+    SpecOk -- Sim --> Macro[MACROBRIEF + conferente]
+    Macro --> Plan[PLANEJAMENTO<br/>Analista + T8b]
+    Plan -->|Plano reprovado| Plan
+    Plan --> Exec[EXECUCAO<br/>Fila session_queue · até 3 nós paralelos]
+
+    subgraph Etapa [Cada nó da DAG]
+        Testador[Testador / aceite] --> Executor[Executor cluster]
+        Executor --> Autoteste{Portão empírico<br/>tsc/eslint T4}
+        Autoteste -- Falha, tentativa ≤3 --> Executor
+        Autoteste -- Falha 3x --> BloqEtapa[BLOQUEADA / Re-tentar]
+        Autoteste -- OK --> Avaliador{Avaliador cego T5<br/>2 lentes · outra família}
+        Avaliador -- Reprovado, tentativa ≤3 --> Executor
+        Avaliador -- Aprovado --> DoneNode[Etapa completed]
+    end
+
+    Exec --> Etapa
+    DoneNode --> Exec
+    Exec -->|Todas completed| Verif[VERIFICACAO · T10]
+
+    subgraph T10 [Verificação final]
+        V1[Arquivos Spec + REQ etapas]
+        V2[Build/typecheck projeto<br/>npm run typecheck · retry ambiente]
+        V3[ui-check Docker + verification.env]
+        V4[J3 revisão final + test-bench]
+        V1 --> V2 --> V3 --> V4
+    end
+
+    Verif --> T10
+    V4 --> Decisao{Entrega OK?}
+
+    Decisao -- Sim --> Entregue([ENTREGUE])
+    Decisao -- Não --> Triagem[Triagem: código / ambiente / spec / harness]
+    Triagem --> Reparo{J2b: abre rodada<br/>reparo com dona?}
+    Reparo -- Sim, rodada ≤ limite --> PlanRepair[PLANEJAMENTO reparo<br/>microbrief_reparo · deps acíclicas]
+    PlanRepair --> Exec
+    Reparo -- Rodadas esgotadas --> HumanR([BLOQUEADA<br/>Autorizar rodada])
+    Reparo -- Só sem dono --> HumanE([BLOQUEADA<br/>Encaixe / analista])
+    Triagem -->|FALHA_AMBIENTE| HumanA([BLOQUEADA<br/>Retomar · RAM/Docker])
+
+    Entregue --> Reabrir[REABRIR_ENTREGA] --> Verif
+    PAUSADA[PAUSADA SEM_LLM] -->|gateway volta| Exec
+```
+
+### 4.7 Tabela: spec original → implementação NextCode
+
+| Spec original | NextCode (código / skill) | Diferença importante |
+|---|---|---|
+| Spec + Macrobrief | `elicitador` → Spec; em seguida `MACROBRIEF` e `CONFERENCIA` (`etapa1Ativa: true`) | A flag falsa pularia o Macrobrief e iria a `PLANEJAMENTO` |
+| Skill Conferente + JEV | skill `conferente-macrobrief` no intake; JEV `macrobrief_coverage_conference` em **sombra** | A skill pode devolver a fase (`CONFERENCIA_FALHOU`). O Jev dessa conferência não decide |
+| Contratos globais | **A1** do analista grava `src/contracts/` e a conformidade da etapa (§3.6) | O furo que resta é contrato e etapas com o mesmo export errado (§3.1 item 2). A heurística sem analista ainda é frase fixa |
+| 4 clusters | `cluster` + roles `executor-*` / `avaliador-*` | Mesma ideia; plano = **DAG de etapas**, não só 4 caixas |
+| Autoteste cluster | `empirical-gate` + testes de aceite (`acceptance-tests`) | Harness **mecânico** antes do avaliador |
+| Avaliador cego 2 lentes | `dual-lens-auditor` | Lente REQ + leitura de código; família ≠ executor |
+| Avaliação final | `verifyProjectDeliveryT10` + `final-reviewer` (J3) + `test-bench` + `ui-check` | **T10** inclui ambiente Docker e typecheck do **projeto inteiro** |
+| 3 tentativas finais → Analista | **J2b:** 3 rodadas de reparo de entrega (+ `autorizar rodada`); analista gera **microbrief_reparo** (diretriz LLM ou fallback mecânico) | Contador é **rodada de entrega**, não só “tentativa final” abstrata |
+| Escala humano 3x | T6 por etapa + `BLOQUEADA` + `human-notice` (`Retomar`, `autorizar rodada`, `reparo_encaixe`) | Causa no aviso (ambiente vs código vs Spec) |
+| — | `delivery-triage`, `FALHA_AMBIENTE`, reparo **parcial** se parte sem dono, dono **infra** (Dockerfile, compose, prisma) | Melhorias **Out/2026** (motor genérico) |
+| — | Fila SQLite, supervisor órfão, PAUSADA crédito LLM | Não estava no spec original |
+
+### 4.8 Ações humanas (painel / chat)
+
+| Situação | Ação | Spec muda? |
+|---|---|---|
+| Ambiente (tsc/ui-check/Docker/memória) | **Retomar** | Não |
+| Código com dona, rodadas esgotadas | **Autorizar rodada** | Não |
+| Código no disco já corrigido | **Reverificar entrega** / Retomar (BLOQUEADA) | Não |
+| Lacuna sem dono / encaixe | Dockerfile, compose e `prisma/` abrem `encaixe-infra`. PostCSS e `.env.example` só ganham dono se já houver etapa compatível (§3.2 item 6) | Não |
+| Mudar produto | Responder o que ajustar na Spec | Sim |
+| ENTREGUE revalidar | Reabrir entrega | Não |
 
 ---
 
@@ -342,7 +551,7 @@ O que não usar: o Jev Router do OpenRouter, porque o pedido inteiro sairia da m
 - **21/10:** 41/41 etapas, 31/40 aprovadas na 1ª, US$ 12,33, 0 pausas sem LLM. Bloqueou por portão cego (mudanças 33/34) e falta de memória.
 - **22/10:** com memória livre, os erros caíram de 71 para 9, o reparo J2b fez 3/3, e a sessão foi `ENTREGUE`. A revisão J3 rodada depois achou 15 REQ parciais, o que levou à reabertura (mudança 40) e às rodadas 2–3.
 - **Mudanças 43–45:** defeitos provados 8 → 1 → 7 → 6 → 5; nenhuma prova anterior voltou a falhar; sessão em ≈ US$ 37.
-- **23/10:** a rodada 8 bloqueou por cota do DeepSeek no FreeLLMAPI (item 2 da §3.1).
+- **23/10:** a rodada 8 bloqueou por cota do DeepSeek no FreeLLMAPI. O Gate 1 que mede de novo está na §3.3.
 - **Spec antiga do Gateway (sem `REQ`):** `git show cabc2d7:docs/specs/gatway-system-spec.md`.
 
 ---
@@ -402,16 +611,18 @@ Regra zero de todo prompt:
 
 ### 9.4 TESTE-E5
 - Prompt integral: `git show faa1f59:docs/prompts/TESTE-E5.md`. Relatório do Antigravity: `git show df21912:docs/relatorios/TESTE-E5-antigravity.md`.
-- Auditoria do Claude (23/10, diário 221): aceitos os passos 1–3; pendentes as frentes 5, 7, 8, 9 e os passos 5–6 (ver §3.1 item 1). O item "4g / `NEXTCODE_DISABLE_JEV`" não vale: a variável não existe no código.
+- Auditoria do Claude (23/10, diário 221): aceitos os passos 1–3; pendentes as frentes 5, 7, 8, 9 e os passos 5–6 (ver §3.3). Naquela data `NEXTCODE_DISABLE_JEV` não existia. Hoje `readJevKey` devolve vazio quando a variável vale `1` (§1.4).
 
-### 9.5 Prompt do A1 (Macrobrief com contratos de verdade)
+### 9.5 Prompt do A1 (histórico — não reexecutar)
 
-**Objetivo:** fazer o Macrobrief cumprir o template.
+O fluxo do analista já grava o contrato, a fatia e a conformidade (§3.6). Este prompt fica como registro. Não é o próximo passo. O próximo passo é a §3.1.
+
+**Objetivo original:** fazer o Macrobrief cumprir o template.
 - O **analista** escreve o contrato do projeto: entidades e campos, enums, funções exportadas com assinatura, rotas com entrada/saída/erros, dono e quem usa.
 - O **código** confere o contrato, grava em `src/contracts/` (travado para o executor) e gera, por etapa, um arquivo de conformidade que o `tsc` confere.
 - **Testador, executor e avaliador** recebem a fatia do contrato da etapa.
 
-Motivo medido no DG1 (§3.1 item 2a): 5 de 6 defeitos do Gateway nascem na fronteira entre etapas. Hoje o contrato é uma frase fixa (`spec-decomposer.ts:350`, `:847`) e o "consome/produz" é só a lista de arquivos (`spec-decomposer.ts:802`).
+Motivo medido no DG1 (§3.3): 5 de 6 defeitos do Gateway nascem na fronteira entre etapas. Na data deste prompt o contrato da heurística era uma frase fixa. No fluxo do analista isso já foi substituído por `renderContractTs`. A frase fixa permanece só na reserva sem analista.
 
 **Hash de partida:** o commit cujo assunto começa com `docs(referencia): A1 registrado`.
 
@@ -434,7 +645,7 @@ Motivo medido no DG1 (§3.1 item 2a): 5 de 6 defeitos do Gateway nascem na front
 - **T-K:** o commit termina com `Co-Authored-By: <seu modelo>`.
 
 **Leitura obrigatória:**
-- referência §1.2, §3.1 (A1 e 2a), §4 e §9.2;
+- referência §1.2, §3 e §4 e §9.2;
 - `skills/analista/SKILL.md`;
 - `src/core/skills/spec-decomposer.ts`: `decomposeWithAnalistaSkill`, `parseAnalystPlan` (:680), `buildDecompositionFromAnalystPlan` (:735);
 - `src/core/orchestrator/plan-scope-check.ts`: `validatePlanStages`, `validateFinalPlan`;
@@ -572,33 +783,46 @@ Todos os 270 arquivos que existiam em `docs/` no commit `cabc2d7` foram retirado
 | Grupo | O que tinha | Onde ficou o conteúdo |
 |---|---|---|
 | `docs/NEXTCODE-REFERENCIA.md` (versão de 861 linhas) | §5.0 cronograma com as 45 "Mudanças do cronograma" (data, motivo, evidência, aprovação), §5.1–5.5, §6 decisões pendentes (todas decididas), §8 protocolo, §9 registro e documentos apagados no D1 | §2, §3, §9 deste documento; histórico completo no git |
-| `docs/ARQUITETURA-ORQUESTRACAO.md` | desenho v4: princípios P1–P17, fases, permissões, templates, travas, telemetria e metas, roteiro, decisões D1–D10 | §4 e §3.5 |
+| `docs/ARQUITETURA-ORQUESTRACAO.md` | desenho v4: princípios P1–P17, fases, permissões, templates, travas, telemetria e metas, roteiro, decisões D1–D10 | §4 e §3.7 |
 | `docs/MEMORIA-DO-PROJETO-FORMATO.md` | formato da memória | §6 |
 | `docs/rascunhos/` (`JEV-DECISOES.md`, `TEMPLATES.md`, `TERCEIROS.md`, `FASE8-pedido-sintetico-p5c.md`) | catálogo do Jev, templates, licenças, pedido do smoke | §5, §6, §8, §2.3 |
-| `docs/rascunhos/politicas-orquestracao.yaml` | reserva antiga da política (ainda no disco) | sai no item 4 da §3.1 |
+| `docs/rascunhos/politicas-orquestracao.yaml` | reserva antiga da política | o código já cai em `DEFAULT_ORCHESTRATION_POLICY` quando o yaml de `config/` falta (§3.6) |
 | `docs/specs/gatway-system-spec.md` | Spec antiga do Gateway | §7.2 |
 | `docs/prompts/` (34 arquivos) | prompts de cada pacote (R1, P0–P5c, S1, C1, D1, I1, J1, J2, J2.7, A2, A3, B1, B1c, PJ1, auditorias do Cursor, TESTE-E1-4, TESTE-E5) | §2 e §9 |
 | `docs/relatorios/` (54 arquivos, fora `bench/`) | relatório de cada pacote, auditorias consolidadas (E1, E1-4, 43, E5), decisões autônomas (E1, E1-2, E1-3, E1-4, E5), JV1, perfil de provedores, pesquisador, testes reais | §2, §3, §7 |
 | `docs/relatorios/bench/` (59 arquivos) | rodadas do bench (`.md` + `.yaml`) e provas em JSON | §7.1 |
 | `docs/terceiros/jev-docs/` | cópia oficial da documentação do Jev (`llms-full.txt`, `model-jaggedness_jev-1.13.md`, `primitives_*`, `cookbooks_*`) | §5; ler com `git show cabc2d7:docs/terceiros/jev-docs/llms-full.txt` |
 
+### 10.1 Limpeza 29/10/2026 (fundador: um só referencial)
+Após resumir em §2.9, **apagados do disco** (recuperar com `git show HEAD:<caminho>` ou commit anterior):
+
+| Caminho | Conteúdo absorvido |
+|---|---|
+| `docs/ENTREGA-TRIAGEM.md` | §2.9 (triagem + operação) |
+| `docs/PROMPT-AUDITORIA-*.md` (5 arquivos) | §9.3–9.4; auditorias pontuais no git |
+| `docs/relatorios/**` (Fases A–C, Gateway motor 27/10, bench, E5, REPLAY) | §2.9, §7, `bench/resultados/` |
+| `docs/arquitetura-pipeline.html` | §4.5–4.8 (organograma/Mermaid); cópia HTML guardada pelo fundador |
+| `memory/MEMORIAL-GATEWAY-ENTREGA.md` | §2.9 (sessão `ba675f79…`, duas frentes Gateway vs motor) |
+
+**Estado da pasta `docs/`:** apenas `NEXTCODE-REFERENCIA.md`.
+
 ---
 
-## 11. Decisões Macro da Sessão 23/10/2026 (Implementação Completa da Fila §3)
+## 11. Decisões Macro da Sessão 23/10/2026
 
-As decisões abaixo foram tomadas pelo Claude atuando como engenheiro full-stack, conforme autorização explícita do fundador. Todas estão implementadas e validadas (`tsc --noEmit` 0 erros, Vitest verde, `prisma/dev.db` intocado).
+As decisões abaixo foram tomadas pelo Claude, com autorização do fundador. Em 30/10 o texto foi conferido de novo com o código: D-M2 e D-M4 estavam desatualizados e foram reescritos. O restante desta seção confere com o código daquela conferência (§1.4).
 
 ### D-M1: Integração de validateContract no Pipeline de Execução
 Inserida chamada `validateContract` em `node-executor.ts` entre a geração do arquivo de conformidade (`renderConformance`) e a promoção com o portão empírico. Violações de contrato bloqueiam a etapa como defeito crítico (`CONTRACT_VALIDATION_FAILED` na trilha) antes de qualquer código ser promovido. Fecha o ciclo do Item A1: analista define → executor implementa → tsc confere conformidade tipada → validateContract confere lógica do contrato.
 
-### D-M2: Contrato como Stage Único na Validação
-Construído `contractStages` com elemento único `{ id: stageEtapaId, arquivos: effectiveScope, dependeDe: [] }`. A função `validateContract` espera array de stages; no contexto do executor temos apenas a etapa atual. Valida regras aplicáveis (dono, arquivo correto, tipos existentes) sem exigir reconstrução do grafo completo.
+### D-M2: Contrato contra o grafo do plano
+`contractStagesForNode` usa `planoStages` do payload quando o array existe. Só cai numa etapa isolada (`dependeDe: []`) quando esse grafo não vem no payload. A frase antiga, de uma etapa única sempre, não descreve o código de 30/10.
 
 ### D-M3: Falha de Contrato = Defeito Crítico Automático
-Qualquer erro de `validateContract` resulta em `type1Res.passed = false` com prefixo `[CONTRATO]` nos `compilationErrors`. Violação de contrato não é erro de compilação tradicional — é quebra de acordo entre etapas. Classificar como crítico impede aprovação de código que compila mas viola interface.
+Erro de `validateContract` põe `type1Res.passed = false` e um prefixo `[CONTRATO]` em `compilationErrors` (`node-executor.ts`). Isso continua verdadeiro em 30/10.
 
-### D-M4: Manutenção das Fases MACROBRIEF/CONFERENCIA Desligadas
-Mantido `etapa1Ativa: false` sem remover código. Funcionalidade latente reativável quando volume de sessões reais justificar. Remover criaria risco desnecessário; manter desligado preserva opção futura sem custo operacional.
+### D-M4: Fases MACROBRIEF/CONFERENCIA — decisão de 23/10, superada
+Naquela data a decisão foi manter `etapa1Ativa: false`. O D-M9 ligou a flag. O código em 30/10 passa `etapa1Ativa: true` (`session-phase.ts`). Spec aprovada entra em `MACROBRIEF`.
 
 ### D-M5: Wrappers @deprecated para Compatibilidade com Testes Legados
 Restaurados `renderMacrobriefMarkdown` e `partitionRepairsByCluster` como wrappers funcionais marcados `@deprecated` em `artifact-templates.ts`. Testes legados validam comportamento real; removê-los reduziria cobertura. Wrappers mantêm API estável para testes enquanto sinalizam que novas chamadas devem usar alternativas modernas.
@@ -613,4 +837,4 @@ Scripts `bench.ts` e `teste-pesado.ts` redirecionados para `bench/resultados/`. 
 Função `readJevKey` em `jev.ts` verifica `process.env.NEXTCODE_DISABLE_JEV === "1"` antes de acessar banco. Permite desativar Jev sem I/O em testes e ambientes sem rede. Recomendação 1 da auditoria E5.
 
 ### D-M9: Skill Conferente-Macrobrief e Ativação da Fase MACROBRIEF
-Criada skill `conferente-macrobrief` (`skills/conferente-macrobrief/SKILL.md`) como primeira barreira de qualidade entre o Macrobrief do elicitador e o planejamento. Cobre 5 lacunas não cobertas pela validação mecânica ou pelo Jev: rastreabilidade critério→arquivo, consistência do contrato com a Spec, viabilidade da stack, completude dos erros de rota e dependências implícitas de regra de negócio. `etapa1Ativa` alterado para `true` em `session-phase.ts:131`. Fluxo: conferente audita → se reprovado, volta ao elicitador; se aprovado, Jev valida semanticamente (com 2 novas perguntas: `contrato_reflete_spec` e `dependencias_regra_negocio`). Função `runConferenteMacrobriefSkill` integrada em `intake-engine.ts`.
+Criada skill `conferente-macrobrief` (`skills/conferente-macrobrief/SKILL.md`) como primeira barreira de qualidade entre o Macrobrief do elicitador e o planejamento. Cobre 5 lacunas não cobertas pela validação mecânica ou pelo Jev: rastreabilidade critério→arquivo, consistência do contrato com a Spec, viabilidade da stack, completude dos erros de rota e dependências implícitas de regra de negócio. `etapa1Ativa` está `true` em `session-phase.ts` (a chamada `transition` por volta da linha 166). Fluxo: conferente audita → se reprovado, volta ao elicitador; se aprovado, Jev valida semanticamente (com 2 novas perguntas: `contrato_reflete_spec` e `dependencias_regra_negocio`). Função integrada no `intake-engine.ts`.
