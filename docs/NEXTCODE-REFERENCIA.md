@@ -262,7 +262,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 ### 3.3 Prova (não é correção de código)
 | # | Item | Quando |
 |---|---|---|
-| 7 | **TESTE-E5** incompleto: frentes 5 (dados na T7), 7 (skills), 8 (`npm audit` e portas/digest do compose), 9 (entrega errada), passos 5 e 6. Passos 1–3 aceitos em 23/10 (diário 221). O achado "4g" daquela auditoria dizia que `NEXTCODE_DISABLE_JEV` não existia; hoje existe (`jev.ts`, §1.4) | os itens 1 e 2 já estão aceitos (diário 263). O teste não mexe no portão |
+| 7 | **TESTE-E5:** relatório `7869124`; saneamento `619193c`; decisões fundador 30/10 — **D21** aceite estrito; **D2/D4** importante ancorado sem prova não `ENTREGUE` (`delivery-diagnosis`, `job-queue`). **Aberto:** re-baseline passo 2 (`vitest` 2×), passos 5–6, achados J20/fixtures fechados no código | Gate 1 (item 8) depois |
 | 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas | os itens 1 e 2 já estão aceitos (diário 263). Continua bancada, não correção do harness |
 
 **DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).

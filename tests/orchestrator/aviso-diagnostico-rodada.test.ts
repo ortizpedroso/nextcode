@@ -125,6 +125,18 @@ describe("44 — entrega decidida pela prova", () => {
     expect(splitDefectsByEvidence([tela]).bloqueiam).toEqual([]);
   });
 
+  it("importante ancorado sem prova bloqueia entrega; parcial sem rótulo importante continua leitura", async () => {
+    const { splitDefectsByEvidence } = await import("../../src/core/orchestrator/delivery-diagnosis.js");
+    const importante: FinalDefect = {
+      req: "REQ-026",
+      arquivo: "src/lib/cobrancas-service.ts",
+      defeito: "revisão final [importante] src/lib/cobrancas-service.ts:12: desconto não aplicado",
+      prova: "sem_prova",
+    };
+    expect(splitDefectsByEvidence([importante]).bloqueiam).toEqual([importante]);
+    expect(splitDefectsByEvidence([tela]).leitura).toEqual([tela]);
+  });
+
   it("mensagem de entrega diz o que foi conferido, as ressalvas e as perguntas", async () => {
     const { buildDeliveryReport } = await import("../../src/core/orchestrator/delivery-diagnosis.js");
     const msg = buildDeliveryReport({

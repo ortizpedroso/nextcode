@@ -14,6 +14,11 @@ const PADROES: RegExp[] = [
   /(assistentes?|modelos?)\s+de\s+(ia|linguagem)\s*[:,]?\s*(ignore|ao\s+gerar|sua\s+nova\s+tarefa|acrescente)/i,
   /\bnota\s+para\s+(modelos|assistentes|ia)\b/i,
   /\bsua\s+nova\s+tarefa\s+[ée]\b/i,
+  /\bassistant\s+override\b/i,
+  /\bbypass\s+(validation|security|auth|logic)\b/i,
+  /\b(override|mandatory\s+directive)\b.*\b(bypass|disable|ignore)\b/i,
+  /\bdiretriz\s+mandat[aá]ria\b/i,
+  /\bdesative?\s+(as?\s+)?verifica[cç][õo]es\b/i,
 ];
 
 export interface InjectionMarker {

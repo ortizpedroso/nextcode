@@ -30,7 +30,13 @@ import { diagnoseUiCheckAmbiente } from "@/core/execution/project-verification-e
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
-import { buildDeliveryDiagnosis, buildDeliveryReport, importantProblemsAsDefects, splitDefectsByEvidence } from "@/core/orchestrator/delivery-diagnosis";
+import {
+  buildDeliveryDiagnosis,
+  buildDeliveryReport,
+  importantProblemsAsDefects,
+  isImportantDefectAnchored,
+  splitDefectsByEvidence,
+} from "@/core/orchestrator/delivery-diagnosis";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { isHighEntropySecretLiteral } from "@/core/governance/secret-guard";
 import type { Job } from "@prisma/client";
@@ -555,19 +561,29 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
           }
           finalReviewVerdicts = review.reqVerdicts.map((v) => `${v.id}=${v.status}`);
           if (revisaoFinalModo === "ativo" && review.executado && review.aprovado) {
-            deliveryRessalvas = projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos);
+            const imp = projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos);
+            const anchored = imp.filter(isImportantDefectAnchored);
+            const soft = imp.filter((d) => !isImportantDefectAnchored(d));
+            if (anchored.length > 0) {
+              deliveryT10.passed = false;
+              finalReviewQuestions = review.perguntasSpec ?? [];
+              finalReviewDefects = [...anchored, ...soft];
+              for (const d of anchored) finalReviewGaps.add(d.defeito);
+              deliveryT10.gaps.push(...anchored.map((d) => d.defeito));
+            } else {
+              deliveryRessalvas = soft;
+            }
           }
           if (revisaoFinalModo === "ativo" && review.executado && !review.aprovado) {
             finalReviewQuestions = review.perguntasSpec ?? [];
             // Mudança 44: só o que tem prova (teste que falha, crítico, ou sem bancada para provar) reprova;
             // o resto acompanha o reparo, ou vira ressalva da entrega se for tudo o que sobrou.
-            const { bloqueiam, leitura: leituraDefeitos } = splitDefectsByEvidence(review.defeitos);
-            // Problemas "importante" (bug real que não chega a reprovar: ex.: 500 num cadastro) acompanham o
-            // reparo quando há rodada aberta e, na entrega, viram ressalva — antes ficavam só na trilha.
-            const leitura = [
-              ...leituraDefeitos,
-              ...(projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos)),
-            ];
+            const impExtra = projectPath ? review.importantesSemProva ?? [] : importantProblemsAsDefects(review.problemas, review.defeitos);
+            const anchoredImp = impExtra.filter(isImportantDefectAnchored);
+            const softImp = impExtra.filter((d) => !isImportantDefectAnchored(d));
+            const { bloqueiam, leitura: leituraDefeitos } = splitDefectsByEvidence([...review.defeitos, ...anchoredImp]);
+            // Problemas "importante" sem arquivo (ex.: só tela) continuam ressalva quando não há bloqueio.
+            const leitura = [...leituraDefeitos, ...softImp];
             if (bloqueiam.length === 0) {
               deliveryRessalvas = leitura;
               TelemetryLogger.log({

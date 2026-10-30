@@ -27,6 +27,11 @@ export interface DeliveryDiagnosis {
 
 const firstLine = (s?: string) => (s ?? "").split("\n").find((l) => l.trim())?.trim().slice(0, 220) ?? "";
 
+/** Fundador 30/10 (E5-D2/D4): importante da J3 com arquivo no disco — sem teste reproduzido não vira ENTREGUE silencioso. */
+export function isImportantDefectAnchored(d: FinalDefect): boolean {
+  return d.defeito.startsWith("revisão final [importante]") && Boolean(d.arquivo?.trim());
+}
+
 function linhaDefeito(d: FinalDefect): string {
   const onde = d.arquivo ? `\`${d.arquivo}\`` : "(sem arquivo)";
   const req = d.req ? `${d.req} · ` : "";
@@ -42,11 +47,17 @@ function linhaDefeito(d: FinalDefect): string {
  * `critico` (segurança/dinheiro, mesmo sem teste) e defeito sem bancada (Docker fora — não há como provar,
  * fica o comportamento antigo). Defeito só de leitura (sem teste possível, ex.: tela) acompanha o reparo
  * enquanto houver defeito provado; sozinho, vira ressalva da entrega. Pergunta de Spec nunca trava código.
+ * `importante` ancorado (arquivo) sem prova reproduzida bloqueia entrega (decisão fundador 30/10).
  */
 export function splitDefectsByEvidence(defeitos: FinalDefect[]): { bloqueiam: FinalDefect[]; leitura: FinalDefect[]; spec: FinalDefect[] } {
   const spec = defeitos.filter((d) => d.prova === "spec");
   const bloqueiam = defeitos.filter(
-    (d) => d.prova !== "spec" && (d.prova === "reproduzido" || d.prova === undefined || d.defeito.startsWith("revisão final [critico]"))
+    (d) =>
+      d.prova !== "spec" &&
+      (d.prova === "reproduzido" ||
+        d.prova === undefined ||
+        d.defeito.startsWith("revisão final [critico]") ||
+        isImportantDefectAnchored(d))
   );
   const leitura = defeitos.filter((d) => d.prova !== "spec" && !bloqueiam.includes(d));
   return { bloqueiam, leitura, spec };

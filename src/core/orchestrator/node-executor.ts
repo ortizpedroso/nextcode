@@ -2076,7 +2076,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
               action: "ACCEPTANCE_TESTS_FAILED",
               details: { nodeId: taskDb.id, falhas: falhasAceite.slice(0, 10).map((f) => f.slice(0, 300)) },
             });
-            // Teste de aceite que falha reprova a etapa em qualquer tentativa. O avaliador não cobre o teste.
+            // Fundador 30/10 (E5-D21): teste de aceite que falha reprova a etapa em qualquer tentativa; sem ACCEPTANCE_DISAGREEMENT na última.
             falhas = [...falhas, ...falhasAceite.map((f) => `teste de aceite falha — ${f}`)];
           } else if ((acceptance?.testes ?? []).length) {
             TelemetryLogger.log({ sessionId: taskDb.sessionId, action: "ACCEPTANCE_TESTS_PASSED", details: { nodeId: taskDb.id, casos: contract.cases.length } });

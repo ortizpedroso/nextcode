@@ -1,3 +1,18 @@
+## 30/10/2026 (268) — Decisões E5-D21/D2 + achados 2–5 (pacote em andamento)
+**Veredito:** fundador concordou passo 0; implementado **D2/D4** (importante ancorado sem prova bloqueia), **J20** ampliado, fixtures `requisitos_ids`, **D21** documentado em `decisoes.md` e comentário no executor.
+**Próximo passo:** `tsc` + `vitest` 2×; commit do pacote; passos 5–6 E5; Gate 1.
+---
+## 30/10/2026 (267) — Saneamento harness (619193c) — fundador aprovou
+**Veredito:** pacote **fechado** para o objetivo imediato (HEAD compila limpo); item 7 **§3.3** ainda pede re-baseline E5 (`vitest` completo 2×) e decisões D21/fixtures.
+**Prova:** commit `619193c` (21 arquivos; **sem** intake/conferente/Gateway da working tree). Checkout limpo desse commit: `npx tsc --noEmit` → saída 0. Vitest focado do pacote → 43/43 (`orchestration-policy-and-skills`, `project-verification-env`, `ui-check-*`, `final-build-recheck`, `project-base`). Suite inteira no HEAD limpo ainda **65 falhas** (ex.: `spec-check.test.ts` / `requisitos_ids` — achado 2 do E5); não faz parte deste commit.
+**Próximo passo (fila):** (1) re-baseline passo 2 E5 no `619193c` ou corrigir fixtures; (2) pacote WIP conferente/intake quando for a vez; (3) **Gate 1** Gateway; fundador decide **E5-D21** e fixtures Spec.
+---
+## 30/10/2026 (266) — Auditoria Claude do TESTE-E5 (7869124)
+**Veredito:** ✅ **ACEITO COM RESSALVAS** (item 7 **não fecha** enquanto `11fcff6` não compilar limpo).
+**Prova:** `git show 7869124 --stat` → só `docs/relatorios/TESTE-E5-antigravity.md`. Worktree em `11fcff6`: `npx tsc --noEmit` → 12 erros (colados no relatório; reproduzi os mesmos). `project-verification-env.ts` não existe no commit; `job-queue.ts` também importa símbolos que só existem na working tree suja (`isRecheckDeliveryCommand`, `confirmDeliveryTriageWithJev`, exports de `ui-check`, etc.). Passo 3: amostra par 1/par 2 coerente com o relatório. Passo 6: `controles-autoteste-e5.ts` → `P1 ref passa: true (10/10)` (relatório dizia 9/9). J3 não reexecutado (custo LLM).
+**Ressalvas do executor:** copiou `test.db` e `project-verification-env.ts` para a worktree — útil, mas não é “desvios: nenhum”. Achados 2–4 (fixtures Spec, skill diagnosing-superpowers, J20 bypass) não revalidados linha a linha.
+**Próximo passo:** commit de saneamento do harness (untracked `project-verification-env.ts` + peers) até `tsc`/`vitest` verdes no HEAD; depois re-baseline ou auditar no HEAD novo. Decisões do fundador: D21 (aceite na última tentativa), fixtures `spec-check`.
+---
 ## 30/10/2026 (265) — FreeLLMAPI sem electronhub/router9
 **Veredito:** item 14 da §3.5 **já estava feito** no painel; a referência estava desatualizada.
 **Prova:** `GET http://localhost:3100/v1/models` com a chave do NextCode → HTTP 200, 303 modelos, 0 ocorrências de `electronhub`/`router9` no JSON. `probeGateway("freellmapi")` → `servedBy: custom/deepseek-v4-pro`.

@@ -27,6 +27,7 @@ rotas:
 arquivos_afetados:
   - "pages/api/tasks/index.ts"
   - "pages/api/tasks/[id].ts"
+requisitos_ids: []
 ---
 
 # API de Lista de Tarefas em Next.js
@@ -59,6 +60,10 @@ arquivos_afetados:
   - "src/lib/task-store.ts"
   - "src/app/api/tasks/route.ts"
   - "src/app/api/tasks/[id]/route.ts"
+requisitos_ids:
+  - REQ-001
+  - REQ-002
+  - REQ-003
 requisitos:
   - id: REQ-001
     titulo: "Armazenamento em memória"
@@ -131,7 +136,10 @@ describe("Conferência mecânica da Spec (P12)", () => {
   });
 
   it("rota sem arquivo é apontada com o caminho esperado no App Router", () => {
-    const noRoute = goodSpec.replace('  - "src/app/api/tasks/[id]/route.ts"\nrequisitos:', "requisitos:");
+    const noRoute = goodSpec.replace(
+      `  - "src/app/api/tasks/route.ts"\n  - "src/app/api/tasks/[id]/route.ts"\nrequisitos_ids:`,
+      `  - "src/app/api/tasks/route.ts"\nrequisitos_ids:`
+    );
     const problems = checkSpecStructure(parseSpecDocument(noRoute)!);
     expect(problems.some((p) => p.includes('"/api/tasks/:id"') && p.includes("src/app/api/tasks/[id]/route.ts"))).toBe(true);
   });

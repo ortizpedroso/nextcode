@@ -85,3 +85,6 @@ Fundador: "pense de forma macro a resolver todos os problemas do projeto para qu
 
 ## 30/10 — Item 6 (PostCSS e `.env.example` no encaixe pós-T10)
 Fundador: "corrija logo… vamos até o fim". Decisão do auditor: **entram no microbrief `encaixe-infra`** pela mesma lista fechada de `isEncaixeInfraPath` (postcss.config e `.env.example`), sem alargar regex genérico de caminho. `fallbackInfraOwner` no plano continua como antes; só o encaixe depois da T10 deixa de bloquear com `Dono: analista` quando a lacuna cita só esses arquivos.
+
+| 30/10 | **E5-D21 (aceite):** teste de aceite que falha **reprova a etapa em qualquer tentativa** — mantém o código atual (`node-executor.ts`); a tolerância autônoma `ACCEPTANCE_DISAGREEMENT` na última tentativa **não** volta. Avaliador cego aos testes; a régua de aceite não negocia com o parecer do avaliador. | fundador concordou com recomendação Claude (sessão 30/10) |
+| 30/10 | **E5-D2/D4 (entrega):** defeito **`importante` da revisão final** com **arquivo ancorado** e **sem prova reproduzida** **não** libera `ENTREGUE` — bloqueia como os demais (reparo / humano). Só **`importante` sem arquivo** (ex.: leitura de tela) continua ressalva quando for o único resíduo. | fundador concordou com recomendação Claude (sessão 30/10) |
