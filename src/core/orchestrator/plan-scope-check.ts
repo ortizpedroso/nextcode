@@ -206,6 +206,78 @@ export function checkExportJunctions(
   return errors;
 }
 
+const IGNORED_TYPE_IDENTIFIERS = new Set([
+  "string", "number", "boolean", "void", "null", "undefined",
+  "any", "unknown", "Promise", "Date", "Record", "Array",
+  "Blob", "Json", "Request", "Response",
+]);
+
+/**
+ * 2. Parâmetro que a Spec pôs entre parênteses não pode sumir da assinatura.
+ * Para cada função do contrato, procura no textoPorReq o nome da função como palavra inteira
+ * e o primeiro (...) depois desse nome na mesma linha. Dentro dos parênteses, extrai os parâmetros.
+ * Se algum identificador não aparece como palavra inteira na assinatura da função, emite [CONTRATO ASSINATURA].
+ */
+export function checkContractSignatureParameters(
+  nodes: { id: string; dependencies?: string[]; payload?: unknown }[],
+  textoPorReq: Record<string, string>
+): string[] {
+  const allFuncoes: Array<{ nome: string; assinatura: string }> = [];
+  for (const n of nodes) {
+    const p = n.payload as { contrato?: { funcoes?: Array<{ nome: string; assinatura: string }> } } | undefined;
+    if (p?.contrato?.funcoes && Array.isArray(p.contrato.funcoes)) {
+      for (const f of p.contrato.funcoes) {
+        if (f && typeof f.nome === "string" && typeof f.assinatura === "string") {
+          allFuncoes.push(f);
+        }
+      }
+    }
+  }
+
+  if (allFuncoes.length === 0) return [];
+
+  const errors: string[] = [];
+  const reqTexts = Object.values(textoPorReq);
+
+  for (const f of allFuncoes) {
+    const fnName = f.nome;
+    const fnWordRegex = new RegExp(`\\b${fnName}\\b`, "g");
+    const sigWordRegex = (word: string) => new RegExp(`\\b${word}\\b`);
+
+    for (const text of reqTexts) {
+      if (!text) continue;
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        fnWordRegex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = fnWordRegex.exec(line)) !== null) {
+          const after = line.slice(match.index + fnName.length);
+          const parenMatch = after.match(/^\s*\(([^)]*)\)/);
+          if (!parenMatch) continue;
+
+          const insideParens = parenMatch[1];
+          const parts = insideParens.split(",");
+          for (const part of parts) {
+            const beforeColon = part.split(":")[0].trim();
+            if (!beforeColon) continue;
+
+            const idMatch = beforeColon.match(/^[a-zA-Z_$][a-zA-Z0-9_$]*/);
+            if (!idMatch) continue;
+            const ident = idMatch[0];
+            if (IGNORED_TYPE_IDENTIFIERS.has(ident)) continue;
+
+            if (!sigWordRegex(ident).test(f.assinatura)) {
+              errors.push(`[CONTRATO ASSINATURA] função "${fnName}" não contém o parâmetro "${ident}" em sua assinatura.`);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
 /** T8b inteira sobre o plano final (depois da divisão pelo Jev): regras antigas + as do A2.1 + F1.1 junção. */
 export function validateFinalPlan(
   nodes: { id: string; dependencies?: string[]; payload?: unknown }[],
@@ -223,8 +295,9 @@ export function validateFinalPlan(
     microbriefsByStageId.set(stages[i].id, microbriefs[i]);
   }
   const junctionErrors = checkExportJunctions(stages, microbriefsByStageId);
+  const signatureErrors = checkContractSignatureParameters(nodes, textoPorReq);
 
-  const errors = [...base.errors, ...junctionErrors];
+  const errors = [...base.errors, ...junctionErrors, ...signatureErrors];
   return { valid: errors.length === 0, errors };
 }
 

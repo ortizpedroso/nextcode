@@ -285,6 +285,69 @@ describe("F1.1 — junção de contratos no plano (interfacesProduz × interface
     const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/lib/x.ts", "REQ-002": "src/b.ts" }, 4);
     expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
   });
+
+  it("Spec criarSessao(usuarioId, papel) grava a sessão, assinatura (usuarioId: string) => Promise<Sessao>, o plano é inválido e o erro contém [CONTRATO ASSINATURA] e papel", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/sessao.ts"], modificar: [], lerContratos: [] },
+          },
+          contrato: {
+            funcoes: [
+              {
+                nome: "criarSessao",
+                arquivo: "src/sessao.ts",
+                assinatura: "(usuarioId: string) => Promise<Sessao>",
+                dono: "A",
+                usadoPor: [],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const textoPorReq = {
+      "REQ-001": "criarSessao(usuarioId, papel) grava a sessão",
+    };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[CONTRATO ASSINATURA]") && e.includes("criarSessao") && e.includes("papel"))).toBe(true);
+  });
+
+  it("Spec criarSessao grava a sessão, mesma assinatura sem papel, nenhum erro [CONTRATO ASSINATURA]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/sessao.ts"], modificar: [], lerContratos: [] },
+          },
+          contrato: {
+            funcoes: [
+              {
+                nome: "criarSessao",
+                arquivo: "src/sessao.ts",
+                assinatura: "(usuarioId: string) => Promise<Sessao>",
+                dono: "A",
+                usadoPor: [],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const textoPorReq = {
+      "REQ-001": "criarSessao grava a sessão",
+    };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.errors.some((e) => e.includes("[CONTRATO ASSINATURA]"))).toBe(false);
+  });
 });
 
 describe("1. Dono de infra no plano, antes da execução (atribuirInfraAoDono)", () => {

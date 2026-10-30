@@ -65,9 +65,39 @@ describe("AV1.3 — evidência do avaliador conferida e problemas por severidade
       implemented: true,
       missingRequirements: [],
       justification: "ok",
+      fatoQueGarante: "src/lib/soma.ts:2",
+      nivelProva: "arquivo_linha",
       reqVerdicts: [ok],
       problemas: [{ severidade: "menor", arquivoLinha: "", descricao: "nome" }],
     });
+    expect(r.rawVerdict).toBe("APROVADO");
+  });
+
+  it("aprovação com nivelProva: 'dito' é descartada e o veredito externo não fica APPROVED", async () => {
+    const calls = { n: 0 };
+    const r = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      fatoQueGarante: "src/lib/soma.ts:2",
+      nivelProva: "dito",
+      reqVerdicts: [ok],
+    }, calls);
+    expect(calls.n).toBe(2);
+    expect(r.verdict).not.toBe("APPROVED");
+    expect(r.verdict).toBe("REJECTED");
+  });
+
+  it("aprovação com fatoQueGarante: 'src/lib/soma.ts:2' e nivelProva: 'arquivo_linha' segue APROVADO quando não há problema bloqueante", async () => {
+    const r = await judge({
+      implemented: true,
+      missingRequirements: [],
+      justification: "ok",
+      fatoQueGarante: "src/lib/soma.ts:2",
+      nivelProva: "arquivo_linha",
+      reqVerdicts: [ok],
+    });
+    expect(r.verdict).toBe("APPROVED");
     expect(r.rawVerdict).toBe("APROVADO");
   });
 
@@ -75,7 +105,14 @@ describe("AV1.3 — evidência do avaliador conferida e problemas por severidade
     let sys = "";
     await DualLensAuditor.validateType2(type1, "# Brief", "feito", CODE, async (m) => {
       sys = m[0].content;
-      return JSON.stringify({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: [ok] });
+      return JSON.stringify({
+        implemented: true,
+        missingRequirements: [],
+        justification: "ok",
+        fatoQueGarante: "src/lib/soma.ts:2",
+        nivelProva: "arquivo_linha",
+        reqVerdicts: [ok],
+      });
     }, { expectedReqs: ["REQ-001"] });
     expect(sys).toContain('"problemas":[{"severidade":"critico"|"importante"|"menor"');
     expect(sys).toContain("citação que não existe faz a resposta ser descartada");

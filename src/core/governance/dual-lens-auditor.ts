@@ -651,7 +651,7 @@ export class DualLensAuditor {
           ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
           "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
           "REGRA INEGOCIÁVEL DE CONTRATO: qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) — função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente — é OBRIGATORIAMENTE um defeito CRÍTICO ('severidade':'critico') e reprova a etapa (implemented: false). " +
-          "Problema critico reprova; importante com arquivo e linha existentes também reprova; menor só registra. Problema que você considerou e descartou não entra na lista. Diga também em fatoQueGarante qual fato do código garante que a etapa está certa e em nivelProva como chegou a ele: dito | arquivo_linha | falha_descartada | executado | reproduzido." +
+          "Problema critico reprova; importante com arquivo e linha existentes também reprova; menor só registra. Problema que você considerou e descartou não entra na lista. Aprovação exige prova: diga em fatoQueGarante qual fato do código garante que a etapa está certa (citando arquivo e linha existentes no código desta etapa) e em nivelProva como chegou a ele: arquivo_linha | executado | reproduzido (dito, nivelProva ausente ou falha_descartada não aprovam)." +
           skillBlock,
       },
       {
@@ -788,6 +788,19 @@ export class DualLensAuditor {
       const hasIncompleteReq = reqVerdicts ? reqVerdicts.some((r) => r.status !== "implementado") : false;
       const effectiveImplemented =
         hasIncompleteReq || criticos.length > 0 || importantes.length > 0 ? false : Boolean(parsed.implemented);
+
+      // 1. Aprovação sem prova é descartada:
+      // Quando effectiveImplemented seria true:
+      // - nivelProva tem de ser só "arquivo_linha", "executado" ou "reproduzido".
+      // - fatoQueGarante tem de conter um arquivo e uma linha que fileLineRefExists aceita no código desta etapa.
+      // Se faltar isso, devolve discard (dito, ausente ou falha_descartada não aprovam).
+      if (effectiveImplemented) {
+        const nivelValido = ["arquivo_linha", "executado", "reproduzido"].includes(parsed.nivelProva);
+        const fatoValido = typeof parsed.fatoQueGarante === "string" && fileLineRefExists(parsed.fatoQueGarante, codeContentMap);
+        if (!nivelValido || !fatoValido) {
+          return { discard: `aprovação sem prova válida: nivelProva="${parsed.nivelProva}", fatoQueGarante="${String(parsed.fatoQueGarante || "").slice(0, 120)}"` };
+        }
+      }
 
       const ressalvasFinais = [
         ...(ressalvas ?? []),
