@@ -1,3 +1,18 @@
+## 30/10/2026 (275) — Gate 1 em execução + fila pós-teste (OmniRoute, Headroom)
+**Em curso:** fundador rodando **Gate 1** de novo — **sessão nova**, **mesma Spec canônica** do Gateway (referência §7.2 / comparação `4d019f00`). Ao terminar: anotar aqui **id da sessão**, fase final, defeitos provados, veredito ACEITO/RESSALVAS.
+
+**Fila acordada (ordem):**
+
+| # | Quando | Tarefa |
+|---|--------|--------|
+| A | **Agora** | Concluir Gate 1 na UI; registrar resultado nesta entrada |
+| B | **Logo após Gate 1** | **Remover OmniRoute/OmniRouter por completo** (API `src/app/api/omniroute/*`, `config/omniroute.json`, docker-compose, UI settings, `smart-router`, testes `tests/e2e/omniroute*`, `tests/router/*`, env `.env.example`, etc.) — decisão fundador 30/10; entrar na referência §3.4 item 18 antes de codar |
+| C | **Depois de B** | **Retornar Headroom** (ferramenta externa — proxy/plugin; histórico diário 199–201). Reavaliar o que reinstalar vs. manter só o **context-pruner** interno |
+| D | Opcional | J3 passo 6 com LLM real; `chkdsk` + restaurar `tests/orchestrator/`; critérios Spec em prosa (lacuna harness futura); item 18 §3.7 rito correção pequena **após** Gate 1 |
+
+**Nada de código B/C enquanto Gate 1 não fechar** (regra: um passo por vez).
+
+---
 ## 30/10/2026 (274) — Item 7 §3.3 fechado (TESTE-E5 vitest) + doc + push
 **Veredito auditoria Claude (§9):** **ACEITO** — vitest/harness E5 encerrado; item 8 (Gate 1) continua pendente de cota/sessão real.
 **Feito:** `docs/NEXTCODE-REFERENCIA.md` §1.4, §2.9, §3.3 item 7; `docs/relatorios/TESTE-E5-fechamento-vitest-2026-10-30.md`, `GATE-1-pendente-operacao-2026-10-30.md`; commits **`d8c2bac`**, **`2af2c55`**; push `main`; CI GitHub **41134902395** verde (tsc + vitest).

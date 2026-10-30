@@ -269,7 +269,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 | # | Item | Quando |
 |---|---|---|
 | 7 | **TESTE-E5 (vitest / harness):** **fechado 30/10** — relatório `7869124`, saneamento `619193c`, achados 2–4 e baseline (`e10099c`, `1aee3d7`); suíte **1167/1167** (2×); E2E `end-to-end-harness-plan` 11/11; auditoria Claude: relatórios `docs/relatorios/SESSAO-2026-10-30-claude-*.md`, veredito diário **274**. **Opcional:** J3 passo 6 com LLM real (custo) | — |
-| 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas | os itens 1 e 2 já estão aceitos (diário 263). Continua bancada, não correção do harness |
+| 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas. **30/10 tarde:** fundador **reexecutando** (diário **275**) | Após veredito: item 18 (OmniRoute) |
 
 **DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).
 
@@ -279,6 +279,8 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 | 9 | Citações de documento apagado em comentários de código e no `CLAUDE.md` | feito e auditado (diário 264): `docs/LLM-GATEWAYS.md` saiu de `gateways.ts`, `gateways.test.ts`, `smart-router.ts` e `jev-decisions.ts`. O JSON do J3 em `final-reviewer.ts` ficou como recuperação no git |
 | 10 | Benchmark simulado em `/api/dag/benchmark` | feito e auditado (diário 264): menu Simulação, modal avisa que não é medida, resposta `simulado: true` |
 | 11 | Aviso duplo do 5c | feito e auditado (diário 264): `deveAvisarTentativasEsgotadas` impede `reportBlockedNodeToHuman` quando o erro é `DEPENDENCIA_DESCONHECIDA` |
+| 18 | **Remover OmniRoute / OmniRouter** do repositório (rotas, docker, config, UI, router, testes, env). **Não faz mais parte do projeto** — roteamento só FreeLLMAPI/BYOK (decisão fundador 30/10). **Porta:** Gate 1 (item 8) concluído + registro no diário | commit dedicado + `tsc` + `vitest` 1167/1167 |
+| 19 | **Retornar Headroom (ferramenta externa)** — fundador pediu **depois** do item 18. Distinto de `src/core/headroom/context-pruner.ts` (pruner interno do chat; manter até nova decisão) | após item 18 |
 
 ### 3.5 Sem código agora
 | # | Item | O que falta |
