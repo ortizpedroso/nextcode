@@ -258,6 +258,12 @@ export function loadRoleSkill(
   };
 }
 
+/** Só segmento `..` (path traversal). Não confundir com `[...nextauth]` do App Router. */
+export function pathHasParentTraversal(relativePath: string): boolean {
+  const clean = relativePath.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
+  return clean.split("/").some((seg) => seg === "..");
+}
+
 /**
  * Aplica mecanicamente as permissões declaradas na skill quando o agente tenta invocar uma ferramenta.
  * Uma regra só no prompt é apenas um pedido; esta função é a trava em código do harness.
@@ -302,7 +308,7 @@ export function enforceSkillToolPermission(params: {
     }
     const cleanTarget = targetFile.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
     if (
-      cleanTarget.includes("..") ||
+      pathHasParentTraversal(cleanTarget) ||
       cleanTarget === ".env" ||
       // Modelos sem segredo (`.env.example`, `.env.sample`, `.env.template`) são permitidos; o conteúdo
       // continua passando pela guarda de segredos. Antes `.env.*` inteiro era bloqueado e a etapa que a

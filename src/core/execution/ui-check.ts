@@ -8,9 +8,19 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
+import {
+  dockerEnvArgsForUiCheckContainer,
+  uiCheckFailureGapText,
+  uiCheckHarnessAmbienteFailure,
+  resolveVerificationRuntimeEnv,
+  ensureT10PostgresIfNeeded,
+} from "@/core/execution/project-verification-env";
 
-export const UI_CHECK_IMAGE = "nextcode-ui-check:1.63.0";
+export const UI_CHECK_IMAGE = "nextcode-ui-check:1.63.6";
 const UI_CHECK_TIMEOUT_MS = Number(process.env.UI_CHECK_TIMEOUT_MS) || 15 * 60_000;
+
+export { isUiCheckEnvironmentGap, uiCheckFailureGapText as uiCheckFailureGap } from "@/core/execution/project-verification-env";
+export { uiCheckHarnessAmbienteFailure };
 
 export interface UiCheckReport {
   ok: boolean;
@@ -43,6 +53,31 @@ export function parseNextBuildErrors(log: string): NextBuildError[] {
   const re = /^\.?\/?((?:src|app|pages|lib|components|prisma)\/[^\s:]+):(\d+):\d+\s*\r?\n\s*((?:Type error|Error):[^\r\n]+)/gm;
   for (const m of clean.matchAll(re)) {
     out.push({ arquivo: m[1], linha: Number(m[2]), mensagem: m[3].trim().slice(0, 400) });
+  }
+  const routeRe = /^((?:src|app)\/[^\r\n]+)\r?\nType error: ([^\r\n]+)/gm;
+  for (const m of clean.matchAll(routeRe)) {
+    const arquivo = m[1].replace(/^\.\//, "");
+    if (!out.some((e) => e.arquivo === arquivo)) {
+      out.push({ arquivo, linha: 1, mensagem: m[2].trim().slice(0, 400) });
+    }
+  }
+  if (out.length > 0) return out;
+
+  // Webpack "Failed to compile" + import trace (ex.: Prisma client ausente no Linux após install sem generate).
+  const traceBlock = /Import trace for requested module:\s*\r?\n((?:\s*\.\/[^\r\n]+\r?\n)+)/i.exec(clean);
+  if (traceBlock) {
+    const paths = [...traceBlock[1].matchAll(/^\s*(\.\/(?:src|app|lib|components|prisma)\/[^\r\n]+)/gm)].map((m) =>
+      m[1].replace(/^\.\//, "")
+    );
+    const arquivo = paths.at(-1);
+    const msgMatch = /((?:Module not found|Can't resolve)[^\r\n]+)/i.exec(clean);
+    if (arquivo) {
+      out.push({
+        arquivo,
+        linha: 1,
+        mensagem: (msgMatch?.[1] ?? "next build falhou (webpack)").trim().slice(0, 400),
+      });
+    }
   }
   return out;
 }
@@ -94,6 +129,14 @@ async function ensureImage(): Promise<string | null> {
 }
 
 export const dockerUiCheckRunner: UiCheckRunner = async (projectPath, pages) => {
+  const preflight = resolveVerificationRuntimeEnv(projectPath);
+  if (!preflight.ok) {
+    return { ok: false, stage: "preflight", error: preflight.message };
+  }
+  const pgErr = await ensureT10PostgresIfNeeded(projectPath, preflight.env);
+  if (pgErr) {
+    return { ok: false, stage: "preflight", error: pgErr };
+  }
   const version = await run("docker", ["version", "--format", "{{.Server.Version}}"], 20_000);
   if (version.code !== 0) {
     return { ok: false, stage: "docker", error: "Docker não está rodando — a tela não pôde ser verificada." };
@@ -113,6 +156,7 @@ export const dockerUiCheckRunner: UiCheckRunner = async (projectPath, pages) => 
       "-v", `${path.resolve(projectPath)}:/project:ro`,
       "-v", `${outDir}:/out`,
       "-e", `UI_CHECK_PAGES=${JSON.stringify(pages)}`,
+      ...dockerEnvArgsForUiCheckContainer(preflight.env),
       UI_CHECK_IMAGE,
     ],
     UI_CHECK_TIMEOUT_MS

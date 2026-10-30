@@ -1433,5 +1433,91 @@ export async function verifyProjectDeliveryWithJev(
   };
 }
 
+const DELIVERY_TRIAGE_JEV_CRITERIA = {
+  ambiente: FAILURE_CAUSE_CRITERIA.environment,
+  codigo:
+    "application source code bugs or type errors in routes, components, or libs outside src/contracts/conformidade",
+  harness:
+    "errors in generated conformance stubs under src/contracts/conformidade or contract index wiring for the spec harness",
+  spec: FAILURE_CAUSE_CRITERIA.ambiguous_spec,
+} as const;
+
+export type DeliveryTriageJevClasse = keyof typeof DELIVERY_TRIAGE_JEV_CRITERIA;
+
+/** Jev cirúrgico na entrega: confirma a classe dominante com amostra pequena (sombra/ativo). */
+export async function confirmDeliveryTriageWithJev(params: {
+  sessionId: string;
+  modo: JevExecutionMode;
+  dominanteHeuristica: DeliveryTriageJevClasse;
+  amostraErros: string[];
+  reparoTipo: string;
+}): Promise<{
+  executado: boolean;
+  jevDisponivel: boolean;
+  classeJev?: DeliveryTriageJevClasse;
+  confianca?: number;
+  concordaComHeuristica?: boolean;
+}> {
+  if (params.modo === "desligado") return { executado: false, jevDisponivel: false };
+
+  const stateJson = JSON.stringify({
+    reparo: params.reparoTipo,
+    heuristica: params.dominanteHeuristica,
+    amostra: params.amostraErros.slice(0, 10),
+  });
+
+  const answers = await askJevBatch({
+    purpose: "delivery_lacuna_triage",
+    state: stateJson,
+    questions: {
+      classe_dominante: {
+        type: "choice",
+        instructions:
+          "Given the sample build gaps and repair state, pick the single dominant cause blocking final delivery.",
+        criteria: DELIVERY_TRIAGE_JEV_CRITERIA,
+      },
+    },
+    sessionId: params.sessionId,
+    maxStateChars: 12000,
+  });
+
+  if (!answers?.classe_dominante || answers.classe_dominante.type !== "choice") {
+    TelemetryLogger.log({
+      sessionId: params.sessionId,
+      action: "JEV_DELIVERY_TRIAGE",
+      details: { modo: params.modo, jevDisponivel: false, heuristica: params.dominanteHeuristica },
+    });
+    return { executado: false, jevDisponivel: false };
+  }
+
+  const choice = answers.classe_dominante.choice as DeliveryTriageJevClasse;
+  const confianca = Math.max(
+    answers.classe_dominante.confidence ?? 0,
+    answers.classe_dominante.probabilities?.[choice] ?? 0
+  );
+  const concorda = choice === params.dominanteHeuristica;
+
+  TelemetryLogger.log({
+    sessionId: params.sessionId,
+    action: params.modo === "sombra" ? "JEV_DELIVERY_TRIAGE_SOMBRA" : "JEV_DELIVERY_TRIAGE",
+    details: {
+      modo: params.modo,
+      jevDisponivel: true,
+      heuristica: params.dominanteHeuristica,
+      classeJev: choice,
+      confianca,
+      concorda,
+      probabilities: answers.classe_dominante.probabilities,
+    },
+  });
+
+  return {
+    executado: true,
+    jevDisponivel: true,
+    classeJev: choice,
+    confianca,
+    concordaComHeuristica: concorda,
+  };
+}
 
 

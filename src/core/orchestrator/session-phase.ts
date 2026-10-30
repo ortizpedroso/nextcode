@@ -111,6 +111,8 @@ export interface ApplyPhaseEventOptions {
   avisoJaPostado?: boolean;
   /** Detalhe adicional a ser incluído no aviso ao humano caso o efeito AVISAR_HUMANO seja disparado. */
   detalheAviso?: string;
+  /** Substitui a ação padrão do efeito AVISAR_HUMANO (ex.: triagem T10). */
+  acaoHumano?: import("@/core/orchestrator/phase-machine").HumanAction;
 }
 
 /**
@@ -217,7 +219,12 @@ export async function applyPhaseEvent(
 
       for (const effect of result.effects) {
         if (effect.type === "AVISAR_HUMANO" && options?.avisoJaPostado !== true) {
-          await postHumanNotice(sessionId, effect.motivo, options?.detalheAviso, effect.acao);
+          await postHumanNotice(
+            sessionId,
+            effect.motivo,
+            options?.detalheAviso,
+            options?.acaoHumano ?? effect.acao
+          );
         }
       }
 

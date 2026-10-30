@@ -126,7 +126,7 @@ export type PhaseEffect =
  * retomar = nada a mudar na Spec (ambiente, erro interno, silêncio, avaliador fora);
  * autorizar_verba = teto; retentar_etapa = etapa com 3 tentativas; ajustar_spec = o pedido precisa mudar.
  */
-export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec' | 'autorizar_rodada';
+export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec' | 'autorizar_rodada' | 'reparo_encaixe';
 
 export interface PhaseContext {
   phase: Phase;

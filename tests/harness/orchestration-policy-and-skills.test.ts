@@ -78,6 +78,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       // JV1 (mudança 44): desligados com medição na trilha real do Gateway.
       verificacaoEvidencia: "desligado",
       auditoriaEntrega: "desligado",
+      triagemEntrega: "sombra",
       conferenciaEntrada: "sombra",
       guardaSegredosCodigo: "ativo",
       guardaSegredosChat: "ativo",
@@ -104,6 +105,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
         roteamentoFalha: "sombra",
         verificacaoEvidencia: "sombra",
         auditoriaEntrega: "sombra",
+        triagemEntrega: "desligado",
         conferenciaEntrada: "desligado",
         guardaSegredosCodigo: "ativo",
         guardaSegredosChat: "ativo",
@@ -146,6 +148,7 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
         roteamentoFalha: "sombra",
         verificacaoEvidencia: "desligado",
         auditoriaEntrega: "desligado",
+        triagemEntrega: "desligado",
         conferenciaEntrada: "desligado",
         guardaSegredosCodigo: "desligado",
         guardaSegredosChat: "desligado",
@@ -542,6 +545,15 @@ describe("Políticas de Orquestração (config/politicas-orquestracao.yaml) e Ru
       currentStep: 3,
     });
     expect(allowInScope.allowed).toBe(true);
+
+    const allowNextAuthCatchAll = enforceSkillToolPermission({
+      skill: executorBackend,
+      toolName: "write_file",
+      targetFile: "src/app/api/auth/[...nextauth]/route.ts",
+      allowedScopeFiles: ["src/app/api/auth/[...nextauth]/route.ts"],
+      currentStep: 3,
+    });
+    expect(allowNextAuthCatchAll.allowed).toBe(true);
 
     const denyOutOfScope = enforceSkillToolPermission({
       skill: executorBackend,

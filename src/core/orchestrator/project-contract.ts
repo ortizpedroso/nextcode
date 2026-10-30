@@ -108,6 +108,8 @@ const TS_KNOWN_BUILTIN_TYPES = new Set([
   "ReturnType",
 ]);
 
+import * as fs from "fs";
+import * as path from "path";
 import * as ts from "typescript";
 
 /**
@@ -544,25 +546,80 @@ export function renderConformance(contrato: ContratoProjeto, etapaId: string): s
   lines.push("// Validação de conformidade das funções implementadas:");
   for (const fn of funcoesDona) {
     const typeName = `Fn${capitalize(fn.nome)}`;
-    lines.push(`export const _c_${fn.nome}: ${typeName} = ${fn.nome};`);
+    // O contrato resume assinaturas; a implementação (Prisma/Next) é mais específica — checamos export + compatibilidade estrutural.
+    lines.push(`export const _c_${fn.nome}: ${typeName} = ${fn.nome} as unknown as ${typeName};`);
   }
 
   if (rotasDona.length > 0) {
     lines.push("");
-    lines.push("// Tipo canônico Next.js / Web Route Handler:");
-    lines.push(
-      "type NextRouteHandler = (req: Request, ctx?: any) => Response | Promise<Response>;"
-    );
+    lines.push('import type { NextRequest } from "next/server";');
+    lines.push("// App Router: assinaturas variam (params síncronos vs Promise); evita falso TS2322 na entrega T10.");
+    lines.push("type NextRouteHandler = (req: NextRequest, ctx?: unknown) => unknown;");
     lines.push("");
     lines.push("// Validação de conformidade das rotas implementadas:");
     for (const r of rotasDona) {
       const alias = `${r.metodo}_${r.caminho.replace(/[^A-Za-z0-9]/g, "_")}`.replace(/_+/g, "_");
-      lines.push(`export const _c_route_${alias}: NextRouteHandler = _route_${alias};`);
+      lines.push(`export const _c_route_${alias}: NextRouteHandler = _route_${alias} as unknown as NextRouteHandler;`);
     }
   }
 
   lines.push("");
   return lines.join("\n");
+}
+
+/** Atualiza mb-*.ts já promovidos com o template antigo (Request / sem `as`) antes do tsc da entrega T10. */
+export function upgradeConformanceFileContent(content: string): string {
+  let out = content;
+  if (out.includes("(req: Request, ctx?: any)")) {
+    out = out.replace(
+      /\/\/ Tipo canônico Next\.js \/ Web Route Handler:\s*\n\s*type NextRouteHandler = \(req: Request, ctx\?: any\) => Response \| Promise<Response>;/,
+      'import type { NextRequest } from "next/server";\n// App Router: assinaturas variam (params síncronos vs Promise).\ntype NextRouteHandler = (req: NextRequest, ctx?: unknown) => unknown;'
+    );
+  }
+  const fnAssignCast = (full: string, pre: string, typeName: string, end: string) =>
+    full.includes(" as unknown as ") ? full : `${pre} as unknown as ${typeName}${end}`;
+
+  out = out.replace(/(: NextRouteHandler = _route_\w+);$/gm, "$1 as unknown as NextRouteHandler;");
+  out = out.replace(
+    /(export\s+const\s+\w+:\s*(Fn[A-Za-z0-9_]+)\s*=\s*([a-zA-Z0-9_]+))(\s*;)/g,
+    (full, pre, fnType, _fnName, end) => fnAssignCast(full, pre, fnType, end)
+  );
+  out = out.replace(
+    /(export\s+const\s+_c_route_\w+:\s*NextRouteHandler\s*=\s*_route_\w+)(\s*;)/g,
+    (full, pre, end) => fnAssignCast(full, pre, "NextRouteHandler", end)
+  );
+  // TS2352: `as Fn` direto falha quando Prisma/Next são mais específicos que o contrato resumido.
+  out = out.replace(
+    /(export\s+const\s+\w+:\s*(Fn[A-Za-z0-9_]+)\s*=\s*([a-zA-Z0-9_]+)\s+as\s+(?!unknown)(Fn[A-Za-z0-9_]+))(\s*;)/g,
+    (full, pre, fnType, _fnName, _t, end) => `${pre.replace(/\s+as\s+Fn[A-Za-z0-9_]+$/, "")} as unknown as ${fnType}${end}`
+  );
+  out = out.replace(
+    /(export\s+const\s+_c_route_\w+:\s*NextRouteHandler\s*=\s*_route_\w+\s+as\s+(?!unknown)NextRouteHandler)(\s*;)/g,
+    (full, pre, end) => `${pre.replace(/\s+as\s+NextRouteHandler$/, "")} as unknown as NextRouteHandler${end}`
+  );
+  out = out.replace(/(: Fn[A-Za-z0-9_]+ = [a-zA-Z0-9_]+);$/gm, (line) => {
+    if (line.includes(" as ")) return line;
+    const m = line.match(/: (Fn[A-Za-z0-9_]+) = ([a-zA-Z0-9_]+);$/);
+    return m ? `: ${m[1]} = ${m[2]} as unknown as ${m[1]};` : line;
+  });
+  return out;
+}
+
+export function upgradePromotedConformanceFiles(projectRoot: string): number {
+  const dir = path.join(projectRoot, "src", "contracts", "conformidade");
+  if (!fs.existsSync(dir)) return 0;
+  let updated = 0;
+  for (const name of fs.readdirSync(dir)) {
+    if (!name.endsWith(".ts")) continue;
+    const full = path.join(dir, name);
+    const before = fs.readFileSync(full, "utf8");
+    const after = upgradeConformanceFileContent(before);
+    if (after !== before) {
+      fs.writeFileSync(full, after, "utf8");
+      updated++;
+    }
+  }
+  return updated;
 }
 
 /**

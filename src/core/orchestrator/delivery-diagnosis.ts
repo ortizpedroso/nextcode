@@ -1,4 +1,5 @@
 import { fileOfRef, type FinalDefect } from "@/core/governance/final-reviewer";
+import { formatTriageForHumans, type DeliveryTriageSummary } from "@/core/orchestrator/delivery-triage";
 
 /**
  * Mudança 43.4 — o aviso de entrega reprovada é montado com o diagnóstico (não com frase fixa). Fundador
@@ -15,6 +16,8 @@ export interface DeliveryDiagnosisInput {
   progresso: number[];
   /** Resultado do reparo que não abriu. */
   reparo: { tipo: "esgotado" | "sem_dono" | "erro"; motivo: string; todosComDono?: boolean };
+  /** Triagem automática das lacunas (T10) — roteia o próximo passo humano. */
+  triagem?: DeliveryTriageSummary;
 }
 
 export interface DeliveryDiagnosis {
@@ -97,6 +100,9 @@ export function buildDeliveryDiagnosis(input: DeliveryDiagnosisInput): DeliveryD
   const provados = input.defeitos.filter((d) => d.prova === "reproduzido");
   const lidos = input.defeitos.filter((d) => d.prova !== "reproduzido" && d.prova !== "spec");
   const linhas: string[] = ["**Diagnóstico da verificação final**"];
+  if (input.triagem) {
+    linhas.push("", formatTriageForHumans(input.triagem));
+  }
   if (provados.length) linhas.push(`\n**Defeitos de código com prova** (o teste falha) — ${provados.length}:`, ...provados.map(linhaDefeito));
   if (lidos.length) linhas.push(`\n**Defeitos de código sem teste** (pela leitura; ex.: só tela) — ${lidos.length}:`, ...lidos.map(linhaDefeito));
   if (input.perguntasSpec.length) linhas.push(`\n**Perguntas sobre a Spec** — responda aqui no chat:`, ...input.perguntasSpec.map((q) => `- ${q}`));

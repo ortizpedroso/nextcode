@@ -123,6 +123,8 @@ export interface OrchestrationPolicy {
     roteamentoFalha: "ativo" | "sombra" | "desligado";
     verificacaoEvidencia: "ativo" | "sombra" | "desligado";
     auditoriaEntrega: "ativo" | "sombra" | "desligado";
+    /** T10: confirma classe dominante da lacuna (payload pequeno; não substitui J3). */
+    triagemEntrega: "ativo" | "sombra" | "desligado";
     conferenciaEntrada: "ativo" | "sombra" | "desligado";
     guardaSegredosCodigo: "ativo" | "desligado";
     guardaSegredosChat: "ativo" | "desligado";
@@ -317,6 +319,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     roteamentoFalha: "sombra",
     verificacaoEvidencia: "sombra",
     auditoriaEntrega: "sombra",
+    triagemEntrega: "desligado",
     conferenciaEntrada: "desligado",
     guardaSegredosCodigo: "ativo",
     guardaSegredosChat: "ativo",
@@ -325,7 +328,7 @@ export const DEFAULT_ORCHESTRATION_POLICY: OrchestrationPolicy = {
     limiarEvidenciaContradiz: 0.8,
     limiarSegredoNoul: 0.7,
     limiarRiscoSkillNoul: 0.7,
-  },
+  } satisfies OrchestrationPolicy["jevExecucao"],
   roteamentoPapeisCriticos: {
     somentePago: true,
     modeloPagoBarato: "deepseek-flash",
@@ -590,6 +593,15 @@ export function loadOrchestrationPolicy(rootDir: string = process.cwd()): Orches
   );
   if (auditEntrRaw === "ativo" || auditEntrRaw === "sombra" || auditEntrRaw === "desligado") {
     policy.jevExecucao.auditoriaEntrega = auditEntrRaw;
+  }
+
+  const triagemEntrRaw = extractScalarString(
+    raw,
+    "triagem_entrega",
+    policy.jevExecucao.triagemEntrega
+  );
+  if (triagemEntrRaw === "ativo" || triagemEntrRaw === "sombra" || triagemEntrRaw === "desligado") {
+    policy.jevExecucao.triagemEntrega = triagemEntrRaw;
   }
 
   const confEntrRaw = extractScalarString(

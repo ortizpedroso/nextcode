@@ -114,6 +114,20 @@ export class TerminalExecutionEngine {
       return null;
     }
 
+    // T10 / portão empírico: preferir o script do projeto (`npm run typecheck`) — mesmo TS e paths
+    // que o fundador usa; evita `tsc` do NextCode com cwd do alvo e reduz falhas intermitentes no Windows.
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, "package.json"), "utf8")) as {
+        scripts?: Record<string, string>;
+      };
+      const typecheck = pkg.scripts?.typecheck?.trim();
+      if (typecheck) {
+        return TerminalExecutionEngine.runCommand("npm run typecheck", projectPath, timeoutMs);
+      }
+    } catch {
+      /* package.json ausente ou inválido — fallback abaixo */
+    }
+
     // Usa o binário `tsc` do próprio NextCode (via resolução de módulo Node) em vez de
     // `npx tsc`, que tentaria baixar o TypeScript da internet quando o projeto-alvo (ex.: um
     // diretório recém-criado pela IA) ainda não tem node_modules próprio.
@@ -121,6 +135,22 @@ export class TerminalExecutionEngine {
     const tscCommand = tscBinPath ? `node "${tscBinPath}" --noEmit` : "npx tsc --noEmit";
 
     return TerminalExecutionEngine.runCommand(tscCommand, projectPath, timeoutMs);
+  }
+
+  /** `next build` do projeto-alvo — pega tipos gerados em `.next/types` que o `tsc` isolado não vê. */
+  public static async verifyProjectNextBuild(
+    projectPath: string,
+    timeoutMs: number = 300_000
+  ): Promise<CommandResult | null> {
+    if (!projectPath || !fs.existsSync(path.join(projectPath, "package.json"))) {
+      return null;
+    }
+    // Next.js exige NODE_ENV=production no build; o worker NextCode costuma rodar com NODE_ENV=test.
+    const command =
+      process.platform === "win32"
+        ? "$env:NODE_ENV='production'; npm run build"
+        : "NODE_ENV=production npm run build";
+    return TerminalExecutionEngine.runCommand(command, projectPath, timeoutMs);
   }
 
   /**

@@ -28,12 +28,14 @@ export type Installer = (cwd: string, packages: string[], dev: boolean) => Promi
 
 const INSTALL_TIMEOUT_MS = Number(process.env.NEXTCODE_NPM_INSTALL_TIMEOUT_MS) || 600000;
 
+/** Stacks geradas (NextAuth + Nodemailer, etc.) costumam bater ERESOLVE sem --legacy-peer-deps. Desligue com NEXTCODE_NPM_LEGACY_PEER_DEPS=0. */
+export function npmInstallCommand(packages: string[], dev: boolean): string {
+  const legacy = process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS !== "0";
+  return `npm install --ignore-scripts --no-audit --no-fund${legacy ? " --legacy-peer-deps" : ""}${dev ? " --save-dev" : ""}${packages.length ? " " + packages.join(" ") : ""}`;
+}
+
 export const npmInstaller: Installer = (cwd, packages, dev) =>
-  TerminalExecutionEngine.runCommand(
-    `npm install --ignore-scripts --no-audit --no-fund${dev ? " --save-dev" : ""}${packages.length ? " " + packages.join(" ") : ""}`,
-    cwd,
-    INSTALL_TIMEOUT_MS
-  );
+  TerminalExecutionEngine.runCommand(npmInstallCommand(packages, dev), cwd, INSTALL_TIMEOUT_MS);
 
 /** Nome de pacote npm válido (com escopo opcional) — nada de flags, caminhos ou URLs. */
 export function isValidPackageName(name: string): boolean {
@@ -41,6 +43,21 @@ export function isValidPackageName(name: string): boolean {
 }
 
 /** Dependências a partir da stack da Spec. Só o que o type-check precisa para enxergar os tipos. */
+/** Projeto-alvo com script `build` e dependência `next` (App Router na entrega). */
+export function projectPackageUsesNext(projectRoot: string): boolean {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    return Boolean(deps.next && typeof pkg.scripts?.build === "string" && pkg.scripts.build.length > 0);
+  } catch {
+    return false;
+  }
+}
+
 export function buildBaseManifest(stack: string[]): BaseManifest {
   const s = stack.join(" ").toLowerCase();
   const deps: Record<string, string> = {};
@@ -179,16 +196,58 @@ export async function ensureProjectBase(
     }
   }
 
-  const needsInstall = changedFiles.includes("package.json") || !fs.existsSync(path.join(projectRoot, "node_modules"));
-  if (!needsInstall) return { ok: true, changedFiles, installed: false, log: "dependências já instaladas" };
+  const needsInstall = changedFiles.includes("package.json") || !dependenciesSatisfied(projectRoot);
+  if (!needsInstall) {
+    try {
+      const { ensureVerificationRuntimeEnv } = await import("@/core/execution/project-verification-env");
+      ensureVerificationRuntimeEnv(projectRoot);
+    } catch {
+      /* base não falha se o artefato T10 não puder ser escrito */
+    }
+    return { ok: true, changedFiles, installed: false, log: "dependências já instaladas" };
+  }
 
   const res = await install(projectRoot, [], false);
+  const satisfied = res.success && dependenciesSatisfied(projectRoot);
+  if (satisfied) {
+    try {
+      const { ensureVerificationRuntimeEnv } = await import("@/core/execution/project-verification-env");
+      ensureVerificationRuntimeEnv(projectRoot);
+    } catch {
+      /* idem */
+    }
+  }
   return {
-    ok: res.success,
+    ok: satisfied,
     changedFiles,
-    installed: res.success,
-    log: res.success ? "npm install concluído" : `npm install falhou: ${(res.stderr || res.stdout).slice(-1500)}`,
+    installed: satisfied,
+    log: satisfied
+      ? "npm install concluído"
+      : res.success
+        ? "npm install terminou mas pacotes declarados ainda faltam em node_modules"
+        : `npm install falhou: ${(res.stderr || res.stdout).slice(-1500)}`,
   };
+}
+
+/** Evita pular install quando node_modules existe incompleto (ERESOLVE parcial). */
+export function dependenciesSatisfied(projectRoot: string): boolean {
+  let pkg: Record<string, unknown>;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  const declared: Record<string, unknown> = {
+    ...((pkg.dependencies as Record<string, unknown>) || {}),
+    ...((pkg.devDependencies as Record<string, unknown>) || {}),
+  };
+  for (const name of Object.keys(declared)) {
+    if (!isValidPackageName(name)) continue;
+    if (!fs.existsSync(path.join(projectRoot, "node_modules", ...name.split("/"), "package.json"))) {
+      return false;
+    }
+  }
+  return Object.keys(declared).length > 0 || fs.existsSync(path.join(projectRoot, "node_modules"));
 }
 
 const ROOT_LAYOUT_TSX = `import type { ReactNode } from "react";
@@ -333,9 +392,17 @@ export async function installDeclaredDependencies(
   );
   if (missing.length === 0) return { installed: [], rejected, actions: [] };
   const r = await install(projectRoot, [], false);
+  const stillMissing = Object.keys(declared).filter(
+    (name) => !fs.existsSync(path.join(projectRoot, "node_modules", ...name.split("/"), "package.json"))
+  );
+  const ok = r.success && stillMissing.length === 0;
   return {
-    installed: r.success ? missing : [],
+    installed: ok ? missing : [],
     rejected,
-    actions: [`${r.success ? "instalado do package.json" : "falha ao instalar do package.json"}: ${missing.join(", ")}`],
+    actions: [
+      ok
+        ? `instalado do package.json: ${missing.join(", ")}`
+        : `${r.success ? "npm terminou mas ainda faltam" : "falha ao instalar do package.json"}: ${stillMissing.join(", ") || missing.join(", ")}`,
+    ],
   };
 }

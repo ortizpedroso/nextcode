@@ -18,12 +18,15 @@ import { QuarantineManager } from "./quarantine-manager";
 import { TerminalExecutionEngine, CommandResult } from "../execution/terminal-execution-engine";
 import {
   installDeclaredDependencies,
+  projectPackageUsesNext,
   repairEnvironment,
   regeneratePrismaClient,
   touchesPrismaSchema,
   type Installer,
   type PrismaRegenerator,
 } from "../execution/project-base";
+import { parseNextBuildErrors } from "../execution/ui-check";
+import { upgradePromotedConformanceFiles } from "../orchestrator/project-contract";
 
 export type EmpiricalStage = "typecheck" | "lint" | "teste";
 
@@ -106,6 +109,8 @@ export interface FinalBuildRecheck {
   linhas?: string[];
   /** Mudança 35: o `tsc` falhou sem nenhum `error TS` (processo não abriu, memória…): o código não foi julgado. */
   ambiente?: string;
+  /** true quando o `tsc` passou mas o `next build` reprovou (ou vice-versa só tsc). */
+  failedNextBuild?: boolean;
 }
 
 /**
@@ -137,25 +142,65 @@ export function tsErrorLines(result: CommandResult): string[] {
  * preexistente" pode ter sido resolvida depois; o tsc roda de novo no projeto inteiro, com o mesmo
  * conserto de ambiente do portão (pacotes, tipos, `prisma generate`), e só esse resultado decide.
  */
+function nextBuildFailureLines(result: CommandResult): { errors: string[]; linhas: string[] } {
+  const log = `${result.stdout}\n${result.stderr}`;
+  const parsed = parseNextBuildErrors(log);
+  if (parsed.length > 0) {
+    return {
+      errors: parsed.map((e) => `${e.arquivo}:${e.linha}: ${e.mensagem}`),
+      linhas: parsed.map((e) => `./${e.arquivo}:${e.linha}:0\nType error: ${e.mensagem}`),
+    };
+  }
+  const trecho = log.replace(/\s+/g, " ").trim().slice(0, 400);
+  return {
+    errors: [trecho || "next build falhou"],
+    linhas: [trecho || "next build falhou"],
+  };
+}
+
 export async function recheckFinalBuild(
   projectRoot: string,
   deps: {
     verify?: (root: string) => Promise<CommandResult | null>;
+    verifyNextBuild?: (root: string) => Promise<CommandResult | null>;
     repair?: (root: string, output: string) => Promise<{ changed: boolean }>;
     regenerate?: PrismaRegenerator;
   } = {}
 ): Promise<FinalBuildRecheck> {
   const verify = deps.verify ?? ((root: string) => TerminalExecutionEngine.verifyProjectBuild(root, 120000));
+  const skipFinalNextBuild = process.env.NEXTCODE_FINAL_NEXT_BUILD === "0";
+  const verifyNextBuild =
+    deps.verifyNextBuild ??
+    ((root: string) =>
+      skipFinalNextBuild || !projectPackageUsesNext(root)
+        ? Promise.resolve(null)
+        : TerminalExecutionEngine.verifyProjectNextBuild(root, 300_000));
   const repair = deps.repair ?? ((root: string, output: string) => repairEnvironment(root, output));
   // O client do Prisma pode estar velho (schema mudado por uma etapa): a entrega julga com ele regerado.
   await (deps.regenerate ?? regeneratePrismaClient)(projectRoot);
+  upgradePromotedConformanceFiles(projectRoot);
+  await installDeclaredDependencies(projectRoot);
   let result = await verify(projectRoot);
   if (!result) return { checked: false, ok: false, errors: [] };
-  if (!result.success) {
-    const fixed = await repair(projectRoot, `${result.stdout}\n${result.stderr}`);
-    if (fixed.changed) result = (await verify(projectRoot)) ?? result;
+  // Windows: tsc/next às vezes cai sem stderr (0xC0000142 / memória) — retenta antes de FALHA_AMBIENTE.
+  const retryStepMs = Number(process.env.NEXTCODE_TSC_ENV_RETRY_MS) || 8000;
+  for (let retry = 0; retry < 2 && result && !result.success && describeEnvironmentFailure(result); retry++) {
+    await new Promise((r) => setTimeout(r, retryStepMs * (retry + 1)));
+    result = (await verify(projectRoot)) ?? result;
   }
-  if (result.success) return { checked: true, ok: true, errors: [] };
+  for (let pass = 0; pass < 2 && result && !result.success; pass++) {
+    const fixed = await repair(projectRoot, `${result.stdout}\n${result.stderr}`);
+    if (!fixed.changed) break;
+    await installDeclaredDependencies(projectRoot);
+    result = (await verify(projectRoot)) ?? result;
+  }
+  if (result.success) {
+    const nextRes = await verifyNextBuild(projectRoot);
+    if (!nextRes) return { checked: true, ok: true, errors: [] };
+    if (nextRes.success) return { checked: true, ok: true, errors: [] };
+    const nb = nextBuildFailureLines(nextRes);
+    return { checked: true, ok: false, errors: nb.errors, linhas: nb.linhas, failedNextBuild: true };
+  }
   const ambiente = describeEnvironmentFailure(result);
   if (ambiente) return { checked: true, ok: false, errors: [], ambiente };
   return { checked: true, ok: false, errors: Array.from(tsErrorKeys(result)), linhas: tsErrorLines(result) };

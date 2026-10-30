@@ -9,9 +9,12 @@ import {
   isSafeVersionSpec,
   isValidPackageName,
   missingPackagesFromTsc,
+  npmInstallCommand,
+  dependenciesSatisfied,
   repairEnvironment,
   type Installer,
 } from "@/core/execution/project-base";
+import { readVerificationArtifact, VERIFICATION_ARTIFACT } from "@/core/execution/project-verification-env";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -26,10 +29,52 @@ const fakeInstaller = () => {
   const install: Installer = async (cwd, packages, dev) => {
     calls.push({ packages, dev });
     fs.mkdirSync(path.join(cwd, "node_modules"), { recursive: true });
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      for (const name of Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })) {
+        const dir = path.join(cwd, "node_modules", ...name.split("/"));
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, "package.json"), "{}", "utf8");
+      }
+    } catch {
+      /* package.json ausente no teste */
+    }
+    for (const name of packages) {
+      const dir = path.join(cwd, "node_modules", ...name.split("/"));
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "package.json"), "{}", "utf8");
+    }
     return { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 };
   };
   return { calls, install };
 };
+
+describe("M1 — npm install", () => {
+  it("comando inclui --legacy-peer-deps por padrão (ERESOLVE em stacks NextAuth + Nodemailer)", () => {
+    const prev = process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS;
+    delete process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS;
+    expect(npmInstallCommand([], false)).toContain("--legacy-peer-deps");
+    process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS = "0";
+    expect(npmInstallCommand([], false)).not.toContain("--legacy-peer-deps");
+    if (prev === undefined) delete process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS;
+    else process.env.NEXTCODE_NPM_LEGACY_PEER_DEPS = prev;
+  });
+
+  it("dependenciesSatisfied exige cada pacote declarado em node_modules", () => {
+    const dir = tmp();
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ dependencies: { zod: "^3" }, devDependencies: {} })
+    );
+    expect(dependenciesSatisfied(dir)).toBe(false);
+    fs.mkdirSync(path.join(dir, "node_modules", "zod"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules", "zod", "package.json"), "{}");
+    expect(dependenciesSatisfied(dir)).toBe(true);
+  });
+});
 
 describe("M1 — base do projeto", () => {
   it("dependências a partir da stack da Spec", () => {
@@ -53,6 +98,22 @@ describe("M1 — base do projeto", () => {
     expect(tsconfig.compilerOptions.strict).toBe(true);
     expect(tsconfig.compilerOptions.paths["@/*"]).toEqual(["./src/*"]);
     expect(calls).toHaveLength(1);
+  });
+
+  it("base T10: projeto NextAuth sem .env recebe .nextcode/verification.env pelo harness", async () => {
+    const dir = tmp();
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { "next-auth": "^4", next: "^15" }, scripts: { build: "next build" } })
+    );
+    fs.mkdirSync(path.join(dir, "node_modules", "next-auth"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules", "next-auth", "package.json"), "{}");
+    fs.mkdirSync(path.join(dir, "node_modules", "next"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "node_modules", "next", "package.json"), "{}");
+    const { install } = fakeInstaller();
+    await ensureProjectBase(dir, ["Next.js", "TypeScript"], install, []);
+    expect(fs.existsSync(path.join(dir, VERIFICATION_ARTIFACT))).toBe(true);
+    expect(readVerificationArtifact(dir).NEXTAUTH_SECRET?.length).toBeGreaterThan(8);
   });
 
   it("idempotente: segunda execução sem mudança não reinstala nem sobrescreve tsconfig do usuário", async () => {

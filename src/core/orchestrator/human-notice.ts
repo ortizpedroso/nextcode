@@ -16,6 +16,8 @@ export function humanActionText(acao: HumanAction | undefined): string {
       return "**O que fazer:** se a falha foi passageira, clique em **Re-tentar** na etapa bloqueada (painel da DAG). Se o pedido estiver errado ou impossível, responda aqui dizendo o que ajustar: a Spec volta para revisão.";
     case "autorizar_rodada":
       return "**O que fazer:** a Spec está certa — o que sobrou é defeito de código, cada um com etapa dona (e, quando há, o teste que prova). Clique em **Autorizar mais uma rodada** no painel da DAG — ou escreva `autorizar rodada` aqui no chat. Se preferir mudar o pedido, responda o que ajustar: aí a Spec volta para revisão.";
+    case "reparo_encaixe":
+      return "**O que fazer:** a Spec **não** precisa ser reescrita — o que falhou é **código ou harness**. Se **já corrigiu no disco** (ou o build passa localmente), escreva **`reverificar entrega`** ou **`retomar`** para rodar a verificação final de novo. Se ainda faltam rodadas de reparo automático, use **`autorizar rodada`**. Só revise a Spec se quiser mudar o pedido de produto.";
     case "ajustar_spec":
     default:
       return "**O que fazer:** responda aqui no chat dizendo o que ajustar: a Spec volta para revisão e, aprovada, a execução recomeça.";
