@@ -1,6 +1,6 @@
 ## 30/10/2026 (274) — Item 7 §3.3 fechado (TESTE-E5 vitest) + doc + push
 **Veredito auditoria Claude (§9):** **ACEITO** — vitest/harness E5 encerrado; item 8 (Gate 1) continua pendente de cota/sessão real.
-**Feito:** `docs/NEXTCODE-REFERENCIA.md` §1.4, §2.9, §3.3 item 7; `docs/relatorios/TESTE-E5-fechamento-vitest-2026-10-30.md`; commit estabilização 273; `git push origin main` (se rede ok).
+**Feito:** `docs/NEXTCODE-REFERENCIA.md` §1.4, §2.9, §3.3 item 7; `docs/relatorios/TESTE-E5-fechamento-vitest-2026-10-30.md`, `GATE-1-pendente-operacao-2026-10-30.md`; commit **`d8c2bac`**; **`git push origin main`** → `74faad3..d8c2bac`.
 **Prova:** 273 (1167/1167 ×2) + pré-push 30/10 tarde: `npx vitest run` → 175/175 arquivos, 1167/1167, 488 s (`vitest-run-pre-push.log`).
 **Próximo:** Gate 1 Gateway (`4d019f00` / Spec equivalente); chkdsk + restaurar `tests/orchestrator/`.
 ---
