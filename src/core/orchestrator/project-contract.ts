@@ -546,8 +546,7 @@ export function renderConformance(contrato: ContratoProjeto, etapaId: string): s
   lines.push("// Validação de conformidade das funções implementadas:");
   for (const fn of funcoesDona) {
     const typeName = `Fn${capitalize(fn.nome)}`;
-    // O contrato resume assinaturas; a implementação (Prisma/Next) é mais específica — checamos export + compatibilidade estrutural.
-    lines.push(`export const _c_${fn.nome}: ${typeName} = ${fn.nome} as unknown as ${typeName};`);
+    lines.push(`export const _c_${fn.nome}: ${typeName} = ${fn.nome};`);
   }
 
   if (rotasDona.length > 0) {

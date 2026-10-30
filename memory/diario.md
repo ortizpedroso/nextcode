@@ -1,3 +1,18 @@
+## 30/10/2026 (272) — Re-baseline E5 + suíte 1167/1167 (autonomia fundador)
+**Veredito:** `npx vitest run` **2×** → **175** arquivos, **1167/1167**; `npx tsc --noEmit` saída 0. Relatórios: `docs/relatorios/SESSAO-2026-10-30-claude-implementacao.md` e `...-decisoes-fundador.md`.
+**Feito:** flaky `runOnce` com `onlySessionIds` (executor-tool-loop j, job-worker retomada); commit do pacote harness+T10+recovered (se aplicável). `controles-autoteste-e5.ts` → P1 ref **11/11**.
+**Pendente macro:** restaurar NTFS `tests/orchestrator/`; Gate 1 Gateway; push origin.
+---
+## 30/10/2026 (271) — E2E harness + step-4b verdes
+**Veredito:** `tests/harness/end-to-end-harness-plan.test.ts` **11/11** e `tests/orchestrator_recovered/step-4b.test.ts` **13/13**; `npx tsc --noEmit` saída 0.
+**Feito:** mock do porteiro empírico nos E2E promove da quarentena sem `tsc` (inclui `reapplyPromotion` após porteiro AV1.4); correção produção `review.ressalvas ?? []` em `job-queue.ts` (crash T10 `slice` quando mock/revisão omitia `ressalvas`); mock `reviewFinalDelivery` completo no `beforeEach` do harness.
+**Próximo passo:** `npx vitest run` completo 2× (re-baseline E5); restaurar `tests/orchestrator` no Windows se ainda corrompida; commit quando o fundador pedir.
+---
+## 30/10/2026 (270) — Estabilização vitest (em andamento)
+**Veredito:** suite **1156/1167** na última rodada completa antes de erro de disco em `tests/orchestrator` (pasta ilegível no Windows).
+**Feito:** REQ sintético só quando `requisitos` omitido no render (não em `[]`); `parsedToFrontmatterInput` preserva `requisitos: []`; transição **BLOQUEADA** com nós blocked; `planoPodeExecutar`/`analistaObrigatorio`; conformidade strict no porteiro; `.nextcode` no delete test; mega-stress via `renderCanonicalSpecDocument`.
+**Pendente:** (fechado no 271 para o harness E2E) — ver 271.
+---
 ## 30/10/2026 (269) — Baseline E5 + passo 6 (pacote pós-e10099c)
 **Veredito:** **ACEITO COM RESSALVAS** — suite ainda não 100% verde; achados E5 2–4 fechados; T1 Spec sem REQ corrigido.
 **Prova:** `npx tsc --noEmit` saída 0. Vitest 2×: **~1145/1167** passando (**22–24** falhas em testes de integração). `controles-autoteste-e5.ts` → `P1 ref passa: true (10/10)`. Helper `mock-blind-audit.ts` (AV1.3). Skills com `referencias_locais_fixas`. `spec-patch` → `requisitos_ids`.

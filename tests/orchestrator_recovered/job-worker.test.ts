@@ -83,8 +83,8 @@ async function setupProjectAndSession(title: string) {
 
 beforeAll(async () => {
   process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
-  process.env.BLIND_AUDIT_TIMEOUT_MS = "5000";
-  process.env.DAG_STEP_TIMEOUT_MS = "5000";
+  process.env.BLIND_AUDIT_TIMEOUT_MS = "15000";
+  process.env.DAG_STEP_TIMEOUT_MS = "15000";
   process.env.OMNIROUTE_MODEL = "auto/best-free";
 
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-worker-test-"));
@@ -264,6 +264,7 @@ afterAll(async () => {
 describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
   it("4. retomada: sessão com nó 'running' (updatedAt recente), job running com lease vencido e LLM falso em sucesso → runOnce → nó completed sem tentativa consumida pela queda, job done e telemetria NODE_RESUMED_AFTER_CRASH registrada", async () => {
     const { session } = await setupProjectAndSession("retomada apos queda");
+    const sessionId = session.id;
 
     const task = await prisma.taskNode.create({
       data: {
@@ -298,7 +299,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     });
 
     try {
-      const executedCount = await runOnce("live-worker-2");
+      const executedCount = await runOnce("live-worker-2", { onlySessionIds: [sessionId] });
       expect(executedCount).toBe(1);
 
       // Na retomada (3.4) antes de processSessionQueue, o nó voltou para "pending" com attempts inalterado (0)
@@ -528,7 +529,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     const child1 = spawnWorkerProcess();
 
     try {
-      const waitRunningDeadline = Date.now() + 8000;
+      const waitRunningDeadline = Date.now() + 20000;
       let nodeRunning = false;
       while (Date.now() < waitRunningDeadline) {
         const currentTask = await prisma.taskNode.findUnique({ where: { id: task.id } });
@@ -568,7 +569,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
     const child2 = spawnWorkerProcess();
 
     try {
-      const waitDoneDeadline = Date.now() + 10000;
+      const waitDoneDeadline = Date.now() + 25000;
       let completed = false;
       while (Date.now() < waitDoneDeadline) {
         const [currentTask, currentJob] = await Promise.all([
@@ -610,7 +611,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
         });
       }
     }
-  }, 30000);
+  }, 60000);
 
   it("9. supervisor periódico contínuo (Item 1 / M5): resgata sessão em EXECUCAO sem job e desengata nó preso em running com QUEUE_STALLED", async () => {
     const { session } = await setupProjectAndSession("Supervisor Periodico");

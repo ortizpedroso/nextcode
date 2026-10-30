@@ -5,6 +5,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import prisma from "@/lib/prisma";
 import { SmartRouter, type DispatchResult } from "@/core/router/smart-router";
 import * as empiricalGateMod from "@/core/governance/empirical-gate";
+import type { QuarantineManager } from "@/core/governance/quarantine-manager";
+import * as acceptanceTestsMod from "@/core/governance/acceptance-tests";
+import * as finalReviewerMod from "@/core/governance/final-reviewer";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { DualLensAuditor } from "@/core/governance/dual-lens-auditor";
 import { approveSpecAndStart } from "@/core/orchestrator/execution-trigger";
@@ -59,6 +62,44 @@ function makeOkDispatch(content: string, provider = "omniroute", model = "auto:s
   };
 }
 
+function appendExecutorReport(code: string, reqId: string, file: string): string {
+  return (
+    code +
+    "\n\n```yaml relatorio_executor\nreqs:\n  - id: " +
+    reqId +
+    '\n    status: atendido\n    arquivo_linha: "' +
+    file +
+    ':1-3"\n    como: "Implementado conforme o microbrief."\n```'
+  );
+}
+
+/** Porteiro/promoção sem tsc real — mas copia arquivos da quarentena (T10 e ui-check exigem disco). */
+function mockEmpiricalGatePromoteWithoutTsc(): void {
+  vi.spyOn(empiricalGateMod, "promoteWithEmpiricalGate").mockImplementation(
+    async (qm: QuarantineManager, taskId: string, projectRoot: string, filesScope: string[], opts?: { checkOnly?: boolean }) => {
+      const ok = {
+        passed: true,
+        rolledBack: false,
+        buildResult: { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 },
+        lintResult: null,
+        preexistingFailure: false,
+        newErrors: [],
+        failedStage: null,
+      } as empiricalGateMod.EmpiricalGateResult;
+      const promoted = qm.promoteToMainRepo(taskId, projectRoot, filesScope);
+      if (opts?.checkOnly) {
+        qm.rollbackPromotion(taskId);
+        return ok;
+      }
+      // Paridade com runEmpiricalGate: após porteiro a quarentena some; reaplica o snapshot.
+      if (!promoted && qm.hasPromotionSnapshot(taskId)) {
+        qm.reapplyPromotion(taskId);
+      }
+      return ok;
+    }
+  );
+}
+
 function makeExhaustedDispatch(): DispatchResult {
   return {
     response: new Response(
@@ -76,12 +117,52 @@ function makeExhaustedDispatch(): DispatchResult {
 
 // Fluxo inteiro (fila + executor + avaliador + entrega) num SQLite compartilhado: 9–40 s por caso medidos
 // em 19–20/10; o padrão de 15 s do vitest.config estourava sob carga (diário 166–171).
-describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada", () => {
+describe(
+  "Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P1, P2 por Cluster e Lente 2 Plantada",
+  { timeout: 90_000 },
+  () => {
   beforeEach(() => {
     setExecutorModeForTests("chamada_unica");
     setPaidOnlyRoutingForTests(false);
+    mockEmpiricalGatePromoteWithoutTsc();
+    vi.spyOn(acceptanceTestsMod, "generateAcceptanceTests").mockResolvedValue({
+      testes: [],
+      julgamento: [],
+      bancadaFora: true,
+    });
+    vi.spyOn(empiricalGateMod, "recheckFinalBuild").mockResolvedValue({
+      checked: true,
+      ok: true,
+      errors: [],
+    } as any);
+    vi.spyOn(finalReviewerMod, "reviewFinalDelivery").mockResolvedValue({
+      executado: true,
+      aprovado: true,
+      reqVerdicts: [],
+      problemas: [],
+      defeitos: [],
+      ressalvas: [],
+      descartes: [],
+    });
     setScaffoldInstallerForTests(async (cwd) => {
       fs.mkdirSync(path.join(cwd, "node_modules"), { recursive: true });
+      const pkgPath = path.join(cwd, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+            dependencies?: Record<string, string>;
+            devDependencies?: Record<string, string>;
+          };
+          const declared = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+          for (const name of Object.keys(declared)) {
+            const dir = path.join(cwd, "node_modules", ...name.split("/"));
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name, version: "0.0.0" }));
+          }
+        } catch {
+          /* package.json ainda não materializado */
+        }
+      }
       return { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 };
     });
   });
@@ -170,19 +251,19 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
     const projectDir = makeTempProjectDir();
     const project = await prisma.project.create({ data: { name: "Projeto com Tela", path: projectDir } });
     createdProjectIds.push(project.id);
-    const files = ["src/lib/saudar.ts", "src/app/saudacao/page.ts"];
+    const files = ["src/app/saudacao/page.tsx"];
     const spec = renderCanonicalSpecDocument({
       titulo: "Saudacao com Tela",
       status: "aprovada",
       data: "2026-10-07",
       stack: ["TypeScript"],
-      modulos: [
-        { id: "lib", nome: "Lib", resumo: "Função saudar", arquivos: [files[0]] },
-        { id: "tela", nome: "Tela", resumo: "Página de saudação", arquivos: [files[1]] },
-      ],
+      modulos: [{ id: "app", nome: "Saudação", resumo: "Página de saudação", arquivos: files }],
       entidades: [],
       arquivosAfetados: files,
-      objetivo: "Função saudar e página que a usa.",
+      objetivo: "Página /saudacao que exibe uma saudação.",
+      requisitos: [
+        { id: "REQ-001", titulo: "Página de saudação", criterio: `${files[0]} exporta default e exibe saudação via saudar("mundo").` },
+      ],
     });
     const session = await prisma.session.create({
       data: { title: "Sessão Tela", projectId: project.id, canonicalSpec: spec },
@@ -194,11 +275,21 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       if (sys.includes("Auditor Cego")) {
         return makeOkDispatch(blindOkFromPrompt(sys));
       }
-      const scope = opts.messages.find((m) => m.content.includes("Escopo de Arquivos:"))?.content || "";
-      const code = scope.includes(files[1])
-        ? ["```typescript", `// file: ${files[1]}`, 'import { saudar } from "../../lib/saudar";', "export default function Page(): string {", '  return saudar("mundo");', "}", "```"]
-        : ["```typescript", `// file: ${files[0]}`, "export function saudar(nome: string): string {", "  return `Olá, ${nome}!`;", "}", "```"];
-      return makeOkDispatch(code.join("\n"));
+      if (sys.includes("REENVIO SÓ DO RELATÓRIO")) {
+        return makeOkDispatch(appendExecutorReport("", "REQ-001", files[0]).trim());
+      }
+      const code = [
+        "```tsx",
+        `// file: ${files[0]}`,
+        "function saudar(nome: string): string {",
+        "  return `Olá, ${nome}!`;",
+        "}",
+        "export default function Page(): string {",
+        '  return saudar("mundo");',
+        "}",
+        "```",
+      ].join("\n");
+      return makeOkDispatch(appendExecutorReport(code, "REQ-001", files[0]));
     });
 
     const calls: string[][] = [];
@@ -247,6 +338,13 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       entidades: [],
       arquivosAfetados: ["src/lib/saudar.ts"],
       objetivo: "Criar função saudar(nome: string): string.",
+      requisitos: [
+        {
+          id: "REQ-001",
+          titulo: "Função saudar",
+          criterio: "src/lib/saudar.ts exporta saudar(nome: string): string.",
+        },
+      ],
     });
 
     const session = await prisma.session.create({
@@ -267,16 +365,18 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       if (sys.includes("Auditor Cego")) {
         return makeOkDispatch(blindOkFromPrompt(sys));
       }
-      return makeOkDispatch(
-        [
-          "```typescript",
-          "// file: src/lib/saudar.ts",
-          "export function saudar(nome: string): string {",
-          "  return `Olá, ${nome.trim()}!`;",
-          "}",
-          "```",
-        ].join("\n")
-      );
+      if (sys.includes("REENVIO SÓ DO RELATÓRIO")) {
+        return makeOkDispatch(appendExecutorReport("", "REQ-001", "src/lib/saudar.ts").trim());
+      }
+      const code = [
+        "```typescript",
+        "// file: src/lib/saudar.ts",
+        "export function saudar(nome: string): string {",
+        "  return `Olá, ${nome.trim()}!`;",
+        "}",
+        "```",
+      ].join("\n");
+      return makeOkDispatch(appendExecutorReport(code, "REQ-001", "src/lib/saudar.ts"));
     });
 
     const startRes = await approveSpecAndStart(session.id, spec);
@@ -503,21 +603,35 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       const matchExecSkill = sys.match(/\[SKILL DECLARATIVA DO PAPEL: ([^\]]+)\]/);
       if (matchExecSkill) observedWorkerSkills.push(matchExecSkill[1]);
 
-      if (sys.includes("executor-core")) {
-        return makeOkDispatch(`\`\`\`typescript\n// file: src/lib/tarefas-store.ts\n${storeCode}\n\`\`\``);
+      if (sys.includes("REENVIO SÓ DO RELATÓRIO")) {
+        const reqIds = sys.includes("REQ-003") ? ["REQ-002", "REQ-003"] : ["REQ-001"];
+        const file = reqIds.length === 1 ? "src/lib/tarefas-store.ts" : "src/app/api/tarefas/route.ts";
+        const report = reqIds
+          .map(
+            (id) =>
+              `  - id: ${id}\n    status: atendido\n    arquivo_linha: "${file}:1-10"\n    como: "Implementado."`
+          )
+          .join("\n");
+        return makeOkDispatch("```yaml relatorio_executor\nreqs:\n" + report + "\n```");
       }
+      if (sys.includes("executor-core")) {
+        const code = `\`\`\`typescript\n// file: src/lib/tarefas-store.ts\n${storeCode}\n\`\`\``;
+        return makeOkDispatch(appendExecutorReport(code, "REQ-001", "src/lib/tarefas-store.ts"));
+      }
+      const bundle = [
+        "```typescript",
+        "// file: src/app/api/tarefas/route.ts",
+        routeListCode,
+        "```",
+        "",
+        "```typescript",
+        "// file: src/app/api/tarefas/[id]/route.ts",
+        routeIdCode,
+        "```",
+      ].join("\n");
       return makeOkDispatch(
-        [
-          "```typescript",
-          "// file: src/app/api/tarefas/route.ts",
-          routeListCode,
-          "```",
-          "",
-          "```typescript",
-          "// file: src/app/api/tarefas/[id]/route.ts",
-          routeIdCode,
-          "```",
-        ].join("\n")
+        bundle +
+          "\n\n```yaml relatorio_executor\nreqs:\n  - id: REQ-002\n    status: atendido\n    arquivo_linha: \"src/app/api/tarefas/route.ts:1-10\"\n    como: \"Implementado.\"\n  - id: REQ-003\n    status: atendido\n    arquivo_linha: \"src/app/api/tarefas/[id]/route.ts:1-10\"\n    como: \"Implementado.\"\n```"
       );
     });
 
@@ -695,6 +809,7 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       entidades: [],
       arquivosAfetados: ["src/lib/gateway.ts"],
       objetivo: "Roteador HTTP com fallback.",
+      requisitos: [],
     });
 
     const repairedSpec = renderCanonicalSpecDocument({
@@ -900,38 +1015,37 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       if (sys.includes("Auditor Cego")) {
         return makeOkDispatch(blindOkFromPrompt(sys));
       }
-
-      if (!user.includes("src/app/api/gateway/route.ts") || user.includes("lib/gateway-client.ts (Escopo")) {
-        return makeOkDispatch(
-          [
-            "```typescript",
-            "// file: src/lib/gateway-client.ts",
-            "export interface GatewayResponse { ok: boolean; provider: string; output: string; }",
-            "export function callGateway(prompt: string): GatewayResponse {",
-            '  return { ok: true, provider: "FreeLLMAPI", output: prompt.trim() };',
-            "}",
-            "```",
-          ].join("\n"),
-          "deepseek",
-          "deepseek-v4-pro"
-        );
+      if (sys.includes("REENVIO SÓ DO RELATÓRIO")) {
+        const reqId = user.includes("gateway/route") ? "REQ-002" : "REQ-001";
+        const file = reqId === "REQ-002" ? "src/app/api/gateway/route.ts" : "src/lib/gateway-client.ts";
+        return makeOkDispatch(appendExecutorReport("", reqId, file).trim(), "deepseek", "deepseek-v4-pro");
       }
 
-      return makeOkDispatch(
-        [
+      if (!user.includes("src/app/api/gateway/route.ts") || user.includes("lib/gateway-client.ts (Escopo")) {
+        const code = [
           "```typescript",
-          "// file: src/app/api/gateway/route.ts",
-          'import { callGateway } from "../../../lib/gateway-client";',
-          "export async function POST(req: Request): Promise<Response> {",
-          "  const body = (await req.json().catch(() => ({}))) as { prompt?: string };",
-          '  const res = callGateway(body.prompt || "");',
-          '  return new Response(JSON.stringify(res), { status: 200, headers: { "Content-Type": "application/json" } });',
+          "// file: src/lib/gateway-client.ts",
+          "export interface GatewayResponse { ok: boolean; provider: string; output: string; }",
+          "export function callGateway(prompt: string): GatewayResponse {",
+          '  return { ok: true, provider: "FreeLLMAPI", output: prompt.trim() };',
           "}",
           "```",
-        ].join("\n"),
-        "deepseek",
-        "deepseek-v4-pro"
-      );
+        ].join("\n");
+        return makeOkDispatch(appendExecutorReport(code, "REQ-001", "src/lib/gateway-client.ts"), "deepseek", "deepseek-v4-pro");
+      }
+
+      const routeCode = [
+        "```typescript",
+        "// file: src/app/api/gateway/route.ts",
+        'import { callGateway } from "../../../lib/gateway-client";',
+        "export async function POST(req: Request): Promise<Response> {",
+        "  const body = (await req.json().catch(() => ({}))) as { prompt?: string };",
+        '  const res = callGateway(body.prompt || "");',
+        '  return new Response(JSON.stringify(res), { status: 200, headers: { "Content-Type": "application/json" } });',
+        "}",
+        "```",
+      ].join("\n");
+      return makeOkDispatch(appendExecutorReport(routeCode, "REQ-002", "src/app/api/gateway/route.ts"), "deepseek", "deepseek-v4-pro");
     });
 
     const startRes = await approveSpecAndStart(session.id, gatewaySpec);
@@ -996,6 +1110,16 @@ describe("Plano de Ação End-to-End — Fila nunca para (PAUSADA/LLM_VOLTOU), P
       },
     });
     createdSessionIds.push(session.id);
+
+    vi.spyOn(empiricalGateMod, "promoteWithEmpiricalGate").mockResolvedValue({
+      passed: true,
+      rolledBack: false,
+      buildResult: { success: true, exitCode: 0, stdout: "", stderr: "", executionTimeMs: 1 },
+      lintResult: null,
+      preexistingFailure: false,
+      newErrors: [],
+      failedStage: null,
+    } as any);
 
     let reportRetryCount = 0;
     vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {

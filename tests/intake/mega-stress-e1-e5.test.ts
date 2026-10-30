@@ -5,6 +5,7 @@ import { POST as postChat } from "@/app/api/chat/route";
 import { POST as postDag } from "@/app/api/dag/route";
 import { decideGraphifyEligibilityWithJev } from "@/core/decision/jev-decisions";
 import { writeSecret } from "@/core/security/crypto";
+import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
 import { NextRequest } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
@@ -41,37 +42,43 @@ describe("Bancada de Testes de Estresse Pesado — Validação de Robustez Extre
     }
   });
 
-  const SPEC_CANONICA_VALIDA = `---
-titulo: Sistema Bancario Critico
-status: aguardando_aprovacao
-data: 2026-10-12
-stack: [Next.js, TypeScript, Prisma]
-modulos:
-  - id: mod-core
-    nome: Core Banking
-    resumo: Ledger e Conta Corrente
-    arquivos: [src/core/ledger.ts]
-  - id: mod-transfer
-    nome: Transferencias Pix
-    resumo: Processamento de PIX
-    arquivos: [src/pix/transfer.ts]
-entidades:
-  - nome: Account
-    campos: [{ nome: "id", tipo: "string" }]
-rotas: []
-arquivosAfetados: [src/core/ledger.ts, src/pix/transfer.ts]
-objetivo: Implementar motor bancario robusto e tolerante a falhas.
-requisitosIds: [REQ-001, REQ-002]
-requisitos:
-  - id: REQ-001
-    titulo: Ledger de Transacoes
-    criterio: Implementar double-entry ledger em src/core/ledger.ts
-  - id: REQ-002
-    titulo: Processador Pix
-    criterio: Validar chaves e assinar mensagens em src/pix/transfer.ts
----
-# Spec Canônica do Sistema Bancário
-`;
+  const SPEC_CANONICA_VALIDA = renderCanonicalSpecDocument({
+    titulo: "Sistema Bancario Critico",
+    status: "aguardando_aprovacao",
+    data: "2026-10-12",
+    objetivo: "Implementar motor bancario robusto e tolerante a falhas.",
+    stack: ["Next.js", "TypeScript", "Prisma"],
+    modulos: [
+      {
+        id: "mod-core",
+        nome: "Core Banking",
+        resumo: "Ledger e Conta Corrente",
+        arquivos: ["src/core/ledger.ts"],
+      },
+      {
+        id: "mod-transfer",
+        nome: "Transferencias Pix",
+        resumo: "Processamento de PIX",
+        arquivos: ["src/pix/transfer.ts"],
+      },
+    ],
+    entidades: [{ nome: "Account", campos: [{ nome: "id", tipo: "string" }] }],
+    arquivosAfetados: ["src/core/ledger.ts", "src/pix/transfer.ts"],
+    requisitos: [
+      {
+        id: "REQ-001",
+        titulo: "Ledger de Transacoes",
+        criterio: "src/core/ledger.ts implementa double-entry ledger.",
+        origem: "premissa: motor bancario",
+      },
+      {
+        id: "REQ-002",
+        titulo: "Processador Pix",
+        criterio: "src/pix/transfer.ts valida chaves e assina mensagens.",
+        origem: "premissa: motor bancario",
+      },
+    ],
+  });
 
   it("TESTE PESADO 1: Concorrência Extrema (Race Condition) — 10 chamadas de aprovação simultâneas criam exatamente 1 conjunto de nós e 1 Job", async () => {
     const session = await prisma.session.create({

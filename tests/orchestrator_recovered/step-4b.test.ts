@@ -339,10 +339,16 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
       ],
     });
 
-    const spy = vi
-      .spyOn(SmartRouter.prototype, "dispatchWithFallback")
-      .mockResolvedValueOnce(makeFakeDispatchResult(specTurn1))
-      .mockResolvedValueOnce(makeFakeDispatchResult(specTurn2MissingFirst));
+    const spy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const userText = opts.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join("\n");
+      if (userText.toLowerCase().includes("checkout")) {
+        return makeFakeDispatchResult(specTurn2MissingFirst);
+      }
+      return makeFakeDispatchResult(specTurn1);
+    });
 
     // 1ª mensagem em ELICITACAO
     const res1 = await postChat(
@@ -373,12 +379,17 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     expect(res2.status).toBe(200);
     const data2 = await res2.json();
 
-    // Verifica que na 2ª chamada o prompt enviado ao LLM continha a Spec anterior e a instrução cumulativa
-    const secondCallMessages = spy.mock.calls[1][0].messages;
-    const systemTexts = secondCallMessages
-      .filter((m) => m.role === "system")
-      .map((m) => m.content)
-      .join("\n");
+    // Com Spec existente, alguma chamada do elicitador deve trazer a instrução de correção por trecho
+    const systemTextsFromCall = (callIndex: number) =>
+      spy.mock.calls[callIndex][0].messages
+        .filter((m) => m.role === "system")
+        .map((m) => m.content)
+        .join("\n");
+    const patchCallIndex = spy.mock.calls.findIndex((c) =>
+      c[0].messages.some((m) => m.role === "system" && m.content.includes("CORREÇÃO POR TRECHO"))
+    );
+    expect(patchCallIndex).toBeGreaterThanOrEqual(0);
+    const systemTexts = systemTextsFromCall(patchCallIndex);
     // TR1 (7): com Spec existente, o padrão é a correção por trecho; se o modelo devolver a Spec inteira
     // mesmo assim (como o LLM falso aqui), a guarda cumulativa abaixo continua protegendo os módulos.
     expect(systemTexts).toContain("CORREÇÃO POR TRECHO");
@@ -426,12 +437,16 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
         resposta: "Incluí a busca por nome.",
       }) +
       "\n```";
-    const spy = vi
-      .spyOn(SmartRouter.prototype, "dispatchWithFallback")
-      .mockResolvedValueOnce(makeFakeDispatchResult(spec1))
-      // 2ª mensagem em SPEC_REVISAO: a rota classifica a intenção antes de chamar o elicitador.
-      .mockResolvedValueOnce(makeFakeDispatchResult('{"intencao":"corrigir_existente"}'))
-      .mockResolvedValueOnce(makeFakeDispatchResult(patchResp));
+    const spy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback").mockImplementation(async (opts) => {
+      const userText = opts.messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join("\n");
+      if (userText.toLowerCase().includes("buscar produto")) {
+        return makeFakeDispatchResult(patchResp);
+      }
+      return makeFakeDispatchResult(spec1);
+    });
     const post = (prompt: string) =>
       postChat(
         new NextRequest("http://localhost/api/chat", {
@@ -444,7 +459,8 @@ describe("Passo 4b — Orquestração por fase, Spec cumulativa e chat sem promo
     const res2 = await post("quero buscar produto pelo nome");
     expect(res2.status).toBe(200);
     const data2 = await res2.json();
-    // Nenhuma nova tentativa "a resposta não é a Spec": o trecho é a resposta esperada.
+    // Nenhuma nova tentativa "a resposta não é a Spec": o trecho é a resposta esperada (pode haver 1 correção estrutural).
+    expect(spy.mock.calls.filter((c) => c[0].messages.some((m) => m.content.includes("buscar produto"))).length).toBe(1);
     expect(spy).toHaveBeenCalledTimes(3);
     const final = parseSpecDocument((await prisma.session.findUniqueOrThrow({ where: { id: session.id } })).canonicalSpec || "");
     expect(final!.requisitos?.map((r) => [r.id, r.titulo])).toEqual([

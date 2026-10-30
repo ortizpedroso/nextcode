@@ -108,12 +108,23 @@ export function classifyMessageDeterministic(
     }
   }
 
-  // 4. Pedido claro de correção de bug/erro existente
+  // 4. Pedido claro de correção de bug/erro existente (ou ajuste de funcionalidade já em Spec)
   if (
     !isQuestion &&
     /\b(corrigir|corrija|consertar|conserte|arrumar|arrume|resolver\s+(o\s+)?(bug|erro|problema|defeito)|est[aá]\s+(com\s+erro|quebrado|falhando|dando\s+erro)|fix\s+bug|bug\s+no|erro\s+ao)\b/i.test(
       trimmed
     )
+  ) {
+    return "corrigir_existente";
+  }
+  if (
+    !isQuestion &&
+    (phase === "ELICITACAO" ||
+      phase === "ELICITACAO_CORRECAO" ||
+      phase === "SPEC_REVISAO" ||
+      phase === "MACROBRIEF" ||
+      phase === "CONFERENCIA") &&
+    /\b(buscar|pesquisar|filtrar|ordenar)\b/i.test(trimmed)
   ) {
     return "corrigir_existente";
   }

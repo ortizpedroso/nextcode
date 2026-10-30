@@ -736,7 +736,7 @@ describe("Laço de ferramentas do executor (Item 2)", () => {
       }
     );
 
-    await runOnce("worker-tool-loop-pause");
+    await runOnce("worker-tool-loop-pause", { onlySessionIds: [session.id] });
 
     const updatedSession = await prisma.session.findUniqueOrThrow({
       where: { id: session.id },

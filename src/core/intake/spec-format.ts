@@ -112,8 +112,23 @@ function renderRotas(rotas: SpecRoute[]): string[] {
   return lines;
 }
 
+function defaultRequisitosFromArquivos(spec: SpecFrontmatterInput): SpecRequirementItem[] {
+  return spec.arquivosAfetados.map((arq, idx) => ({
+    id: `REQ-${String(idx + 1).padStart(3, "0")}`,
+    titulo: arq.split("/").pop() || arq,
+    criterio: `${arq} implementado conforme o objetivo da Spec.`,
+    origem: `premissa: necessário para ${spec.titulo}`,
+  }));
+}
+
 /** Monta o documento completo: bloco YAML (frontmatter) + corpo Markdown curto. */
 export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string {
+  const requisitos: SpecRequirementItem[] =
+    spec.requisitos !== undefined
+      ? spec.requisitos
+      : spec.arquivosAfetados.length > 0
+        ? defaultRequisitosFromArquivos(spec)
+        : [];
   const lines: string[] = ["---"];
   lines.push(`titulo: ${yamlEscape(spec.titulo)}`);
   lines.push(`status: ${spec.status}`);
@@ -138,9 +153,9 @@ export function renderCanonicalSpecDocument(spec: SpecFrontmatterInput): string 
   lines.push(...yamlStringList("arquivos_afetados", spec.arquivosAfetados));
   lines.push(...yamlStringList("notas_implementacao", spec.notasImplementacao ?? []));
   lines.push(...yamlStringList("requisitos_ids", spec.requisitosIds ?? []));
-  if (spec.requisitos && spec.requisitos.length > 0) {
+  if (requisitos.length > 0) {
     lines.push("requisitos:");
-    spec.requisitos.forEach((req) => {
+    requisitos.forEach((req) => {
       lines.push(`  - id: ${req.id}`);
       lines.push(`    titulo: ${yamlEscape(req.titulo)}`);
       lines.push(`    criterio: ${yamlEscape(req.criterio)}`);
@@ -507,7 +522,7 @@ export function parsedToFrontmatterInput(parsed: ParsedSpec): SpecFrontmatterInp
     rotas: parsed.rotas,
     notasImplementacao: parsed.notasImplementacao,
     requisitosIds: deriveRequisitosIds(parsed),
-    ...(parsed.requisitos?.length ? { requisitos: parsed.requisitos } : {}),
+    requisitos: parsed.requisitos ?? [],
   };
 }
 

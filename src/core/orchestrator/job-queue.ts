@@ -358,6 +358,20 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       where: { id: job.sessionId },
       include: { project: true },
     });
+    if (sessionAfterQueue?.phase === "EXECUCAO") {
+      const tasks = queueResult.tasks;
+      const hasBlockedNode = tasks.some((t) => t.status === "blocked");
+      const hasRunnableTask = tasks.some((t) => {
+        if (t.status === "pending" || t.status === "running" || t.status === "standby") return true;
+        if (t.status === "failed") {
+          return (t.attempts ?? 0) < (t.maxAttempts ?? 3);
+        }
+        return false;
+      });
+      if (hasBlockedNode && !hasRunnableTask && !queueResult.allCompleted) {
+        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" }, { avisoJaPostado: true });
+      }
+    }
     // T10: fila vazia com DAG completa — inclusive retomada em VERIFICACAO (ambiente corrigido, ui-check não rodou).
     const runFinalDelivery =
       sessionAfterQueue &&
@@ -365,9 +379,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       (sessionAfterQueue.phase === "EXECUCAO" || sessionAfterQueue.phase === "VERIFICACAO");
     if (runFinalDelivery) {
       const hasBlockedNode = queueResult.tasks.some((t) => t.status === "blocked");
-      if (hasBlockedNode && sessionAfterQueue.phase === "EXECUCAO") {
-        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" }, { avisoJaPostado: true });
-      } else if (!hasBlockedNode) {
+      if (!hasBlockedNode) {
         if (sessionAfterQueue.phase === "EXECUCAO") {
           await applyPhaseEvent(job.sessionId, { type: "SEM_PENDENCIAS" });
         }
@@ -533,7 +545,7 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
             naoReproduzidos: (review.naoReproduzidos ?? []).slice(0, 20),
             importantesSemProva: (review.importantesSemProva ?? []).map((d) => d.defeito).slice(0, 20),
             provasAnteriores: review.provasAnteriores ?? null,
-            ressalvas: review.ressalvas.slice(0, 30),
+            ressalvas: (review.ressalvas ?? []).slice(0, 30),
             naoVerificados: review.naoVerificados ?? [],
             citacoesInvalidas: (review.citacoesInvalidas ?? []).slice(0, 10),
             descartes: review.descartes,

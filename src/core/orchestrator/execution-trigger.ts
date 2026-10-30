@@ -18,9 +18,6 @@ import {
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { splitNodesByJev } from "@/core/orchestrator/node-split";
 import { validateFinalPlan, atribuirInfraAoDono } from "@/core/orchestrator/plan-scope-check";
-
-/** Mesmo teto de arquivos por etapa do decompositor (`FILES_PER_NODE`, spec-decomposer.ts). */
-const PLAN_MAX_FILES_PER_STAGE = 4;
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 import { IntakeEngine } from "@/core/intake/intake-engine";
@@ -29,6 +26,25 @@ import type { ElicitadorMacrobrief } from "@/core/intake/macrobrief-elicitador";
 import type { DAGNode } from "@/core/dag/dag-engine";
 import type { ContratoProjeto } from "@/core/orchestrator/project-contract";
 import { canonicalizeSpecDocument } from "@/core/intake/spec-format";
+
+/** Mesmo teto de arquivos por etapa do decompositor (`FILES_PER_NODE`, spec-decomposer.ts). */
+const PLAN_MAX_FILES_PER_STAGE = 4;
+
+/** Spec com arquivos declarados exige plano do analista (exceto em teste sem ENABLE_ANALISTA_LLM). */
+export function analistaObrigatorio(specTemArquivos: boolean): boolean {
+  if (!specTemArquivos) return false;
+  if (process.env.NODE_ENV === "test" && process.env.ENABLE_ANALISTA_LLM !== "true") return false;
+  return true;
+}
+
+/** Barreira antes do executor: heurística não substitui plano quando o analista era obrigatório. */
+export function planoPodeExecutar(
+  analistaEraObrigatorio: boolean,
+  origemPlano?: "analista" | "heuristica"
+): boolean {
+  if (analistaEraObrigatorio) return origemPlano === "analista";
+  return true;
+}
 
 export type ApproveSpecResult =
   | {

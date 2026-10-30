@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // Pasta corrompida no NTFS (zombie): evita scandir em tests/orchestrator até chkdsk + git checkout.
+    exclude: ["**/node_modules/**", "tests/orchestrator/**", "tests/orchestrator"],
     setupFiles: ["./vitest.setup.ts"],
     globals: false,
     testTimeout: 15000,

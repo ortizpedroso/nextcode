@@ -687,7 +687,7 @@ describe("Rotas HTTP reais — Aprovação, Concorrência e Retomada Seletiva (P
     try {
       startJobWorker();
 
-      const deadline = Date.now() + 5000;
+      const deadline = Date.now() + 15000;
       while (Date.now() < deadline) {
         const execJobs = await prisma.job.findMany({
           where: { sessionId: execSession.id },

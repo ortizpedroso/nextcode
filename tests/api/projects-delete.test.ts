@@ -75,7 +75,8 @@ describe("API /api/projects/[id] — DELETE (Exclusão Resiliente de Projetos)",
       },
     });
 
-    // Cria arquivo físico na pasta
+    fs.mkdirSync(path.join(tmpFolder, ".nextcode"), { recursive: true });
+    fs.writeFileSync(path.join(tmpFolder, ".nextcode", "project.json"), "{}");
     fs.writeFileSync(path.join(tmpFolder, "README.md"), "# Teste");
 
     // 3. Executa DELETE na rota da API
