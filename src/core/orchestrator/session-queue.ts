@@ -92,6 +92,53 @@ export async function recoverZombieRunningNodes(
   return staleRunningTasks.length;
 }
 
+export interface DependenciaBloqueio {
+  taskId: string;
+  idsDesconhecidos: string[];
+  erro: string;
+}
+
+/**
+ * 5c: Resolve dependências de nós da DAG para a fila da sessão.
+ * Se uma etapa declara dependência de id inexistente nesta versão da Spec,
+ * a etapa entra em bloqueios e não é vinculada silenciosamente à etapa anterior nem tem o id descartado.
+ */
+export function montarDependenciasDaFila(tasks: Array<{ id: string; status: string; dependencies: string }>): {
+  porId: Map<string, string[]>;
+  bloqueios: Array<{ taskId: string; idsDesconhecidos: string[]; erro: string }>;
+} {
+  const knownIds = new Set(tasks.map((t) => t.id));
+  const porId = new Map<string, string[]>();
+  const bloqueios: Array<{ taskId: string; idsDesconhecidos: string[]; erro: string }> = [];
+
+  for (const t of tasks) {
+    let rawDeps: string[] = [];
+    try {
+      rawDeps = JSON.parse(t.dependencies || "[]");
+      if (!Array.isArray(rawDeps)) {
+        rawDeps = [];
+      }
+    } catch {
+      rawDeps = [];
+    }
+
+    const idsDesconhecidos = rawDeps.filter((depId) => !knownIds.has(depId));
+    const validDeps = rawDeps.filter((depId) => knownIds.has(depId));
+
+    if (idsDesconhecidos.length > 0) {
+      bloqueios.push({
+        taskId: t.id,
+        idsDesconhecidos,
+        erro: "DEPENDENCIA_DESCONHECIDA",
+      });
+    }
+
+    porId.set(t.id, validDeps);
+  }
+
+  return { porId, bloqueios };
+}
+
 /**
  * Executa a fila de nós da DAG de uma sessão no servidor:
  * recuperação de nós zumbis, laço de lotes (até 3 em paralelo),
@@ -134,23 +181,59 @@ export async function processSessionQueue(sessionId: string): Promise<SessionQue
       orderBy: { createdAt: "asc" },
     });
 
-    const knownIds = new Set(currentDbTasks.map((t) => t.id));
+    const { porId, bloqueios } = montarDependenciasDaFila(currentDbTasks);
 
-    const dagNodes: DAGNode[] = currentDbTasks.map((t, idx) => {
-      const rawDeps: string[] = JSON.parse(t.dependencies || "[]");
-      const validDeps = rawDeps.filter((depId) => knownIds.has(depId));
-      const hasUnresolvedUnknownDep = rawDeps.some((depId) => !knownIds.has(depId));
-      const autoResolvedDeps =
-        hasUnresolvedUnknownDep && idx > 0 && currentDbTasks[idx - 1].status === "completed"
-          ? [currentDbTasks[idx - 1].id]
-          : validDeps;
+    if (bloqueios.length > 0) {
+      const tarefasParaBloquear = bloqueios.filter((b) => {
+        const task = currentDbTasks.find((t) => t.id === b.taskId);
+        return task && task.status !== "blocked";
+      });
 
+      for (const b of tarefasParaBloquear) {
+        await prisma.taskNode.update({
+          where: { id: b.taskId },
+          data: {
+            status: "blocked",
+            result: JSON.stringify({
+              erro: "DEPENDENCIA_DESCONHECIDA",
+              idsDesconhecidos: b.idsDesconhecidos,
+            }),
+          },
+        });
+        const taskObj = currentDbTasks.find((t) => t.id === b.taskId);
+        if (taskObj) {
+          taskObj.status = "blocked";
+        }
+        await prisma.message.create({
+          data: {
+            sessionId,
+            role: "assistant",
+            content: `🛑 **DEPENDENCIA_DESCONHECIDA: Etapa "${b.taskId}" bloqueada.** A etapa depende de ID(s) inexistente(s) nesta versão da Spec: ${b.idsDesconhecidos.join(", ")}.`,
+          },
+        });
+      }
+
+      if (tarefasParaBloquear.length > 0) {
+        const newlyBlocked = await cascadeBlockedNodes(sessionId);
+        for (const blockedId of newlyBlocked) {
+          const t = currentDbTasks.find((x) => x.id === blockedId);
+          if (t) {
+            t.status = "blocked";
+          }
+        }
+        for (const b of tarefasParaBloquear) {
+          await reportBlockedNodeToHuman(sessionId, b.taskId);
+        }
+      }
+    }
+
+    const dagNodes: DAGNode[] = currentDbTasks.map((t) => {
       return {
         id: t.id,
         title: t.title,
         role: t.role,
         status: t.status as DAGNode["status"],
-        dependencies: autoResolvedDeps,
+        dependencies: porId.get(t.id) || [],
         mcpScope: t.mcpScope || undefined,
         filesScope: t.filesScope ? JSON.parse(t.filesScope) : [],
         attempts: t.attempts,
