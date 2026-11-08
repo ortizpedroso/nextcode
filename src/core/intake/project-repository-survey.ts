@@ -206,7 +206,12 @@ export function runProjectSpecAudit(
         delta.modulosAjustados.length > 0 ||
         delta.requisitosNovos.length > 0;
 
-      const isIdentical = normMerged === normDisk || !hasMaterialDelta;
+      // Critério sem_alteracao:
+      // O brief (§4, §6) exige sem_alteracao quando a Spec resultante é byte-a-byte idêntica ao arquivo no disco
+      // (normalizado LF e trim) ou quando sua representação canônica serializada é estritamente equivalente sem delta material.
+      const isIdentical =
+        normMerged === normDisk ||
+        (!hasMaterialDelta && canonicalizeSpecDocument(mergedText) === canonicalizeSpecDocument(diskText));
 
       if (isIdentical) {
         result = {

@@ -392,8 +392,12 @@ export function parseSpecDocument(rawContent: string): ParsedSpec | null {
   // Sem isso, a seção some silenciosamente da UI em vez de aparecer vazia.
   // Também aceita lista no estilo JSON/flow (stack: ["Next.js", "Prisma"]) e limpa itens que
   // já chegaram quebrados de uma gravação anterior ('["Next.js"', '"Prisma"]').
-  const cleanItem = (s: string) =>
-    s.trim().replace(/^\[/, "").replace(/\]$/, "").trim().replace(/^["']|["']$/g, "").trim();
+  const cleanItem = (s: string) => {
+    let t = s.trim();
+    if (/^\[\s*["']/.test(t)) t = t.replace(/^\[\s*/, "");
+    if (/["']\s*\]$/.test(t)) t = t.replace(/\s*\]$/, "");
+    return t.replace(/^["']|["']$/g, "").trim();
+  };
   const asStringList = (v: YamlValue | undefined): string[] =>
     (Array.isArray(v)
       ? v.filter((x): x is string => typeof x === "string")

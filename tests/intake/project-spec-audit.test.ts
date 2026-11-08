@@ -260,10 +260,20 @@ Documento.
     expect(first.mode).toBe("criar");
     expect(first.gravouSpec).toBe(true);
 
+    const onDisk1 = readCanonicalSpecFile(root);
+    expect(onDisk1).not.toBeNull();
+
     // 2ª execução sem modificar arquivos
     const second = runProjectSpecAudit(root);
     expect(second.mode).toBe("sem_alteracao");
     expect(second.gravouSpec).toBe(false);
+
+    // Assert de idempotência byte-a-byte
+    const onDisk2 = readCanonicalSpecFile(root);
+    expect(onDisk2).toBe(onDisk1);
+    expect(second.specText?.replace(/\r\n/g, "\n").trim()).toBe(
+      onDisk1?.replace(/\r\n/g, "\n").trim()
+    );
   });
 
   it("Cenário 5: Spec status: aprovada sem force -> bloqueado (e com force: true reabre)", () => {
