@@ -243,3 +243,7 @@ P1 ENTREGUE 10/10 US$ 0,0675 · P2 ENTREGUE 13/13 US$ 0,2134 (depois do `835e98f
 - 5/5 reparos aprovados; tsc 0; UI 10/10; revisão final 5 parciais (eram 15 → 14). US$ 1,48; sessão US$ 19,28.
 - FreeLLMAPI: falta de crédito põe pausa de 24 h na chave (`rate_limit_cooldowns`, `source: credit`), que fica depois da recarga até alguém limpar no painel.
 
+## 08/11/2026 — Vitest suíte inteira HEAD `7906c61`
+- `npx vitest run`: 193 arquivos, 1291 testes, **1236 pass / 55 fail**, 12 arquivos vermelhos, exit 1, duração ≈309–330 s (Windows, `C:\projetos\nextcode`).
+- Referência atualizada: `docs/NEXTCODE-REFERENCIA.md` §1.7, §3.0.2, item 7 reaberto.
+

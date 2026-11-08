@@ -1,15 +1,15 @@
 # NextCode — Documento Único de Referência (o que foi feito e o que falta fazer)
 
 > **Fonte única do projeto NextCode (`C:\projetos\nextcode`).**
-> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. **Atualizado 31/10/2026:** §4.3.1 (Trava T1 + conferente + T8b como plataforma), §2.10 (estabilização macro Out/31), §1.5. A §3 continua em ordem de relevância. Melhorias de 31/10 são **genéricas ao harness** (não atalhos por projeto). O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
+> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. **Atualizado 08/11/2026:** §1.7 (estado HEAD + fila macro Spec→ENTREGUE), §3.0.2, reabertura honesta do item 7 (vitest). **Atualizado 31/10/2026:** §4.3.1 (Trava T1 + conferente + T8b como plataforma), §2.10 (estabilização macro Out/31), §1.5. A §3 continua em ordem de relevância. Melhorias de 31/10 são **genéricas ao harness** (não atalhos por projeto). O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
 > - Toda melhoria aprovada entra **aqui antes** de ser executada (regra 1 do `CLAUDE.md`).
 > - Os documentos antigos saíram da pasta e continuam recuperáveis com `git show cabc2d7:<caminho>` (lista na §10).
 > - Registro de cada passo: `memory/diario.md`. Decisões do fundador: `memory/decisoes.md`. Números medidos: `memory/medicoes.md`.
 
 ## Índice
-1. Visão geral, regras e estado atual
-2. O que foi feito (linha do tempo)
-3. **O que falta fazer (fila por relevância)** — §3.0 aprovado; a escolha do pedido único tem botão no painel
+1. Visão geral, regras e estado atual — **§1.7 HEAD 08/11** (produção? fila macro)
+2. O que foi feito (linha do tempo) — **§2.11 levantador-repositorio**
+3. **O que falta fazer (fila por relevância)** — §3.0 pedido único; **§3.0.2 Spec → ENTREGUE**
 4. Arquitetura (fases, travas, papéis, organograma, fluxo)
 5. Uso do Jev
 6. Templates e memória do projeto
@@ -121,6 +121,33 @@ Sessão ao vivo **Sessão - NextPay**, id `cc5b1243-c05a-4953-831b-f9dcc62740c2`
 | 15–18, 20–23, 26–33 | 0 | Cascata. Quem também espera a 12 ou a 19 não volta só com a 9 |
 
 O plano que trata essa parada está na §3.0. Em 04/11 a etapa 9 já tinha a escolha **vale o critério** e gastou as 3 tentativas seguintes na auditoria cega (onboarding sem status, replay sem dados de pagamento, data em UTC misturada com horário local). O fundador pausou o teste em 06/11. Não clicar em **Retomar** nem em **Aprovar**. O contrato da sessão ficou com o alargamento errado (`VENCIDA?: unknown`, `qrPix?` e `linhaDigitavel?` também em `obterIndicadores`). O harness recusa esse alargamento. Em 07/11 a escolha antiga volta ao painel da etapa 9: **vale o critério** reescreve o contrato da sessão e não abre tentativa nova. Depois disso, **Re-tentar** só a etapa 9. O banco não foi reescrito à mão.
+
+### 1.7 Estado conferido em 08/11/2026 (HEAD `7906c61` — macro Spec → ENTREGUE)
+
+**Veredito macro:** o NextCode **não** está pronto para **produção** (operador confia no CI e entrega software de ponta a ponta sem brecha conhecida). O motor ponta a ponta (fases, T1–T6, DAG, quarentena, auditoria) existe no código. A fila abaixo fecha o que falta **antes** de reabrir o teste pesado NextPay (§1.6).
+
+**Pasta `docs/`:** só este arquivo (§1.2.2).
+
+**Prova medida 08/11/2026** (`C:\projetos\nextcode`, mesma máquina do fundador):
+
+| Porta | Comando / artefato | Resultado |
+|---|---|---|
+| Tipos | `npx tsc --noEmit` | saída 0 (medido em rodadas recentes do HEAD) |
+| Suíte inteira | `npx vitest run` | **193** arquivos, **1291** testes: **1236** pass, **55** fail, **12** arquivos vermelhos (≈309–330 s, exit 1). CI (`.github/workflows/ci.yml`) roda a suíte inteira → **vermelho** no HEAD atual |
+| Intake levantador | `tests/intake/project-spec-audit.test.ts` (+ path-policy, spec-sync) | **verde** no subconjunto (22+ testes, nov/2026) |
+| Baseline 30/10 (§1.4, §3.3 item 7) | 1167/1167 | **não** reproduz no HEAD atual; item 7 **reaberto** |
+
+**Arquivos de teste com falha (amostra confirmada 08/11, não exaustiva):** `tests/orchestrator_recovered/characterization.test.ts`, `tests/orchestrator_recovered/a1-contrato-travado.test.ts`, `tests/harness/end-to-end-harness-plan.test.ts`, `tests/skills/executor-tool-loop.test.ts`, `tests/intake/mega-stress-e1-e5.test.ts`, `tests/decision/a3-failure-routing.test.ts`, `tests/memory/project-memory.test.ts` (lista completa na saída de `npx vitest run`).
+
+**Intake — Spec como documento basilador (legado / retomada):**
+
+| Peça | Estado |
+|---|---|
+| Motor `levantador-repositorio` (`runProjectSpecAudit`, API `POST /api/projects/audit-spec`, chat determinístico, skill em `skills/levantador-repositorio/`) | **No código** (commits `3d53cd7`…`cb8158c`, dedupe/path `6a3ece4`, push até `7906c61`) |
+| Integração produto (UI, `/api/skills/list` nativo, `spec-sync` com gaps/reconcile, hint na sessão) | **Aprovada em** `scratch/PROMPT-integracao-levantador-harness.md` — **ainda não implementada** |
+| Teste pesado NextPay (§1.6) | **Pausado** até Fases 0–2 da §3.0.2 |
+
+**Próximo passo único (08/11):** executar **Fase 0** da §3.0.2 (vitest verde 2×). Só depois **Fase 1** (prompt de integração levantador). Gate 1 (§3.3 item 8) permanece a prova de entrega macro antes de declarar excelência operacional.
 
 ---
 
@@ -293,11 +320,24 @@ Pacote **macro** (qualquer sessão / qualquer Spec), registrado antes de commit 
 
 Diário operacional: entrada **275+** quando o fundador validar na tela (Gate 1 em curso).
 
+### 2.11 Intake mecânico — levantador de repositório (08/11/2026)
+
+Pacote **genérico ao harness** (qualquer `Project.path`, testes só `mkdtemp`):
+
+- **Skill** `skills/levantador-repositorio/SKILL.md` (papel `conferente`).
+- **Motor** `src/core/intake/project-repository-survey.ts` (+ extract, reconcile, publish): cria/reconcilia `.nextcode/spec.md`, grava `spec-gaps.md` e `spec-reconcile.md`; modos `criar` | `reconciliar` | `sem_alteracao` | `bloqueado`; sem aprovar Spec nem DAG.
+- **API** `src/app/api/projects/audit-spec/route.ts` (auth, path cadastrado).
+- **Chat** intenção + skill resolver antes do LLM (`message-intent.ts`, `chat/route.ts`).
+- **Auditoria pós-gap:** idempotência YAML, ghost paths em `checkSpecStructure`, testes E2E cenários 1–6 (`tests/intake/project-spec-audit.test.ts`).
+- **Prompt próximo pacote (produto):** `scratch/PROMPT-integracao-levantador-harness.md` (não codificado em 08/11).
+
+Commits principais: `3d53cd7`, `6a3ece4`…`cb8158c`, `7906c61` (doc fila integração). Não substitui Spec aprovada por humano nem pula elicitação.
+
 ---
 
 ## 3. O que falta fazer (fila por relevância)
 
-Atualizado em 31/10/2026 (§1.5, §2.10). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
+Atualizado em **08/11/2026** (§1.7, §3.0.2). Antes: 31/10/2026 (§1.5, §2.10). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
 
 O contrato do analista (o antigo A1) **já existe**: `renderContractTs` grava `src/contracts/`, cada etapa gera conformidade e o `tsc` confere, e divergência de contrato no avaliador é `critico`. A reserva sem analista ainda grava uma frase fixa (`spec-decomposer.ts`, heurística). Isso não justifica refazer o A1. Os itens 1, 2 e 3 da fila anterior estão no código (diário 263). O que o harness ainda não pega: citação de uma linha real de código errado, e critério da Spec escrito em prosa, sem `nome(arg1, arg2)` na mesma linha.
 
@@ -358,6 +398,20 @@ Diff só dos arquivos desta tarefa. No fim, listar os testes rodados e a saída.
 FIM DO PROMPT
 ```
 
+### 3.0.2 Fila macro ponta a ponta (08/11/2026 — Spec basiladora → ENTREGUE)
+
+Ordem **obrigatória** antes de reabrir o teste pesado (§1.6). Um commit por melhoria dentro de cada fase. Detalhe do estado: §1.7.
+
+| Fase | Objetivo | Entrada | Porta de saída | Estado 08/11 |
+|---|---|---|---|---|
+| **0** | Baseline honesta | HEAD `main` | `npx vitest run` **verde 2×** + §3.3 item 7 fechado de novo | **Aberto** (55 falhas medidas) |
+| **1** | Intake operável no produto | `scratch/PROMPT-integracao-levantador-harness.md` (tarefas A–F) | Checklist §7 do prompt | **Não iniciado** |
+| **2** | Entrada humana na jornada | passo-6 (`ESCOLHA_INTERVENCAO`) | Botões criar/corrigir/conversar na UI | **Aberto** (TODO no código) |
+| **3** | Prova de entrega harness | Gate 1 §3.3 item 8 | Sessão nova → `ENTREGUE`, 0 defeito **provado** | **Aberto** |
+| **4** | Detector de brecha | Teste pesado (ex. NextPay §1.6) | Falhas viram commits **no NextCode**, não patch no alvo | **Bloqueado** até Fases 0–3 |
+
+Fase 0 segue prompt operacional: `scratch/PROMPT-fase0-vitest-baseline.md`. Produção de rede (§3.7 item 20, 25) fica **depois** do Gate 1.
+
 ### 3.1 Muda o que sai como pronto
 Vazio nesta data. Os três itens desta seção passaram para a §3.6.
 
@@ -369,7 +423,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 ### 3.3 Prova (não é correção de código)
 | # | Item | Quando |
 |---|---|---|
-| 7 | **TESTE-E5 (vitest / harness):** **fechado 30/10** — relatório `7869124`, saneamento `619193c`, achados 2–4 e baseline (`e10099c`, `1aee3d7`); suíte **1167/1167** (2×); E2E `end-to-end-harness-plan` 11/11; auditoria Claude: relatórios `docs/relatorios/SESSAO-2026-10-30-claude-*.md`, veredito diário **274**. **Opcional:** J3 passo 6 com LLM real (custo) | — |
+| 7 | **TESTE-E5 (vitest / harness):** **fechado 30/10** no commit da época (`1aee3d7`, **1167/1167** 2×, diário **274**). **Reaberto 08/11** no HEAD `7906c61`: `npx vitest run` → **1236/1291** (55 falhas, 12 arquivos). Fase 0 da §3.0.2 deve fechar de novo antes de Gate 1 e teste pesado. Subconjunto intake levantador **verde**. **Opcional:** J3 passo 6 com LLM real (custo) | Porta: 2× vitest verde no HEAD |
 | 8 | **Gate 1 do Gateway:** sessão nova com a mesma Spec do `4d019f00`, quando houver cota. A sessão antiga fica como comparação. Porta: `ENTREGUE` com 0 defeito provado; parar se os provados não caírem em 2 rodadas. **30/10 tarde:** fundador **reexecutando** (diário **275**) | Após veredito: item 18 (OmniRoute) |
 
 **DG1** está fechado (diário 221): dos 6 defeitos provados, 5 são de integração; 6/6 aprovados como `implementado`; em 2 o avaliador escreveu o defeito e aprovou (efeito antigo do P7, já coberto pelo F1.2 quando há arquivo e linha).
