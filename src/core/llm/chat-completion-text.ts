@@ -1,5 +1,5 @@
 /**
- * Extrai texto utilizável de respostas OpenAI-compat (FreeLLMAPI, OmniRoute, BYOK).
+ * Extrai texto utilizável de respostas OpenAI-compat (FreeLLMAPI, DeepSeek, BYOK).
  * Raciocínio interno (reasoning_content) não é texto do modelo para consumo externo;
  * quando message.content está vazio, devolve vazio e segue para candidates/text.
  */
