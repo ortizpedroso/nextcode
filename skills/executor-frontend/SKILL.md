@@ -52,5 +52,6 @@ Você implementa os arquivos de interface (`page.tsx`, `layout.tsx`, componentes
        arquivo_linha: "src/app/x/page.tsx:10-25"   # vários: "a.ts:10-25; b.ts:3-8" (1 linha por REQ)
        como: "uma frase"
    ```
+   O caminho em `arquivo_linha` é um caminho do inventário desta etapa, copiado como está. O exemplo acima só mostra o formato.
    Os campos medidos (`compilou`, `testes`, `arquivos_alterados`) NÃO vêm do modelo: o harness carimba com `stampHarnessMeasuredFields`.
 

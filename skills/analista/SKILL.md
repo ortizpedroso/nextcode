@@ -119,6 +119,7 @@ mb-1 entrega a validação. mb-2 entrega a rota e depende de mb-1.
 ```
 - `id`: curto e único (`mb-1`, `mb-2`, …); `depende_de` usa esses ids.
 - Uma etapa pode ter `reqs: []` quando seus arquivos só servem a REQs de etapas que dependem dela.
+- Cada item de `reqs` é um id nu da Spec (`REQ-001`). Sem colchetes, sem vírgula e sem intervalo no mesmo item.
 - O harness grava `src/contracts/index.ts` a partir deste YAML e coloca a mesma fatia no microbrief que o executor e o avaliador leem.
 
 ## Quando receber erros da conferência
