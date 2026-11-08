@@ -9,6 +9,14 @@
  * e recomenda a ação humana específica para essa causa — não um texto genérico.
  */
 
+import {
+  construirAvisoLacunaPermanente,
+  extrairCitacoesArquivoLinha,
+} from "@/core/governance/pedido-unico";
+import { SEMANTIC_HUMAN_ACTION, formatIncidentClock } from "@/core/governance/incident-present";
+
+export { errorFenceMeta, formatIncidentClock, presentIncidentMarkdown, SEMANTIC_HUMAN_ACTION } from "@/core/governance/incident-present";
+
 export interface FailureAttemptDiagnosis {
   causa: string;
   confianca: number;
@@ -58,7 +66,7 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
       key: "auditor_unavailable",
       label: "Auditor cego (LLM) indisponível",
       humanAction:
-        "Nenhum provedor respondeu um veredito válido para a Lente Cega. Verifique as chaves/endpoint em Configurações (OmniRoute, Gemini, Groq...) e, se o provedor for lento, aumente `BLIND_AUDIT_TIMEOUT_MS`. O código em si pode estar correto — ele só não pôde ser verificado.",
+        "Nenhum provedor respondeu um veredito válido para a Lente Cega. Verifique as chaves e gateways em Configurações (FreeLLMAPI, Gemini, Groq...) e, se o provedor for lento, aumente `BLIND_AUDIT_TIMEOUT_MS`. O código em si pode estar correto. Ele só não pôde ser verificado.",
     },
   },
   {
@@ -66,8 +74,7 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     category: {
       key: "semantic",
       label: "Requisitos do Brief não implementados (Auditoria Cega)",
-      humanAction:
-        "O código compila, mas não implementa o que a Spec pede. Revise as pendências listadas abaixo: se o requisito estiver ambíguo ou grande demais para uma etapa, detalhe-o ou divida-o na Spec Canônica antes de liberar o nó.",
+      humanAction: SEMANTIC_HUMAN_ACTION,
     },
   },
   {
@@ -80,6 +87,15 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     },
   },
   {
+    match: /teste de aceite falha[\s\S]*não carregou:[\s\S]*before initialization/i,
+    category: {
+      key: "acceptance_test_broken",
+      label: "Teste de aceite não carregou",
+      humanAction:
+        "O teste de aceite não chegou a rodar: ele passa um mock para vi.mock antes de inicializar esse nome. A Spec e o código da etapa permanecem. O porteiro descarta esse teste. Uma falha de asserção, com o teste carregado, continua bloqueando a etapa.",
+    },
+  },
+  {
     // E5 (mudança 44): a etapa só promove com os testes de aceite (do testador, cegos ao código) passando.
     match: /teste de aceite falha/i,
     category: {
@@ -87,6 +103,15 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
       label: "Teste de aceite da etapa falhando",
       humanAction:
         "O código compila e o avaliador pode até ter aprovado, mas o teste de aceite (escrito pelo testador só a partir do Microbrief, sem ver o código) falha — a saída está abaixo. Confira se o teste pede o que a Spec diz: se pede, o defeito é do código (clique em **Re-tentar**); se o teste exige algo que a Spec não pede, ajuste o critério do REQ na Spec.",
+    },
+  },
+  {
+    match: /\[SILENCIO\]/i,
+    category: {
+      key: "compiler_silence",
+      label: "Código escondeu o compilador",
+      humanAction:
+        "As tentativas trocaram um silêncio por outro (diretiva, cast ou import variável) em vez de corrigir o erro de tipo. O que o silêncio escondia está no motivo, com a marca [ESCONDIDO], quando o porteiro conseguiu medi-lo. Re-tentar esta etapa abre um ciclo novo. A Spec e o escopo da etapa permanecem.",
     },
   },
   {
@@ -136,6 +161,15 @@ const CATEGORIES: { match: RegExp; category: FailureCategory }[] = [
     },
   },
   {
+    match: /Timeout de resposta excedido/i,
+    category: {
+      key: "turn_timeout",
+      label: "O modelo não concluiu o turno no tempo da etapa",
+      humanAction:
+        "O provedor aceitou o turno e não devolveu a resposta dentro do limite. Não houve arquivo para o compilador julgar. Re-tentar esta etapa abre um ciclo novo. A Spec e o escopo da etapa permanecem.",
+    },
+  },
+  {
     match: /SYNTAX ERROR|JSON SYNTAX|CSS SYNTAX|NEXT\.JS APP ROUTER ERROR|PRISMA SCHEMA ERROR|PACKAGE\.JSON ERROR|Falha no Validador Tipo 1/i,
     category: {
       key: "mechanical",
@@ -170,6 +204,27 @@ function errorFingerprint(reason: string): string {
   return reason.replace(/\(\d+,\d+\)|:\d+:\d+/g, "").replace(/\s+/g, " ").trim().slice(0, 300);
 }
 
+/**
+ * Extrai as citações `arquivo:linha` de tentativas anteriores que permaneceram na última tentativa.
+ */
+export function extractRemainingFileLineGaps(attemptsHistory: FailureAttemptRecord[]): string[] {
+  if (attemptsHistory.length < 2) return [];
+  const last = attemptsHistory[attemptsHistory.length - 1];
+  const lastCits = extrairCitacoesArquivoLinha(last.rejectionReason);
+  if (lastCits.length === 0) return [];
+
+  const prevRefs = new Set<string>();
+  for (const prev of attemptsHistory.slice(0, -1)) {
+    for (const cit of extrairCitacoesArquivoLinha(prev.rejectionReason)) {
+      prevRefs.add(cit.referencia);
+    }
+  }
+
+  return lastCits
+    .filter((cit) => prevRefs.has(cit.referencia))
+    .map((cit) => cit.descricaoCompleta || cit.referencia);
+}
+
 export class IncidentReporter {
   /**
    * Compila o relatório markdown de incidente quando a política D-RANHO é acionada.
@@ -191,11 +246,26 @@ export class IncidentReporter {
       attemptsHistory.every((a) => errorFingerprint(a.rejectionReason) === errorFingerprint(last.rejectionReason));
     const affectedFiles = Array.from(new Set(attemptsHistory.flatMap((a) => a.filesScope)));
 
+    const remainingGaps = extractRemainingFileLineGaps(attemptsHistory);
+    const remainingGapNote =
+      remainingGaps.length > 0 ? ` ${construirAvisoLacunaPermanente(remainingGaps)}` : "";
+
+    const semanticFingerprints = attemptsHistory
+      .filter((_, index) => categories[index]?.key === "semantic")
+      .map((attempt) => errorFingerprint(attempt.rejectionReason));
+    const semanticMoved =
+      remainingGaps.length === 0 && semanticFingerprints.length >= 2 && new Set(semanticFingerprints).size > 1;
     const persistenceNote = sameErrorEveryTime
-      ? `⚠️ **O MESMO erro se repetiu em todas as ${attemptsHistory.length} tentativas** — o feedback automático não foi suficiente para o modelo corrigir; repetir sem intervenção vai falhar de novo.`
+      ? `⚠️ **O MESMO erro se repetiu em todas as ${attemptsHistory.length} tentativas** — o feedback automático não foi suficiente para o modelo corrigir; repetir sem intervenção vai falhar de novo.${remainingGapNote}`
       : sameCategoryEveryTime
-        ? `⚠️ Todas as tentativas falharam pela mesma causa (**${lastCategory.label}**), com variações no detalhe.`
-        : `As tentativas falharam por causas diferentes: ${Array.from(new Set(categories.map((c) => c.label))).join("; ")}.`;
+        ? `⚠️ Todas as tentativas falharam pela mesma causa (**${lastCategory.label}**), com variações no detalhe.${remainingGapNote || (semanticMoved ? " A lacuna citada mudou entre as tentativas. A Spec permanece." : "")}`
+        : `As tentativas falharam por causas diferentes: ${Array.from(new Set(categories.map((c) => c.label))).join("; ")}.${remainingGapNote || (semanticMoved ? " Nas auditorias cegas, a lacuna citada mudou entre as tentativas. A Spec permanece." : "")}`;
+    const defaultUnblock =
+      remainingGaps.length > 0
+        ? 'A Spec permanece. Botão: **Re-tentar** (clique em "Desbloquear / Re-tentar Etapa" no painel da DAG — um novo ciclo começa do zero).'
+        : lastCategory.key === "semantic"
+          ? 'A Spec não muda. Clique em "Desbloquear / Re-tentar Etapa" no painel da DAG — um novo ciclo começa do zero.'
+          : 'depois de ajustar, clique em "Desbloquear / Re-tentar Etapa" no painel da DAG — um novo ciclo de tentativas começa do zero.';
 
     const dependentsBlock =
       options.blockedDependents && options.blockedDependents.length > 0
@@ -207,7 +277,7 @@ export class IncidentReporter {
 > **Severidade:** ALTA — ciclo de tentativas automáticas esgotado (${attemptsHistory.length}/${maxAttempts})
 > **Tarefa:** \`${taskId}\` — ${taskTitle}
 > **Cluster Afetado:** \`${cluster}\`
-> **Data de Registro:** ${new Date().toISOString()}
+> **Data de Registro:** ${formatIncidentClock(new Date())}
 
 ---
 
@@ -217,30 +287,35 @@ ${options.dono ? `**Dono:** ${options.dono}\n\n` : ""}**${lastCategory.label}**
 ${persistenceNote}
 
 **Último erro (tentativa ${last?.attemptNumber ?? "-"}):**
-\`\`\`text
-${(last?.rejectionReason || "Falha não especificada.").slice(0, 1500)}
+\`\`\`erro ${last ? formatIncidentClock(last.timestamp) : ""}
+${(last?.rejectionReason || "Falha não especificada.").replace(/```/g, "'''").slice(0, 1500)}
 \`\`\`
 
 ## 2. O que você precisa fazer
 ${lastCategory.humanAction}
 
 - **Arquivos envolvidos:** ${affectedFiles.length ? affectedFiles.map((f) => `\`${f}\``).join(", ") : "_nenhum declarado_"}
-${dependentsBlock}- **Para liberar:** ${options.unblockHint || 'depois de ajustar, clique em "Desbloquear / Re-tentar Etapa" no painel da DAG — um novo ciclo de tentativas começa do zero.'}
+${dependentsBlock}- **Para liberar:** ${options.unblockHint || defaultUnblock}
 
 ## 3. Histórico das tentativas rejeitadas
 
 ${attemptsHistory
-  .map(
-    (att) => `### Tentativa ${att.attemptNumber} — ${classifyFailure(att.rejectionReason).label}
-- **Data/Hora:** ${att.timestamp}
+  .map((att) => {
+    const clock = formatIncidentClock(att.timestamp);
+    const motivo = (att.rejectionReason || "").replace(/```/g, "'''");
+    return `### Tentativa ${att.attemptNumber} — ${classifyFailure(att.rejectionReason).label}
+- **Horário:** ${clock}
 - **Escopo:** \`${att.filesScope.join(", ") || "-"}\`
-- **Motivo:** ${att.rejectionReason}${
-      att.diagnostico
-        ? `\n- **Diagnóstico Jev:** \`${att.diagnostico.causa}\` (confiança: ${(att.diagnostico.confianca * 100).toFixed(0)}%)`
-        : ""
-    }
-`
-  )
+
+\`\`\`erro ${clock}
+${motivo}
+\`\`\`
+${
+  att.diagnostico
+    ? `- **Diagnóstico Jev:** \`${att.diagnostico.causa}\` (confiança: ${(att.diagnostico.confianca * 100).toFixed(0)}%)\n`
+    : ""
+}`;
+  })
   .join("\n")}
 ## 4. Estado do grafo (DAG)
 ${options.placar ? `${options.placar}
