@@ -29,12 +29,14 @@ import {
   renderMicrobriefReparoMarkdown,
   stripExecutorReportBlocks,
   extractAndValidateExecutorReport,
+  stageFileInventoryBlock,
+  stageScopePathBlock,
   type MicrobriefAndReportDocument,
 } from "@/core/templates/artifact-templates";
 import { MAX_PAUSAS_AVALIADOR } from "@/core/orchestrator/phase-machine";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import { QuarantineManager } from "@/core/governance/quarantine-manager";
-import { DualLensAuditor, LLMDispatchFn } from "@/core/governance/dual-lens-auditor";
+import { compilerSilenceErrors, DualLensAuditor, LLMDispatchFn, stripCompilerSilence } from "@/core/governance/dual-lens-auditor";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
@@ -55,9 +57,61 @@ import { ensureProjectBase, npmInstaller, type Installer, type ProjectBaseResult
 import type { Setting, TaskNode } from "@prisma/client";
 import { readRepairPayload, readAcceptancePayload, supersededByRepair, contractBenchRequest } from "@/core/orchestrator/repair-payload";
 import { runTestBench } from "@/core/execution/test-bench";
-import { generateAcceptanceTests } from "@/core/governance/acceptance-tests";
+import { acceptanceFailuresThatCount, generateAcceptanceTests } from "@/core/governance/acceptance-tests";
 import { regeneratePrismaClient, touchesPrismaSchema } from "@/core/execution/project-base";
-import { renderConformance, validateContract, contractStagesForNode, type ContratoProjeto } from "@/core/orchestrator/project-contract";
+import {
+  renderConformance,
+  planContractErrorsFromPayload,
+  contractStagesForNode,
+  resolvePlanStageId,
+  type ContratoProjeto,
+} from "@/core/orchestrator/project-contract";
+import {
+  appendOwnerDependency,
+  decideCitedOwnerReopen,
+  ownerReopenPrompt,
+  parseStageFiles,
+  priorReopensFromPayload,
+  stripOwnerReopenAfterSuccess,
+  withOwnerReopenHold,
+  withOwnerReopenRequest,
+  type StageFileOwner,
+} from "@/core/orchestrator/owner-reopen";
+import {
+  alargarContratoDaSessaoAposEscolha,
+  aplicarReguaMesmaLacuna,
+  buildMensagemConflitoPedidoUnico,
+  carregarSkillPedidoUnico,
+  etapaBloqueadaPorPedidoUnicoSemResolucao,
+  extrairContratoDaSessaoOuPayload,
+  filtrarAuditoriaPorValeContrato,
+  filtrarFalhasAceitePorValeContrato,
+  filtrarMicrobriefPorValeContrato,
+  gravarConflitoPedidoUnicoNoPayload,
+  lerEstadoPedidoUnico,
+  registrarEscolhaPedidoUnico,
+  verificarPedidoUnico,
+} from "@/core/governance/pedido-unico";
+import {
+  escopoMicrobriefAindaImpede,
+  gravarEscopoMicrobriefNoPayload,
+  mensagemEscopoMicrobriefIncompleto,
+  stripEscopoMicrobriefAposConclusao,
+  verificarEscopoMicrobrief,
+} from "@/core/governance/microbrief-escopo";
+import { resolveRealInside } from "@/core/governance/quarantine-manager";
+
+export {
+  alargarContratoDaSessaoAposEscolha,
+  aplicarReguaMesmaLacuna,
+  registrarEscolhaPedidoUnico,
+  verificarPedidoUnico,
+};
+
+let pedidoUnicoSkillsRootOverrideForTests: string | null = null;
+export function setPedidoUnicoSkillsRootForTests(root: string | null): void {
+  pedidoUnicoSkillsRootOverrideForTests = root;
+}
 
 /**
  * Aviso para a mensagem de conclusão quando nada foi compilado de verdade: o portão empírico
@@ -122,7 +176,7 @@ export function appendFailureAttempt(existingHistoryJson: string | null | undefi
 export async function cascadeBlockedNodes(sessionId: string): Promise<string[]> {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { specVersion: true },
+    select: { specVersion: true, canonicalSpec: true },
   });
   const currentSpecVersion = session?.specVersion ?? 0;
   const sessionTasks = await prisma.taskNode.findMany({
@@ -134,7 +188,14 @@ export async function cascadeBlockedNodes(sessionId: string): Promise<string[]> 
       id: t.id,
       title: t.title,
       role: t.role,
-      status: t.status as DAGNode["status"],
+      // Pedido único e microbrief incompleto param a etapa sem cascatear quem tem falha própria.
+      status: (
+        t.status === "blocked" &&
+        (etapaBloqueadaPorPedidoUnicoSemResolucao(t, session?.canonicalSpec) ||
+          escopoMicrobriefAindaImpede(t))
+          ? "pending"
+          : t.status
+      ) as DAGNode["status"],
       dependencies: (JSON.parse(t.dependencies || "[]") as string[]).filter((depId) => knownIds.has(depId)),
       attempts: t.attempts,
       maxAttempts: t.maxAttempts,
@@ -153,7 +214,7 @@ export async function cascadeBlockedNodes(sessionId: string): Promise<string[]> 
 export async function reportBlockedNodeToHuman(sessionId: string, nodeId: string): Promise<void> {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
-    select: { specVersion: true },
+    select: { specVersion: true, canonicalSpec: true },
   });
   const currentSpecVersion = session?.specVersion ?? 0;
   const sessionTasks = await prisma.taskNode.findMany({
@@ -161,6 +222,8 @@ export async function reportBlockedNodeToHuman(sessionId: string, nodeId: string
   });
   const node = sessionTasks.find((t) => t.id === nodeId);
   if (!node) return;
+  if (etapaBloqueadaPorPedidoUnicoSemResolucao(node, session?.canonicalSpec)) return;
+  if (escopoMicrobriefAindaImpede(node)) return;
 
   const blockedDependents: string[] = [];
   const seen = new Set([nodeId]);
@@ -573,8 +636,6 @@ export function makeBlindAuditDispatchFn(
         const res = await smartRouter.dispatchWithFallback({
           messages,
           tier: "fast",
-          omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-          omniRouteKey: readSecret(setting?.omniRouteKey),
           stream: false,
           signal: AbortSignal.timeout(Number(process.env.BLIND_AUDIT_TIMEOUT_MS) || 30000),
         });
@@ -730,8 +791,13 @@ export async function buildDependencyContext(
   let used = 0;
   const blocks: string[] = [];
   for (const f of files) {
-    const abs = path.join(projectRoot, f);
-    if (!fs.existsSync(abs)) continue;
+    let abs: string;
+    try {
+      abs = resolveRealInside(projectRoot, f);
+    } catch {
+      continue;
+    }
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
     const content = fs.readFileSync(abs, "utf8");
     // Um arquivo grande não pode esconder os menores que vêm depois dele.
     if (used + content.length > MAX_TOTAL) continue;
@@ -769,7 +835,12 @@ export function buildExecutorFixedContext(
     if (seen.has(f)) continue;
     seen.add(f);
     if (alreadyIncluded?.includes(`--- ${f} ---`)) continue;
-    const abs = path.join(projectRoot, f);
+    let abs: string;
+    try {
+      abs = resolveRealInside(projectRoot, f);
+    } catch {
+      continue;
+    }
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
     let content = fs.readFileSync(abs, "utf8");
     if (content.length > FIXED_CONTEXT_MAX_FILE_CHARS) {
@@ -1026,6 +1097,40 @@ export async function executeTaskNode(
     };
   }
 
+  // O contrato é do plano inteiro. Falha aqui não é sintaxe dos arquivos desta etapa:
+  // chamar o executor só repetiria o mesmo erro e bloquearia a DAG em cascata.
+  const planContractErrors = planContractErrorsFromPayload(taskDb.payload);
+  if (planContractErrors.length > 0) {
+    const reverted = await prisma.taskNode.update({
+      where: { id: taskDb.id },
+      data: { status: "pending" },
+    });
+    const lista = planContractErrors.slice(0, 8).map((e) => `- ${e}`).join("\n");
+    await applyPhaseEvent(taskDb.sessionId, { type: "CONTRATO_PLANO_INVALIDO" }, {
+      detalheAviso:
+        `A etapa "${taskDb.title}" não chamou o executor. Nenhuma tentativa foi gasta e as outras etapas continuam pendentes.\n\n` +
+        "O contrato do plano não fecha com os ids das etapas. Não é defeito dos arquivos desta etapa.\n\n" +
+        lista,
+    });
+    TelemetryLogger.log({
+      sessionId: taskDb.sessionId,
+      action: "CONTRACT_PLAN_BLOCK",
+      details: {
+        nodeId: taskDb.id,
+        title: taskDb.title,
+        errors: planContractErrors.slice(0, 10),
+        attemptsPreserved: taskDb.attempts,
+      },
+    });
+    return {
+      success: false,
+      claimed: true,
+      executedTask: reverted,
+      finalStatus: "paused",
+      promotionTarget: null,
+    };
+  }
+
   let projectContextBlock = "";
   if (taskDb.session.project && taskDb.session.project.path) {
     projectContextBlock = buildProjectContextBlock(taskDb.session.project) || "";
@@ -1073,16 +1178,202 @@ export async function executeTaskNode(
 
   const policy = loadOrchestrationPolicy();
   const nodePayload = readNodePayload(taskDb.payload);
-  const nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
+  let nodeMicrobrief = readNodeMicrobrief(taskDb.payload);
+  let camposIgnoradosPorValeContrato: string[] = [];
+
+  // Fatia 1 — Porteiro "pedido único" antes de generateAcceptanceTests e antes do laço do executor.
+  // Se a skill `pedido-unico` não carregar, a etapa não executa.
+  try {
+    carregarSkillPedidoUnico(pedidoUnicoSkillsRootOverrideForTests ?? process.cwd());
+  } catch (skillErr) {
+    const blockedByMissingSkill = await prisma.taskNode.update({
+      where: { id: taskDb.id },
+      data: {
+        status: "blocked",
+        attempts: taskDb.attempts,
+        result: JSON.stringify({
+          success: false,
+          nodeId: taskDb.id,
+          title: taskDb.title,
+          erro: "SKILL_PEDIDO_UNICO_INVALIDA",
+          rejectionReason: String(skillErr),
+        }),
+      },
+    });
+    TelemetryLogger.log({
+      sessionId: taskDb.sessionId,
+      action: "PEDIDO_UNICO_SKILL_ERROR",
+      details: { nodeId: taskDb.id, error: String(skillErr) },
+    });
+    return {
+      success: false,
+      claimed: true,
+      executedTask: blockedByMissingSkill,
+      finalStatus: "blocked",
+      promotionTarget: null,
+    };
+  }
+
+  if (nodeMicrobrief) {
+    const contratoTextoEtapa = extrairContratoDaSessaoOuPayload(taskDb.payload, taskDb.session.canonicalSpec);
+    const checkPedido = verificarPedidoUnico(contratoTextoEtapa, nodeMicrobrief.criteriosAceitePorReq, {
+      tituloEtapa: taskDb.title,
+    });
+    const estadoPedidoUnico = lerEstadoPedidoUnico(taskDb.payload);
+
+    if (!checkPedido.coerente) {
+      if (estadoPedidoUnico?.decisaoNormalizada === "vale_contrato") {
+        // Vale o contrato: o critério continua no registro (payload no banco), mas sai do pedido desta etapa.
+        camposIgnoradosPorValeContrato = checkPedido.camposFaltantes;
+        nodeMicrobrief = filtrarMicrobriefPorValeContrato(
+          nodeMicrobrief,
+          checkPedido.camposFaltantes,
+          checkPedido.camposRetornoContrato
+        );
+      } else {
+        // Conflito sem escolha (ou "vale o critério" enquanto o contrato guardado na sessão ainda não nomeia os campos):
+        // não chama o executor, não gasta tentativa, não cascateia dependentes e publica mensagem com uma decisão só.
+        const decisaoAtual =
+          estadoPedidoUnico?.decisao && estadoPedidoUnico?.decisaoNormalizada
+            ? { rotulo: estadoPedidoUnico.decisao, normalizada: estadoPedidoUnico.decisaoNormalizada }
+            : null;
+        const payloadComConflito = gravarConflitoPedidoUnicoNoPayload(taskDb.payload, checkPedido, decisaoAtual);
+        const mensagemDecisao =
+          checkPedido.mensagemDecisao ||
+          buildMensagemConflitoPedidoUnico(
+            taskDb.title,
+            checkPedido.camposRetornoContrato,
+            checkPedido.camposFaltantes
+          );
+
+        const blockedByConflict = await prisma.taskNode.update({
+          where: { id: taskDb.id },
+          data: {
+            status: "blocked",
+            attempts: taskDb.attempts,
+            payload: payloadComConflito,
+            result: JSON.stringify({
+              success: false,
+              nodeId: taskDb.id,
+              title: taskDb.title,
+              erro: "CONFLITO_PEDIDO_UNICO",
+              pedidoUnicoAguardandoDecisao: true,
+              conflito: checkPedido.conflito,
+              camposRetornoContrato: checkPedido.camposRetornoContrato,
+              camposFaltantes: checkPedido.camposFaltantes,
+              decisao: decisaoAtual?.rotulo ?? null,
+              opcoes: ["vale o contrato", "vale o critério"],
+              rejectionReason: mensagemDecisao,
+            }),
+          },
+        });
+
+        await prisma.message.create({
+          data: {
+            sessionId: taskDb.sessionId,
+            role: "assistant",
+            content: mensagemDecisao,
+          },
+        });
+
+        TelemetryLogger.log({
+          sessionId: taskDb.sessionId,
+          action: "PEDIDO_UNICO_CONFLICT_BLOCK",
+          details: {
+            nodeId: taskDb.id,
+            title: taskDb.title,
+            camposRetornoContrato: checkPedido.camposRetornoContrato,
+            camposFaltantes: checkPedido.camposFaltantes,
+            decisao: decisaoAtual?.rotulo ?? null,
+            attemptsPreserved: taskDb.attempts,
+          },
+        });
+
+        return {
+          success: false,
+          claimed: true,
+          executedTask: blockedByConflict,
+          finalStatus: "blocked",
+          promotionTarget: null,
+        };
+      }
+    }
+  }
+
+  // Arquivo exato e símbolo produzido: antes de generateAcceptanceTests e antes do executor.
+  // Não gasta tentativa, não cascateia etapa com falha própria e não abre segunda escolha.
+  if (nodeMicrobrief) {
+    const escopo = verificarEscopoMicrobrief(nodeMicrobrief);
+    if (!escopo.coerente) {
+      const mensagem = mensagemEscopoMicrobriefIncompleto(taskDb.title, escopo);
+      const payloadComMarca = gravarEscopoMicrobriefNoPayload(taskDb.payload, escopo);
+      const blockedByScope = await prisma.taskNode.update({
+        where: { id: taskDb.id },
+        data: {
+          status: "blocked",
+          attempts: taskDb.attempts,
+          payload: payloadComMarca,
+          result: JSON.stringify({
+            success: false,
+            nodeId: taskDb.id,
+            title: taskDb.title,
+            erro: "ESCOPO_MICROBRIEF_INCOMPLETO",
+            escopoMicrobriefIncompleto: true,
+            arquivosForaDoMicrobrief: escopo.arquivosForaDoMicrobrief,
+            simbolosForaDoMicrobrief: escopo.simbolosForaDoMicrobrief,
+            semArquivoDeEscrita: escopo.semArquivoDeEscrita,
+            rejectionReason: mensagem,
+          }),
+        },
+      });
+      await prisma.message.create({
+        data: {
+          sessionId: taskDb.sessionId,
+          role: "assistant",
+          content: mensagem,
+        },
+      });
+      TelemetryLogger.log({
+        sessionId: taskDb.sessionId,
+        action: "ESCOPO_MICROBRIEF_INCOMPLETO",
+        details: {
+          nodeId: taskDb.id,
+          title: taskDb.title,
+          arquivosFora: escopo.arquivosForaDoMicrobrief,
+          simbolosFora: escopo.simbolosForaDoMicrobrief,
+          semArquivoDeEscrita: escopo.semArquivoDeEscrita,
+          attemptsPreserved: taskDb.attempts,
+        },
+      });
+      return {
+        success: false,
+        claimed: true,
+        executedTask: blockedByScope,
+        finalStatus: "blocked",
+        promotionTarget: null,
+      };
+    }
+  }
+
   const policyExecutorMode: ExecutorMode = policy.execucao?.modoExecutor ?? "laco";
   const effectiveExecutorMode: ExecutorMode = executorModeOverrideForTests ?? policyExecutorMode;
   const useToolLoop = Boolean(effectiveExecutorMode === "laco" && nodeMicrobrief && loadedExecutorSkill);
+  const promptScopePaths: string[] = (() => {
+    try {
+      const parsed = JSON.parse(taskDb.filesScope || "[]");
+      return Array.isArray(parsed) ? parsed.filter((f): f is string => typeof f === "string") : [];
+    } catch {
+      return [];
+    }
+  })();
+  const promptScopeExample = promptScopePaths[0] || "caminho/do/arquivo.ext";
 
   const autonomousWorkerPrompt = useToolLoop
     ? `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
 DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Escopo de arquivos desta etapa: ${taskDb.filesScope || "[]"}. Grave cada arquivo na quarentena usando a ferramenta \`write_file\` (ou \`edit_file\`), confira a compilação com \`run_check\` (\`{"comando": "typecheck"}\`) e encerre com \`finish\` passando o YAML de \`relatorio_executor\` listando cada requisito (REQ) desta etapa com o arquivo do escopo e as linhas reais (1-indexadas).
+${stageScopePathBlock(promptScopePaths)}
 Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou\`, \`testes\`, \`arquivos_alterados\`) NÃO vêm do modelo: o harness carimba com \`stampHarnessMeasuredFields\`.
 3. Não inclua discursos sobre governança, desculpas ou cabeçalhos robóticos. Em cada turno, responda com UM bloco \`\`\`json acao (uma ação ou uma lista de ações independentes).${executorSkillInstructions}\n\n${buildExecutorToolProtocolPrompt()}`
     : `Você é um Engenheiro de Software Sênior (${taskDb.role} / cluster ${resolvedCluster}) responsável pela etapa "${taskDb.title}".
@@ -1090,15 +1381,16 @@ DIRETRIZES DE EXECUÇÃO:
 1. Execute a tarefa de forma 100% autônoma e completa. NUNCA faça perguntas ou solicite confirmações.
 2. Para cada arquivo no escopo (${taskDb.filesScope || "[]"}), você DEVE OBRIGATORIAMENTE retornar o código-fonte completo em blocos de código formatados com a indicação do arquivo no topo:
 \`\`\`typescript
-// file: caminho/relativo/do/arquivo.ts
+// file: ${promptScopeExample}
 <código completo aqui>
 \`\`\`
+${stageScopePathBlock(promptScopePaths)}
 3. Depois dos blocos de código, escreva UM bloco \`relatorio_executor\` listando cada requisito (REQ) desta etapa com o arquivo do escopo e as linhas reais (1-indexadas):
 \`\`\`yaml relatorio_executor
 reqs:
   - id: REQ-001
     status: atendido
-    arquivo_linha: "src/lib/x.ts:10-25"
+    arquivo_linha: "${promptScopeExample}:1-1"
     como: "uma frase"
 \`\`\`
 Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou\`, \`testes\`, \`arquivos_alterados\`) NÃO vêm do modelo: o harness carimba com \`stampHarnessMeasuredFields\`.
@@ -1108,6 +1400,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     { role: "system", content: autonomousWorkerPrompt },
   ];
   if (projectContextBlock) dispatchMessages.push({ role: "system", content: projectContextBlock });
+  const reopenBrief = ownerReopenPrompt(taskDb.payload);
+  if (reopenBrief) dispatchMessages.push({ role: "user", content: reopenBrief });
   if (skillInstructionBlock) {
     dispatchMessages.push({ role: skillInstructionUntrusted ? "user" : "system", content: skillInstructionBlock });
   }
@@ -1370,8 +1664,6 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         groqKey: readSecret((setting as any)?.groqKey),
         nvidiaKey: readSecret((setting as any)?.nvidiaKey),
         deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
       },
     });
 
@@ -1434,8 +1726,6 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             groqKey: readSecret((setting as any)?.groqKey),
             nvidiaKey: readSecret((setting as any)?.nvidiaKey),
             deepseekKey: readSecret((setting as any)?.deepseekKey),
-            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-            omniRouteKey: readSecret(setting?.omniRouteKey),
             stream: false,
             signal: stepSignal,
           });
@@ -1570,6 +1860,9 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
   let evaluatorErrorFreeRetry = false;
   let failureRouteDono: string | undefined;
   let blockedByHarnessRule = false;
+  let holdForOwner = false;
+  let holdPayload: string | undefined;
+  let holdDependencies: string | undefined;
   let newFailureHistory: string | undefined;
   let evaluatorSkillUsed = `avaliador-${resolvedCluster}`;
 
@@ -1622,32 +1915,54 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       taskDb.id.replace(/-v\d+$/, "");
     let effectiveScope = [...filesScopeArr];
     if (stageContrato && stageEtapaId) {
-      const conformanceRelPath = `src/contracts/conformidade/${stageEtapaId}.ts`;
-      const conformanceContent = renderConformance(stageContrato, stageEtapaId);
-      qm.writeFile(taskDb.id, conformanceRelPath, conformanceContent);
-      if (!effectiveScope.includes(conformanceRelPath)) {
-        effectiveScope.push(conformanceRelPath);
-      }
-      // A1 (D-M1/D-M2/D-M3): validação mecânica do contrato contra a etapa atual.
-      // Violação de contrato = defeito crítico antes do portão empírico.
       let planoStages: unknown;
       try {
         planoStages = JSON.parse(taskDb.payload || "{}").planoStages;
       } catch {
         planoStages = undefined;
       }
-      const contractStages = contractStagesForNode(stageContrato, stageEtapaId, effectiveScope, planoStages);
-      const contractErrors = validateContract(stageContrato, contractStages);
-      if (contractErrors.length > 0) {
-        TelemetryLogger.log({
-          sessionId: taskDb.sessionId,
-          action: "CONTRACT_VALIDATION_FAILED",
-          details: { nodeId: taskDb.id, etapaId: stageEtapaId, errors: contractErrors.slice(0, 10) },
-        });
-        type1Res.passed = false;
-        type1Res.compilationErrors.push(
-          `[CONTRATO] Violação do contrato TypeScript (${contractErrors.length} erro(s)): ${contractErrors[0]}`
-        );
+      const aligned = contractStagesForNode(stageContrato, stageEtapaId, effectiveScope, planoStages);
+      const etapaConformidade = resolvePlanStageId(stageEtapaId, aligned);
+      const conformanceRelPath = `src/contracts/conformidade/${etapaConformidade}.ts`;
+      const conformanceContent = renderConformance(stageContrato, etapaConformidade);
+      qm.writeFile(taskDb.id, conformanceRelPath, conformanceContent);
+      if (!effectiveScope.includes(conformanceRelPath)) {
+        effectiveScope.push(conformanceRelPath);
+      }
+    }
+
+    const silenceHits = type1Res.compilationErrors.filter((error) => error.startsWith("[SILENCIO]"));
+    if (silenceHits.length > 0 && !secretGuardRes.blocked && taskDb.session.project?.path) {
+      const originals = new Map<string, string>();
+      try {
+        for (const [filePath, content] of Object.entries(codeContentMap)) {
+          if (compilerSilenceErrors(filePath, content).length === 0) continue;
+          originals.set(filePath, content);
+          qm.writeFile(taskDb.id, filePath, stripCompilerSilence(content));
+        }
+        if (originals.size > 0) {
+          const revealed = await promoteWithEmpiricalGate(qm, taskDb.id, targetProjectRoot, effectiveScope, { checkOnly: true });
+          const hidden = (revealed.newErrors ?? []).map((line) => line.trim()).filter(Boolean).slice(0, 8);
+          if (!revealed.passed && revealed.failureLine && !hidden.includes(revealed.failureLine.trim())) {
+            hidden.unshift(revealed.failureLine.trim());
+          }
+          if (hidden.length > 0) {
+            for (const line of hidden.slice(0, 8)) type1Res.compilationErrors.push(`[ESCONDIDO] ${line}`);
+          } else if (revealed.passed) {
+            type1Res.compilationErrors.push(
+              "[ESCONDIDO] sem o silêncio, o type-check do projeto passou. Remova o silêncio e mantenha esse código."
+            );
+          }
+          TelemetryLogger.log({
+            sessionId: taskDb.sessionId,
+            action: "SILENCIO_REVELADO",
+            details: { nodeId: taskDb.id, attempt: newAttempts, escondidos: hidden.slice(0, 8), passou: revealed.passed },
+          });
+        }
+      } catch (err) {
+        type1Res.compilationErrors.push(`[ESCONDIDO] não foi possível medir o erro sob o silêncio: ${String(err).slice(0, 200)}`);
+      } finally {
+        for (const [filePath, content] of originals) qm.writeFile(taskDb.id, filePath, content);
       }
     }
 
@@ -1694,12 +2009,7 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         });
         reportRetriesUsed += 1;
 
-        const fileLineSummary = Object.entries(codeContentMap)
-          .map(([f, c]) => {
-            const total = c.split(/\r?\n/).length;
-            return `- ${f}: ${total} linha(s) (intervalo válido: 1-${total})`;
-          })
-          .join("\n");
+        const fileLineSummary = stageFileInventoryBlock(codeContentMap);
         const retryMessages: DispatchMessage[] = [
           {
             role: "system",
@@ -1750,8 +2060,6 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
                 groqKey: readSecret((setting as any)?.groqKey),
                 nvidiaKey: readSecret((setting as any)?.nvidiaKey),
                 deepseekKey: readSecret((setting as any)?.deepseekKey),
-                omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-                omniRouteKey: readSecret(setting?.omniRouteKey),
                 stream: false,
                 signal: retrySignal,
               }));
@@ -1834,7 +2142,27 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             ...contractAntes.files.filter((f) => f.loadError).map((f) => ({ file: f.file, txt: `${f.file} não carregou: ${f.loadError}` })),
             ...contractAntes.cases.filter((c) => c.status === "failed").map((c) => ({ file: c.file, txt: `${c.file} › ${c.name}: ${c.failure ?? ""}` })),
           ];
-          const falhasAceiteAntes = todasAntes.filter((f) => acceptancePathsAntes.has(f.file)).map((f) => f.txt);
+          const aceiteAntes = acceptanceFailuresThatCount(
+            todasAntes.filter((f) => acceptancePathsAntes.has(f.file)),
+            acceptance?.testes ?? []
+          );
+          if (aceiteAntes.descartados.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "ACCEPTANCE_TEST_DISCARDED",
+              details: {
+                nodeId: taskDb.id,
+                quando: "antes_do_avaliador",
+                falhas: aceiteAntes.descartados.map((f) => f.txt.slice(0, 300)),
+              },
+            });
+          }
+          const aceiteAntesFiltrado = filtrarFalhasAceitePorValeContrato(
+            aceiteAntes.contar,
+            acceptance?.testes ?? [],
+            camposIgnoradosPorValeContrato
+          );
+          const falhasAceiteAntes = aceiteAntesFiltrado.contar.map((f) => f.txt);
           const falhasOutrosAntes = todasAntes.filter((f) => !acceptancePathsAntes.has(f.file)).map((f) => f.txt);
           const falhasAntes = [
             ...falhasOutrosAntes.map((f) => `teste do contrato ainda falha — ${f}`),
@@ -1870,12 +2198,29 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       }
     }
 
+    let prevResultForGapCheck: {
+      rejectionReason?: string;
+      problemas?: Array<{ severidade?: string; arquivoLinha?: string; descricao?: string }>;
+      codigoTentativa?: Record<string, string>;
+    } | null = null;
+    if ((taskDb.attempts || 0) > 0 && taskDb.result) {
+      try {
+        prevResultForGapCheck = JSON.parse(taskDb.result);
+      } catch {
+        prevResultForGapCheck = null;
+      }
+    }
+
+    const effectiveBriefMarkdown = nodeMicrobrief
+      ? renderMicrobriefMarkdown(nodeMicrobrief, { titulo: taskDb.title, spec: nodePayload.goal })
+      : buildBriefMarkdown(taskDb);
+
     const blindAuditDispatch = makeBlindAuditDispatchFn(smartRouter, setting, taskDb.sessionId, taskDb.id, actualExecutorFamily);
     const type2Res = await DualLensAuditor.validateType2(
       type1Res,
       // O avaliador também vê o código real das dependências (só leitura), para conferir chamadas,
       // formatos de resposta e tipos entre etapas (ex.: a tela lê o campo de erro que a API devolve).
-      buildBriefMarkdown(taskDb) +
+      effectiveBriefMarkdown +
         (dependencyBlock
           ? "\n\n## Contratos das dependências (somente leitura — já aprovados; NÃO são pendência desta etapa, " +
             "mas o código desta etapa deve usá-los corretamente)\n" +
@@ -1895,6 +2240,10 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         contrato: stageContrato,
         contratosProduz: nodeMicrobrief?.interfacesProduz,
         contratosConsome: nodeMicrobrief?.interfacesConsome,
+        camposIgnoradosPorValeContrato,
+        rejeicaoAnterior: prevResultForGapCheck?.rejectionReason ?? null,
+        problemasAnteriores: prevResultForGapCheck?.problemas ?? null,
+        codigoAnterior: prevResultForGapCheck?.codigoTentativa ?? null,
       }
     );
     if (type2Res.skillUsed) {
@@ -2068,7 +2417,23 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
             ...contract.files.filter((f) => f.loadError).map((f) => ({ file: f.file, txt: `${f.file} não carregou: ${f.loadError}` })),
             ...contract.cases.filter((c) => c.status === "failed").map((c) => ({ file: c.file, txt: `${c.file} › ${c.name}: ${c.failure ?? ""}` })),
           ];
-          const falhasAceite = todas.filter((f) => acceptancePaths.has(f.file)).map((f) => f.txt);
+          const aceiteGate = acceptanceFailuresThatCount(
+            todas.filter((f) => acceptancePaths.has(f.file)),
+            acceptance?.testes ?? []
+          );
+          if (aceiteGate.descartados.length) {
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "ACCEPTANCE_TEST_DISCARDED",
+              details: { nodeId: taskDb.id, falhas: aceiteGate.descartados.map((f) => f.txt.slice(0, 300)) },
+            });
+          }
+          const aceiteGateFiltrado = filtrarFalhasAceitePorValeContrato(
+            aceiteGate.contar,
+            acceptance?.testes ?? [],
+            camposIgnoradosPorValeContrato
+          );
+          const falhasAceite = aceiteGateFiltrado.contar.map((f) => f.txt);
           let falhas = todas.filter((f) => !acceptancePaths.has(f.file)).map((f) => f.txt);
           if (falhasAceite.length) {
             TelemetryLogger.log({
@@ -2142,12 +2507,29 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
         (extraErrors.length ? `\nOutros erros do compilador:\n${extraErrors.map((e) => `- ${e}`).join("\n")}` : "")
       : undefined;
 
-    const rejectionReason =
+    const baseRejectionReason =
       (secretGuardRes.blocked ? secretGuardRes.rejectionReasons.join("\n") : undefined) ||
       empiricalFailureReason ||
       (type2Res.verdict !== "APPROVED"
         ? type2Res.rejectionReason || "Divergência semântica."
         : undefined);
+
+    const reguaMesmaLacunaFinal =
+      baseRejectionReason && prevResultForGapCheck?.codigoTentativa
+        ? aplicarReguaMesmaLacuna({
+            rejeicaoAnterior: prevResultForGapCheck.rejectionReason,
+            problemasAnteriores: prevResultForGapCheck.problemas,
+            codigoAnterior: prevResultForGapCheck.codigoTentativa,
+            codigoNovo: codeContentMap,
+            rejeicaoNova: baseRejectionReason,
+            problemasNovos: type2Res.problemas,
+          })
+        : null;
+
+    const rejectionReason = reguaMesmaLacunaFinal?.rejeicaoFinal ?? baseRejectionReason;
+    if (reguaMesmaLacunaFinal?.forcarRejeicao) {
+      type2Res.problemas = reguaMesmaLacunaFinal.problemasFinais;
+    }
 
     let jevDiagnostico: JevFailureDiagnosis | null = null;
     if (finalStatus === "failed" && !evaluatorOutageFreeRetry && !secretGuardRes.blocked) {
@@ -2274,8 +2656,87 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       });
     }
 
+    // Arquivo citado na rejeição crítica pertence a uma única etapa já concluída:
+    // ela volta à fila uma vez e esta tentativa não conta. A mesma cita de novo segue o ciclo.
+    if (
+      (finalStatus === "failed" || finalStatus === "blocked") &&
+      rejectionReason &&
+      !evaluatorOutageFreeRetry &&
+      !blockedByAmbiguousSpec &&
+      !blockedByPlanError &&
+      !blockedByHarnessRule &&
+      !secretGuardRes.blocked
+    ) {
+      try {
+        const siblings = await prisma.taskNode.findMany({
+          where: { sessionId: taskDb.sessionId, specVersion: taskDb.specVersion },
+          select: { id: true, title: true, status: true, filesScope: true, payload: true },
+        });
+        const stages: StageFileOwner[] = siblings.map((stage) => ({
+          id: stage.id,
+          title: stage.title,
+          status: stage.status,
+          files: parseStageFiles(stage.filesScope),
+        }));
+        const decision = decideCitedOwnerReopen({
+          rejection: rejectionReason,
+          thisStageId: taskDb.id,
+          thisFiles: filesScopeArr,
+          stages,
+          priorReopens: priorReopensFromPayload(taskDb.payload),
+        });
+        if (decision.kind === "reopen") {
+          const owner = siblings.find((stage) => stage.id === decision.ownerId);
+          const ownerPayload = owner ? withOwnerReopenRequest(owner.payload, {
+            fromStageId: taskDb.id,
+            fromStageTitle: taskDb.title,
+            citedFiles: decision.citedFiles,
+            defectKey: decision.defectKey,
+            defectText: decision.defectText,
+          }) : null;
+          const fresh = await prisma.taskNode.findUnique({
+            where: { id: taskDb.id },
+            select: { payload: true, dependencies: true },
+          });
+          const waiterPayload = withOwnerReopenHold(fresh?.payload ?? taskDb.payload, decision);
+          if (owner && ownerPayload && waiterPayload) {
+            await prisma.taskNode.update({
+              where: { id: owner.id },
+              data: { status: "pending", attempts: 0, payload: ownerPayload },
+            });
+            holdForOwner = true;
+            finalStatus = "failed";
+            holdPayload = waiterPayload;
+            holdDependencies = appendOwnerDependency(fresh?.dependencies ?? taskDb.dependencies, owner.id);
+            await prisma.message.create({
+              data: {
+                sessionId: taskDb.sessionId,
+                role: "assistant",
+                content:
+                  `Etapa "${taskDb.title}" espera "${owner.title}". ` +
+                  `O defeito crítico cita ${decision.citedFiles.join(", ")}, arquivo dessa etapa. ` +
+                  `Ela volta à fila uma vez. Nenhuma tentativa foi gasta aqui.`,
+              },
+            });
+            TelemetryLogger.log({
+              sessionId: taskDb.sessionId,
+              action: "OWNER_STAGE_REOPENED",
+              details: {
+                nodeId: taskDb.id,
+                ownerId: owner.id,
+                citedFiles: decision.citedFiles,
+                defectKey: decision.defectKey,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("[OWNER_REOPEN]", err);
+      }
+    }
+
     let incidentReportMarkdown: string | undefined;
-    if (finalStatus === "failed" || finalStatus === "blocked") {
+    if ((finalStatus === "failed" || finalStatus === "blocked") && !holdForOwner) {
       newFailureHistory = appendFailureAttempt(taskDb.failureHistory, {
         attemptNumber: newAttempts,
         rejectionReason: rejectionReason || "Falha não especificada.",
@@ -2370,8 +2831,8 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
       jevEvidencia: jevEvidencia ?? undefined,
       incidentReport: incidentReportMarkdown,
       codigoTentativa:
-        finalStatus !== "completed" && loopCodeContentMap && !secretGuardRes.blocked
-          ? pickAttemptCodeToKeep(loopCodeContentMap)
+        finalStatus !== "completed" && (loopCodeContentMap ?? codeContentMap) && !secretGuardRes.blocked
+          ? pickAttemptCodeToKeep((loopCodeContentMap ?? codeContentMap)!)
           : undefined,
     };
   } catch (err) {
@@ -2409,23 +2870,39 @@ Use \`status: atendido | parcial | nao_atendido\`. Os campos medidos (\`compilou
     !blockedByAmbiguousSpec &&
     !planErrorSkipAttempt &&
     !evaluatorErrorFreeRetry &&
-    !blockedByHarnessRule
+    !blockedByHarnessRule &&
+    !holdForOwner
       ? newAttempts
       : taskDb.attempts;
+
+  let successPayload: string | undefined;
+  if (finalStatus === "completed") {
+    const fresh = await prisma.taskNode.findUnique({
+      where: { id: taskDb.id },
+      select: { payload: true },
+    });
+    const semDono = stripOwnerReopenAfterSuccess(fresh?.payload ?? taskDb.payload);
+    const baseDoEscopo = semDono ?? fresh?.payload ?? taskDb.payload;
+    const semEscopo = stripEscopoMicrobriefAposConclusao(baseDoEscopo);
+    successPayload = semEscopo ?? semDono;
+  }
 
   const updatedTask = await prisma.taskNode.update({
     where: { id: taskDb.id },
     data: {
-      status: finalStatus,
+      status: holdForOwner ? "pending" : finalStatus,
       attempts: updatedAttempts,
       result: JSON.stringify(mcpRes),
       ...(newFailureHistory ? { failureHistory: newFailureHistory } : {}),
+      ...(holdForOwner && holdPayload ? { payload: holdPayload } : {}),
+      ...(holdForOwner && holdDependencies ? { dependencies: holdDependencies } : {}),
+      ...(successPayload !== undefined ? { payload: successPayload } : {}),
     },
   });
 
   TelemetryLogger.log({
     sessionId: taskDb.sessionId,
-    action: `NODE_EXECUTION_${finalStatus.toUpperCase()}`,
+    action: `NODE_EXECUTION_${(holdForOwner ? "pending" : finalStatus).toUpperCase()}`,
     details: {
       nodeId: taskDb.id,
       title: taskDb.title,

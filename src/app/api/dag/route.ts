@@ -16,9 +16,22 @@ import {
 } from "@/core/orchestrator/job-queue";
 import { getProcessWorkerId } from "@/core/orchestrator/job-worker";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
-import { resumeBlockedSession, reopenDeliveredSession, authorizeRepairRound } from "@/core/orchestrator/session-resume";
+import {
+  resumeBlockedSession,
+  reopenDeliveredSession,
+  authorizeRepairRound,
+  aplicarEscolhaHumanaPedidoUnico,
+} from "@/core/orchestrator/session-resume";
 import type { SessionQueueResult } from "@/core/orchestrator/session-queue";
 import { getSessionBudget, BUDGET_AUTHORIZED_ACTION } from "@/core/orchestrator/budget-guard";
+import { parseSessionPhaseContext } from "@/core/orchestrator/session-phase";
+import { sessionNeedsHumanIntervention } from "@/lib/session-intervention";
+import { healStuckSpecApprovalFlag, specEffectivelyApproved } from "@/core/orchestrator/spec-trava-t1";
+import {
+  marcarEscolhaPedidoUnicoNoPainel,
+  reconciliarPedidoUnicoObsoletoNasTarefas,
+  registroPossuiMarcaPedidoUnicoObsoleta,
+} from "@/core/governance/pedido-unico";
 
 export async function GET(request: Request) {
   // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
@@ -28,9 +41,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get("sessionId");
-
-    // Limpa mensagens técnicas legadas do tipo 'system' para garantir chat limpo
-    await prisma.message.deleteMany({ where: { role: "system" } }).catch(() => {});
 
     if (sessionId) {
       const session = await prisma.session.findUnique({
@@ -53,13 +63,44 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
       }
 
-      const activeTasks = session.tasks.filter((t) => t.specVersion === session.specVersion);
+      const tasksVersaoAtual = session.tasks.filter((t) => t.specVersion === session.specVersion);
+      const tarefasComMarcaObsoleta = tasksVersaoAtual.filter((t) =>
+        registroPossuiMarcaPedidoUnicoObsoleta(t)
+      );
+      if (tarefasComMarcaObsoleta.length > 0) {
+        await reconciliarPedidoUnicoObsoletoNasTarefas(tarefasComMarcaObsoleta, session.canonicalSpec);
+      }
+      const tasksAtualizadas =
+        tasksVersaoAtual.length > 0
+          ? await prisma.taskNode.findMany({
+              where: { sessionId: session.id, specVersion: session.specVersion },
+              orderBy: { createdAt: "asc" },
+            })
+          : tasksVersaoAtual;
+      const activeTasks = marcarEscolhaPedidoUnicoNoPainel(tasksAtualizadas, session.canonicalSpec);
+
+      const phaseCtx = parseSessionPhaseContext(session.phase, session.phaseContext);
+      session.specApproved = await healStuckSpecApprovalFlag({
+        id: session.id,
+        phase: session.phase,
+        specApproved: session.specApproved,
+        specVersion: session.specVersion,
+        activeTasksForCurrentVersion: activeTasks.length,
+        faseAntesDoBloqueio: phaseCtx.faseAntesDoBloqueio ?? null,
+      });
       const budget = await getSessionBudget(session.id).catch(() => null);
+      const blockHint =
+        session.phase === "BLOQUEADA"
+          ? { faseAntesDoBloqueio: phaseCtx.faseAntesDoBloqueio ?? null }
+          : null;
+      const needsHumanIntervention = sessionNeedsHumanIntervention({ phase: session.phase });
       return NextResponse.json({
         session: { ...session, tasks: activeTasks },
         tasks: activeTasks,
         messages: session.messages,
         budget,
+        blockHint,
+        needsHumanIntervention,
       });
     }
 
@@ -77,9 +118,24 @@ export async function GET(request: Request) {
       },
     });
 
-    const latestActiveTasks = latestSession
-      ? latestSession.tasks.filter((t) => t.specVersion === latestSession.specVersion)
-      : [];
+    let latestActiveTasks: Awaited<ReturnType<typeof marcarEscolhaPedidoUnicoNoPainel>> = [];
+    if (latestSession) {
+      const tasksVersaoAtual = latestSession.tasks.filter((t) => t.specVersion === latestSession.specVersion);
+      const tarefasComMarcaObsoleta = tasksVersaoAtual.filter((t) =>
+        registroPossuiMarcaPedidoUnicoObsoleta(t)
+      );
+      if (tarefasComMarcaObsoleta.length > 0) {
+        await reconciliarPedidoUnicoObsoletoNasTarefas(tarefasComMarcaObsoleta, latestSession.canonicalSpec);
+      }
+      const tasksAtualizadas =
+        tasksVersaoAtual.length > 0
+          ? await prisma.taskNode.findMany({
+              where: { sessionId: latestSession.id, specVersion: latestSession.specVersion },
+              orderBy: { createdAt: "asc" },
+            })
+          : tasksVersaoAtual;
+      latestActiveTasks = marcarEscolhaPedidoUnicoNoPainel(tasksAtualizadas, latestSession.canonicalSpec);
+    }
 
     return NextResponse.json({
       session: latestSession ? { ...latestSession, tasks: latestActiveTasks } : null,
@@ -101,9 +157,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, prompt, sessionId, projectId } = body;
     const nodeId = body.nodeId;
-
-    // Limpa mensagens de log do tipo 'system'
-    await prisma.message.deleteMany({ where: { role: "system" } }).catch(() => {});
 
     // Ação 1: Garantir que a sessão existe e devolver os nós já existentes (sem criar TaskNode antes da aprovação da Spec)
     if (action === "create_dag" || prompt) {
@@ -135,7 +188,6 @@ export async function POST(request: NextRequest) {
         hasGeminiKey: Boolean(setting?.geminiKey),
         hasClaudeKey: Boolean(setting?.claudeKey),
         hasOpenaiKey: Boolean(setting?.openaiKey),
-        hasOmniRouteKey: Boolean(setting?.omniRouteKey),
         customEndpoint: setting?.customEndpoint,
       };
 
@@ -156,7 +208,10 @@ export async function POST(request: NextRequest) {
       });
 
       const activeTasks = updatedSession
-        ? updatedSession.tasks.filter((t) => t.specVersion === updatedSession.specVersion)
+        ? marcarEscolhaPedidoUnicoNoPainel(
+            updatedSession.tasks.filter((t) => t.specVersion === updatedSession.specVersion),
+            updatedSession.canonicalSpec
+          )
         : [];
 
       return NextResponse.json({
@@ -184,8 +239,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Nó não encontrado" }, { status: 404 });
       }
 
-      // Trava T1: Se a Spec não foi aprovada pelo usuário, impede a execução de nós no disco
-      if (!task.session.specApproved) {
+      // Trava T1: flag crua em MACROBRIEF/PLANEJAMENTO não libera disco.
+      if (!specEffectivelyApproved(task.session.phase, task.session.specApproved)) {
         return NextResponse.json(
           {
             error: "Trava T1 Violada (Spec Approval Lock)",
@@ -270,7 +325,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
       }
 
-      if (!session.specApproved) {
+      if (!specEffectivelyApproved(session.phase, session.specApproved)) {
         return NextResponse.json(
           {
             error: "Trava T1 Violada (Spec Approval Lock)",
@@ -357,18 +412,46 @@ export async function POST(request: NextRequest) {
     if (action === "resume_session" && (sessionId || body.sessionId)) {
       const targetSessionId: string = sessionId || body.sessionId;
       const result = await resumeBlockedSession(targetSessionId, "painel");
-      return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
-        status: result.ok ? 200 : 409,
+      const messages = await prisma.message.findMany({
+        where: { sessionId: targetSessionId, role: { in: ["user", "assistant"] } },
+        orderBy: { createdAt: "asc" },
       });
+      const session = await prisma.session.findUnique({
+        where: { id: targetSessionId },
+        select: { phase: true, phaseContext: true },
+      });
+      const phaseCtx = session ? parseSessionPhaseContext(session.phase, session.phaseContext) : null;
+      return NextResponse.json(
+        result.ok
+          ? {
+              success: true,
+              message: result.message,
+              phase: result.phase ?? session?.phase,
+              blockHint:
+                session?.phase === "BLOQUEADA"
+                  ? { faseAntesDoBloqueio: phaseCtx?.faseAntesDoBloqueio ?? null }
+                  : null,
+              messages,
+            }
+          : {
+              error: result.message,
+              phase: result.phase ?? session?.phase,
+              messages,
+            },
+        { status: result.ok ? 200 : 409 }
+      );
     }
 
     // Ação 8 (mudança 43.4): o fundador autoriza mais uma rodada de reparo depois das 3 automáticas.
     if (action === "authorize_repair_round" && (sessionId || body.sessionId)) {
       const targetSessionId: string = sessionId || body.sessionId;
       const result = await authorizeRepairRound(targetSessionId, "painel");
-      return NextResponse.json(result.ok ? { success: true, message: result.message } : { error: result.message }, {
-        status: result.ok ? 200 : 409,
-      });
+      return NextResponse.json(
+        result.ok
+          ? { success: true, message: result.message, phase: result.phase }
+          : { error: result.message, phase: result.phase },
+        { status: result.ok ? 200 : 409 }
+      );
     }
 
     // Ação 7 (mudança 40): reabrir uma sessão ENTREGUE para a verificação final (T10 + revisão final) rodar de novo.
@@ -381,11 +464,51 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Fatia 1: a etapa parada no porteiro só volta depois de "vale o contrato" ou "vale o critério".
+    if (action === "pedido_unico_escolha" && nodeId) {
+      const escolha = typeof body.escolha === "string" ? body.escolha : "";
+      const escolhido = await aplicarEscolhaHumanaPedidoUnico(nodeId, escolha);
+      if (!escolhido.ok) {
+        return NextResponse.json({ error: escolhido.message }, { status: 409 });
+      }
+      const targetTask = await prisma.taskNode.findUnique({
+        where: { id: nodeId },
+        select: { sessionId: true, specVersion: true },
+      });
+      const sessaoDaEtapa = targetTask
+        ? await prisma.session.findUnique({
+            where: { id: targetTask.sessionId },
+            select: { canonicalSpec: true },
+          })
+        : null;
+      const updatedTasks = targetTask
+        ? marcarEscolhaPedidoUnicoNoPainel(
+            await prisma.taskNode.findMany({
+              where: { sessionId: targetTask.sessionId, specVersion: targetTask.specVersion },
+              orderBy: { createdAt: "asc" },
+            }),
+            sessaoDaEtapa?.canonicalSpec
+          )
+        : [];
+      return NextResponse.json({
+        success: true,
+        message: escolhido.message,
+        statusEtapa: escolhido.statusEtapa,
+        decisao: escolhido.decisao,
+        tasks: updatedTasks,
+      });
+    }
+
     // Ação 4: Desbloqueio e re-tentativa manual de um nó com falha/bloqueado
     if (action === "retry_node" && nodeId) {
       const { retryNodeAndCascade } = await import("@/core/orchestrator/session-resume");
       const retried = await retryNodeAndCascade(nodeId, "painel");
-      if (!retried.ok) return NextResponse.json({ error: retried.message }, { status: 404 });
+      if (!retried.ok) {
+        return NextResponse.json(
+          { error: retried.message, ok: false, motivo: retried.motivo ?? null },
+          { status: 409 }
+        );
+      }
       const targetTask = await prisma.taskNode.findUnique({ where: { id: nodeId }, select: { sessionId: true, specVersion: true } });
       const updatedTasks = await prisma.taskNode.findMany({
         where: { sessionId: targetTask!.sessionId, specVersion: targetTask!.specVersion },

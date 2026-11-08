@@ -113,6 +113,66 @@ import * as path from "path";
 import * as ts from "typescript";
 
 /**
+ * Nomes declarados nas libs do TypeScript (DOM, ES) e em @types/node.
+ * A lista fechada acima não cobre RequestInit, AbortSignal, HeadersInit e o resto
+ * da lib — um tipo global legítimo não pode reprovar a T8b.
+ */
+let typescriptLibTypeNamesCache: Set<string> | null = null;
+
+function collectTopLevelTypeNames(sf: ts.SourceFile, names: Set<string>): void {
+  const visit = (statements: readonly ts.Statement[]) => {
+    for (const stmt of statements) {
+      if (
+        (ts.isInterfaceDeclaration(stmt) ||
+          ts.isTypeAliasDeclaration(stmt) ||
+          ts.isClassDeclaration(stmt) ||
+          ts.isEnumDeclaration(stmt)) &&
+        stmt.name
+      ) {
+        names.add(stmt.name.text);
+      }
+      if (
+        ts.isModuleDeclaration(stmt) &&
+        ts.isIdentifier(stmt.name) &&
+        stmt.name.text === "global" &&
+        stmt.body &&
+        ts.isModuleBlock(stmt.body)
+      ) {
+        visit(stmt.body.statements);
+      }
+    }
+  };
+  visit(sf.statements);
+}
+
+function readLibTypeNamesFrom(dir: string, names: Set<string>, fileTest: (name: string) => boolean): void {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir)) {
+    if (!fileTest(entry)) continue;
+    const full = path.join(dir, entry);
+    if (!fs.statSync(full).isFile()) continue;
+    const text = fs.readFileSync(full, "utf8");
+    const sf = ts.createSourceFile(full, text, ts.ScriptTarget.Latest, true);
+    collectTopLevelTypeNames(sf, names);
+  }
+}
+
+function typescriptLibTypeNames(): Set<string> {
+  if (typescriptLibTypeNamesCache) return typescriptLibTypeNamesCache;
+  const names = new Set<string>();
+  const tsLibDir = path.join(process.cwd(), "node_modules", "typescript", "lib");
+  readLibTypeNamesFrom(tsLibDir, names, (name) => name.startsWith("lib.") && name.endsWith(".d.ts"));
+  const nodeTypes = path.join(process.cwd(), "node_modules", "@types", "node");
+  readLibTypeNamesFrom(nodeTypes, names, (name) => name.endsWith(".d.ts"));
+  typescriptLibTypeNamesCache = names;
+  return names;
+}
+
+function isKnownLanguageType(token: string): boolean {
+  return TS_KNOWN_BUILTIN_TYPES.has(token) || typescriptLibTypeNames().has(token);
+}
+
+/**
  * Normaliza caminho para conferência (sem barra inicial, barras unificadas)
  */
 function normalizePath(p: string): string {
@@ -157,6 +217,71 @@ function extractReferencedTypeNames(typeExpr: string): string[] {
 }
 
 /**
+ * Identidade do plano: o id da etapa é opaco e a conferência é igualdade exata.
+ * `mb-back` e `mb-back-v1` são etapas diferentes. O harness antigo cortava `-vN`
+ * ao gravar o grafo, depois da T8b. Aqui o id cortado volta ao id do contrato
+ * só quando há uma única etapa com essa base e os arquivos do dono cabem nela.
+ * Duas etapas (`mb-back-v1` e `mb-back-v2`) não se fundem.
+ */
+export function restoreCutStageIds(
+  contrato: ContratoProjeto,
+  stages: ContractStageRef[]
+): ContractStageRef[] {
+  const ids = new Set(stages.map((s) => s.id));
+  const refs = new Set<string>();
+  for (const e of contrato.entidades ?? []) if (e.dono) refs.add(e.dono);
+  for (const e of contrato.enums ?? []) if (e.dono) refs.add(e.dono);
+  for (const f of contrato.funcoes ?? []) {
+    if (f.dono) refs.add(f.dono);
+    for (const u of f.usadoPor ?? []) if (u) refs.add(u);
+  }
+  for (const r of contrato.rotas ?? []) {
+    if (r.dono) refs.add(r.dono);
+    for (const u of r.usadoPor ?? []) if (u) refs.add(u);
+  }
+  const wanting = new Map<string, Set<string>>();
+  for (const ref of refs) {
+    if (ids.has(ref)) continue;
+    const base = ref.replace(/-v\d+$/, "");
+    if (base === ref || !ids.has(base)) continue;
+    const set = wanting.get(base) ?? new Set<string>();
+    set.add(ref);
+    wanting.set(base, set);
+  }
+  const rename = new Map<string, string>();
+  for (const [base, set] of wanting) {
+    if (set.size !== 1) continue;
+    const ref = [...set][0];
+    const stage = stages.find((s) => s.id === base);
+    if (!stage || !donoFilesFit(contrato, ref, stage)) continue;
+    rename.set(base, ref);
+  }
+  if (rename.size === 0) return stages;
+  const mapId = (id: string) => rename.get(id) ?? id;
+  return stages.map((s) => ({
+    ...s,
+    id: mapId(s.id),
+    dependeDe: (s.dependeDe ?? []).map(mapId),
+  }));
+}
+
+function donoFilesFit(contrato: ContratoProjeto, ref: string, stage: ContractStageRef): boolean {
+  const files = new Set((stage.arquivos ?? []).map(normalizePath));
+  const owned = [
+    ...(contrato.funcoes ?? []).filter((f) => f.dono === ref).map((f) => f.arquivo),
+    ...(contrato.rotas ?? []).filter((r) => r.dono === ref).map((r) => r.arquivo),
+  ].filter((f): f is string => Boolean(f));
+  return owned.every((f) => files.has(normalizePath(f)));
+}
+
+/** Depois do reparo do id cortado, acha a etapa desta execução. Sem candidato único, devolve o id como veio. */
+export function resolvePlanStageId(etapaId: string, stages: ContractStageRef[]): string {
+  if (stages.some((s) => s.id === etapaId)) return etapaId;
+  const hits = stages.filter((s) => s.id.replace(/-v\d+$/, "") === etapaId);
+  return hits.length === 1 ? hits[0].id : etapaId;
+}
+
+/**
  * Valida o Contrato do Projeto contra as etapas do plano.
  *
  * Regras:
@@ -174,6 +299,7 @@ export function validateContract(
   const errors: string[] = [];
 
   const stageById = new Map<string, ContractStageRef>(stages.map((s) => [s.id, s]));
+  const resolveStage = (ref: string): ContractStageRef | undefined => stageById.get(ref);
 
   // Mapa de ancestrais (de quem stageId depende direta ou indiretamente)
   const ancestorsByStage = new Map<string, Set<string>>();
@@ -182,13 +308,11 @@ export function validateContract(
     const stack = [...(s.dependeDe ?? [])];
     while (stack.length > 0) {
       const depId = stack.pop()!;
-      if (seen.has(depId)) continue;
-      seen.add(depId);
-      const parent = stageById.get(depId);
-      if (parent) {
-        for (const grandParent of parent.dependeDe ?? []) {
-          stack.push(grandParent);
-        }
+      const parent = resolveStage(depId);
+      if (!parent || seen.has(parent.id)) continue;
+      seen.add(parent.id);
+      for (const grandParent of parent.dependeDe ?? []) {
+        stack.push(grandParent);
       }
     }
     ancestorsByStage.set(s.id, seen);
@@ -228,12 +352,7 @@ export function validateContract(
     const tokens = extractReferencedTypeNames(typeExpr);
     for (const token of tokens) {
       // Ignora literais booleanos/números/propriedades se o token for parte de tipo de objeto inline
-      if (
-        TS_KNOWN_BUILTIN_TYPES.has(token) ||
-        definedTypes.has(token) ||
-        token === "true" ||
-        token === "false"
-      ) {
+      if (isKnownLanguageType(token) || definedTypes.has(token) || token === "true" || token === "false") {
         continue;
       }
       errors.push(
@@ -244,7 +363,7 @@ export function validateContract(
 
   // 2. Validação de Entidades
   for (const ent of contrato.entidades ?? []) {
-    if (!stageById.has(ent.dono)) {
+    if (!resolveStage(ent.dono)) {
       errors.push(`[DONO INEXISTENTE] Entidade "${ent.nome}" tem dono inexistente "${ent.dono}".`);
     }
     for (const campo of ent.campos ?? []) {
@@ -254,7 +373,7 @@ export function validateContract(
 
   // 3. Validação de Enums
   for (const en of contrato.enums ?? []) {
-    if (!stageById.has(en.dono)) {
+    if (!resolveStage(en.dono)) {
       errors.push(`[DONO INEXISTENTE] Enum "${en.nome}" tem dono inexistente "${en.dono}".`);
     }
     if (!Array.isArray(en.valores) || en.valores.length === 0) {
@@ -264,7 +383,7 @@ export function validateContract(
 
   // 4. Validação de Funções
   for (const fn of contrato.funcoes ?? []) {
-    const stage = stageById.get(fn.dono);
+    const stage = resolveStage(fn.dono);
     if (!stage) {
       errors.push(`[DONO INEXISTENTE] Função "${fn.nome}" tem dono inexistente "${fn.dono}".`);
     } else {
@@ -279,12 +398,14 @@ export function validateContract(
 
     // Conferência do usadoPor
     for (const user of fn.usadoPor ?? []) {
-      if (!stageById.has(user)) {
+      const userStage = resolveStage(user);
+      if (!userStage) {
         errors.push(`[CONSUMIDOR INEXISTENTE] Função "${fn.nome}" cita consumidor inexistente "${user}".`);
         continue;
       }
-      const ancestors = ancestorsByStage.get(user);
-      if (!ancestors || !ancestors.has(fn.dono)) {
+      const donoStage = resolveStage(fn.dono);
+      const ancestors = ancestorsByStage.get(userStage.id);
+      if (!donoStage || !ancestors || !ancestors.has(donoStage.id)) {
         errors.push(
           `[USADO POR SEM DEPENDENCIA] Etapa "${user}" usa a função "${fn.nome}" da etapa dona "${fn.dono}", mas não depende dela.`
         );
@@ -296,7 +417,7 @@ export function validateContract(
 
   // 5. Validação de Rotas
   for (const r of contrato.rotas ?? []) {
-    const stage = stageById.get(r.dono);
+    const stage = resolveStage(r.dono);
     if (!stage) {
       errors.push(`[DONO INEXISTENTE] Rota "${r.metodo} ${r.caminho}" tem dono inexistente "${r.dono}".`);
     } else {
@@ -318,12 +439,14 @@ export function validateContract(
 
     // Conferência do usadoPor
     for (const user of r.usadoPor ?? []) {
-      if (!stageById.has(user)) {
+      const userStage = resolveStage(user);
+      if (!userStage) {
         errors.push(`[CONSUMIDOR INEXISTENTE] Rota "${r.metodo} ${r.caminho}" cita consumidor inexistente "${user}".`);
         continue;
       }
-      const ancestors = ancestorsByStage.get(user);
-      if (!ancestors || !ancestors.has(r.dono)) {
+      const donoStage = resolveStage(r.dono);
+      const ancestors = ancestorsByStage.get(userStage.id);
+      if (!donoStage || !ancestors || !ancestors.has(donoStage.id)) {
         errors.push(
           `[USADO POR SEM DEPENDENCIA] Etapa "${user}" usa a rota "${r.metodo} ${r.caminho}" da etapa dona "${r.dono}", mas não depende dela.`
         );
@@ -671,6 +794,29 @@ export function stagesFromContract(
   }));
 }
 
+/**
+ * Erros do contrato contra o grafo gravado no nó. Vazio se o nó não tem contrato
+ * (scaffold, heurística) ou se o plano fecha. Quem executa a etapa não corrige isto.
+ */
+export function planContractErrorsFromPayload(payload: string | null | undefined): string[] {
+  if (!payload) return [];
+  let parsed: { contrato?: ContratoProjeto; etapaId?: string; planoStages?: unknown };
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return [];
+  }
+  if (!parsed?.contrato || !Array.isArray(parsed.planoStages) || parsed.planoStages.length === 0) return [];
+  const stages = contractStagesForNode(
+    parsed.contrato,
+    typeof parsed.etapaId === "string" ? parsed.etapaId : "",
+    [],
+    parsed.planoStages
+  );
+  if (stages.length === 0) return [];
+  return validateContract(parsed.contrato, stages);
+}
+
 /** Prefere o grafo gravado no plano; senão deriva o grafo do próprio contrato. */
 export function contractStagesForNode(
   contrato: ContratoProjeto,
@@ -685,14 +831,17 @@ export function contractStagesForNode(
       const s = raw as { id?: unknown; arquivos?: unknown; dependeDe?: unknown };
       if (typeof s.id !== "string" || !s.id.trim()) continue;
       stages.push({
-        id: s.id.replace(/-v\d+$/, ""),
+        id: s.id,
         arquivos: Array.isArray(s.arquivos) ? s.arquivos.filter((f): f is string => typeof f === "string") : [],
         dependeDe: Array.isArray(s.dependeDe)
-          ? s.dependeDe.filter((d): d is string => typeof d === "string").map((d) => d.replace(/-v\d+$/, ""))
+          ? s.dependeDe.filter((d): d is string => typeof d === "string")
           : [],
       });
     }
-    if (stages.length > 0) return stages;
+    if (stages.length > 0) return restoreCutStageIds(contrato, stages);
   }
-  return stagesFromContract(contrato, { id: etapaId, arquivos: arquivosEtapa, dependeDe: [] });
+  return restoreCutStageIds(
+    contrato,
+    stagesFromContract(contrato, { id: etapaId, arquivos: arquivosEtapa, dependeDe: [] })
+  );
 }
