@@ -11,13 +11,21 @@ import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { IntakeEngine } from "@/core/intake/intake-engine";
 import { InputPreprocessorEngine } from "@/core/intake/input-preprocessor";
 import { isExplicitSpecApproval } from "@/core/intake/approval-intent";
+import { messageForApproveSpecFailure } from "@/core/intake/approve-spec-messages";
 import { parseSpecDocument } from "@/core/intake/spec-format";
+import { canonicalSpecFileNotice, writeCanonicalSpecFile } from "@/core/intake/spec-file";
+import {
+  assessProjectSpecArtifacts,
+  formatProjectSpecArtifactStatus,
+  reconcileProjectSpecDocument,
+} from "@/core/intake/spec-sync";
 import { checkSpecStructure } from "@/core/intake/spec-check";
 import { IncidentReporter, type FailureAttemptRecord } from "@/core/governance/incident-reporter";
 import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
+import { specEffectivelyApproved } from "@/core/orchestrator/spec-trava-t1";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import { callElicitadorClaude } from "@/core/llm/elicitador-claude";
@@ -45,16 +53,28 @@ import {
   isAuthorizeRoundCommand,
   authorizeRepairRound,
   isRecheckDeliveryCommand,
+  aplicarEscolhaHumanaPedidoUnico,
 } from "@/core/orchestrator/session-resume";
+import {
+  normalizarDecisaoPedidoUnico,
+  etapaBloqueadaPorPedidoUnicoSemResolucao,
+} from "@/core/governance/pedido-unico";
 import { pickBlockedCulprit } from "@/core/orchestrator/blocked-culprit";
 import {
   classifyMessage,
+  isProjectSpecAuditRequest,
+  isSpecPresentationRequest,
   parseInterventionChoice,
 } from "@/core/orchestrator/message-intent";
+import {
+  runProjectSpecAudit,
+  publishProjectSpecAuditArtifacts,
+} from "@/core/intake/project-repository-survey";
 import {
   applyCumulativeSpecGuard,
   buildElicitadorSpecSystemPrompt,
   buildCumulativeSpecSystemPrompt,
+  specPresentationReply,
 } from "@/core/orchestrator/spec-draft";
 import { maskSecretsForJev } from "@/core/governance/secret-guard";
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
@@ -95,7 +115,14 @@ async function buildDeterministicStatusResponse(sessionId: string): Promise<stri
     `📊 **Status Determinístico da Sessão**`,
     `- **Fase atual:** \`${currentPhase}\``,
     `- **Spec aprovada:** ${session.specApproved ? "Sim" : "Não"}`,
+    `- **Versão da Spec (sessão):** ${currentSpecVersion}`,
   ];
+
+  lines.push(
+    ...formatProjectSpecArtifactStatus(
+      assessProjectSpecArtifacts(session.project?.path, session.canonicalSpec)
+    )
+  );
 
   if (tasks.length === 0) {
     lines.push(`\n### Nós da DAG\nNenhum nó de execução criado para a versão atual.`);
@@ -256,10 +283,23 @@ export async function POST(request: NextRequest) {
     });
 
     // 3. Lê a sessão atual para contextualizar a intenção do usuário
-    const sessionBefore = await prisma.session.findUnique({
+    let sessionBefore = await prisma.session.findUnique({
       where: { id: activeSessionId },
       include: { project: true },
     });
+    if (sessionBefore) {
+      const sync = await reconcileProjectSpecDocument(
+        activeSessionId,
+        sessionBefore.project?.path,
+        sessionBefore.canonicalSpec
+      );
+      if (sync.hydrated) {
+        sessionBefore = await prisma.session.findUnique({
+          where: { id: activeSessionId },
+          include: { project: true },
+        });
+      }
+    }
     const phaseBefore = ((sessionBefore?.phase as Phase) || "ENTRADA");
 
     const ctxProjectEarly =
@@ -312,6 +352,19 @@ export async function POST(request: NextRequest) {
       });
     };
 
+    // Porteiro Pedido Único (§3.0 / §1.6): escolha explícita "vale o contrato" ou "vale o critério" no chat
+    if (normalizarDecisaoPedidoUnico(targetPrompt)) {
+      const tasksSessao = await prisma.taskNode.findMany({
+        where: { sessionId: activeSessionId },
+        orderBy: { createdAt: "asc" },
+      });
+      const etapaPedidoUnico = tasksSessao.find((t) => etapaBloqueadaPorPedidoUnicoSemResolucao(t));
+      if (etapaPedidoUnico) {
+        const resEscolha = await aplicarEscolhaHumanaPedidoUnico(etapaPedidoUnico.id, targetPrompt);
+        return respondDeterministically(resEscolha.ok ? `▶️ ${resEscolha.message}` : `⚠️ ${resEscolha.message}`);
+      }
+    }
+
     // Mudança 36: "retomar" em BLOQUEADA retoma sem mexer na Spec (sem LLM e sem Jev).
     // Mudança 43.4: "autorizar rodada" em BLOQUEADA libera mais uma rodada de reparo (sem LLM e sem Jev).
     if (phaseBefore === "BLOQUEADA" && isAuthorizeRoundCommand(targetPrompt)) {
@@ -328,6 +381,48 @@ export async function POST(request: NextRequest) {
       return respondDeterministically(
         "▶️ Verificação final (T10) enfileirada de novo — build, ui-check e revisão rodam sobre o código no disco."
       );
+    }
+
+    // Leitura da Spec gravada. Não classifica, não chama modelo e não muda a fase.
+    if (isSpecPresentationRequest(targetPrompt) && !isExplicitSpecApproval(targetPrompt)) {
+      return respondDeterministically(specPresentationReply(sessionBefore?.canonicalSpec));
+    }
+
+    // Levantamento / Auditoria determinística do repositório (§8.2)
+    if (isProjectSpecAuditRequest(targetPrompt)) {
+      const projectPath = sessionBefore?.project?.path || ctxProjectEarly?.path;
+      if (!projectPath) {
+        return respondDeterministically(
+          "⚠️ Para executar o levantamento do repositório, vincule esta sessão a um projeto cadastrado com pasta local."
+        );
+      }
+
+      const auditResult = runProjectSpecAudit(projectPath, { force: false });
+      publishProjectSpecAuditArtifacts(projectPath, auditResult);
+
+      if (auditResult.gravouSpec && auditResult.specText) {
+        await reconcileProjectSpecDocument(activeSessionId, projectPath, auditResult.specText);
+        await prisma.session.update({
+          where: { id: activeSessionId },
+          data: { specApproved: false },
+        });
+      }
+
+      const statusLines = [
+        `📋 **Levantamento de Repositório Concluído**`,
+        `- **Modo:** \`${auditResult.mode}\``,
+        `- **Spec gravada:** ${auditResult.gravouSpec ? "Sim (`.nextcode/spec.md`)" : "Não"}`,
+        `- **Lacunas identificadas:** ${auditResult.survey.lacunas.length}`,
+        `- **Artefatos em \`.nextcode/\`:**`,
+        `  - \`.nextcode/spec-gaps.md\` (lacunas)`,
+        auditResult.reconcileMarkdown ? `  - \`.nextcode/spec-reconcile.md\` (delta)` : null,
+        auditResult.motivoBloqueio ? `\n⚠️ **Motivo do bloqueio:** ${auditResult.motivoBloqueio}` : null,
+        `\n**Próximos passos:** Revise \`.nextcode/spec.md\` e as lacunas em \`.nextcode/spec-gaps.md\` antes de seguir para elicitação ou aprovação.`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      return respondDeterministically(statusLines);
     }
 
     // 4. Pacote P4: Fan-Out Especulativo Unificado do Jev na Entrada do Chat (~100ms)
@@ -399,26 +494,13 @@ export async function POST(request: NextRequest) {
 
       const approvalTriggerResult: ApproveSpecResult = await approveSpecAndStart(activeSessionId);
       if (!approvalTriggerResult.ok) {
-        let refusalText = `⚠️ Aprovação recusada (${approvalTriggerResult.reason}).`;
-        if (approvalTriggerResult.reason === "SPEC_AUSENTE") {
-          refusalText = "⚠️ A Spec Canônica precisa ser revisada e salva no painel da Spec antes da aprovação.";
-        } else if (approvalTriggerResult.reason === "SPEC_SEM_REQUISITOS") {
-          refusalText = "⚠️ A Spec Canônica não possui requisitos funcionais verificáveis (REQ-001...). Forneça mais detalhes sobre o seu pedido para gerarmos os requisitos antes de aprovar.";
-        } else if (approvalTriggerResult.reason === "SPEC_SEM_MODULOS") {
-          refusalText = "⚠️ A Spec Canônica não declara nenhum módulo. Complete a especificação antes de aprovar.";
-        } else if (approvalTriggerResult.reason === "SPEC_SEM_ARQUIVOS") {
-          refusalText = "⚠️ A Spec Canônica não define arquivos afetados. Complete a arquitetura antes de aprovar.";
-        } else if (approvalTriggerResult.reason === "SPEC_INVALIDA_OU_MALFORMATADA") {
-          refusalText = "⚠️ O documento de Spec atual está com formatação inválida. Solicite ao assistente a regeneração da Spec antes de aprovar.";
-        } else if (approvalTriggerResult.reason === "PERGUNTA_AO_HUMANO") {
-          refusalText =
-            "Preciso de uma confirmação sua antes de seguir. Responda nomeando o cluster (core, backend, frontend ou integration) se for uma exceção:\n" +
-            (approvalTriggerResult.problems ?? []).map((p) => "- " + p).join("\n");
-        } else if (approvalTriggerResult.reason === "CONFERENCIA_REPROVADA") {
-          refusalText =
-            "⚠️ A conferência entre a Spec e o plano de execução encontrou problemas. Corrija e aprove de novo:\n" +
-            (approvalTriggerResult.problems ?? []).map((p) => "- " + p).join("\n");
-        }
+        const refusalText =
+          "⚠️ " +
+          messageForApproveSpecFailure(
+            approvalTriggerResult.reason,
+            approvalTriggerResult.problems,
+            { pausaCodigo: approvalTriggerResult.pausaCodigo }
+          );
 
         const assistantMessage = await prisma.message.create({
           data: {
@@ -436,14 +518,18 @@ export async function POST(request: NextRequest) {
           },
           orderBy: { createdAt: "asc" },
         });
+        const sessionAfterRefusal = await prisma.session.findUnique({
+          where: { id: activeSessionId },
+          select: { phase: true, specApproved: true },
+        });
         return NextResponse.json(
           {
             ok: false,
             reason: approvalTriggerResult.reason,
             success: false,
             sessionId: activeSessionId,
-            phase: sessionBefore?.phase || "SPEC_REVISAO",
-            specApproved: false,
+            phase: sessionAfterRefusal?.phase ?? sessionBefore?.phase ?? "SPEC_REVISAO",
+            specApproved: Boolean(sessionAfterRefusal?.specApproved),
             userMessage,
             assistantMessage,
             messages: cleanMessages,
@@ -455,9 +541,15 @@ export async function POST(request: NextRequest) {
       const approvedSession = await prisma.session.findUnique({
         where: { id: activeSessionId },
       });
-      const approvalConfirmText =
-        `✅ **Spec Canônica aprovada!** Fase atual: \`${approvalTriggerResult.phase}\`. ` +
-        `A implementação será executada exclusivamente pela fila da DAG no servidor.`;
+      const seal = specEffectivelyApproved(
+        approvalTriggerResult.phase,
+        Boolean(approvedSession?.specApproved)
+      );
+      const approvalConfirmText = seal
+        ? `✅ **Spec Canônica aprovada!** Fase atual: \`${approvalTriggerResult.phase}\`. ` +
+          `A implementação será executada exclusivamente pela fila da DAG no servidor.`
+        : `Aprovação recebida. Fase atual: \`${approvalTriggerResult.phase}\`. ` +
+          `A Trava T1 continua pendente até a fase de execução (analista e validação T8b).`;
       const assistantMessage = await prisma.message.create({
         data: {
           sessionId: activeSessionId,
@@ -482,7 +574,7 @@ export async function POST(request: NextRequest) {
         ok: true,
         success: true,
         sessionId: activeSessionId,
-        specApproved: approvedSession?.specApproved ?? true,
+        specApproved: seal,
         phase: approvalTriggerResult.phase,
         canonicalSpec: approvedSession?.canonicalSpec ?? null,
         userMessage,
@@ -763,7 +855,6 @@ export async function POST(request: NextRequest) {
       hasOpenaiKey: Boolean(setting?.openaiKey),
       hasGroqKey: Boolean((setting as any)?.groqKey),
       hasNvidiaKey: Boolean((setting as any)?.nvidiaKey),
-      hasOmniRouteKey: Boolean(setting?.omniRouteKey),
       customEndpoint: setting?.customEndpoint,
     };
     const intent = smartRouter.resolveFallback(rawAnalysis, availableKeys);
@@ -813,8 +904,6 @@ export async function POST(request: NextRequest) {
         groqKey: readSecret((setting as any)?.groqKey),
         nvidiaKey: readSecret((setting as any)?.nvidiaKey),
         deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
         stream: false,
       });
 
@@ -864,8 +953,6 @@ export async function POST(request: NextRequest) {
             tier: isSpecDraftingPhase ? "heavy" : "fast",
             maxTokens: SPEC_GATEWAY_MAX_TOKENS,
             geminiKey: readSecret(setting?.geminiKey),
-            omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-            omniRouteKey: readSecret(setting?.omniRouteKey),
             stream: false,
           });
           const retryJson = await retryRes.response.json().catch(() => ({}));
@@ -932,8 +1019,6 @@ export async function POST(request: NextRequest) {
               tier: isSpecDraftingPhase ? "heavy" : "fast",
               maxTokens: SPEC_GATEWAY_MAX_TOKENS,
               geminiKey: readSecret(setting?.geminiKey),
-              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-              omniRouteKey: readSecret(setting?.omniRouteKey),
               stream: false,
             });
             const fixJson = await fixRes.response.json().catch(() => ({}));
@@ -1064,6 +1149,16 @@ export async function POST(request: NextRequest) {
               specApproved: false,
             },
           });
+          const arquivoSpec = writeCanonicalSpecFile(sessionBefore?.project?.path ?? "", guardRes.finalSpec);
+          const avisoArquivo = canonicalSpecFileNotice(arquivoSpec);
+          if (avisoArquivo) aiResponseContent += `\n\n${avisoArquivo}`;
+          if (arquivoSpec.ok && arquivoSpec.wrote) {
+            TelemetryLogger.log({
+              sessionId: activeSessionId,
+              action: "SPEC_ARQUIVO",
+              details: { arquivo: arquivoSpec.relativePath },
+            });
+          }
 
           const currentParsed = parseSpecDocument(guardRes.finalSpec);
 
@@ -1107,6 +1202,16 @@ export async function POST(request: NextRequest) {
           ) {
             await applyPhaseEvent(activeSessionId, { type: "SPEC_PRONTA" });
           }
+        } else {
+          TelemetryLogger.log({
+            sessionId: activeSessionId,
+            action: "SPEC_DRAFT_REJECTED",
+            details: {
+              caracteres: aiResponseContent.length,
+              tinhaSpecGravada: Boolean(sessionBefore?.canonicalSpec?.trim()),
+            },
+          });
+          aiResponseContent = guardRes.finalMessageContent;
         }
       }
 

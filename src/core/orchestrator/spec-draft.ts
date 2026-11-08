@@ -166,7 +166,7 @@ export function applyCumulativeSpecGuard(
     return {
       isValidSpec: false,
       finalSpec: null,
-      finalMessageContent: newCandidateRaw,
+      finalMessageContent: replyWhenSpecDraftRejected(previousSpecRaw),
       reinjectedCount: 0,
     };
   }
@@ -320,4 +320,31 @@ export function applyCumulativeSpecGuard(
     finalMessageContent: `${finalSpec}${reinjectionNotice}`,
     reinjectedCount,
   };
+}
+
+/**
+ * O modelo devolveu texto que não é Spec. O chat mostra a Spec gravada, ou a recusa.
+ * O rascunho rejeitado não entra na mensagem: ele não é documento de revisão.
+ */
+export function replyWhenSpecDraftRejected(previousSpecRaw: string | null | undefined): string {
+  const stored = previousSpecRaw?.trim() ?? "";
+  if (stored && parseSpecDocument(stored)) {
+    return `${stored}\n\n⚠️ A resposta do modelo não é uma Spec. A Spec acima é a gravada. Nada foi alterado.`;
+  }
+  if (stored) {
+    return "⚠️ A Spec gravada nesta sessão não está no formato canônico. A resposta do modelo também não é uma Spec. Nada foi alterado.";
+  }
+  return "⚠️ A resposta do modelo não é uma Spec. Falta o documento começando com --- e o campo titulo. Nada foi gravado.";
+}
+
+/**
+ * Resposta de "apresente a spec": o documento gravado, sem passar pelo modelo.
+ */
+export function specPresentationReply(storedSpec: string | null | undefined): string {
+  const stored = storedSpec?.trim() ?? "";
+  if (stored && parseSpecDocument(stored)) return stored;
+  if (stored) {
+    return "A Spec gravada nesta sessão não está no formato canônico. Nada foi reescrito.";
+  }
+  return "Não há Spec gravada nesta sessão. Descreva o que o sistema deve fazer para eu montar a Spec.";
 }

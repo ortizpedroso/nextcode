@@ -66,6 +66,35 @@ export function isStatusRequest(text: string): boolean {
   return false;
 }
 
+const SPEC_PRESENTATION_RE =
+  /\b(apresent\w*|mostr\w*|exib\w*|quero\s+ver|ver\s+a)\b[\s\S]{0,80}\b(spec|especifica[cç][aã]o)\b/i;
+
+const SPEC_CHANGE_RE =
+  /\b(adicion|acrescent|inclu|remov|tir[ae]|exclu|alter|ajust|mud[ae]|troc|modific|atualiz|cri[ae]|implement|desenvolv|constru|ger[ae]|corrig|consert|arrum|aprov|reescrev)\w*/i;
+
+/**
+ * Pedido de leitura da Spec já gravada. Não reescreve e não muda de fase.
+ * "adicione na spec" e "aprove a spec" continuam nos caminhos de escrita e de aprovação.
+ */
+export function isSpecPresentationRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.startsWith("---")) return false;
+  if (SPEC_CHANGE_RE.test(trimmed)) return false;
+  return SPEC_PRESENTATION_RE.test(trimmed);
+}
+
+const PROJECT_SPEC_AUDIT_RE =
+  /^\/levantador-repositorio\b|\b(levantar\s+reposit[oó]rio|auditar\s+reposit[oó]rio|auditoria\s+(do|de)\s+c[oó]digo|atualizar\s+spec\s+com\s+o\s+c[oó]digo|reconciliar\s+spec|invent[aá]rio\s+do\s+projeto)\b/i;
+
+/**
+ * Detecta deterministamente se a mensagem é um pedido de levantamento/auditoria do repositório.
+ */
+export function isProjectSpecAuditRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.startsWith("---")) return false;
+  return PROJECT_SPEC_AUDIT_RE.test(trimmed);
+}
+
 /**
  * Regras determinísticas de intenção (executadas ANTES de qualquer chamada ao LLM).
  * Retorna null apenas quando a mensagem é genuinamente ambígua e precisa do classificador fast (<= 3000 ms).
@@ -261,8 +290,6 @@ Mensagem do usuário: """${text.slice(0, 2000)}"""`,
         groqKey: readSecret((setting as any)?.groqKey),
         nvidiaKey: readSecret((setting as any)?.nvidiaKey),
         deepseekKey: readSecret((setting as any)?.deepseekKey),
-        omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-        omniRouteKey: readSecret(setting?.omniRouteKey),
         stream: false,
         signal: controller.signal,
       });
