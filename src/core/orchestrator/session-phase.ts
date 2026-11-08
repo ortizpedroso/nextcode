@@ -7,6 +7,7 @@ import {
   type TransitionResult,
 } from "@/core/orchestrator/phase-machine";
 import { postHumanNotice } from "@/core/orchestrator/human-notice";
+import { syncSpecApprovalAfterPhaseTransition } from "@/core/orchestrator/spec-trava-t1";
 
 export type PersistedPhaseContextData = Omit<PhaseContext, "phase">;
 
@@ -153,7 +154,10 @@ export async function applyPhaseEvent(
 
     const ctx = parseSessionPhaseContext(session.phase, session.phaseContext);
 
-    if (options?.stopRetryIfPhaseIn?.includes(ctx.phase)) {
+    // Só na re-tentativa. Na primeira leitura, a fase já estar no destino é o
+    // fluxo normal (outro PATCH ganhou SPEC_APROVADA). Abortar aqui virava
+    // "Aprovação recusada (CONCURRENT_PHASE_CHANGED)" com o plano em curso.
+    if (attempt > 0 && options?.stopRetryIfPhaseIn?.includes(ctx.phase)) {
       return {
         ok: false,
         reason: "CONCURRENT_PHASE_CHANGED",
@@ -227,6 +231,8 @@ export async function applyPhaseEvent(
           );
         }
       }
+
+      await syncSpecApprovalAfterPhaseTransition(sessionId, ctx.phase, result.ctx.phase, event);
 
       return result;
     }
