@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TaskNode } from "@/components/layout/workspace";
+import { EXECUTION_STOPPED_LABEL } from "@/lib/execution-presence";
+import { pedidoUnicoAguardandoEscolha, pedidoUnicoEscolhaGravadaAindaAberta } from "@/lib/pedido-unico-ui";
 import { DagGraphVisualizer } from "@/components/session/dag-graph-visualizer";
 import {
   Layers,
@@ -29,15 +31,20 @@ interface DagSidebarProps {
   onClose: () => void;
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
+  /** Fatia 1: a etapa parou porque contrato e critério pedem retornos diferentes. */
+  onPedidoUnicoEscolha?: (nodeId: string, escolha: "vale o contrato" | "vale o critério") => Promise<void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   budget?: SessionBudget | null;
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
   /** Mudança 36: fase da sessão e Retomar (sessão BLOQUEADA sem mexer na Spec). */
   sessionPhase?: string | null;
-  onResumeSession?: () => Promise<void>;
+  /** Etapa marcada como running, mas o processo do NextCode não responde. */
+  executionStalled?: boolean;
+  blockHint?: { faseAntesDoBloqueio: string | null } | null;
+  onResumeSession?: () => Promise<{ ok: boolean; text: string } | void>;
   /** Mudança 43.4: mais uma rodada de reparo (o servidor recusa se o bloqueio não for por rodadas gastas). */
-  onAuthorizeRound?: () => Promise<void>;
+  onAuthorizeRound?: () => Promise<{ ok: boolean; text: string } | void>;
 }
 
 export interface SessionCostBreakdown {
@@ -78,17 +85,25 @@ export function DagSidebar({
   onClose,
   onRefreshTasks,
   onRetryNode,
+  onPedidoUnicoEscolha,
   onInspectQuarantine,
   onExportAuditReport,
   budget,
   onAuthorizeBudget,
   sessionPhase,
+  executionStalled = false,
+  blockHint,
   onResumeSession,
   onAuthorizeRound,
 }: DagSidebarProps) {
+  const blocked = sessionPhase === "BLOQUEADA";
+  const resumeReplan = blocked && blockHint?.faseAntesDoBloqueio === "SPEC_REVISAO";
+  const specRevisaoHint = sessionPhase === "SPEC_REVISAO";
   const [authorizing, setAuthorizing] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [authorizingRound, setAuthorizingRound] = useState(false);
+  const [escolhaPedidoUnicoId, setEscolhaPedidoUnicoId] = useState<string | null>(null);
+  const [panelActionFeedback, setPanelActionFeedback] = useState<string | null>(null);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
@@ -129,7 +144,11 @@ export function DagSidebar({
           </span>
         );
       case "running":
-        return (
+        return executionStalled ? (
+          <span className="px-2 py-0.5 text-[10px] rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 flex items-center gap-1 font-medium">
+            <AlertTriangle className="w-3 h-3" /> Parada
+          </span>
+        ) : (
           <span className="px-2 py-0.5 text-[10px] rounded-full bg-blue-100 dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 border border-blue-300 dark:border-blue-800 flex items-center gap-1 font-medium animate-pulse">
             <RefreshCw className="w-3 h-3 animate-spin text-[#0066cc]" /> Em Execução
           </span>
@@ -318,32 +337,60 @@ export function DagSidebar({
         );
       })()}
 
-      {sessionPhase === "BLOQUEADA" && onResumeSession && (
-        <button
-          type="button"
-          disabled={resuming}
-          onClick={async () => {
-            setResuming(true);
-            try {
-              await onResumeSession();
-            } finally {
-              setResuming(false);
-            }
-          }}
-          title="Retoma a sessão de onde parou, sem mexer na Spec (use quando a causa foi ambiente, erro interno ou avaliador fora)"
-          className="w-full rounded-lg bg-amber-600 px-2 py-1.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1"
-        >
-          <RotateCcw className="w-3 h-3" /> {resuming ? "Retomando..." : "Retomar"}
-        </button>
+      {specRevisaoHint && (
+        <div className="rounded-xl border border-blue-300/80 bg-blue-50/90 dark:bg-blue-950/40 dark:border-blue-800 px-2.5 py-2 text-[10px] leading-snug text-blue-950 dark:text-blue-100">
+          Fase <strong>SPEC_REVISAO</strong> — use o botão <strong>Spec T1</strong> no topo do chat para revisar e{" "}
+          <strong>aprovar</strong> a Spec; o plano (T8b) roda de novo após a aprovação.
+        </div>
       )}
-      {sessionPhase === "BLOQUEADA" && onAuthorizeRound && (
+
+      {blocked && onResumeSession && (
+        <div className="space-y-1">
+          {resumeReplan && (
+            <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-200 px-0.5">
+              Plano reprovado (T8b): o botão abaixo volta à revisão da Spec. O resultado aparece no chat e no topo do thread.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={resuming}
+            onClick={async () => {
+              setPanelActionFeedback(null);
+              setResuming(true);
+              try {
+                const r = await onResumeSession?.();
+                if (r?.text) setPanelActionFeedback(r.ok ? `✓ ${r.text}` : `⚠ ${r.text}`);
+              } finally {
+                setResuming(false);
+              }
+            }}
+            title={
+              resumeReplan
+                ? "Volta para SPEC_REVISAO para aprovar de novo e replanejar"
+                : "Retoma a sessão de onde parou (ambiente, erro interno, avaliador fora)"
+            }
+            className="w-full rounded-lg bg-amber-600 px-2 py-1.5 font-semibold text-white hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-1"
+          >
+            <RotateCcw className="w-3 h-3" />{" "}
+            {resuming ? "Processando..." : resumeReplan ? "Voltar à revisão da Spec" : "Retomar"}
+          </button>
+          {panelActionFeedback && (
+            <p className="text-[10px] leading-snug text-slate-700 dark:text-slate-300 px-0.5 whitespace-pre-wrap">
+              {panelActionFeedback}
+            </p>
+          )}
+        </div>
+      )}
+      {blocked && onAuthorizeRound && (
         <button
           type="button"
           disabled={authorizingRound}
           onClick={async () => {
+            setPanelActionFeedback(null);
             setAuthorizingRound(true);
             try {
-              await onAuthorizeRound();
+              const r = await onAuthorizeRound?.();
+              if (r?.text) setPanelActionFeedback(r.ok ? `✓ ${r.text}` : `⚠ ${r.text}`);
             } finally {
               setAuthorizingRound(false);
             }
@@ -388,8 +435,14 @@ export function DagSidebar({
                     <span className="mr-1 font-mono text-slate-400">#{planIndex + 1}</span>
                     {task.title}
                     {isExecuting && (
-                      <span className="ml-1.5 rounded bg-blue-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
-                        rodando agora
+                      <span
+                        className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase ${
+                          executionStalled
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
+                            : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400"
+                        }`}
+                      >
+                        {executionStalled ? "servidor fora" : "rodando agora"}
                       </span>
                     )}
                   </span>
@@ -439,7 +492,47 @@ export function DagSidebar({
                   </button>
                 )}
 
-                {(task.status === "failed" || task.status === "blocked") && onRetryNode && (
+                {(task.status === "failed" || task.status === "blocked") &&
+                  pedidoUnicoAguardandoEscolha(task.result, task.payload, task.pedidoUnicoAguardandoDecisao) &&
+                  onPedidoUnicoEscolha && (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-[10px] leading-snug text-amber-800 dark:text-amber-300">
+                        {pedidoUnicoEscolhaGravadaAindaAberta(task.payload, task.pedidoUnicoAguardandoDecisao)
+                          ? "A escolha vale o critério ficou gravada, mas o contrato da sessão ainda não exige o campo na função do critério. Escolha de novo. Sem isso a etapa não volta à fila."
+                          : "Contrato e critério pedem retornos diferentes. Escolha um. Sem essa escolha a etapa não volta à fila."}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={escolhaPedidoUnicoId === task.id}
+                        onClick={() => {
+                          setEscolhaPedidoUnicoId(task.id);
+                          void onPedidoUnicoEscolha(task.id, "vale o contrato").finally(() =>
+                            setEscolhaPedidoUnicoId(null)
+                          );
+                        }}
+                        className="w-full py-1 px-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-lg text-[10px] font-semibold border border-slate-300 dark:border-slate-600 disabled:opacity-60"
+                      >
+                        vale o contrato — esta etapa deixa de cobrar o campo que o retorno não nomeia
+                      </button>
+                      <button
+                        type="button"
+                        disabled={escolhaPedidoUnicoId === task.id}
+                        onClick={() => {
+                          setEscolhaPedidoUnicoId(task.id);
+                          void onPedidoUnicoEscolha(task.id, "vale o critério").finally(() =>
+                            setEscolhaPedidoUnicoId(null)
+                          );
+                        }}
+                        className="w-full py-1 px-2 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-amber-900 dark:text-amber-200 rounded-lg text-[10px] font-semibold border border-amber-300 dark:border-amber-800 disabled:opacity-60"
+                      >
+                        vale o critério — o contrato da sessão passa a exigir esse campo na função do critério
+                      </button>
+                    </div>
+                  )}
+
+                {(task.status === "failed" || task.status === "blocked") &&
+                  !pedidoUnicoAguardandoEscolha(task.result, task.payload, task.pedidoUnicoAguardandoDecisao) &&
+                  onRetryNode && (
                   <button
                     onClick={() => onRetryNode(task.id)}
                     className="w-full mt-1 py-1 px-2 bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 rounded-lg text-[10px] font-semibold border border-rose-200 dark:border-rose-800 flex items-center justify-center gap-1.5 transition-colors"
@@ -454,11 +547,11 @@ export function DagSidebar({
         )}
       </div>
 
-      {/* Execution Headroom / Console Logs */}
+      {/* Console da DAG (não é a ferramenta externa Headroom; ver context-pruner interno) */}
       <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800/80 space-y-2 shrink-0">
         <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
           <span className="flex items-center gap-1.5">
-            <Terminal className="w-3.5 h-3.5 text-[#0066cc]" /> Execution Headroom
+            <Terminal className="w-3.5 h-3.5 text-[#0066cc]" /> Console da DAG
           </span>
           {tokensSaved > 0 && (
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/50 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">

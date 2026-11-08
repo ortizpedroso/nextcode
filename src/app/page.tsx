@@ -18,6 +18,8 @@ import { BenchmarkModal } from "@/components/session/benchmark-modal";
 import { McpToolsModal } from "@/components/session/mcp-tools-modal";
 import { CodeSearchModal } from "@/components/session/code-search-modal";
 import { SessionRevisionsModal } from "@/components/session/session-revisions-modal";
+import { sessionNeedsHumanIntervention } from "@/lib/session-intervention";
+import { specEffectivelyApproved } from "@/lib/spec-approval-ui";
 
 export default function DashboardOrchestrator() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -31,6 +33,11 @@ export default function DashboardOrchestrator() {
   const [tasks, setTasks] = useState<TaskNode[]>([]);
   const [budget, setBudget] = useState<SessionBudget | null>(null);
   const [sessionPhase, setSessionPhase] = useState<string | null>(null);
+  const [serverOffline, setServerOffline] = useState(false);
+  const [blockHint, setBlockHint] = useState<{ faseAntesDoBloqueio: string | null } | null>(null);
+  const [needsHumanIntervention, setNeedsHumanIntervention] = useState(false);
+  const [sessionActionNotice, setSessionActionNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const dagPollInFlight = useRef(false);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
   /** Enquanto /api/chat bloqueia (~minutos na Spec), mostra o pedido e o indicador antes da resposta. */
   const [optimisticChat, setOptimisticChat] = useState<{
@@ -84,7 +91,7 @@ export default function DashboardOrchestrator() {
     groqKey: "",
     nvidiaKey: "",
     typesafeKey: "",
-    omniRouteKey: "",
+    customGatewayKey: "",
     customEndpoint: "",
   });
 
@@ -133,7 +140,11 @@ export default function DashboardOrchestrator() {
 
     try {
       const res = await authFetch(`/api/dag?sessionId=${targetSessionId}`);
-      if (!res.ok) return null;
+      if (!res.ok) {
+        if (res.status >= 502) setServerOffline(true);
+        return null;
+      }
+      setServerOffline(false);
       const data = await res.json();
 
       if (data.session) {
@@ -143,20 +154,30 @@ export default function DashboardOrchestrator() {
         setActiveProjectName(data.session.project?.name || null);
         setActiveProjectId(data.session.projectId || null);
         setCanonicalSpec(specFromServer);
-        setIsSpecApproved(Boolean(data.session.specApproved));
-        setApprovedSpec(data.session.specApproved ? data.session.canonicalSpec || null : null);
+        const effectivelyApproved = specEffectivelyApproved(
+          data.session.phase || null,
+          Boolean(data.session.specApproved)
+        );
+        setIsSpecApproved(effectivelyApproved);
+        setApprovedSpec(effectivelyApproved ? data.session.canonicalSpec || null : null);
         setTasks(data.tasks || []);
         setBudget(data.budget || null);
         setSessionPhase(data.session.phase || null);
+        setBlockHint(data.blockHint ?? null);
         // Filtra estritamente para que APENAS mensagens do Usuário e do Assistente sejam exibidas
         const cleanMsgs = (data.messages || []).filter(
           (m: SessionMessage) => m.role === "user" || m.role === "assistant"
         );
         setMessages(cleanMsgs);
+        setNeedsHumanIntervention(
+          typeof data.needsHumanIntervention === "boolean"
+            ? data.needsHumanIntervention
+            : sessionNeedsHumanIntervention({ phase: data.session.phase })
+        );
         return specFromServer;
       }
     } catch (err) {
-      // Falhas temporárias de rede (ex.: re-compilação do dev server) não devem quebrar a UI
+      setServerOffline(true);
       if (process.env.NODE_ENV === "development") {
         console.warn("Sincronização temporária de sessão pausada (servidor indisponível ou reconectando).");
       }
@@ -176,7 +197,7 @@ export default function DashboardOrchestrator() {
         deepseekKey: data.deepseekKey || "",
         groqKey: data.groqKey || "",
         nvidiaKey: data.nvidiaKey || "",
-        omniRouteKey: data.omniRouteKey || "",
+        customGatewayKey: data.customGatewayKey || "",
         typesafeKey: data.typesafeKey || "",
         customEndpoint: data.customEndpoint || "",
       });
@@ -192,22 +213,38 @@ export default function DashboardOrchestrator() {
     fetchSettings();
   }, []);
 
-  // Polling em tempo real: Sincroniza estado das tarefas e mensagens enquanto houver DAG rodando no servidor
+  // Polling: DAG ativa OU sessão bloqueada (0 etapas = sem polling antes → fase/botões ficavam stale)
   useEffect(() => {
     if (!activeSessionId) return;
     const hasActiveTasks = tasks.some((t) => t.status === "running" || t.status === "pending");
-    if (!hasActiveTasks && !loading) return;
+    const needsSync =
+      loading ||
+      hasActiveTasks ||
+      needsHumanIntervention ||
+      sessionPhase === "BLOQUEADA" ||
+      sessionPhase === "EXECUCAO" ||
+      sessionPhase === "VERIFICACAO" ||
+      sessionPhase === "PLANEJAMENTO" ||
+      sessionPhase === "MACROBRIEF" ||
+      sessionPhase === "CONFERENCIA";
+    if (!needsSync) return;
 
     const interval = setInterval(() => {
-      fetchSessionDetails(activeSessionId);
+      if (dagPollInFlight.current) return;
+      dagPollInFlight.current = true;
+      void fetchSessionDetails(activeSessionId).finally(() => {
+        dagPollInFlight.current = false;
+      });
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [activeSessionId, tasks, loading, fetchSessionDetails]);
+  }, [activeSessionId, tasks, loading, sessionPhase, needsHumanIntervention, fetchSessionDetails]);
 
   const handleSelectSession = async (sessionId: string) => {
     setActiveSessionId(sessionId);
     setActiveView("dag");
+    setSessionActionNotice(null);
+    setNeedsHumanIntervention(false);
     await fetchSessionDetails(sessionId);
   };
 
@@ -421,6 +458,10 @@ export default function DashboardOrchestrator() {
           }
         }
         setMessages(incomingMessages);
+        if (typeof chatData.phase === "string") setSessionPhase(chatData.phase);
+        if (typeof chatData.phase === "string") {
+          setNeedsHumanIntervention(sessionNeedsHumanIntervention({ phase: chatData.phase }));
+        }
         // A resposta já traz a mensagem do usuário: tira o balão otimista agora, não só no finally
         // (que espera fetchProjects/fetchAdhocSessions e mostrava a mensagem 2× nesse intervalo).
         setOptimisticChat(null);
@@ -442,12 +483,14 @@ export default function DashboardOrchestrator() {
         // detectada pelo /api/chat). Nunca inferir aprovação por heurística de palavras comuns
         // do prompt do usuário ("criar", "fazer", "pode", "sim" etc. aparecem em qualquer pedido
         // normal e isso permitia executar a DAG sem o usuário jamais ter aprovado a Spec).
-        setIsSpecApproved(Boolean(chatData.specApproved));
+        const chatPhase = typeof chatData.phase === "string" ? chatData.phase : sessionPhase;
+        const chatEffectivelyApproved = specEffectivelyApproved(chatPhase, Boolean(chatData.specApproved));
+        setIsSpecApproved(chatEffectivelyApproved);
         if (typeof chatData.canonicalSpec === "string" && chatData.canonicalSpec.trim()) {
           setCanonicalSpec(chatData.canonicalSpec);
         }
 
-        if (chatData.specApproved) {
+        if (chatEffectivelyApproved) {
           // O backend (execution-trigger / approveSpecAndStart) já iniciou a orquestração
           // autônoma no servidor. A interface apenas sincroniza as tarefas e escuta via polling.
           await fetchSessionDetails(targetSessionId);
@@ -634,25 +677,54 @@ export default function DashboardOrchestrator() {
   };
 
   // Mudança 36: Retomar a sessão BLOQUEADA sem mexer na Spec nem nas etapas.
-  const handleResumeSession = async () => {
-    if (!activeSessionId) return;
+  const handleResumeSession = async (): Promise<{ ok: boolean; text: string }> => {
+    if (!activeSessionId) {
+      const text = "Nenhuma sessão ativa — selecione a sessão na barra lateral e tente de novo.";
+      setSessionActionNotice({ ok: false, text });
+      return { ok: false, text };
+    }
+    setSessionActionNotice(null);
     try {
       const res = await authFetch("/api/dag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "resume_session", sessionId: activeSessionId }),
       });
-      const data = await res.json().catch(() => ({}));
-      setConsoleLogs((prev) => [...prev, `[RETOMAR] ${data.message || data.error || "Resposta sem mensagem"}`]);
-      await fetchSessionDetails(activeSessionId);
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+        phase?: string;
+        messages?: SessionMessage[];
+        blockHint?: { faseAntesDoBloqueio: string | null } | null;
+      };
+      const text = (res.ok ? data.message : data.error) || "Resposta sem mensagem";
+      setSessionActionNotice({ ok: res.ok, text });
+      setConsoleLogs((prev) => [...prev, `[RETOMAR] ${text}`]);
+      if (data.phase) setSessionPhase(data.phase);
+      if (data.blockHint !== undefined) setBlockHint(data.blockHint);
+      if (Array.isArray(data.messages)) {
+        setMessages(data.messages.filter((m) => m.role === "user" || m.role === "assistant"));
+      } else {
+        await fetchSessionDetails(activeSessionId);
+      }
+      return { ok: res.ok, text };
     } catch (err) {
-      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao retomar a sessão: ${String(err)}`]);
+      const text = `Falha ao retomar a sessão: ${String(err)}`;
+      setSessionActionNotice({ ok: false, text });
+      setConsoleLogs((prev) => [...prev, `[ERRO] ${text}`]);
+      return { ok: false, text };
+    } finally {
     }
   };
 
   // Mudança 43.4: mais uma rodada de reparo (rodadas automáticas gastas, defeitos de código).
-  const handleAuthorizeRound = async () => {
-    if (!activeSessionId) return;
+  const handleAuthorizeRound = async (): Promise<{ ok: boolean; text: string }> => {
+    if (!activeSessionId) {
+      const text = "Nenhuma sessão ativa — selecione a sessão na barra lateral.";
+      setSessionActionNotice({ ok: false, text });
+      return { ok: false, text };
+    }
+    setSessionActionNotice(null);
     try {
       const res = await authFetch("/api/dag", {
         method: "POST",
@@ -660,29 +732,86 @@ export default function DashboardOrchestrator() {
         body: JSON.stringify({ action: "authorize_repair_round", sessionId: activeSessionId }),
       });
       const data = await res.json().catch(() => ({}));
-      setConsoleLogs((prev) => [...prev, `[RODADA] ${data.message || data.error || "Resposta sem mensagem"}`]);
+      const text = (res.ok ? data.message : data.error) || "Resposta sem mensagem";
+      setSessionActionNotice({ ok: res.ok, text });
+      setConsoleLogs((prev) => [...prev, `[RODADA] ${text}`]);
       await fetchSessionDetails(activeSessionId);
+      return { ok: res.ok, text };
     } catch (err) {
-      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao autorizar a rodada: ${String(err)}`]);
+      const text = `Falha ao autorizar a rodada: ${String(err)}`;
+      setSessionActionNotice({ ok: false, text });
+      setConsoleLogs((prev) => [...prev, `[ERRO] ${text}`]);
+      return { ok: false, text };
+    } finally {
+    }
+  };
+
+  const handlePedidoUnicoEscolha = async (
+    nodeId: string,
+    escolha: "vale o contrato" | "vale o critério"
+  ) => {
+    setConsoleLogs((prev) => [...prev, `[PEDIDO ÚNICO] Registrando "${escolha}"...`]);
+    try {
+      const res = await authFetch("/api/dag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pedido_unico_escolha", nodeId, escolha }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const text = data.error || "A escolha não foi registrada.";
+        setConsoleLogs((prev) => [...prev, `[PEDIDO ÚNICO] ${text}`]);
+        setSessionActionNotice({ ok: false, text });
+        return;
+      }
+      if (Array.isArray(data.tasks)) setTasks(data.tasks);
+      setConsoleLogs((prev) => [...prev, `[PEDIDO ÚNICO] ${data.message || "Escolha registrada."}`]);
+      setSessionActionNotice({ ok: true, text: data.message || "Escolha registrada." });
+      if (activeSessionId && data.statusEtapa === "pending") {
+        await authFetch("/api/dag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "process_queue", sessionId: activeSessionId }),
+        });
+        await fetchSessionDetails(activeSessionId);
+      }
+    } catch (err) {
+      const text = `Falha ao registrar a escolha: ${String(err)}`;
+      setConsoleLogs((prev) => [...prev, `[ERRO] ${text}`]);
+      setSessionActionNotice({ ok: false, text });
     }
   };
 
   const handleRetryNode = async (nodeId: string) => {
     setConsoleLogs((prev) => [...prev, `[RETRY] Desbloqueando etapa e liberando fila no servidor...`]);
+    setSessionActionNotice({ ok: true, text: "Aguardando resposta do servidor (Re-tentar)..." });
+    const ac = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      ac.abort(new DOMException("Re-tentar excedeu 120 s", "TimeoutError"));
+    }, 120_000);
     try {
       const res = await authFetch("/api/dag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "retry_node", nodeId }),
+        signal: ac.signal,
       });
 
-      const data = await res.json();
-      if (res.ok && data.tasks) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const text = String(data.error || data.message || `HTTP ${res.status}`);
+        const motivo = data.motivo ? ` [${String(data.motivo)}]` : "";
+        setConsoleLogs((prev) => [...prev, `[ERRO] Re-tentar recusado${motivo}: ${text}`]);
+        setSessionActionNotice({ ok: false, text: motivo ? `${text}${motivo}` : text });
+        return;
+      }
+      if (data.tasks) {
         setTasks(data.tasks);
         setConsoleLogs((prev) => [
           ...prev,
           `[RETRY] ${data.message || "Etapa desbloqueada com sucesso!"} Retomando processador no servidor...`,
         ]);
+        setSessionActionNotice({ ok: true, text: data.message || "Etapa desbloqueada." });
 
         if (activeSessionId) {
           await authFetch("/api/dag", {
@@ -692,10 +821,27 @@ export default function DashboardOrchestrator() {
           });
           await fetchSessionDetails(activeSessionId);
         }
+      } else if (data.success || data.message) {
+        const text = String(data.message || "Resposta do servidor sem lista de etapas.");
+        setConsoleLogs((prev) => [...prev, `[AVISO] Re-tentar: ${text}`]);
+        setSessionActionNotice({ ok: false, text });
+        if (activeSessionId) await fetchSessionDetails(activeSessionId);
+      } else if (res.ok) {
+        const text = "O servidor aceitou o Re-tentar, mas a resposta veio sem tarefas nem mensagem.";
+        setConsoleLogs((prev) => [...prev, `[AVISO] ${text}`]);
+        setSessionActionNotice({ ok: false, text });
+        if (activeSessionId) await fetchSessionDetails(activeSessionId);
       }
     } catch (err) {
       console.error("Erro ao desbloquear nó:", err);
-      setConsoleLogs((prev) => [...prev, `[ERRO] Falha ao desbloquear etapa: ${String(err)}`]);
+      const aborted = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+      const text = aborted
+        ? "Re-tentar passou de 120 s sem resposta. Confira se o npm run dev está no ar e a porta do navegador bate com o terminal."
+        : `Falha ao desbloquear etapa: ${String(err)}`;
+      setConsoleLogs((prev) => [...prev, `[ERRO] ${text}`]);
+      setSessionActionNotice({ ok: false, text });
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   };
 
@@ -833,9 +979,14 @@ export default function DashboardOrchestrator() {
           await fetchSessionDetails(activeSessionId);
         }}
         onRetryNode={handleRetryNode}
+        onPedidoUnicoEscolha={handlePedidoUnicoEscolha}
         budget={budget}
         onAuthorizeBudget={handleAuthorizeBudget}
         sessionPhase={sessionPhase}
+        serverOffline={serverOffline}
+        blockHint={blockHint}
+        sessionActionNotice={sessionActionNotice}
+        onDismissSessionActionNotice={() => setSessionActionNotice(null)}
         onResumeSession={handleResumeSession}
         onAuthorizeRound={handleAuthorizeRound}
         onInspectQuarantine={setInspectTaskId}
@@ -936,17 +1087,20 @@ export default function DashboardOrchestrator() {
           sessionId={activeSessionId}
           specContent={canonicalSpec}
           specApproved={isSpecApproved}
+          sessionPhase={sessionPhase}
           approvedSpec={approvedSpec}
           onSpecSaved={async () => {
             await fetchSessionDetails(activeSessionId);
             setConsoleLogs((prev) => [...prev, "[ESPECIFICAÇÃO] Rascunho da Spec salvo (não aprovado)."]);
           }}
           onClose={() => setShowSpecModal(false)}
-          onSpecApproved={async () => {
+          onSpecApproved={async (liberada) => {
             await fetchSessionDetails(activeSessionId);
             setConsoleLogs((prev) => [
               ...prev,
-              "[ESPECIFICAÇÃO] Spec Canônica APROVADA e Trava T1 LIBERADA com sucesso! Orquestrador em execução no servidor.",
+              liberada
+                ? "[ESPECIFICAÇÃO] Spec Canônica APROVADA e Trava T1 LIBERADA com sucesso! Orquestrador em execução no servidor."
+                : "[ESPECIFICAÇÃO] Pedido recebido. Trava T1 continua pendente até a fase de execução (analista e T8b).",
             ]);
           }}
         />

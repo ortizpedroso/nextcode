@@ -14,6 +14,7 @@ import {
   Lock,
   Terminal,
   Activity,
+  AlertTriangle,
   Zap,
   BarChart3,
   Wrench,
@@ -23,6 +24,7 @@ import {
   Network,
 } from "lucide-react";
 import { SettingsFormState, CustomProviderItem } from "@/components/settings/settings-dialog";
+import { EXECUTION_STOPPED_LABEL, executionLooksStopped } from "@/lib/execution-presence";
 import { DagSidebar, type SessionBudget } from "@/components/session/dag-sidebar";
 import { PromptBar } from "@/components/session/prompt-bar";
 import { WebTerminal } from "@/components/session/web-terminal";
@@ -37,6 +39,9 @@ export interface TaskNode {
   dependencies: string;
   mcpScope?: string;
   result?: string;
+  payload?: string | null;
+  /** O servidor relê o contrato da sessão. Verdadeiro quando a escolha ainda não cumpre o pedido. */
+  pedidoUnicoAguardandoDecisao?: boolean;
 }
 
 export interface SessionMessage {
@@ -78,11 +83,17 @@ interface WorkspaceProps {
   onExecuteNode: (nodeId: string) => Promise<void>;
   onRefreshTasks: () => Promise<void>;
   onRetryNode?: (nodeId: string) => Promise<void>;
+  onPedidoUnicoEscolha?: (nodeId: string, escolha: "vale o contrato" | "vale o critério") => Promise<void>;
   budget?: SessionBudget | null;
   onAuthorizeBudget?: (acrescimoUsd: number) => Promise<void>;
   sessionPhase?: string | null;
-  onResumeSession?: () => Promise<void>;
-  onAuthorizeRound?: () => Promise<void>;
+  /** O último poll de /api/dag falhou: o processo não está no ar. */
+  serverOffline?: boolean;
+  blockHint?: { faseAntesDoBloqueio: string | null } | null;
+  sessionActionNotice?: { ok: boolean; text: string } | null;
+  onDismissSessionActionNotice?: () => void;
+  onResumeSession?: () => Promise<{ ok: boolean; text: string } | void>;
+  onAuthorizeRound?: () => Promise<{ ok: boolean; text: string } | void>;
   onInspectQuarantine?: (taskId: string) => void;
   onExportAuditReport?: () => void;
   onOpenSpecModal?: (content?: string) => void;
@@ -122,7 +133,6 @@ function tierBadgeLabel(tier: string): string {
     heavy: "🧠 Pesado",
     freellmapi: "🆓 FreeLLMAPI",
     deepseek: "💎 DeepSeek (pago)",
-    omniroute: "🤖 OmniRoute",
     "groq-fallback": "⚡ Groq (chave nativa)",
     "nvidia-fallback": "🟢 NVIDIA (chave nativa)",
     "deepseek-fallback": "🐋 DeepSeek (chave nativa)",
@@ -152,9 +162,14 @@ export function Workspace({
   onExecuteNode,
   onRefreshTasks,
   onRetryNode,
+  onPedidoUnicoEscolha,
   budget,
   onAuthorizeBudget,
   sessionPhase,
+  serverOffline = false,
+  blockHint,
+  sessionActionNotice,
+  onDismissSessionActionNotice,
   onResumeSession,
   onAuthorizeRound,
   onInspectQuarantine,
@@ -254,7 +269,7 @@ export function Workspace({
       scrollToBottom("auto");
     }, 100);
     return () => clearTimeout(timer);
-  }, [messages.length, loading, chatLoadingKind, activeSessionId]);
+  }, [messages.length, loading, chatLoadingKind, activeSessionId, sessionActionNotice?.text]);
 
   // MutationObserver para garantir scroll automatico continuo durante o streaming do assistente
   useEffect(() => {
@@ -298,6 +313,25 @@ export function Workspace({
                 {activeSessionId && (
                   <span className="text-[10px] text-slate-400 font-mono block">
                     ID: {activeSessionId}
+                    {sessionPhase ? (
+                      <>
+                        {" "}
+                        · fase{" "}
+                        <strong className={sessionPhase === "BLOQUEADA" ? "text-amber-600 dark:text-amber-400" : ""}>
+                          {sessionPhase}
+                        </strong>
+                        {executionLooksStopped({
+                          serverReachable: !serverOffline,
+                          taskMarkedRunning: Boolean(runningTask),
+                          phase: sessionPhase ?? null,
+                        }) ? (
+                          <strong className="text-rose-600 dark:text-rose-400">
+                            {" "}
+                            · {EXECUTION_STOPPED_LABEL}
+                          </strong>
+                        ) : null}
+                      </>
+                    ) : null}
                   </span>
                 )}
               </div>
@@ -307,7 +341,16 @@ export function Workspace({
             <div className="flex items-center gap-3">
               {!showDagPanel && tasks.length > 0 && (
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full text-xs font-medium">
-                  {runningTask ? (
+                  {executionLooksStopped({
+                    serverReachable: !serverOffline,
+                    taskMarkedRunning: Boolean(runningTask),
+                    phase: sessionPhase ?? null,
+                  }) ? (
+                    <>
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                      <span className="text-rose-700 dark:text-rose-400">{EXECUTION_STOPPED_LABEL}</span>
+                    </>
+                  ) : runningTask ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 text-[#0066cc] animate-spin" />
                       <span className="text-slate-700 dark:text-slate-300">
@@ -409,6 +452,29 @@ export function Workspace({
             <div className="flex-1 flex flex-col h-full overflow-hidden p-6">
               {/* Lista de Mensagens (ref p/ auto-scroll do historico) */}
               <div ref={chatScrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2">
+                {sessionActionNotice && (
+                  <div
+                    className={`rounded-xl border px-4 py-3 text-xs leading-relaxed ${
+                      sessionActionNotice.ok
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                        : "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                    }`}
+                    role="status"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="whitespace-pre-wrap">{sessionActionNotice.text}</p>
+                      {onDismissSessionActionNotice && (
+                        <button
+                          type="button"
+                          onClick={onDismissSessionActionNotice}
+                          className="shrink-0 text-[10px] font-semibold uppercase opacity-70 hover:opacity-100"
+                        >
+                          Fechar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {messages.length === 0 && tasks.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center space-y-3 p-8 text-slate-400">
                     <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-[#0066cc] flex items-center justify-center font-bold text-2xl shadow-sm">
@@ -621,11 +687,18 @@ export function Workspace({
                 onClose={() => setShowDagPanel(false)}
                 onRefreshTasks={onRefreshTasks}
                 onRetryNode={onRetryNode}
+                onPedidoUnicoEscolha={onPedidoUnicoEscolha}
                 onInspectQuarantine={onInspectQuarantine}
                 onExportAuditReport={onExportAuditReport}
                 budget={budget}
                 onAuthorizeBudget={onAuthorizeBudget}
                 sessionPhase={sessionPhase}
+                executionStalled={executionLooksStopped({
+                  serverReachable: !serverOffline,
+                  taskMarkedRunning: tasks.some((task) => task.status === "running"),
+                  phase: sessionPhase ?? null,
+                })}
+                blockHint={blockHint}
                 onResumeSession={onResumeSession}
                 onAuthorizeRound={onAuthorizeRound}
               />

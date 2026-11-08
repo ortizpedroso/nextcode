@@ -5,6 +5,7 @@ import { authFetch } from "@/lib/client-session";
 import { X, Lock, Unlock, CheckCircle2, FileText, Save, Code2 } from "lucide-react";
 import { canonicalizeSpecDocument, parseSpecDocument } from "@/core/intake/spec-format";
 import { messageForApproveSpecFailure } from "@/core/intake/approve-spec-messages";
+import { specSealLiberado, specTravaT1Pendente } from "@/lib/spec-approval-ui";
 import { SpecSummaryCard } from "./spec-summary-card";
 
 interface CanonicalSpecModalProps {
@@ -13,8 +14,11 @@ interface CanonicalSpecModalProps {
   specApproved: boolean;
   /** Spec registrada como aprovada no servidor (o selo do resumo vem daqui, nunca do texto). */
   approvedSpec?: string | null;
+  /** Fase da sessão — SPEC_REVISAO exige re-aprovar mesmo com specApproved true no DB (ex.: pós-T8b). */
+  sessionPhase?: string | null;
   onClose: () => void;
-  onSpecApproved: () => Promise<void>;
+  /** `liberada` é true só quando o selo pode ficar verde (família EXECUCAO). */
+  onSpecApproved: (liberada: boolean) => Promise<void>;
   /** Rascunho salvo (sem aprovar): só recarrega a sessão. Nunca dispara execução. */
   onSpecSaved?: () => Promise<void>;
 }
@@ -34,23 +38,25 @@ export function CanonicalSpecModal({
   specContent,
   specApproved,
   approvedSpec,
+  sessionPhase,
   onClose,
   onSpecApproved,
   onSpecSaved,
 }: CanonicalSpecModalProps) {
   const [content, setContent] = useState(specContent || DEFAULT_SPEC);
   const [saving, setSaving] = useState(false);
-  const [isApproved, setIsApproved] = useState(specApproved);
+  const travaPendente = specTravaT1Pendente(sessionPhase, specApproved);
+  const [isApproved, setIsApproved] = useState(!travaPendente);
   const [approvedHere, setApprovedHere] = useState(false);
   const [showFullDoc, setShowFullDoc] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
 
   useEffect(() => {
     setContent(specContent || DEFAULT_SPEC);
-    setIsApproved(specApproved);
+    setIsApproved(!specTravaT1Pendente(sessionPhase, specApproved));
     setApprovedHere(false);
     setApproveError(null);
-  }, [specContent, specApproved, sessionId]);
+  }, [specContent, specApproved, sessionPhase, sessionId]);
 
   const parsedSpec = useMemo(() => parseSpecDocument(content), [content]);
 
@@ -95,19 +101,32 @@ export function CanonicalSpecModal({
         ok?: boolean;
         reason?: string;
         problems?: string[];
+        pausaCodigo?: import("@/core/intake/intake-pause").IntakePausaCodigo;
         error?: string;
+        alreadyStarted?: boolean;
+        travaT1Pendente?: boolean;
+        session?: { phase?: string | null; specApproved?: boolean };
       };
 
       if (res.ok && data.ok !== false) {
         setContent(canonical);
-        setIsApproved(true);
-        setApprovedHere(true);
-        await onSpecApproved();
+        const phase = data.session?.phase ?? sessionPhase;
+        const flag = Boolean(data.session?.specApproved);
+        const liberada = specSealLiberado(data.travaT1Pendente, phase, flag);
+        setIsApproved(liberada);
+        setApprovedHere(liberada);
+        await onSpecApproved(liberada);
+        if (data.alreadyStarted && !liberada) {
+          setApproveError(
+            "A execução desta Spec **já está em andamento** (fase de execução). " +
+              "Não é necessário aprovar de novo — acompanhe o painel DAG."
+          );
+        }
         return;
       }
 
       const reason = data.reason || data.error || `HTTP_${res.status}`;
-      setApproveError(messageForApproveSpecFailure(reason, data.problems));
+      setApproveError(messageForApproveSpecFailure(reason, data.problems, { pausaCodigo: data.pausaCodigo }));
     } catch (err) {
       console.error("Erro ao aprovar Spec Canônica:", err);
       setApproveError("Falha de rede ao aprovar. Verifique se o servidor está no ar e tente de novo.");
@@ -174,9 +193,17 @@ export function CanonicalSpecModal({
                     <>
                       <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Trava T1: Aprovada
                     </>
+                  ) : sessionPhase === "SPEC_REVISAO" || sessionPhase === "BLOQUEADA" ? (
+                    <>
+                      <Lock className="w-3 h-3 text-amber-500" /> Trava T1: Reaprovar para replanejar (T8b)
+                    </>
+                  ) : sessionPhase === "PLANEJAMENTO" ? (
+                    <>
+                      <Lock className="w-3 h-3 text-amber-500" /> Trava T1: Plano em preparo (aprovar de novo se parou)
+                    </>
                   ) : (
                     <>
-                      <Lock className="w-3 h-3 text-amber-500" /> Trava T1: Bloqueada (Pendente)
+                      <Lock className="w-3 h-3 text-amber-500" /> Trava T1: Pendente
                     </>
                   )}
                 </span>
@@ -223,8 +250,10 @@ export function CanonicalSpecModal({
               <SpecSummaryCard
                 spec={parsedSpec}
                 approved={
-                  approvedHere ||
-                  (Boolean(approvedSpec) && approvedSpec!.replace(/\r\n/g, "\n").trim() === content.replace(/\r\n/g, "\n").trim())
+                  !travaPendente &&
+                  (approvedHere ||
+                    (Boolean(approvedSpec) &&
+                      approvedSpec!.replace(/\r\n/g, "\n").trim() === content.replace(/\r\n/g, "\n").trim()))
                 }
               />
             </div>

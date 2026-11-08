@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { parseSpecDocument } from "@/core/intake/spec-format";
+import { errorFenceMeta, presentIncidentMarkdown } from "@/core/governance/incident-present";
 import { SpecSummaryCard } from "./spec-summary-card";
 import {
   FileText,
@@ -160,7 +161,7 @@ export function SpecMessageRenderer({ content, onOpenSpecModal, role, approvedSp
  * Componente interno que transforma Markdown em componentes visuais limpos
  */
 function RenderParsedMarkdown({ text }: { text: string }) {
-  const lines = text.split("\n");
+  const lines = presentIncidentMarkdown(text).split("\n");
   const elements: React.ReactNode[] = [];
   let inCodeBlock = false;
   let codeBuffer: string[] = [];
@@ -315,6 +316,7 @@ function formatInlineMarkdown(text: string): React.ReactNode {
  * Card estilizado para exibição de blocos de código e diagramas Mermaid
  */
 function CodeBlockCard({ code, language }: { code: string; language: string }) {
+  const erro = errorFenceMeta(language);
   const [copied, setCopied] = useState(false);
   const [showRawMermaid, setShowRawMermaid] = useState(false);
 
@@ -399,8 +401,12 @@ function CodeBlockCard({ code, language }: { code: string; language: string }) {
     <div className="my-3 border border-slate-800 rounded-xl bg-slate-950 overflow-hidden shadow-sm">
       <div className="px-3.5 py-1.5 bg-slate-900 border-b border-slate-800/80 flex items-center justify-between">
         <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
-          {language || "code"}
+          {erro?.label || language || "code"}
         </span>
+        <div className="flex items-center gap-2">
+          {erro?.clock ? (
+            <time className="text-[10px] tabular-nums text-slate-400">{erro.clock}</time>
+          ) : null}
         <button
           onClick={handleCopyCode}
           className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors flex items-center gap-1 text-[10px]"
@@ -418,6 +424,7 @@ function CodeBlockCard({ code, language }: { code: string; language: string }) {
             </>
           )}
         </button>
+        </div>
       </div>
       <pre className="p-3.5 text-slate-100 font-mono text-[11px] overflow-x-auto leading-relaxed max-h-96">
         {code}

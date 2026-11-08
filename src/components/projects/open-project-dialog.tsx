@@ -60,6 +60,7 @@ export function OpenProjectDialog({
   const [explorerDirs, setExplorerDirs] = useState<DirectoryEntry[]>([]);
   const [explorerDrives, setExplorerDrives] = useState<string[]>([]);
   const [explorerLoading, setExplorerLoading] = useState(false);
+  const [explorerError, setExplorerError] = useState("");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -111,15 +112,20 @@ export function OpenProjectDialog({
     try {
       const query = targetPath ? `?targetPath=${encodeURIComponent(targetPath)}` : "";
       const res = await authFetch(`/api/fs/list-dirs${query}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        setExplorerError("");
         setExplorerCurrentPath(data.currentPath || "");
         setExplorerParentPath(data.parentPath || null);
         setExplorerDirs(data.directories || []);
         setExplorerDrives(data.drives || []);
+      } else {
+        setExplorerDirs([]);
+        setExplorerError(String(data.error || `Não foi possível listar as pastas (HTTP ${res.status}).`));
       }
     } catch (err) {
       console.error("Erro ao listar diretórios:", err);
+      setExplorerError("Não foi possível listar as pastas.");
     } finally {
       setExplorerLoading(false);
     }
@@ -383,6 +389,8 @@ export function OpenProjectDialog({
               <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-lg p-2 min-h-48 max-h-64 space-y-1 bg-slate-50/50 dark:bg-slate-950/50">
                 {explorerLoading ? (
                   <div className="p-4 text-center text-slate-400 italic">Carregando pastas...</div>
+                ) : explorerError ? (
+                  <div className="p-4 text-center text-red-500">{explorerError}</div>
                 ) : explorerDirs.length === 0 ? (
                   <div className="p-4 text-center text-slate-400 italic">Nenhuma subpasta encontrada.</div>
                 ) : (
