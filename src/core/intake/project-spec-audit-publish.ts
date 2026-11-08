@@ -6,8 +6,8 @@ import {
 } from "./spec-file";
 import type { ProjectSpecAuditResult } from "./project-repository-survey";
 
-export const SPEC_GAPS_RELATIVE_PATH = ".nextcode/spec-gaps.md";
-export const SPEC_RECONCILE_RELATIVE_PATH = ".nextcode/spec-reconcile.md";
+export { SPEC_GAPS_RELATIVE_PATH, SPEC_RECONCILE_RELATIVE_PATH } from "./spec-file";
+import { SPEC_GAPS_RELATIVE_PATH, SPEC_RECONCILE_RELATIVE_PATH } from "./spec-file";
 
 /**
  * Grava artefatos da auditoria sob projectRoot/.nextcode/:

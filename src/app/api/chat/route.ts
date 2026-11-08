@@ -397,8 +397,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const auditResult = runProjectSpecAudit(projectPath, { force: false });
+      const auditResult = runProjectSpecAudit(projectPath, { force: false, autoPublish: false });
       publishProjectSpecAuditArtifacts(projectPath, auditResult);
+
+      TelemetryLogger.log({
+        sessionId: activeSessionId,
+        action: "PROJECT_SPEC_AUDIT",
+        details: {
+          mode: auditResult.mode,
+          gravouSpec: auditResult.gravouSpec,
+          lacunas: auditResult.survey.lacunas.length,
+          surface: "chat",
+        },
+      });
 
       if (auditResult.gravouSpec && auditResult.specText) {
         await reconcileProjectSpecDocument(activeSessionId, projectPath, auditResult.specText);

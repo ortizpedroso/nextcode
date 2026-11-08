@@ -9,6 +9,7 @@ import {
   publishProjectSpecAuditArtifacts,
 } from "@/core/intake/project-repository-survey";
 import { reconcileProjectSpecDocument } from "@/core/intake/spec-sync";
+import { assertRegisteredProjectDirectory } from "@/core/intake/project-audit-path-policy";
 
 export async function POST(request: NextRequest) {
   const guard = requireAuth(request);
@@ -41,9 +42,20 @@ export async function POST(request: NextRequest) {
       targetPath = project.path;
     } else if (inputPath && typeof inputPath === "string" && inputPath.trim()) {
       targetPath = path.resolve(inputPath.trim());
+      const policy = await assertRegisteredProjectDirectory(targetPath);
+      if (!policy.ok) {
+        return NextResponse.json({ error: policy.message }, { status: 403 });
+      }
     }
 
-    if (!targetPath || !fs.existsSync(targetPath)) {
+    if (!targetPath) {
+      return NextResponse.json(
+        { error: "Informe projectId ou path de um projeto cadastrado." },
+        { status: 400 }
+      );
+    }
+
+    if (!fs.existsSync(targetPath)) {
       return NextResponse.json(
         { error: `Caminho do repositório inexistente ou inválido: "${targetPath || ""}".` },
         { status: 400 }
@@ -58,8 +70,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Executa auditoria do repositório
-    const result = runProjectSpecAudit(targetPath, { force: Boolean(force) });
+    const result = runProjectSpecAudit(targetPath, {
+      force: Boolean(force),
+      autoPublish: false,
+    });
     const paths = publishProjectSpecAuditArtifacts(targetPath, result);
 
     // Opcional: sincronização com a sessão ativa
