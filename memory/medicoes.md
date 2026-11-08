@@ -1,5 +1,9 @@
 # Medições reais (não estimativas, salvo indicação)
 
+## 07/11/2026 — Elicitador RED/GREEN, um caso, Opus direto
+Duas chamadas `claude-opus-5-5`, `max_tokens` 3000, caminho `callElicitadorClaude`. RED (só o formato) US$ 0,0694, 27475 ms, saída 3000, cache de escrita 1867. GREEN (skill no system) US$ 0,0760, 27225 ms, saída 3000, cache de escrita 3198. Soma US$ 0,1454. Preço da tabela em `src/core/llm/cost.ts` (`claude-opus-5-5`, entrada 4, saída 20, escrita de cache 1,25×). As duas pararam em `max_tokens`.
+
+
 | Data | Rodada | Resultado | Custo LLM | Jev |
 |---|---|---|---|---|
 | 07/10 | P1, executor chamada única, Jev decidindo nível | ENTREGUE | US$ 0,0282 (exec+aval) / 0,0416 total | < US$ 0,0002 |

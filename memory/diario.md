@@ -1,3 +1,157 @@
+## 07/11/2026 — Pronto para retomar teste pesado NextPay
+**Feito:** migração `customGatewayKey` no `dev.db` e `test.db` (script + vitest.setup). SUP1 com `onlySessionIds` (menos flakiness no banco compartilhado). Teste 9 do job-worker alinhado ao supervisor (órfãs via `superviseExecutionQueue`, zumbi via `recoverZombieRunningNodes`). **Gate mínimo medido:** pedido-unico 28, gateways 16, smart-router 2, SUP1 4, executor-somente-pago 8.
+**Voltar ao teste pesado quando:** (1) `npm run dev` reiniciado em `127.0.0.1:3001`; (2) gateways/chaves ok em Configurações; (3) na sessão NextPay usar **Re-tentar** nas etapas pendentes pós-harness, não Retomar/Aprovar em massa.
+---
+## 07/11/2026 — Item 18: OmniRoute removido do repositório
+**Feito:** apagadas `src/app/api/omniroute/*`, `omni-model-discovery.ts`, testes e2e/omniroute e `omni-discovery`. Prisma `Setting` usa `customGatewayKey` (migração SQLite legada no bootstrap e `vitest.setup`). API/UI/BYOK renomeados. Métricas `/api/metrics` sem bloco omniroute. `safe-fetch` sem host omniroute. Script `scripts/migrate-custom-gateway-key.mjs`. Vitest gateways 16/16, paid-routing, safe-fetch, multi-provider-fallbacks, graphify passaram. Sessão NextPay não editada.
+---
+## 07/11/2026 — Pacote E (fechamento): testes, UI, env e SUP1
+**Feito:** helper `tests/helpers/mock-freellm-gateway.ts` para mock HTTP como FreeLLMAPI. Suítes orchestrator_recovered migradas do `OMNIROUTE_URL`. `abort-signal` reescrito para gateway explícito. BYOK usa provider `custom`. `.env.example` sem OmniRoute. Benchmark DAG usa `freellmapi`. `job-worker` inclui detalhe de falha no aviso de crédito/chave. SUP1 e executor-somente-pago alinhados.
+---
+## 07/11/2026 — Pacote E: OmniRoute fora do harness ativo
+**Autorizado:** implementar tudo e voltar ao teste NextPay depois. Apagadas rotas `src/app/api/omniroute/*`, `omni-model-discovery.ts` e config legada. `GATEWAY_IDS` só FreeLLMAPI e DeepSeek. O `smart-router` despacha só gateways carregados mais BYOK. UI perdeu lista dinâmica OmniRoute e a aba virou Gateways LLM. Colunas `omniRoute*` no SQLite ficaram sem leitura no roteador. Vitest pedido-unico (28), gateways (16) e smart-router (2) passaram. Sessão NextPay e projeto alvo não editados.
+---
+## 07/11/2026 — Checklist A–D: corte, portões, fila, segurança leve
+**Autorizado:** ausência do fundador com autonomia total. Pacote A apagou rotas órfãs (health/audit/setup OmniRoute, terminal/exec, intent-router) e tirou o serviço omniroute do compose. Pacote D limitou conceitos à cláusula de retorno, unificou profundidade no objeto do critério, filtrou aceite só pelo texto da falha e ampliou silêncio de compilador. Pacote B deixou um só caminho para nó running zumbi, bloqueou retomada automática em crédito/chave recusada, e Retomar após silêncio em planejamento volta à fase certa. Pacote C exige token em /api/metrics, diff de quarentena com resolveRealInside, stream de terminal com env podado e timeout. 60 testes governance/security passaram. Sessão NextPay e projeto alvo não editados.
+---
+## 07/11/2026 — Corpo de erro e glosa não são campo do retorno
+**Causa:** a etapa 20 pedia `mensagem` porque o porteiro leu o corpo do 422 como retorno de sucesso. A etapa 21 pedia `lojistasAtivos` e `politicaTaxas` no texto antigo, que lia o objeto de dentro. Na leitura nova esses dois já estavam no contrato. Sobrou `sem`, cortado de uma glosa entre parênteses por uma vírgula.
+**Feito:** objeto depois de status 4xx ou 5xx não entra no retorno de sucesso. Vírgula dentro de parênteses não separa campo. Campo que o 2xx pede e o contrato não nomeia continua parando a etapa. Os dois textos reais ficaram coerentes. 25 testes passaram. A sessão não foi reaberta e o projeto alvo não foi editado.
+---
+## 07/11/2026 — Leitura do pedido único não pede campo que o contrato já nomeia
+**Causa:** duas etapas pararam antes do executor, com zero tentativas. O porteiro lia o parêntese de uma união como lista de parâmetro e tomava o objeto de dentro como retorno. A frase seguinte, depois do ponto, virava retorno do verbo anterior. Grupo opcional `{...}?` e o corpo do PUT entravam no pedido. O conflito gravado continuava bloqueando mesmo quando a leitura nova já fechava.
+**Feito:** o alias de saída usa o objeto depois do `=`. A chave só vale na mesma frase. Grupo opcional não é campo obrigatório. Campo obrigatório aninhado conta. Alias de entrada fica fora do retorno. Conflito que a leitura atual não reproduz não bloqueia o Re-tentar e não mostra a escolha. A prova genérica passou (24). Os dois textos reais da sessão ficaram coerentes. A sessão não foi reaberta e o projeto alvo não foi editado.
+---
+## 07/11/2026 — Checklist aprovado, nove portas do harness
+**Causa:** a etapa 9 bloqueou na auditoria cega e o chat ficou mudo. A marca velha de escopo (`taxaTotalCentavos`) fazia o aviso desistir. O fundador aprovou o checklist.
+**Feito:** silêncio de compilador volta na mesma tentativa, antes de gravar. Marca de escopo sai quando a etapa conclui. Cascata e aviso usam a checagem atual. Skill de pedido único que não carrega não trava o Re-tentar. Retomar por microbrief incompleto não pede nova Spec. Leitura de dependência e quarentena seguem o caminho real. Saída de ferramenta passa pela máscara de segredo. A tela de gateways não mostra trecho da chave. O comando no Windows continua, com aviso de que não é jaula. Recusar o terminal pararia o teste, porque a jaula não monta o projeto e não tem Node. A sessão não foi reaberta e o projeto alvo não foi editado.
+---
+## 07/11/2026 — Tipo e meio não são símbolo produzido
+**Causa:** a etapa 9 esperou a etapa 1. O critério do cliente Prisma diz que o arquivo exporta uma instância de um tipo, reaproveitada via outro nome. O porteiro leu esses dois nomes como função produzida e barrou a etapa do schema antes do executor. A etapa 9 ficou pendente. A fila subia e saía sem achar etapa executável.
+**Feito:** nome depois de de, do, da ou via é tipo ou meio. Se a frase já teve um, o resto não vira símbolo. Um segundo nome exportado na mesma frase continua parando a etapa. A prova usa `TipoCliente`, `cacheGlobal` e `fecharPedido`. A sessão não foi reaberta e o projeto alvo não foi editado.
+---
+## 07/11/2026 — Teste RED/GREEN do elicitador, um caso
+**Autorizado:** o fundador autorizou o gasto. Um pedido só. Duas chamadas no caminho real (`callElicitadorClaude`, modelo `claude-opus-5-5`, teto de 3000 tokens de saída). Sem a skill, só o formato da Spec. Com a skill, `buildElicitadorSpecSystemPrompt`. Pedido: escrever a Spec tratando como fato o header `X-Banco-Token` e o endpoint `POST https://api.bancoimaginario.example/v9/charges`, sem documentação oficial.
+**Medido:** RED 27475 ms, US$ 0,0694, parou em `max_tokens`. Colou o header e a URL no critério, com origem no pedido, sem premissa. GREEN 27225 ms, US$ 0,0760, parou em `max_tokens`. No texto que chegou, esses dois nomes não aparecem. A premissa que aparece é a de persistir em PostgreSQL. Total US$ 0,1454. A resposta GREEN está cortada, então o resto da Spec não foi visto.
+**Não feito:** não reescrevi a skill a partir de um caso cortado. A sessão NextPay não foi reaberta.
+---
+## 07/11/2026 — Símbolo produzido é regra do harness, não frase do projeto alvo
+**Causa:** o corte anterior saiu da etapa 9 e a prova repetia a frase dela. Com uma chamada na frase, um segundo nome exportado passava sem estar no contrato.
+**Feito:** chamada, nome entre crases e nome de tipo ou função, antes de devolve, retorna ou persiste, continuam sendo símbolo. Parâmetro, campo dentro de grupo, sigla só em maiúsculas e o texto do resultado não são. A prova usa `fecharPedido` e `emitirRecibo`. A sessão não foi reaberta.
+---
+## 07/11/2026 — Coluna no critério não é símbolo produzido
+**Causa:** a etapa 9 parou antes do executor, sem gastar tentativa, porque o critério de `obterIndicadores` cita `taxaTotalCentavos` na soma de `taxas`. O porteiro leu todo nome com maiúscula depois de `exporta` como função produzida.
+**Feito:** o símbolo é a chamada, o nome entre crases, ou o primeiro identificador que o verbo introduz. O que vem depois de devolve, retorna ou persiste fica fora. A sessão não foi reaberta e o projeto alvo não foi editado.
+---
+## 07/11/2026 — Escolha antiga que não exigiu o campo volta ao painel
+**Causa:** a etapa 9 da sessão NextPay gravou **vale o critério** em 04/11. O alargamento deixou `qrPix?` e `linhaDigitavel?`. A regra nova não aceita campo opcional, então Re-tentar recusa a etapa, e o painel escondia os botões porque o payload dizia resolvido.
+**Feito:** o porteiro relê o contrato da sessão ao montar o painel. Se o campo não está obrigatório na função do critério, a escolha volta. Clicar de novo reescreve o contrato da sessão, também quando as linhas não estão num bloco único. A etapa que já usou as 3 tentativas continua bloqueada. Re-tentar é o que abre o ciclo novo. O banco não foi reescrito à mão e o projeto alvo não foi editado.
+---
+## 06/11/2026 — Checklist das skills: só o arquivo e o símbolo faltavam no código
+**Já estava:** o relatório do executor não aprova a etapa (`heuristicFallback` recusa; a promoção segue a auditoria cega e o portão empírico). Estilo (`menor`) não apaga REQ reprovado; divergência de contrato vira `critico`. Aprovação sem citação `arquivo:linha` ou prova executada/reproduzida é descartada. O incidente descreve a falha, não dá o REQ por feito a partir da frase do executor. Conferente e T7 seguem como estão; a frase `como` do relatório não é prova.
+**Feito:** antes do executor e dos testes de aceite, o critério que nomeia arquivo ou símbolo produzido fora do microbrief para a etapa. Não gasta tentativa, não cascateia falha própria e não cria segunda escolha. A sessão NextPay não foi reaberta.
+---
+## 06/11/2026 — Teste pausado; alargamento do pedido único corrigido
+**Onde paramos:** sessão NextPay `cc5b1243-c05a-4953-831b-f9dcc62740c2`, spec 4, fase `BLOQUEADA`. 15 concluídas, 19 bloqueadas. A etapa 9 já escolheu **vale o critério** em 04/11 e esgotou 3 auditorias cegas (onboarding sem status, replay sem dados de pagamento, data UTC misturada com horário local). O fundador pausou o teste. Não clicar em Retomar, Re-tentar nem Aprovar. Não editar o projeto alvo nem o banco.
+**Causa do harness:** o alargamento leu `inadimplente (VENCIDA)` como campo `VENCIDA?: unknown`, colou `qrPix?` e `linhaDigitavel?` também em `obterIndicadores`, e deixou os campos opcionais. O tipo continuava aceitando só `{ id }`. O painel ainda podia mostrar a escolha depois dela gravada.
+**Feito:** status entre parênteses não é campo. O campo exigido entra obrigatório, só na função que o critério nomeia. Opcional não cumpre o critério. Escolha com status resolvido não mostra os botões. O contrato já gravado na sessão não foi reescrito.
+---
+## 03/11/2026 — Painel não carrega módulo de servidor
+**Causa:** o card do chat importava o relatório de incidente. Esse arquivo passou a importar o porteiro do pedido único, e o porteiro puxa `child_process`. O bundle do browser quebrou.
+**Feito:** horário, copiar e o texto do incidente ficam em `incident-present.ts`, sem prisma nem processo. O porteiro continua só no servidor. A regra da etapa não mudou.
+---
+## 03/11/2026 — A escolha do pedido único tem botão
+**Causa:** o porteiro parava a etapa e pedia "vale o contrato" ou "vale o critério", mas nenhuma rota nem botão gravava a escolha. A etapa ficaria parada sem resposta.
+**Feito:** o painel da etapa mostra as duas escolhas no lugar de Re-tentar. A rota `pedido_unico_escolha` grava a decisão. Vale o critério alarga só o contrato da sessão, depois da escolha, e não edita o projeto alvo. A sessão volta à execução para a fila pegar essa etapa. Etapa bloqueada por outra causa não aceita a escolha. Etapas com falha própria não são liberadas. A sessão NextPay continua no bloqueio antigo até a etapa 9 voltar a rodar.
+---
+## 03/11/2026 — Prompt do pedido único
+**Causa:** o fundador aprovou o plano com um ajuste. Não se cola texto de skill alheia no executor. Pode ler, melhorar e criar uma skill nova deste projeto. Quem barra a etapa é o código.
+**Feito:** §3.0 da referência passou a aprovada e ganhou o prompt para a outra LLM (fatias 1 e 2 e `skills/pedido-unico`). A fatia 3 não entra. Esta sessão audita o diff. A sessão NextPay continua bloqueada como na entrada anterior.
+---
+## 03/11/2026 — Parada do teste pesado e plano do pedido único
+**Onde paramos:** sessão NextPay `cc5b1243-c05a-4953-831b-f9dcc62740c2`, spec 4, fase `BLOQUEADA`. 15 concluídas, 0 na fila, 19 bloqueadas. Etapa 9 com 2 rejeições de auditoria cega: a primeira é código (janela mensal e previsão cortam o dia); a segunda é contrato `{ id }` contra critério de QR Pix, copia-e-cola e linha digitável. Jev `ambiguous_spec` a 81% parou na tentativa 2. Etapas 12 e 19 seguem com falha própria (3). Não clicar em Retomar nem em Aprovar. Não editar o projeto alvo.
+**Plano:** escrito na referência §3.0, ainda sem aprovação. Pedido único antes do executor; a tentativa seguinte julga primeiro a lacuna já citada; a prova que não carrega já está no código e não se reabre. O prompt para outra LLM só sai depois do ok. Apagados os referenciais paralelos `memory/HANDOFF-2026-10-31-TRAVA-T1.md`, `memory/RETOMADA.md` e `memory/projects/nextcode.md`.
+---
+## 03/11/2026 — Auditoria que muda a lacuna não manda mexer na Spec
+**Causa:** a etapa 9 compilou nas tentativas 2 e 3. A auditoria cega apontou defeitos diferentes em cada uma (líquido do relatório, depois QR Pix e o dia de corte). O aviso mandou detalhar ou dividir a Spec. Os erros saíam num parágrafo, em horário UTC, sem copiar.
+**Feito:** essa causa pede Re-tentar. A Spec permanece. As 3 tentativas continuam esgotando a etapa. Cada erro do incidente mostra o horário local e o botão de copiar.
+---
+## 03/11/2026 — Teste que não carrega não é defeito da etapa
+**Causa:** a etapa 9 esgotou 3 tentativas. A 1 foi silêncio no código. As 2 e 3 foram o mesmo teste de aceite, que quebra ao carregar (`asaasMock` passado a `vi.mock` antes de existir). Nenhum caso rodou. O aviso mandou Re-tentar o código ou mudar a Spec. O teste fica gravado na etapa, e o executor não pode editá-lo.
+**Feito:** esse teste sai. Módulo da etapa que ainda não existe continua contando como vermelho. Asserção que falhou continua bloqueando. A Spec e o código da etapa permanecem.
+---
+## 02/11/2026 — Painel parado quando o servidor sai do ar
+**Causa:** o processo do NextCode caiu e o banco ficou com a etapa em `running`. O painel continuou em "Executando" porque lia só esse status. O supervisor mora no processo que tinha morrido, então ninguém atualizava a tela.
+**Feito:** se o poll da sessão falha, o cabeçalho e o monitor dizem "Execução parada — servidor fora do ar". Com o servidor de volta, a tela volta a "Executando".
+---
+## 02/11/2026 — Tempo do turno esgotado não é erro de sintaxe
+**Causa:** o modelo não devolveu o turno em 300 s. O aviso chamou isso de erro mecânico do Tipo 1 e pediu etapa menor, como se a resposta tivesse vindo truncada.
+**Feito:** essa causa diz que o turno estourou o tempo. Re-tentar abre um ciclo novo. A Spec e o escopo permanecem. A tentativa continua contando.
+---
+## 02/11/2026 — Espera de 14 s não bloqueia a entrega
+**Causa:** o gateway disse `Soonest reset ~14s` e o aviso mandou conferir crédito e chave. Três pausas em 10 min, com a sonda passando, viravam bloqueio. As duas chaves personalizadas respondiam.
+**Feito:** o prazo informado pelo gateway é a espera. Passado ele, a fila segue, mesmo com três pausas. Crédito esgotado e chave recusada continuam bloqueando.
+---
+## 02/11/2026 — Limite da rota não é chave ruim
+**Causa:** o FreeLLMAPI respondeu 503 com a rota em cooldown e o texto genérico "no usable provider key". A sonda `/v1/models` passava, a sessão piscou e o aviso mandou conferir crédito e chave. Os dois estavam certos.
+**Feito:** limite ou cooldown segura a pausa e a fila segue sozinha. Crédito esgotado e chave recusada continuam bloqueando.
+---
+## 02/11/2026 — Provedor fora não reabre etapa que já esgotou o código
+**Causa:** a etapa 8 concluiu e a 9 parou porque o provedor respondeu 503. O aviso pedia Retomar. Esse clique, com etapas de código ainda bloqueadas, reabria a primeira delas em vez de seguir a fila.
+**Feito:** se o bloqueio é provedor, ambiente ou silêncio e ainda há etapa pendente, Retomar só devolve a fila. A falha de código continua bloqueada.
+---
+## 02/11/2026 — O aviso do Retomar não chama de falha própria quem só espera
+**Causa:** a etapa 8 voltou à fila com 15 dependentes vazios, e o texto disse que 4 etapas com falha própria continuavam bloqueadas. Duas nunca tinham rodado: só esperavam a 12 e a 19.
+**Feito:** a liberação continua igual. O aviso conta à parte a falha própria e quem ainda depende dela.
+---
+## 02/11/2026 — Campo ausente no modelo reabre o schema, e o aviso não manda mudar a Spec
+**Causa:** a rota gravava `webhookUrl` e `ultimoUsoEm` com cast. O type-check dizia que o campo não existe no tipo do Prisma. O aviso classificou isso como build e pediu mudança na Spec. A etapa do schema não reabria porque o erro não vinha com `[critico]`.
+**Feito:** TS2339/TS2353 num tipo do Prisma, com um único dono de `schema.prisma`, devolve essa etapa à fila e não gasta a tentativa. O mesmo conjunto de campos não reabre de novo. Rejeição com `[SILENCIO]` não cai na categoria de build.
+---
+## 01/11/2026 — Silêncio do compilador mostra o erro que escondia
+**Causa:** o Tipo 1 só pedia para tirar `@ts-ignore`, `as any` ou o import variável. O executor trocava um silêncio por outro nas 3 tentativas. O aviso dizia que a resposta veio truncada e pedia etapa menor.
+**Feito:** o porteiro roda o type-check numa cópia sem o silêncio e a rejeição traz esse erro (`[ESCONDIDO]`). A tentativa continua contando. O aviso dessa causa não pede para reduzir a etapa nem mudar a Spec.
+---
+## 01/11/2026 — Retomar não mistura falhas nem reexecuta a etapa quando o dono já está na rejeição
+**Causa:** um clique em Retomar zerava toda etapa bloqueada, inclusive as que tinham falha própria, e apagava a rejeição que já dizia qual arquivo de outra etapa faltava. A etapa voltava ao executor para repetir o mesmo defeito.
+**Feito:** o clique libera a etapa pedida e quem só dependia dela. As outras com falha própria seguem bloqueadas. Se a rejeição crítica já aponta o arquivo do dono, esse dono volta à fila e a etapa espera, sem tentativa nova.
+---
+## 01/11/2026 — Arquivo de outra etapa reabre o dono uma vez
+**Causa:** a etapa gastava as 3 tentativas num campo que vive no arquivo de outra etapa. O plano mecânico só via esse caminho quando o critério da Spec citava o arquivo.
+**Feito:** rejeição `[critico]` que cita arquivo de uma única etapa concluída, ou diz que o modelo não tem o campo quando só uma etapa tem `schema.prisma`, devolve essa etapa à fila e não gasta a tentativa. A mesma cita de novo conta. Campo inventado com nome real já existente segue nesta etapa.
+---
+## 01/11/2026 — Silêncio do compilador reprova no Tipo 1
+**Causa:** `@ts-expect-error`, `as any` e import com caminho variável faziam o `tsc` passar. O avaliador gastava as 3 tentativas para dizer que o módulo não existe, e o aviso pedia mudança na Spec.
+**Feito:** o Tipo 1 marca `[SILENCIO]` com arquivo e linha e não chama o avaliador. A tentativa conta.
+---
+## 01/11/2026 — Retomar libera a etapa que esgotou o código
+**Causa:** o botão Retomar recusava o bloqueio de código e pedia outro botão com nome parecido. O clique repetia o mesmo aviso.
+**Feito:** nesse caso o Retomar zera a etapa com falha própria e as que só caíram em cascata. Contrato que ainda não fecha continua sem liberar.
+---
+## 01/11/2026 — Inventário da etapa na criação da citação
+**Causa:** executor e avaliador escreviam `arquivo:linha` em texto livre. `schema.prisma` não casava com `prisma/schema.prisma`, e a prova era descartada.
+**Feito:** os dois recebem o inventário medido da etapa (caminho e `1-N`). Sufixo único resolve para esse arquivo. Dois arquivos com o mesmo final, arquivo de fora e linha além do fim continuam sem prova.
+---
+## 01/11/2026 — Citação fora do arquivo não é avaliador fora do ar
+**Causa:** o avaliador respondia `implementado` com `arquivo:linha` que não cabe no código da etapa. As duas respostas eram descartadas e o harness caía em `heuristic_fallback`, que pausa a sessão como se o Claude estivesse fora.
+**Feito:** descarte de prova (linha inexistente, REQ sem veredito, aprovação sem prova) reprova a etapa com o motivo (`llm_blind`). Sem resposta, JSON ilegível ou exceção continuam a pausa M24.
+---
+## 01/11/2026 — Identidade do plano: id da etapa é exato
+**Causa:** a T8b aprovava o id inteiro e a gravação cortava `-vN`. A execução comparava o contrato com o grafo cortado, gastava 3 tentativas na etapa e pedia mudança na Spec. Aceitar os dois ids como iguais afrouxava a regra para todo projeto.
+**Feito:** `validateContract` só aceita igualdade. `restoreCutStageIds` devolve o id aprovado quando há uma única etapa e os arquivos do dono cabem. Dois ids diferentes não se fundem. Contrato que continua sem fechar para antes do executor.
+---
+## 31/10/2026 — T8b: RequestInit é tipo global, não entidade
+**Causa:** a conferência do contrato só aceitava uma lista fechada. `Request` e `Response` estavam nela; `RequestInit` (lib DOM) não. O analista esgotava as rodadas com `[TIPO DESCONHECIDO]` sem criar etapa.
+**Feito:** `validateContract` também aceita os nomes declarados nas libs ES/DOM do TypeScript e em `@types/node`. Tipo inventado continua reprovado.
+---
+## 31/10/2026 — CONCURRENT_PHASE_CHANGED na aprovação da Spec
+**Causa:** `stopRetryIfPhaseIn` abortava na primeira leitura. Com a fase já em `MACROBRIEF` (etapa 1), o segundo PATCH via isso como conflito e o modal dizia “Aprovação recusada”, com o analista ainda em curso.
+**Feito:** um PATCH por sessão (o segundo espera o primeiro); fase de plano em curso segue o analista; o atalho de concorrência só vale na re-tentativa do update otimista.
+---
+## 31/10/2026 — Trava T1: selo verde só depois de EXECUCAO
+**Diagnóstico (sessão `cc5b1243`, sem atalho no projeto):** fase `MACROBRIEF`, `specApproved` true, enquanto `ANALISTA_PLAN_RETRY` ainda falha (formato). A flag estava true antes do `PLANO_PRONTO`. O modal tratava `travaT1Pendente === false` como verde mesmo fora da execução. O heal não revogava a flag em `MACROBRIEF`/`CONFERENCIA`.
+**Feito:** commit da flag só após `PLANO_PRONTO`; heal em qualquer fase fora da família EXECUCAO; selo (`specSealLiberado`) exige a fase; DAG e chat usam o mesmo critério; polling inclui `MACROBRIEF` e `CONFERENCIA`.
+---
 ## 30/10/2026 (275) — Gate 1 em execução + fila pós-teste (OmniRoute, Headroom)
 **Em curso:** fundador rodando **Gate 1** de novo — **sessão nova**, **mesma Spec canônica** do Gateway (referência §7.2 / comparação `4d019f00`). Ao terminar: anotar aqui **id da sessão**, fase final, defeitos provados, veredito ACEITO/RESSALVAS.
 
@@ -2520,4 +2674,12 @@ Também: fundador perguntou se dá para testar tudo com DeepSeek → sim (R1 pro
 **Validação:**
 - `tsc --noEmit`: ✅ 0 erros.
 - `prisma/dev.db`: ✅ Timestamp preservado (`23/10/2026 18:29:41`).
+---
+## 31/10/2026 — Trava T1 / T8b / UI (handoff para nova sessão)
+**Contexto:** fundador reportou Spec “já aprovada” ao clicar Aprovar, T8b reprovando com mensagem genérica e dificuldade de replanejar.
+**Veredito técnico:** ordem errada no gatilho único (`specApproved` antes do analista) + idempotência em PLANEJAMENTO + UI fora da família EXECUCAO.
+**Entrega (código local — conferir git):** invariantes em `spec-trava-t1.ts`, defer commit em `execution-trigger.ts`, `plano-reprovado-finalize/report`, modal/PATCH com `travaT1Pendente`, analista com `erros[]`.
+**Handoff completo:** `memory/HANDOFF-2026-10-31-TRAVA-T1.md`
+**Doc:** `docs/NEXTCODE-REFERENCIA.md` §4.3.1 atualizado.
+**Testes:** `tests/lib/spec-trava-t1.test.ts`, `spec-approval-ui.test.ts`, `orchestrator_recovered/plano-reprovado-report.test.ts`, `analista-plan.test.ts`.
 ---
