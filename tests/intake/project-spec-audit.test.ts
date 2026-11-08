@@ -357,14 +357,21 @@ clusters:
 `;
     writeText(path.join(root, ".nextcode/macrobrief.md"), macrobriefContent);
 
-    const survey = buildProjectRepositorySurvey(root);
-    expect(survey.macrobrief.presente).toBe(true);
-    expect(survey.macrobrief.specVersao).toBe(1);
+    const result = runProjectSpecAudit(root);
+    expect(result.survey.macrobrief.presente).toBe(true);
+    expect(result.survey.macrobrief.specVersao).toBe(1);
 
     // O arquivo src/extra/bonus.ts não está no cluster core
-    const gap = survey.lacunas.find((l) => l.detalhe.includes("src/extra/bonus.ts"));
+    const gap = result.survey.lacunas.find((l) => l.detalhe.includes("src/extra/bonus.ts"));
     expect(gap).toBeDefined();
     expect(["arquivo_sem_modulo", "arquivo_sem_req"]).toContain(gap?.codigo);
+
+    // End-to-end: spec-gaps.md gerado fisicamente no disco relata a lacuna de cobertura
+    const gapsPath = path.join(root, SPEC_GAPS_RELATIVE_PATH);
+    expect(fs.existsSync(gapsPath)).toBe(true);
+    const gapsContent = fs.readFileSync(gapsPath, "utf8");
+    expect(gapsContent).toContain("src/extra/bonus.ts");
+    expect(result.gapsMarkdown).toContain("src/extra/bonus.ts");
   });
 
   it("Habilidade catalogada é listável por loadRoleSkill('levantador-repositorio')", () => {
