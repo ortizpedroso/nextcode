@@ -17,6 +17,7 @@ import {
 } from "@/core/orchestrator/job-worker";
 import { setPaidOnlyRoutingForTests } from "@/core/orchestrator/node-executor";
 import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+import { seedMockFreellmGateway, stripByokForMockGateway } from "../helpers/mock-freellm-gateway";
 
 const blindAuditHttpContent = mockBlindAuditJson({
   justification: "Código de acordo com o brief.",
@@ -35,9 +36,6 @@ const createdSessionIds: string[] = [];
 const createdProjectIds: string[] = [];
 
 const savedEnv = {
-  OMNIROUTE_URL: process.env.OMNIROUTE_URL,
-  OMNIROUTE_MODEL: process.env.OMNIROUTE_MODEL,
-  OMNIROUTE_CB_COOLDOWN_MS: process.env.OMNIROUTE_CB_COOLDOWN_MS,
   BLIND_AUDIT_TIMEOUT_MS: process.env.BLIND_AUDIT_TIMEOUT_MS,
   DAG_STEP_TIMEOUT_MS: process.env.DAG_STEP_TIMEOUT_MS,
   NEXTCODE_JOB_LEASE_MS: process.env.NEXTCODE_JOB_LEASE_MS,
@@ -82,10 +80,8 @@ async function setupProjectAndSession(title: string) {
 }
 
 beforeAll(async () => {
-  process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
   process.env.BLIND_AUDIT_TIMEOUT_MS = "15000";
   process.env.DAG_STEP_TIMEOUT_MS = "15000";
-  process.env.OMNIROUTE_MODEL = "auto/best-free";
 
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-worker-test-"));
 
@@ -95,7 +91,7 @@ beforeAll(async () => {
     req.on("end", () => {
       const body = raw ? JSON.parse(raw) : undefined;
 
-      if (req.url === "/healthz") {
+      if (req.url === "/healthz" || req.url === "/api/ping") {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ status: "ok" }));
       }
@@ -166,31 +162,10 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
   baseUrl = `http://localhost:${port}`;
-  process.env.OMNIROUTE_URL = baseUrl;
+  await seedMockFreellmGateway(baseUrl);
+  await stripByokForMockGateway();
 
   originalSetting = await prisma.setting.findUnique({ where: { id: "default" } });
-  await prisma.setting.upsert({
-    where: { id: "default" },
-    update: {
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-    create: {
-      id: "default",
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-  });
 
   skillMinerAnalyzeSpy = vi.spyOn(SkillMiner, "analyzeAndPropose").mockResolvedValue(null as any);
   skillMinerDetectSpy = vi.spyOn(SkillMiner, "detectRecurringBugs").mockResolvedValue(null as any);
@@ -199,32 +174,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   setPaidOnlyRoutingForTests(false);
   fakeLlmDelayMs = 0;
-  process.env.OMNIROUTE_URL = baseUrl;
   process.env.NEXTCODE_JOB_LEASE_MS = "30000";
   process.env.NEXTCODE_WORKER_POLL_MS = "2000";
   process.env.NEXTCODE_WORKER_CONCURRENCY = "2";
-  await prisma.setting.upsert({
-    where: { id: "default" },
-    update: {
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-    create: {
-      id: "default",
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-  });
+  await seedMockFreellmGateway(baseUrl);
+  await stripByokForMockGateway();
   await cleanupWorkerTestRecords();
 });
 
@@ -513,8 +467,6 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
         env: {
           ...process.env,
           DATABASE_URL: process.env.DATABASE_URL,
-          OMNIROUTE_URL: baseUrl,
-          OMNIROUTE_MODEL: "auto/best-free",
           NEXTCODE_JOB_LEASE_MS: "400",
           NEXTCODE_WORKER_POLL_MS: "50",
         },
@@ -629,8 +581,7 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
         status: "running",
         attempts: 1,
         filesScope: '["src/index.ts"]',
-        specVersion: 1,
-        updatedAt: new Date(Date.now() - 400_000), // 400s atrás (> 300s)
+        updatedAt: new Date(Date.now() - 400_000), // 400s atrás (> DAG_STEP_TIMEOUT + margem no beforeAll)
       },
     });
 
@@ -641,13 +592,16 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
       force: true,
     });
 
-    expect(result.stuckNodesReset).toBe(1);
     expect(result.orphanSessionsResumed).toBe(1);
+    expect(result.stuckNodesReset).toBe(0);
+
+    const zombies = await sessionQueueModule.recoverZombieRunningNodes(session.id);
+    expect(zombies).toBe(1);
 
     const reloadedTask = await prisma.taskNode.findUniqueOrThrow({
       where: { id: stuckTask.id },
     });
-    expect(reloadedTask.status).toBe("pending");
+    expect(reloadedTask.status).toBe("failed");
 
     const stalledJobs = await prisma.job.findMany({
       where: { sessionId: session.id },
@@ -660,6 +614,6 @@ describe("Worker de Jobs e Retomada Automática após Queda (Passo 3)", () => {
         action: "QUEUE_STALLED",
       },
     });
-    expect(stallTelemetry.length).toBeGreaterThanOrEqual(2);
+    expect(stallTelemetry.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -61,6 +61,7 @@ export const STRUCTURAL_TEST_EVENTS: PhaseEvent[] = [
   { type: "SEM_LLM" },
   { type: "LLM_VOLTOU" },
   { type: "EXECUTOR_BLOQUEADO" },
+  { type: "CONTRATO_PLANO_INVALIDO" },
   { type: "TETO_CUSTO" },
   { type: "DESBLOQUEIO_HUMANO" },
   { type: "VERIFICACAO_COM_LACUNAS" },

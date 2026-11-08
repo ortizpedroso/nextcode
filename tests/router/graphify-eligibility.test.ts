@@ -20,7 +20,7 @@ describe("SmartRouter.classifyGraphifyEligibility", () => {
       const router = new SmartRouter();
       const result = await router.classifyGraphifyEligibility(
         { prompt: "Como esse projeto está organizado? Quais módulos dependem de quais?" },
-        { omniRouteUrl: "http://localhost:20128/v1", omniRouteKey: "k" }
+        { geminiKey: "k" }
       );
       expect(result).not.toBeNull();
       expect(result!.eligible).toBe(true);
@@ -49,7 +49,7 @@ describe("SmartRouter.classifyGraphifyEligibility", () => {
       const router = new SmartRouter();
       const result = await router.classifyGraphifyEligibility(
         { prompt: "corrige esse typo na linha 12 do arquivo utils.ts" },
-        { omniRouteUrl: "http://localhost:20128/v1", omniRouteKey: "k" }
+        { geminiKey: "k" }
       );
       expect(result).not.toBeNull();
       expect(result!.eligible).toBe(false);
@@ -75,7 +75,7 @@ describe("SmartRouter.classifyGraphifyEligibility", () => {
       const router = new SmartRouter();
       const result = await router.classifyGraphifyEligibility(
         { prompt: "oi" },
-        { omniRouteUrl: "http://localhost:20128/v1", omniRouteKey: "k" }
+        { geminiKey: "k" }
       );
       expect(result).toBeNull();
     } finally {

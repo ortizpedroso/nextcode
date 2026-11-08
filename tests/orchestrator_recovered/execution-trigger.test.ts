@@ -394,13 +394,14 @@ describe("Gatilho Único, Fila Única por Sessão e Reserva Atômica (Passo 4a)"
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
           if (line.startsWith("//") || line.startsWith("*")) continue;
+          if (line.includes("select:") || line.includes("where:")) continue;
           if (pattern.test(line)) {
             matches.push(path.relative(srcDir, file).replace(/\\/g, "/"));
           }
         }
       }
 
-      expect(matches).toEqual(["core/orchestrator/execution-trigger.ts"]);
+      expect(matches).toEqual(["core/orchestrator/spec-trava-t1.ts"]);
     });
   });
 

@@ -138,6 +138,7 @@ describe("A2.2 — analista planeja e o código confere", () => {
     expect(router.calls).toHaveLength(3);
     expect(d.nodes).toHaveLength(0);
     expect(d.planoReprovado?.motivo).toBe("rodadas_esgotadas");
+    expect((d.planoReprovado?.erros?.length ?? 0)).toBeGreaterThan(0);
     expect(logSpy.mock.calls.some((c: any) => c[0].action === "ANALISTA_PLAN_FALLBACK")).toBe(false);
     expect(actions()).toContain("PLANO_REPROVADO");
   });
@@ -170,6 +171,29 @@ describe("A2.2 — analista planeja e o código confere", () => {
     const msg = router.calls[1].at(-1).content;
     expect(msg).toContain("[T8b ARQUIVO INVENTADO]");
     expect(msg).toContain("[T8b ARQUIVO SEM ETAPA]");
+  });
+
+  it("parseAnalystPlan tira colchetes e junta REQ-001, REQ-003 no mesmo item", () => {
+    const yaml = `---
+documento: plano
+microbriefs:
+  - id: mb-core-dados
+    cluster: core
+    arquivos:
+      - src/lib/validacao.ts
+    reqs:
+      - "[REQ-001, REQ-003]"
+      - "[REQ-002]"
+      - "[REQ-069]"
+      - REQ-004–REQ-006
+    depende_de: []
+---
+# Plano
+`;
+    const parsed = parseAnalystPlan(yaml);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.stages[0].reqs).toEqual(["REQ-001", "REQ-003", "REQ-002", "REQ-069", "REQ-004", "REQ-005", "REQ-006"]);
   });
 
   it("parseAnalystPlan recusa cluster inválido e id repetido", () => {

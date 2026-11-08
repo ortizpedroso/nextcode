@@ -4,6 +4,7 @@ import {
   validateFinalPlan,
   atribuirInfraAoDono,
   filesCountedForStageCap,
+  specParamNamesFromParenthetical,
   type PlanStage,
 } from "@/core/orchestrator/plan-scope-check";
 import { transition } from "@/core/orchestrator/phase-machine";
@@ -322,6 +323,46 @@ describe("F1.1 — junção de contratos no plano (interfacesProduz × interface
     const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
     expect(r.valid).toBe(false);
     expect(r.errors.some((e) => e.includes("[CONTRATO ASSINATURA]") && e.includes("criarSessao") && e.includes("papel"))).toBe(true);
+  });
+
+  it("prosa (E.164) ou (bcryptjs, custo 12) após o nome da função não gera [CONTRATO ASSINATURA]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001", "REQ-002"],
+            arquivosPermitidos: { criar: ["src/auth.ts"], modificar: [], lerContratos: [] },
+          },
+          contrato: {
+            funcoes: [
+              {
+                nome: "normalizarTelefoneBR",
+                arquivo: "src/auth.ts",
+                assinatura: "(telefone: string) => string",
+                dono: "A",
+                usadoPor: [],
+              },
+              {
+                nome: "verificarSenha",
+                arquivo: "src/auth.ts",
+                assinatura: "(senha: string, hash: string) => boolean",
+                dono: "A",
+                usadoPor: [],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const textoPorReq = {
+      "REQ-001": "normalizarTelefoneBR(telefone: string) e formato internacional (E.164)",
+      "REQ-002": "verificarSenha(senha: string, hash: string) com bcryptjs (custo 12)",
+    };
+    expect(specParamNamesFromParenthetical("E.164")).toEqual([]);
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], textoPorReq, 4);
+    expect(r.errors.filter((e) => e.includes("[CONTRATO ASSINATURA]"))).toEqual([]);
   });
 
   it("Spec criarSessao grava a sessão, mesma assinatura sem papel, nenhum erro [CONTRATO ASSINATURA]", () => {

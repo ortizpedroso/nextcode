@@ -140,7 +140,7 @@ requisitos: []
     // A aprovação foi interceptada e recusada mecanicamente
     expect(data.specApproved).toBe(false);
     expect(data.phase).toBe("SPEC_REVISAO");
-    expect(data.assistantMessage.content).toContain("A Spec Canônica não possui requisitos funcionais verificáveis (REQ-001...)");
+    expect(data.assistantMessage.content).toContain("requisitos verificáveis (REQ-001");
 
     // Zero nós criados na DAG
     const nodes = await prisma.taskNode.findMany({ where: { sessionId: session.id } });

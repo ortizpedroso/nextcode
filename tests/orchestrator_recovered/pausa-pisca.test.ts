@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest";
 import prisma from "../../src/lib/prisma.js";
-import { supervisePausedSessions, PAUSE_FLAP_LIMIT } from "../../src/core/orchestrator/job-worker.js";
+import { supervisePausedSessions, PAUSE_FLAP_LIMIT, ESPERA_HOLD_MS } from "../../src/core/orchestrator/job-worker.js";
 
 // Mudança 42: Gateway 22/10 — DeepSeek sem crédito; o FreeLLMAPI respondia à sonda e a sessão piscava
 // PAUSADA ↔ EXECUCAO a cada 25 s. Na 3ª pausa por SEM_LLM em 10 min, o supervisor bloqueia e diz o porquê.
@@ -66,5 +66,92 @@ describe("mudança 42 — pausa que pisca vira bloqueio com aviso", () => {
     const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
     expect(msg).toContain("out_of_credits da minha sessao");
     expect(msg).not.toContain("erro da outra sessao");
+    expect(msg).toContain("Confira o crédito do provedor");
+  });
+
+  it("rota em cooldown fica pausada e não manda conferir a chave", async () => {
+    const s = await pausedWith(PAUSE_FLAP_LIMIT);
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: s.id,
+        action: "llm.gateway_failure",
+        details: JSON.stringify({
+          gateway: "freellmapi",
+          kind: "exhausted",
+          status: 503,
+          detail:
+            "No candidate model has a configured, usable provider key. 1 route checked (1 rate-limited or on cooldown).",
+        }),
+      },
+    });
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
+    expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("PAUSADA");
+    const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
+    expect(msg).toContain("rota do executor está em espera");
+    expect(msg).not.toContain("Confira crédito, cota e chaves");
+    expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(0);
+  });
+
+  it("reset de 14s com 3 pausas não bloqueia nem manda conferir a chave", async () => {
+    const s = await pausedWith(PAUSE_FLAP_LIMIT);
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: s.id,
+        action: "llm.gateway_failure",
+        details: JSON.stringify({
+          gateway: "freellmapi",
+          kind: "exhausted",
+          status: 503,
+          detail:
+            "No candidate model has a configured, usable provider key. 1 rate-limited or on cooldown. Soonest reset ~14s.",
+        }),
+      },
+    });
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
+    expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("PAUSADA");
+    const msg = (await prisma.message.findMany({ where: { sessionId: s.id } })).map((m) => m.content).join("\n");
+    expect(msg).toContain("14 s");
+    expect(msg).not.toContain("Confira crédito, cota e chaves");
+    expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(0);
+  });
+
+  it("passado o reset de 14s, três pausas ainda devolvem a fila", async () => {
+    const s = await pausedWith(PAUSE_FLAP_LIMIT);
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: s.id,
+        action: "llm.gateway_failure",
+        details: JSON.stringify({
+          gateway: "freellmapi",
+          kind: "exhausted",
+          status: 503,
+          detail: "rate-limited or on cooldown. Soonest reset ~14s.",
+        }),
+        createdAt: new Date(Date.now() - 20_000),
+      },
+    });
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
+    expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
+    expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(1);
+  });
+
+  it("passada a espera, a rota em cooldown volta à fila", async () => {
+    const s = await pausedWith(PAUSE_FLAP_LIMIT - 1);
+    await prisma.telemetryLog.create({
+      data: {
+        sessionId: s.id,
+        action: "llm.gateway_failure",
+        details: JSON.stringify({
+          gateway: "freellmapi",
+          kind: "exhausted",
+          status: 503,
+          detail: "rate-limited or on cooldown",
+        }),
+        createdAt: new Date(Date.now() - ESPERA_HOLD_MS - 1000),
+      },
+    });
+    await supervisePausedSessions(async () => true, new Date(), { onlySessionIds: [s.id] });
+    expect((await prisma.session.findUnique({ where: { id: s.id } }))?.phase).toBe("EXECUCAO");
+    expect(await prisma.job.count({ where: { sessionId: s.id } })).toBe(1);
   });
 });

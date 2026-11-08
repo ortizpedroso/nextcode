@@ -20,10 +20,11 @@ describe("mudanças 35 e 36 — falha de ambiente e aviso conforme a causa", () 
     const casos: Array<[PhaseContext["phase"], Parameters<typeof transition>[1], string]> = [
       ["EXECUCAO", { type: "TETO_CUSTO" }, "autorizar_verba"],
       ["EXECUCAO", { type: "EXECUTOR_BLOQUEADO" }, "retentar_etapa"],
+      ["EXECUCAO", { type: "CONTRATO_PLANO_INVALIDO" }, "reaprovar_trava_t1"],
       ["EXECUCAO", { type: "FALHA_REPETIDA" }, "retomar"],
       ["EXECUCAO", { type: "SILENCIO_DETECTADO" }, "retomar"],
       ["VERIFICACAO", { type: "VERIFICACAO_COM_LACUNAS" }, "ajustar_spec"],
-      ["PLANEJAMENTO", { type: "PLANO_REPROVADO" }, "ajustar_spec"],
+      ["PLANEJAMENTO", { type: "PLANO_REPROVADO" }, "reaprovar_trava_t1"],
     ];
     for (const [fase, ev, acao] of casos) {
       const r = transition(at(fase), ev, { etapa1Ativa: false });

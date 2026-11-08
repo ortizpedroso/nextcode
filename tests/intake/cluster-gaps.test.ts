@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { detectClusterGaps, clusterNamedByHuman } from "@/core/intake/cluster-gaps";
-import { contractStagesForNode, stagesFromContract, validateContract } from "@/core/orchestrator/project-contract";
+import {
+  contractStagesForNode,
+  planContractErrorsFromPayload,
+  renderConformance,
+  resolvePlanStageId,
+  restoreCutStageIds,
+  stagesFromContract,
+  validateContract,
+} from "@/core/orchestrator/project-contract";
 
 describe("lacunas de cluster", () => {
   it("domínio sem core devolve core_ausente uma vez; exceção confirmada cala a lacuna", () => {
@@ -77,5 +85,75 @@ describe("validateContract no grafo inteiro", () => {
       { id: "api-1", arquivos: ["src/app/api/route.ts"], dependeDe: ["core-1"] },
     ]);
     expect(validateContract(contrato, stages)).toEqual([]);
+  });
+
+  it("id cortado pelo harness volta ao id do contrato; id diferente continua reprovando", () => {
+    const contrato = {
+      entidades: [],
+      enums: [],
+      funcoes: [
+        {
+          nome: "reaisParaCentavos",
+          arquivo: "src/lib/money.ts",
+          assinatura: "(v: number) => number",
+          dono: "mb-core-v1",
+          usadoPor: ["mb-back-v1"],
+        },
+      ],
+      rotas: [],
+    };
+    const stages = [
+      { id: "mb-core", arquivos: ["src/lib/money.ts"], dependeDe: [] },
+      { id: "mb-back", arquivos: ["src/app/api/cobrancas/route.ts"], dependeDe: ["mb-core"] },
+      { id: "mb-front", arquivos: ["src/app/layout.tsx", "src/app/page.tsx", "src/app/globals.css"], dependeDe: ["mb-back"] },
+    ];
+    expect(validateContract(contrato, stages).some((e) => e.includes("INEXISTENTE"))).toBe(true);
+    const restored = restoreCutStageIds(contrato, stages);
+    expect(restored.map((s) => s.id)).toEqual(["mb-core-v1", "mb-back-v1", "mb-front"]);
+    expect(restored.find((s) => s.id === "mb-back-v1")?.dependeDe).toEqual(["mb-core-v1"]);
+    expect(validateContract(contrato, restored)).toEqual([]);
+    expect(resolvePlanStageId("mb-core", restored)).toBe("mb-core-v1");
+    expect(renderConformance(contrato, resolvePlanStageId("mb-core", restored))).toContain("reaisParaCentavos");
+
+    const ambiguo = restoreCutStageIds(
+      {
+        ...contrato,
+        funcoes: [{ ...contrato.funcoes[0], usadoPor: ["mb-back-v1", "mb-back-v2"] }],
+      },
+      stages
+    );
+    expect(ambiguo.find((s) => s.id === "mb-back")).toBeTruthy();
+  });
+
+  it("contrato quebrado é do plano: não chega ao executor; id com sufixo cortado não quebra", () => {
+    const quebrado = {
+      contrato,
+      etapaId: "mb-front",
+      planoStages: [{ id: "mb-front", arquivos: ["src/app/page.tsx"], dependeDe: [] }],
+    };
+    const erros = planContractErrorsFromPayload(JSON.stringify(quebrado));
+    expect(erros.some((e) => e.includes("CONSUMIDOR INEXISTENTE"))).toBe(true);
+    const casado = {
+      contrato,
+      etapaId: "core-1",
+      planoStages: [
+        { id: "core-1", arquivos: ["src/core/criar.ts"], dependeDe: [] },
+        { id: "api-1", arquivos: ["src/app/api/route.ts"], dependeDe: ["core-1"] },
+      ],
+    };
+    expect(planContractErrorsFromPayload(JSON.stringify(casado))).toEqual([]);
+    expect(planContractErrorsFromPayload(null)).toEqual([]);
+  });
+
+  it("o grafo novo conserva o sufixo -vN do id da etapa", () => {
+    const stages = contractStagesForNode(
+      { entidades: [], enums: [], funcoes: [], rotas: [] },
+      "mb-front",
+      ["src/app/page.tsx"],
+      [{ id: "mb-back-v1", arquivos: ["src/lib/money.ts"], dependeDe: ["mb-core-v2"] }]
+    );
+    expect(stages).toEqual([
+      { id: "mb-back-v1", arquivos: ["src/lib/money.ts"], dependeDe: ["mb-core-v2"] },
+    ]);
   });
 });

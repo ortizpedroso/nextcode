@@ -1,0 +1,585 @@
+import { describe, it, expect } from "vitest";
+import {
+  checkPlanScope,
+  validateFinalPlan,
+  atribuirInfraAoDono,
+  filesCountedForStageCap,
+  type PlanStage,
+} from "@/core/orchestrator/plan-scope-check";
+import { transition } from "@/core/orchestrator/phase-machine";
+import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
+import { renderCanonicalSpecDocument } from "@/core/intake/spec-format";
+
+const base: PlanStage = { id: "base", arquivos: ["src/lib/validacao.ts", "src/lib/cobrancas.ts"], reqs: ["REQ-009"], dependeDe: [] };
+
+describe("A2.1 — T8b confere arquivo citado × escopo da etapa", () => {
+  it("caso real etapa 3 (934939fc): REQ-032 numa etapa de lib exigindo a rota de outra etapa → erro", () => {
+    const rota: PlanStage = { id: "rota", arquivos: ["src/app/api/v1/links/route.ts"], reqs: [], dependeDe: ["base"] };
+    const lib: PlanStage = { ...base, reqs: ["REQ-009", "REQ-032"] };
+    const r = checkPlanScope([lib, rota], {
+      "REQ-009": "src/lib/validacao.ts valida CPF",
+      "REQ-032": "POST src/app/api/v1/links/route.ts usa as mesmas regras de src/lib/validacao.ts",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(" ")).toContain('REQ-032 (etapa base) exige "src/app/api/v1/links/route.ts"');
+  });
+
+  it("REQ na etapa da rota citando a lib da qual ela depende → válido (arquivo consumido não é erro)", () => {
+    const rota: PlanStage = { id: "rota", arquivos: ["src/app/api/v1/links/route.ts"], reqs: ["REQ-032"], dependeDe: ["base"] };
+    const r = checkPlanScope([base, rota], {
+      "REQ-009": "src/lib/validacao.ts valida CPF",
+      "REQ-032": "POST src/app/api/v1/links/route.ts usa as mesmas regras de src/lib/validacao.ts",
+    });
+    expect(r).toEqual({ valid: true, errors: [] });
+  });
+
+  it("dependência indireta também conta (rota → serviço → base)", () => {
+    const svc: PlanStage = { id: "svc", arquivos: ["src/lib/servico.ts"], reqs: [], dependeDe: ["base"] };
+    const rota: PlanStage = { id: "rota", arquivos: ["src/app/api/x/route.ts"], reqs: ["REQ-001"], dependeDe: ["svc"] };
+    const r = checkPlanScope([{ ...base, reqs: [] }, svc, rota], { "REQ-001": "src/app/api/x/route.ts chama src/lib/validacao.ts" });
+    expect(r.valid).toBe(true);
+  });
+
+  it("REQ em 2 etapas → erro de REQ repetido", () => {
+    const outra: PlanStage = { id: "outra", arquivos: ["src/lib/x.ts"], reqs: ["REQ-009"], dependeDe: [] };
+    const r = checkPlanScope([base, outra], { "REQ-009": "algo" });
+    expect(r.errors.some((e) => e.includes("[T8b REQ REPETIDO] REQ-009"))).toBe(true);
+  });
+
+  it("arquivo citado que nenhuma etapa produz não é erro do plano (fica para a conferência da Spec)", () => {
+    const r = checkPlanScope([base], { "REQ-009": "src/lib/validacao.ts e vitest.config.ts" });
+    expect(r.valid).toBe(true);
+  });
+
+  it("validateFinalPlan com arquivosDaSpec reprova arquivo da Spec fora do plano", () => {
+    const nodes = [
+      {
+        id: "n1",
+        dependencies: [],
+        payload: {
+          microbrief: { reqsCobertos: ["REQ-001"], arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] } },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes, ["REQ-001"], { "REQ-001": "src/a.ts src/b.ts" }, 4, ["src/a.ts", "src/b.ts"]);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("ARQUIVO SEM ETAPA") && e.includes("src/b.ts"))).toBe(true);
+  });
+
+  it("validateFinalPlan soma as regras antigas da T8b (REQ sem etapa)", () => {
+    const nodes = [
+      {
+        id: "n1",
+        dependencies: [],
+        payload: {
+          microbrief: { reqsCobertos: ["REQ-001"], arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] } },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts" }, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(" ")).toContain("REQ-002");
+  });
+});
+
+describe("A2.1 — plano reprovado bloqueia com aviso", () => {
+  it("PLANEJAMENTO + PLANO_REPROVADO → BLOQUEADA com AVISAR_HUMANO; desbloqueio volta à revisão da Spec", () => {
+    const ctx = { phase: "PLANEJAMENTO" as const, rodadasSemClareza: 0, voltasConferencia: 0 };
+    const res = transition(ctx as any, { type: "PLANO_REPROVADO" });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.ctx.phase).toBe("BLOQUEADA");
+    expect(res.effects.some((e) => e.type === "AVISAR_HUMANO")).toBe(true);
+    const back = transition(res.ctx, { type: "DESBLOQUEIO_HUMANO" });
+    expect(back.ok && back.ctx.phase).toBe("SPEC_REVISAO");
+  });
+});
+
+describe("A2.1 — heurística de reserva põe cada REQ em uma etapa só", () => {
+  it("REQ que cita lib e rota fica só na etapa da rota (a posterior)", () => {
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Teste A2.1",
+      status: "aprovada",
+      data: "2026-10-17",
+      stack: ["TypeScript", "Next.js"],
+      objetivo: "teste",
+      modulos: [{ id: "MOD-01", nome: "links", resumo: "links", arquivos: ["src/lib/validacao.ts", "src/app/api/v1/links/route.ts"] }],
+      entidades: [],
+      arquivosAfetados: ["src/lib/validacao.ts", "src/app/api/v1/links/route.ts"],
+      requisitos: [
+        { id: "REQ-001", titulo: "Validação", criterio: "src/lib/validacao.ts valida CPF" },
+        { id: "REQ-002", titulo: "Rota links", criterio: "src/app/api/v1/links/route.ts usa src/lib/validacao.ts" },
+      ],
+    } as any);
+    const d = SpecDecomposerSkill.decomposeSpec(spec, "Teste A2.1", ["src/lib/validacao.ts", "src/app/api/v1/links/route.ts"]);
+    const owners = (req: string) =>
+      d.nodes.filter((n: any) => (n.payload?.microbrief?.reqsCobertos ?? []).includes(req)).map((n: any) => n.filesScope);
+    expect(owners("REQ-001")).toHaveLength(1);
+    expect(owners("REQ-002")).toEqual([["src/app/api/v1/links/route.ts"]]);
+  });
+});
+
+describe("A2.3c — heurística acrescenta dependência entre etapas irmãs", () => {
+  it("REQ da rota A citando a rota B (irmã) → etapa de A passa a depender da de B; plano válido", () => {
+    const files = [
+      "src/app/api/a/route.ts",
+      "src/app/api/b/route.ts",
+      "src/app/api/c/route.ts",
+      "src/app/api/d/route.ts",
+      "src/app/api/e/route.ts",
+    ];
+    const reqs = [
+      { id: "REQ-001", titulo: "B", criterio: "src/app/api/b/route.ts responde 200" },
+      { id: "REQ-002", titulo: "E", criterio: "src/app/api/e/route.ts chama src/app/api/b/route.ts" },
+    ];
+    const spec = renderCanonicalSpecDocument({
+      titulo: "Teste A2.3c",
+      status: "aprovada",
+      data: "2026-10-17",
+      objetivo: "teste",
+      stack: ["TypeScript", "Next.js"],
+      modulos: [{ id: "MOD-01", nome: "api", resumo: "api", arquivos: files }],
+      entidades: [],
+      arquivosAfetados: files,
+      requisitos: reqs,
+    } as any);
+    const d = SpecDecomposerSkill.decomposeSpec(spec, "Teste A2.3c", files);
+    const stageOf = (f: string) => d.nodes.find((n: any) => n.payload?.microbrief && (n.filesScope ?? []).includes(f))!;
+    const e = stageOf("src/app/api/e/route.ts");
+    const b = stageOf("src/app/api/b/route.ts");
+    expect(e.id).not.toBe(b.id);
+    expect(e.dependencies).toContain(b.id);
+    expect((e.payload as any).microbrief.arquivosPermitidos.lerContratos).toContain("src/app/api/b/route.ts");
+    const v = validateFinalPlan(d.nodes as any, ["REQ-001", "REQ-002"], Object.fromEntries(reqs.map((r) => [r.id, `${r.titulo} ${r.criterio}`])), 4);
+    expect(v).toEqual({ valid: true, errors: [] });
+  });
+});
+
+describe("A2.1c — caminho com colchetes (rota dinâmica) entra na conferência de escopo", () => {
+  it("REQ numa etapa citando src/app/api/checkout/[slug]/route.ts de etapa irmã → erro", () => {
+    const a: PlanStage = { id: "a", arquivos: ["src/app/api/checkout/[slug]/route.ts"], reqs: [], dependeDe: [] };
+    const b: PlanStage = { id: "b", arquivos: ["src/lib/x.ts"], reqs: ["REQ-026"], dependeDe: [] };
+    const r = checkPlanScope([a, b], { "REQ-026": "src/app/api/checkout/[slug]/route.ts expõe GET usando src/lib/x.ts" });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0]).toContain('"src/app/api/checkout/[slug]/route.ts"');
+  });
+});
+
+describe("F1.1 — junção de contratos no plano (interfacesProduz × interfacesConsome)", () => {
+  it("Dois nós com Microbrief: A produz FnCriarCobranca e B consome FnCriar → valid é false, erro contém [F1 JUNCAO] e FnCriar", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export type FnCriarCobranca = (id: string) => void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export type FnCriar = (id: string) => void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]") && e.includes("FnCriar"))).toBe(true);
+  });
+
+  it("Os dois lados com o mesmo export type FnCriar = (id: string) => void → nenhum erro contém [F1 JUNCAO]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export type FnCriar = (id: string) => void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export type FnCriar = (id: string) => void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
+  });
+
+  it("B consome export function criar(a: string): void e A produz export function criar(a: number): void → erro contém declaração diferente", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/a.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "export function criar(a: number): void",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["export function criar(a: string): void"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/a.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]") && e.includes("declaração diferente"))).toBe(true);
+  });
+
+  it("interfacesConsome: ['src/lib/x.ts'] não gera [F1 JUNCAO]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/lib/x.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "src/lib/x.ts",
+            interfacesConsome: [],
+          },
+        },
+      },
+      {
+        id: "B",
+        dependencies: ["A"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-002"],
+            arquivosPermitidos: { criar: ["src/b.ts"], modificar: [], lerContratos: [] },
+            interfacesProduz: "",
+            interfacesConsome: ["src/lib/x.ts"],
+          },
+        },
+      },
+    ];
+    const r = validateFinalPlan(nodes as any, ["REQ-001", "REQ-002"], { "REQ-001": "src/lib/x.ts", "REQ-002": "src/b.ts" }, 4);
+    expect(r.errors.some((e) => e.includes("[F1 JUNCAO]"))).toBe(false);
+  });
+
+  it("Spec criarSessao(usuarioId, papel) grava a sessão, assinatura (usuarioId: string) => Promise<Sessao>, o plano é inválido e o erro contém [CONTRATO ASSINATURA] e papel", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/sessao.ts"], modificar: [], lerContratos: [] },
+          },
+          contrato: {
+            funcoes: [
+              {
+                nome: "criarSessao",
+                arquivo: "src/sessao.ts",
+                assinatura: "(usuarioId: string) => Promise<Sessao>",
+                dono: "A",
+                usadoPor: [],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const textoPorReq = {
+      "REQ-001": "criarSessao(usuarioId, papel) grava a sessão",
+    };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes("[CONTRATO ASSINATURA]") && e.includes("criarSessao") && e.includes("papel"))).toBe(true);
+  });
+
+  it("Spec criarSessao grava a sessão, mesma assinatura sem papel, nenhum erro [CONTRATO ASSINATURA]", () => {
+    const nodes = [
+      {
+        id: "A",
+        dependencies: [],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/sessao.ts"], modificar: [], lerContratos: [] },
+          },
+          contrato: {
+            funcoes: [
+              {
+                nome: "criarSessao",
+                arquivo: "src/sessao.ts",
+                assinatura: "(usuarioId: string) => Promise<Sessao>",
+                dono: "A",
+                usadoPor: [],
+              },
+            ],
+          },
+        },
+      },
+    ];
+    const textoPorReq = {
+      "REQ-001": "criarSessao grava a sessão",
+    };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.errors.some((e) => e.includes("[CONTRATO ASSINATURA]"))).toBe(false);
+  });
+});
+
+describe("1. Dono de infra no plano, antes da execução (atribuirInfraAoDono)", () => {
+  it("Spec com Dockerfile, etapa com Microbrief que cria package.json e não tem Dockerfile → depois da função, criar e filesScope contêm Dockerfile, errors vazio", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("Dockerfile");
+  });
+
+  it("Spec com prisma/migrations, etapa com prisma/schema.prisma → prisma/migrations entra nessa etapa", () => {
+    const nodes = [
+      {
+        id: "etapa-db",
+        filesScope: ["prisma/schema.prisma"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["prisma/schema.prisma"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["prisma/schema.prisma", "prisma/migrations"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).toContain("prisma/migrations");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("prisma/migrations");
+  });
+
+  it("Spec com Dockerfile e nenhuma etapa com package.json → um erro [PLANO INFRA], e nenhuma etapa recebe Dockerfile", () => {
+    const nodes = [
+      {
+        id: "etapa-outro",
+        filesScope: ["src/app/page.tsx"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["src/app/page.tsx"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["src/app/page.tsx", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]).toBe('[PLANO INFRA] "Dockerfile" está na Spec e não há etapa com package.json para ser dona.');
+    expect(nodes[0].filesScope).not.toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+
+  it("Spec sem Dockerfile → ninguém ganha Dockerfile e errors fica vazio", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "src/index.ts"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope).not.toContain("Dockerfile");
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+
+  it("Etapa que já tem Dockerfile → a lista não duplica", () => {
+    const nodes = [
+      {
+        id: "etapa-pkg",
+        filesScope: ["package.json", "Dockerfile"],
+        payload: {
+          microbrief: {
+            reqsCobertos: ["REQ-001"],
+            arquivosPermitidos: { criar: ["package.json", "Dockerfile"], modificar: [], lerContratos: [] },
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "Dockerfile"];
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+    expect(res.errors).toEqual([]);
+    expect(nodes[0].filesScope?.filter((f) => f === "Dockerfile")).toHaveLength(1);
+    const mb = (nodes[0].payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar.filter((f: string) => f === "Dockerfile")).toHaveLength(1);
+  });
+
+  it("Primeiro nó: base, filesScope: ['package.json', 'tsconfig.json'], payload: { step: 'scaffold' }, sem Microbrief. Segundo nó: Microbrief com criar: ['package.json']. Spec com Dockerfile. Depois da função, a base não tem Dockerfile; o segundo nó tem Dockerfile em filesScope e em criar; errors vazio.", () => {
+    const baseNode = {
+      id: "base-scaffold",
+      filesScope: ["package.json", "tsconfig.json"],
+      payload: { step: "scaffold" },
+    };
+    const secondNode = {
+      id: "etapa-real",
+      filesScope: [],
+      payload: {
+        microbrief: {
+          reqsCobertos: ["REQ-001"],
+          arquivosPermitidos: { criar: ["package.json"], modificar: [], lerContratos: [] },
+        },
+      },
+    };
+    const nodes = [baseNode, secondNode];
+    const specFiles = ["package.json", "tsconfig.json", "Dockerfile"];
+
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+
+    expect(res.errors).toEqual([]);
+    expect(baseNode.filesScope).not.toContain("Dockerfile");
+    expect((baseNode.payload as any).microbrief).toBeUndefined();
+    expect(secondNode.filesScope).toContain("Dockerfile");
+    const mb = (secondNode.payload as any).microbrief;
+    expect(mb.arquivosPermitidos.criar).toContain("Dockerfile");
+  });
+
+  it("Só a base tem package.json. Spec com Dockerfile. errors tem [PLANO INFRA] e a base não recebe Dockerfile.", () => {
+    const baseNode = {
+      id: "base-scaffold",
+      filesScope: ["package.json", "tsconfig.json"],
+      payload: { step: "scaffold" },
+    };
+    const secondNode = {
+      id: "etapa-outra",
+      filesScope: ["src/app/page.tsx"],
+      payload: {
+        microbrief: {
+          reqsCobertos: ["REQ-001"],
+          arquivosPermitidos: { criar: ["src/app/page.tsx"], modificar: [], lerContratos: [] },
+        },
+      },
+    };
+    const nodes = [baseNode, secondNode];
+    const specFiles = ["package.json", "tsconfig.json", "src/app/page.tsx", "Dockerfile"];
+
+    const res = atribuirInfraAoDono(nodes as any, specFiles);
+
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]).toBe('[PLANO INFRA] "Dockerfile" está na Spec e não há etapa com package.json para ser dona.');
+    expect(baseNode.filesScope).not.toContain("Dockerfile");
+    expect(secondNode.filesScope).not.toContain("Dockerfile");
+    expect((secondNode.payload as any).microbrief.arquivosPermitidos.criar).not.toContain("Dockerfile");
+  });
+});
+
+describe("4. Teto de arquivos por etapa com exceção de infra do plano", () => {
+  it("filesCountedForStageCap ignora Dockerfile e migrations atribuídos pelo plano", () => {
+    const arquivos = [
+      "src/a.ts",
+      "src/b.ts",
+      "src/c.ts",
+      "src/d.ts",
+      "Dockerfile",
+      "prisma/migrations",
+    ];
+    expect(filesCountedForStageCap(arquivos)).toBe(4);
+  });
+
+  it("etapa com 4 arquivos de código + Dockerfile atribuído passa no T8b (máx. 4 na conta)", () => {
+    const nodes = [
+      {
+        id: "pkg",
+        filesScope: ["package.json", "src/a.ts", "src/b.ts", "src/c.ts"],
+        payload: {
+          microbrief: {
+            arquivosPermitidos: {
+              criar: ["package.json", "src/a.ts", "src/b.ts", "src/c.ts"],
+              modificar: [],
+              lerContratos: [],
+            },
+            reqsCobertos: ["REQ-001"],
+          },
+        },
+      },
+    ];
+    const specFiles = ["package.json", "src/a.ts", "src/b.ts", "src/c.ts", "Dockerfile"];
+    atribuirInfraAoDono(nodes as any, specFiles);
+    const textoPorReq = { "REQ-001": "API" };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4, specFiles);
+    expect(r.valid).toBe(true);
+    expect(r.errors.some((e) => e.includes("[MACROBRIEF]") && e.includes("arquivos"))).toBe(false);
+  });
+
+  it("etapa com 5 arquivos de código continua inválida mesmo com Dockerfile", () => {
+    const nodes = [
+      {
+        id: "pkg",
+        filesScope: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts", "Dockerfile"],
+        payload: {
+          microbrief: {
+            arquivosPermitidos: {
+              criar: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts", "src/e.ts", "Dockerfile"],
+              modificar: [],
+              lerContratos: [],
+            },
+            reqsCobertos: ["REQ-001"],
+          },
+        },
+      },
+    ];
+    const textoPorReq = { "REQ-001": "API" };
+    const r = validateFinalPlan(nodes as any, ["REQ-001"], textoPorReq, 4);
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.includes('[MACROBRIEF] O Microbrief "pkg" declara 5 arquivos'))).toBe(true);
+  });
+});
+

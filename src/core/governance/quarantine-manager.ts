@@ -8,6 +8,40 @@ import * as fs from "fs";
 import * as path from "path";
 import { normalizeScopePath } from "./dual-lens-auditor";
 
+function mesmoLugarOuDentro(base: string, alvo: string): boolean {
+  const esquerda = process.platform === "win32" ? base.toLowerCase() : base;
+  const direita = process.platform === "win32" ? alvo.toLowerCase() : alvo;
+  return direita === esquerda || direita.startsWith(esquerda + path.sep);
+}
+
+/** Caminho real, depois de seguir atalho. Fora da raiz, recusa. */
+export function resolveRealInside(baseDir: string, relativePath: string): string {
+  const resolvedBase = fs.realpathSync(path.resolve(baseDir));
+  const lexical = path.resolve(resolvedBase, relativePath);
+  if (!mesmoLugarOuDentro(resolvedBase, lexical)) {
+    throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
+  }
+  const faltando: string[] = [];
+  let cursor = lexical;
+  while (!fs.existsSync(cursor)) {
+    const pai = path.dirname(cursor);
+    if (pai === cursor) break;
+    faltando.push(path.basename(cursor));
+    cursor = pai;
+  }
+  let realCursor: string;
+  try {
+    realCursor = fs.realpathSync(cursor);
+  } catch {
+    throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
+  }
+  const realTarget = faltando.length === 0 ? realCursor : path.resolve(realCursor, ...faltando.reverse());
+  if (!mesmoLugarOuDentro(resolvedBase, realTarget)) {
+    throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
+  }
+  return realTarget;
+}
+
 interface PromotionSnapshotEntry {
   destPath: string;
   relativePath: string;
@@ -48,12 +82,7 @@ export class QuarantineManager {
    * do diretório de quarentena ou do projeto de destino.
    */
   private static resolveContained(baseDir: string, relativePath: string): string {
-    const resolvedBase = path.resolve(baseDir);
-    const resolvedTarget = path.resolve(resolvedBase, relativePath);
-    if (resolvedTarget !== resolvedBase && !resolvedTarget.startsWith(resolvedBase + path.sep)) {
-      throw new Error(`Caminho fora do escopo permitido (possível path traversal): "${relativePath}"`);
-    }
-    return resolvedTarget;
+    return resolveRealInside(baseDir, relativePath);
   }
 
   /**

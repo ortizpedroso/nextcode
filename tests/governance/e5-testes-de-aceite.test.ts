@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateAcceptanceTests, parseTesterAnswer, buildTesterPrompt } from "@/core/governance/acceptance-tests";
+import { acceptanceFailuresThatCount, generateAcceptanceTests, ownTestLoadFailure, parseTesterAnswer, buildTesterPrompt } from "@/core/governance/acceptance-tests";
 import type { EvaluatorCallResult } from "@/core/llm/evaluator-models";
 import type { TestBenchReport, TestBenchRequest } from "@/core/execution/test-bench";
 
@@ -88,5 +88,45 @@ describe("E5 — testes de aceite", () => {
     expect(r.descartados[0]).toMatchObject({ motivo: "presume cookies / next/headers, que o Microbrief não pede" });
     expect(r.testes.map((x) => x.caminho)).toEqual(["aceite-2-b.test.ts"]);
     expect(Object.keys(chamadas[0].reproTests ?? {})).toEqual(["aceite-2-b.test.ts"]);
+  });
+
+  it("teste que usa o mock antes de inicializar sai; módulo da etapa ausente continua valendo", async () => {
+    const quebrado = "import { vi } from 'vitest'; const asaasMock = () => ({}); vi.mock('@/lib/asaas', asaasMock);";
+    expect(ownTestLoadFailure(quebrado, "Cannot access 'asaasMock' before initialization")).toBe(true);
+    expect(ownTestLoadFailure(quebrado, "Cannot find module '@/lib/cobrancas-service'")).toBe(false);
+    const r = await generateAcceptanceTests({
+      projectPath: "C:/p",
+      input,
+      dispatch: async () =>
+        answer([
+          { req: "REQ-027", arquivo: "cobrancas", conteudo: quebrado },
+          t("REQ-050", "relatorios"),
+        ]),
+      bench: async () => ({
+        ok: true,
+        stage: "run",
+        durationMs: 1,
+        files: [
+          { file: ".nextcode-repro/aceite-1-cobrancas.test.ts", status: "failed", loadError: "Cannot access 'asaasMock' before initialization" },
+          { file: ".nextcode-repro/aceite-2-relatorios.test.ts", status: "failed", loadError: "Cannot find module '@/lib/relatorios'" },
+        ],
+        cases: [],
+      }),
+    });
+    expect(r.descartados.map((d) => d.arquivo)).toEqual(["aceite-1-cobrancas.test.ts"]);
+    expect(r.testes.map((x) => x.req)).toEqual(["REQ-050"]);
+    const split = acceptanceFailuresThatCount(
+      [
+        { file: ".nextcode-repro/aceite-1-cobrancas.test.ts", txt: ".nextcode-repro/aceite-1-cobrancas.test.ts não carregou: Cannot access 'asaasMock' before initialization" },
+        { file: ".nextcode-repro/aceite-2-relatorios.test.ts", txt: ".nextcode-repro/aceite-2-relatorios.test.ts › REQ-050: AssertionError: expected 200" },
+      ],
+      [
+        { caminho: "aceite-1-cobrancas.test.ts", conteudo: quebrado },
+        { caminho: "aceite-2-relatorios.test.ts", conteudo: "import { it } from 'vitest';" },
+      ]
+    );
+    expect(split.descartados).toHaveLength(1);
+    expect(split.contar).toHaveLength(1);
+    expect(split.contar[0].txt).toContain("AssertionError");
   });
 });

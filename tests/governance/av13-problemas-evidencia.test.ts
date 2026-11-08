@@ -14,6 +14,29 @@ async function judge(answer: object | string, calls = { n: 0 }) {
 }
 
 describe("AV1.3 — evidência do avaliador conferida e problemas por severidade", () => {
+  it("a primeira chamada leva o inventário real dos arquivos desta etapa", async () => {
+    const prompts: string[] = [];
+    await DualLensAuditor.validateType2(type1, "# Brief\nREQ-001 soma", "feito", CODE, async (m) => {
+      prompts.push(m.map((x) => x.content).join("\n"));
+      return JSON.stringify({ implemented: false, missingRequirements: ["REQ-001"], justification: "não" });
+    }, { expectedReqs: ["REQ-001"] });
+    expect(prompts[0]).toContain("[INVENTÁRIO DESTA ETAPA]");
+    expect(prompts[0]).toContain("src/lib/soma.ts:");
+    expect(prompts[0]).toContain("intervalo válido: 1-");
+  });
+
+  it("fileLineRefExists: sufixo único vale; dois arquivos com o mesmo final não", () => {
+    const schema = { "prisma/schema.prisma": "model A {\n  id String\n}\n" };
+    expect(fileLineRefExists("o schema (schema.prisma:2) declara id", schema)).toBe(true);
+    expect(fileLineRefExists("schema.prisma:9", schema)).toBe(false);
+    const pages = {
+      "src/app/page.tsx": "export default function Page() { return null }\n",
+      "src/app/admin/page.tsx": "export default function Admin() { return null }\n",
+    };
+    expect(fileLineRefExists("page.tsx:1", pages)).toBe(false);
+    expect(fileLineRefExists("src/app/page.tsx:1", pages)).toBe(true);
+  });
+
   it("fileLineRefExists: aceita texto em volta e intervalo; recusa linha além do fim e arquivo de fora", () => {
     expect(fileLineRefExists("src/lib/soma.ts:2 retorna a+b", CODE)).toBe(true);
     expect(fileLineRefExists("src/lib/soma.ts:1-3", CODE)).toBe(true);
@@ -36,7 +59,8 @@ describe("AV1.3 — evidência do avaliador conferida e problemas por severidade
     const r = await judge({ implemented: true, missingRequirements: [], justification: "ok", reqVerdicts: [{ ...ok, evidencia: "src/lib/soma.ts:99" }] }, calls);
     expect(calls.n).toBe(2);
     expect(r.verdict).toBe("REJECTED");
-    expect(r.method).toBe("heuristic_fallback");
+    expect(r.method).toBe("llm_blind");
+    expect(r.rejectionReason).toMatch(/não existe no código desta etapa/);
   });
 
   it("problema crítico com arquivo:linha real → REPROVADO e o defeito vai no motivo para o executor", async () => {

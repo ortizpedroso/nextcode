@@ -105,8 +105,6 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
       groqKey: writeSecret("groq-test-key"),
       nvidiaKey: writeSecret("nvidia-test-key"),
       deepseekKey: writeSecret("deepseek-test-key"),
-      omniRouteUrl: "http://localhost:20128/v1",
-      omniRouteKey: writeSecret("omni-test-key"),
     } as any);
     vi.spyOn(prisma.taskNode, "update").mockImplementation((async (args: any) => {
       lastUpdatedData = args.data;
@@ -186,7 +184,7 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls[0].gateways?.[0].modelHeavy).toBe("deepseek-v4-pro");
   });
 
-  it("nenhuma chamada do executor recebe groqKey, nvidiaKey, geminiKey ou omniRouteKey", async () => {
+  it("nenhuma chamada do executor recebe groqKey, nvidiaKey ou geminiKey", async () => {
     vi.spyOn(TelemetryLogger, "log").mockImplementation(() => {});
     const { task, capturedCalls } = setupTask("rapido", true);
     await executeTaskNode(task);
@@ -195,8 +193,6 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
       expect(call.groqKey).toBeUndefined();
       expect(call.nvidiaKey).toBeUndefined();
       expect(call.geminiKey).toBeUndefined();
-      expect(call.omniRouteKey).toBeUndefined();
-      expect(call.omniRouteUrl).toBeUndefined();
     }
   });
 
@@ -274,7 +270,6 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls[0].geminiKey).toBe("gemini-test-key");
     expect(capturedCalls[0].groqKey).toBe("groq-test-key");
     expect(capturedCalls[0].nvidiaKey).toBe("nvidia-test-key");
-    expect(capturedCalls[0].omniRouteKey).toBe("omni-test-key");
   });
 
   it("setPaidOnlyRoutingForTests(false) faz o executor voltar à rota antiga", async () => {
@@ -290,6 +285,5 @@ describe("Passo R1.3 — Executor só no pago (Flash/Pro)", () => {
     expect(capturedCalls[0].geminiKey).toBe("gemini-test-key");
     expect(capturedCalls[0].groqKey).toBe("groq-test-key");
     expect(capturedCalls[0].nvidiaKey).toBe("nvidia-test-key");
-    expect(capturedCalls[0].omniRouteKey).toBe("omni-test-key");
   });
 });

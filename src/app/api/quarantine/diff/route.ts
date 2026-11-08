@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import prisma from "@/lib/prisma";
-import { QuarantineManager } from "@/core/governance/quarantine-manager";
+import { QuarantineManager, resolveRealInside } from "@/core/governance/quarantine-manager";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -51,8 +51,10 @@ export async function GET(request: NextRequest) {
     for (const [filePath, newContent] of Object.entries(generatedCodeMap)) {
       // SEGURANÇA: filePath vem de conteúdo gerado por LLM (extractAndWriteCodeBlocks); garante
       // que a leitura de diff não escape de projectRoot via path traversal ("../../etc/...").
-      const fullPath = path.resolve(resolvedProjectRoot, filePath);
-      if (fullPath !== resolvedProjectRoot && !fullPath.startsWith(resolvedProjectRoot + path.sep)) {
+      let fullPath: string;
+      try {
+        fullPath = resolveRealInside(resolvedProjectRoot, filePath);
+      } catch {
         continue;
       }
       const existsInProject = fs.existsSync(fullPath);

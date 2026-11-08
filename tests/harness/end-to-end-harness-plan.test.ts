@@ -47,7 +47,7 @@ function makeTempProjectDir(): string {
   return d;
 }
 
-function makeOkDispatch(content: string, provider = "omniroute", model = "auto:smart"): DispatchResult {
+function makeOkDispatch(content: string, provider = "freellmapi", model = "auto:smart"): DispatchResult {
   return {
     response: new Response(
       JSON.stringify({

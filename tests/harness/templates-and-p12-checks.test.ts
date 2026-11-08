@@ -82,6 +82,20 @@ describe("Templates Canônicos (P1) e Conferências Mecânicas (P12 / T2 / T3 / 
     expect(res.errors.some((e) => e.includes("[MACROBRIEF DAG] Ciclo"))).toBe(true);
   });
 
+  it("T8b lê o id dentro de colchetes e de vírgula partida, sem chamar isso de requisito inventado", () => {
+    const { spec, macrobrief } = buildP1ProjectArtifacts();
+    const dirty = structuredClone(macrobrief);
+    for (const mb of dirty.microbriefs) {
+      mb.reqs = mb.reqs.map((r) => `[${r}]`);
+    }
+    const first = dirty.microbriefs[0];
+    const bare = first.reqs[0].replace(/[\[\]]/g, "");
+    first.reqs[0] = `[${bare}`;
+    const res = validateMacrobriefMechanical(dirty, spec.requisitosIds);
+    expect(res.errors.filter((e) => e.includes("inventado"))).toEqual([]);
+    expect(res.valid).toBe(true);
+  });
+
   it("sobrescreve medido_pelo_harness no Relatório do Executor e valida arquivo:linha contra o código real (P12)", () => {
     const { microbriefs } = buildP1ProjectArtifacts();
     const mb2 = structuredClone(microbriefs[1]);
@@ -280,6 +294,10 @@ describe("Templates Canônicos (P1) e Conferências Mecânicas (P12 / T2 / T3 / 
 
     const okRes = extractAndValidateExecutorReport(validRaw, mb2, quarantineMap);
     expect(okRes.valid).toBe(true);
+    const shortRaw = validRaw
+      .replaceAll("src/app/api/tarefas/route.ts:1-6", "route.ts:1-6")
+      .replaceAll("src/app/api/tarefas/route.ts:7-12", "route.ts:7-12");
+    expect(extractAndValidateExecutorReport(shortRaw, mb2, quarantineMap).valid).toBe(true);
     expect(okRes.errors).toEqual([]);
     expect(okRes.report).not.toBeNull();
     expect(okRes.report?.documento).toBe("relatorio_executor");

@@ -202,6 +202,26 @@ describe("A1.1 — Contrato do Projeto e Conferência Mecânica", () => {
       expect(errors.some((e) => e.includes('[NOME REPETIDO] Função "fnDuplicada"'))).toBe(true);
     });
 
+    it("aceita tipo global da lib (RequestInit) e continua recusando tipo inventado", () => {
+      const contrato: ContratoProjeto = {
+        entidades: [],
+        enums: [],
+        funcoes: [
+          {
+            nome: "asaasFetch",
+            arquivo: "src/lib/auth.ts",
+            assinatura: "(path: string, init?: RequestInit) => Promise<Response>",
+            dono: "mb-1",
+            usadoPor: [],
+          },
+        ],
+        rotas: [],
+      };
+      const errors = validateContract(contrato, defaultStages);
+      expect(errors.some((e) => e.includes("RequestInit"))).toBe(false);
+      expect(errors.some((e) => e.includes("TIPO DESCONHECIDO"))).toBe(false);
+    });
+
     it("detecta tipo citado que não é entidade, enum, primitivo TS nem global", () => {
       const invalid: ContratoProjeto = {
         entidades: [

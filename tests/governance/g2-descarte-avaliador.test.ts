@@ -28,9 +28,9 @@ describe("G2 — descarte da resposta do avaliador com motivo", () => {
     const r = await DualLensAuditor.validateType2(type1, "# Brief", "feito", CODE, async () =>
       mockBlindAuditJson({ reqVerdicts: [{ ...ok, evidencia: "src/lib/soma.ts:99" }], fatoQueGarante: "src/lib/soma.ts:99" }),
     { expectedReqs: ["REQ-001"] });
-    expect(r.method).toBe("heuristic_fallback");
+    expect(r.method).toBe("llm_blind");
     expect(r.descartes).toHaveLength(2);
     expect(r.descartes?.[0]).toMatch(/REQ-001 "implementado" cita "src\/lib\/soma.ts:99"/);
-    expect(r.rejectionReason).toContain("Descartes:");
+    expect(r.rejectionReason).toMatch(/não existe no código desta etapa/);
   });
 });

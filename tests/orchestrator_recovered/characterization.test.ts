@@ -13,6 +13,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { POST } from "@/app/api/dag/route";
 import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+import { seedMockFreellmGateway, stripByokForMockGateway } from "../helpers/mock-freellm-gateway";
 
 const blindAuditHttpContent = mockBlindAuditJson({
   justification: "Código de acordo com o brief.",
@@ -38,7 +39,6 @@ let routerSpy: ReturnType<typeof vi.spyOn>;
 let originalSetting: Awaited<ReturnType<typeof prisma.setting.findUnique>> = null;
 
 beforeAll(async () => {
-  process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
   process.env.BLIND_AUDIT_TIMEOUT_MS = "5000";
   process.env.DAG_STEP_TIMEOUT_MS = "5000";
 
@@ -50,7 +50,7 @@ beforeAll(async () => {
     req.on("end", () => {
       const body = raw ? JSON.parse(raw) : undefined;
 
-      if (req.url === "/healthz") {
+      if (req.url === "/healthz" || req.url === "/api/ping") {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ status: "ok" }));
       }
@@ -141,33 +141,10 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
   baseUrl = `http://localhost:${port}`;
+  await seedMockFreellmGateway(baseUrl);
+  await stripByokForMockGateway();
 
   originalSetting = await prisma.setting.findUnique({ where: { id: "default" } });
-
-  await prisma.setting.upsert({
-    where: { id: "default" },
-    update: {
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-    create: {
-      id: "default",
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-  });
-
-  process.env.OMNIROUTE_MODEL = "auto/best-free";
 
   routerSpy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback");
   skillMinerAnalyzeSpy = vi.spyOn(SkillMiner, "analyzeAndPropose").mockResolvedValue(null as any);
@@ -658,10 +635,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
 
   describe("Chaves BYOK no despacho (worker vs Auditor Cego)", () => {
     it("AV1.1: Auditor Cego NÃO recebe groqKey, nvidiaKey nem deepseekKey (nunca rota gratuita nem a família do executor); worker segue divergência 2", async () => {
+      await seedMockFreellmGateway(baseUrl);
       await prisma.setting.update({
         where: { id: "default" },
         data: {
-          omniRouteUrl: baseUrl,
           groqKey: "gsk-test-groq",
           nvidiaKey: "nvapi-test-nvidia",
           deepseekKey: "sk-test-deepseek",
@@ -759,10 +736,10 @@ describe("Testes de Caracterização — execute_node e process_queue (Passo 2)"
         expect(pqAuditorCall!.nvidiaKey).toBeUndefined();
         expect(pqAuditorCall!.deepseekKey).toBeUndefined();
       } finally {
+        await seedMockFreellmGateway(baseUrl);
         await prisma.setting.update({
           where: { id: "default" },
           data: {
-            omniRouteUrl: baseUrl,
             groqKey: null,
             nvidiaKey: null,
             deepseekKey: null,

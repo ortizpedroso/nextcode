@@ -14,6 +14,7 @@ import { SkillMiner } from "@/core/telemetry/skill-miner";
 import { SpecDecomposerSkill } from "@/core/skills/spec-decomposer";
 import { startJobWorker, stopJobWorker } from "@/core/orchestrator/job-worker";
 import { mockBlindAuditJson } from "../helpers/mock-blind-audit";
+import { seedMockFreellmGateway, stripByokForMockGateway } from "../helpers/mock-freellm-gateway";
 
 const blindAuditHttpContent = mockBlindAuditJson({
   justification: "Código de acordo com o brief.",
@@ -39,9 +40,6 @@ let fakeResponseMode: "dag_code" | "chat_text" = "dag_code";
 let workerDelayMs = 0;
 
 const savedEnv = {
-  OMNIROUTE_URL: process.env.OMNIROUTE_URL,
-  OMNIROUTE_MODEL: process.env.OMNIROUTE_MODEL,
-  OMNIROUTE_CB_COOLDOWN_MS: process.env.OMNIROUTE_CB_COOLDOWN_MS,
   BLIND_AUDIT_TIMEOUT_MS: process.env.BLIND_AUDIT_TIMEOUT_MS,
   DAG_STEP_TIMEOUT_MS: process.env.DAG_STEP_TIMEOUT_MS,
   NEXTCODE_WORKER_POLL_MS: process.env.NEXTCODE_WORKER_POLL_MS,
@@ -105,10 +103,8 @@ async function cleanupTestData() {
 }
 
 beforeAll(async () => {
-  process.env.OMNIROUTE_CB_COOLDOWN_MS = "1";
   process.env.BLIND_AUDIT_TIMEOUT_MS = "5000";
   process.env.DAG_STEP_TIMEOUT_MS = "5000";
-  process.env.OMNIROUTE_MODEL = "auto/best-free";
 
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nextcode-routes-4a-"));
 
@@ -118,7 +114,7 @@ beforeAll(async () => {
     req.on("end", () => {
       const body = raw ? JSON.parse(raw) : undefined;
 
-      if (req.url === "/healthz") {
+      if (req.url === "/healthz" || req.url === "/api/ping") {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ status: "ok" }));
       }
@@ -204,31 +200,10 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const port = (server.address() as AddressInfo).port;
   baseUrl = `http://localhost:${port}`;
-  process.env.OMNIROUTE_URL = baseUrl;
+  await seedMockFreellmGateway(baseUrl);
+  await stripByokForMockGateway();
 
   originalSetting = await prisma.setting.findUnique({ where: { id: "default" } });
-  await prisma.setting.upsert({
-    where: { id: "default" },
-    update: {
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-    create: {
-      id: "default",
-      omniRouteUrl: baseUrl,
-      geminiKey: null,
-      groqKey: null,
-      nvidiaKey: null,
-      deepseekKey: null,
-      omniRouteKey: null,
-      customEndpoint: null,
-    },
-  });
 
   routerSpy = vi.spyOn(SmartRouter.prototype, "dispatchWithFallback");
   skillMinerAnalyzeSpy = vi.spyOn(SkillMiner, "analyzeAndPropose").mockResolvedValue(null as any);
@@ -257,12 +232,11 @@ afterAll(async () => {
     await prisma.setting.upsert({
       where: { id: "default" },
       update: {
-        omniRouteUrl: originalSetting.omniRouteUrl,
         geminiKey: originalSetting.geminiKey,
         groqKey: originalSetting.groqKey,
         nvidiaKey: originalSetting.nvidiaKey,
         deepseekKey: originalSetting.deepseekKey,
-        omniRouteKey: originalSetting.omniRouteKey,
+        customGatewayKey: originalSetting.customGatewayKey,
         customEndpoint: originalSetting.customEndpoint,
       },
       create: originalSetting,

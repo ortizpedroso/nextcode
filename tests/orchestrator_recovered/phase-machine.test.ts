@@ -326,7 +326,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       expect(res.ok).toBe(true);
       if (res.ok) {
         expect(res.ctx.phase).toBe('BLOQUEADA');
-        expect(res.effects.some((e) => e.type === 'AVISAR_HUMANO' && e.acao === 'ajustar_spec')).toBe(true);
+        expect(res.effects.some((e) => e.type === 'AVISAR_HUMANO' && e.acao === 'reaprovar_trava_t1')).toBe(true);
       }
     });
 
@@ -607,6 +607,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
           'SEM_LLM',
           'AVALIADOR_FORA',
           'EXECUTOR_BLOQUEADO',
+          'CONTRATO_PLANO_INVALIDO',
           'TETO_CUSTO',
           'FALHA_REPETIDA',
           'SILENCIO_DETECTADO',
@@ -696,6 +697,7 @@ describe('Phase Machine — Módulo Puro de Orquestração (§3 - Revisão Passo
       { type: 'SEM_LLM' },
       { type: 'LLM_VOLTOU' },
       { type: 'EXECUTOR_BLOQUEADO' },
+      { type: 'CONTRATO_PLANO_INVALIDO' },
       { type: 'TETO_CUSTO' },
       { type: 'DESBLOQUEIO_HUMANO' },
       { type: 'VERIFICACAO_COM_LACUNAS' },

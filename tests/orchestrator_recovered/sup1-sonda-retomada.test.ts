@@ -20,7 +20,7 @@ const gw = (id: GatewayConfig["id"]): GatewayConfig => ({
   modelHeavy: null,
 });
 
-const gateways = [gw("freellmapi"), gw("deepseek"), gw("omniroute")];
+const gateways = [gw("freellmapi"), gw("deepseek")];
 const loader = async () => gateways;
 const soDeepseekDePe = async (g: GatewayConfig) => g.id === "deepseek";
 const freellmapiDePe = async (g: GatewayConfig) => g.id === "freellmapi";
@@ -48,7 +48,7 @@ async function sessaoPausadaSemLlm(): Promise<string> {
 describe("SUP1 — sonda de retomada alinhada ao somente_pago", () => {
   it("somente_pago: só o FreeLLMAPI é sondado; sem somente_pago, todos", () => {
     expect(gatewaysToProbeForExecutor(gateways, true).map((g) => g.id)).toEqual(["freellmapi"]);
-    expect(gatewaysToProbeForExecutor(gateways, false).map((g) => g.id)).toEqual(["freellmapi", "deepseek", "omniroute"]);
+    expect(gatewaysToProbeForExecutor(gateways, false).map((g) => g.id)).toEqual(["freellmapi", "deepseek"]);
   });
 
   it("somente_pago com FreeLLMAPI fora e DeepSeek de pé → não alcançável", async () => {
@@ -63,14 +63,18 @@ describe("SUP1 — sonda de retomada alinhada ao somente_pago", () => {
   it("sessão pausada continua PAUSADA com FreeLLMAPI fora; volta a EXECUCAO quando ele responde", async () => {
     const id = await sessaoPausadaSemLlm();
 
-    const fora = await supervisePausedSessions(() =>
-      isAnyLlmGatewayReachable({ loader, probe: soDeepseekDePe, paidOnly: async () => true })
+    const fora = await supervisePausedSessions(
+      () => isAnyLlmGatewayReachable({ loader, probe: soDeepseekDePe, paidOnly: async () => true }),
+      new Date(),
+      { onlySessionIds: [id] }
     );
     expect(fora).toBe(0);
     expect((await prisma.session.findUniqueOrThrow({ where: { id } })).phase).toBe("PAUSADA");
 
-    const voltou = await supervisePausedSessions(() =>
-      isAnyLlmGatewayReachable({ loader, probe: freellmapiDePe, paidOnly: async () => true })
+    const voltou = await supervisePausedSessions(
+      () => isAnyLlmGatewayReachable({ loader, probe: freellmapiDePe, paidOnly: async () => true }),
+      new Date(),
+      { onlySessionIds: [id] }
     );
     expect(voltou).toBeGreaterThanOrEqual(1);
     expect((await prisma.session.findUniqueOrThrow({ where: { id } })).phase).toBe("EXECUCAO");

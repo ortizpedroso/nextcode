@@ -23,9 +23,9 @@ function makeFakeDispatchResult(content: string): DispatchResult {
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     ),
-    providerUsed: "omniroute",
-    badge: "OmniRoute",
-    tierTag: "omniroute",
+    providerUsed: "freellmapi",
+    badge: "FreeLLMAPI",
+    tierTag: "freellmapi",
     modelUsed: "fake-fast-model",
   };
 }
