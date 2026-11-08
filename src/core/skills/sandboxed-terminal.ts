@@ -2,6 +2,41 @@ import { exec, execFile } from "child_process";
 import { ContextPruner } from "../headroom/context-pruner";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 
+const HOST_SUBPROCESS_ENV_KEYS = new Set([
+  "PATH",
+  "PATHEXT",
+  "SystemRoot",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "COMSPEC",
+  "WINDIR",
+  "OS",
+  "PROCESSOR_ARCHITECTURE",
+  "ProgramFiles",
+  "ProgramFiles(x86)",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "NODE_ENV",
+  "SystemDrive",
+]);
+
+/** Variáveis mínimas para subprocesso no host. Não herda chaves do NextCode. */
+export function hostSubprocessEnv(): NodeJS.ProcessEnv {
+  const out: Record<string, string | undefined> = {};
+  for (const key of HOST_SUBPROCESS_ENV_KEYS) {
+    const v = process.env[key];
+    if (v !== undefined) out[key] = v;
+  }
+  out.NODE_ENV = out.NODE_ENV || "production";
+  return out as NodeJS.ProcessEnv;
+}
+
+export const TERMINAL_STREAM_TIMEOUT_MS = 120_000;
+
 export interface TerminalExecutionResult {
   success: boolean;
   command: string;
@@ -10,6 +45,7 @@ export interface TerminalExecutionResult {
   exitCode: number | null;
   prunedOutput: string;
   error?: string;
+  confinamento?: "jail" | "host_lista_negra";
 }
 
 /**
@@ -158,6 +194,7 @@ export class SandboxedTerminalSkill {
             exitCode: error ? (typeof error.code === "number" ? error.code : 1) : 0,
             prunedOutput,
             error: error ? `Falha no jail: ${error.message}` : undefined,
+            confinamento: "jail",
           });
         }
       );
@@ -180,11 +217,12 @@ export class SandboxedTerminalSkill {
 
     return new Promise((resolve) => {
       const onDone = (error: { message: string; code?: number | string | null } | null, stdout: string, stderr: string) => {
+        const avisoHost = "Este comando rodou no computador, depois da lista negra. Não é a jaula.";
         const fullOutput = (stdout + "\n" + stderr).trim();
-        const prunedOutput = ContextPruner.prune(fullOutput, {
+        const prunedOutput = `${avisoHost}\n${ContextPruner.prune(fullOutput, {
           maxLines: 80,
           maxChars: 3000,
-        });
+        })}`;
 
         if (error) {
           resolve({
@@ -195,6 +233,7 @@ export class SandboxedTerminalSkill {
             exitCode: typeof error.code === "number" ? error.code : 1,
             prunedOutput,
             error: error.message,
+            confinamento: "host_lista_negra",
           });
         } else {
           resolve({
@@ -204,6 +243,7 @@ export class SandboxedTerminalSkill {
             stderr,
             exitCode: 0,
             prunedOutput,
+            confinamento: "host_lista_negra",
           });
         }
       };

@@ -4,6 +4,7 @@ import { parseSpecDocument, parseYamlFrontmatter, type YamlValue } from "../inta
 import { errosDePlanoContraMacrobrief, type ElicitadorMacrobrief } from "../intake/macrobrief-elicitador";
 import {
   inferClusterFromFilePath,
+  normalizeReqIdList,
   validateMacrobriefMechanical,
   type MacrobriefDocument,
   type MicrobriefAndReportDocument,
@@ -34,7 +35,7 @@ export interface DecompositionResult {
   /** Contrato estruturado do plano do analista. A heurística não preenche. */
   contrato?: ContratoProjeto;
   /** Produção: analista esgotou rodadas ou falhou; nenhuma etapa deve ser criada. */
-  planoReprovado?: { motivo: string; dono: "analista" };
+  planoReprovado?: { motivo: string; dono: "analista"; erros?: string[]; rodadas?: number };
 }
 
 export { extractFilePathsFromText };
@@ -400,8 +401,6 @@ export class SpecDecomposerSkill {
     sessionId?: string;
     smartRouter?: any;
     geminiKey?: string | null;
-    omniRouteUrl?: string | null;
-    omniRouteKey?: string | null;
     skipModel?: boolean;
     /** Exceção de cluster confirmada pelo humano: o analista coloca o domínio nesse cluster. */
     notasExcecaoCluster?: string;
@@ -429,16 +428,23 @@ export class SpecDecomposerSkill {
     }
 
     const reprovado = (motivo: string, extra: Record<string, unknown> = {}): DecompositionResult => {
+      const erros = Array.isArray(extra.erros) ? (extra.erros as string[]) : undefined;
+      const rodadas = typeof extra.rodadas === "number" ? extra.rodadas : undefined;
       TelemetryLogger.log({
         sessionId,
         action: "PLANO_REPROVADO",
-        details: { motivo, dono: "analista", ...extra },
+        details: {
+          motivo,
+          dono: "analista",
+          ...extra,
+          amostra: erros?.slice(0, 20),
+        },
       });
       return {
         goal: baseDecomp.goal,
         nodes: [],
         summary: "Plano do analista reprovado; nenhuma etapa foi criada.",
-        planoReprovado: { motivo, dono: "analista" },
+        planoReprovado: { motivo, dono: "analista", erros, rodadas },
       };
     };
 
@@ -488,6 +494,8 @@ export class SpecDecomposerSkill {
       { role: "user", content: userPrompt },
     ];
 
+    let lastErrors: string[] = [];
+
     for (let rodada = 1; rodada <= ANALISTA_MAX_RODADAS; rodada++) {
       let content = "";
       let modelUsed = "";
@@ -500,8 +508,6 @@ export class SpecDecomposerSkill {
           tier: "heavy",
           maxTokens: ANALISTA_MAX_TOKENS,
           geminiKey: options.geminiKey,
-          omniRouteUrl: options.omniRouteUrl,
-          omniRouteKey: options.omniRouteKey,
           stream: false,
           gatewayTimeoutMs: Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS,
           signal: AbortSignal.timeout((Number(process.env.ANALISTA_TIMEOUT_MS) || ANALISTA_TIMEOUT_MS) + 10_000),
@@ -558,6 +564,7 @@ export class SpecDecomposerSkill {
           ? errosDePlanoContraMacrobrief(parsed.stages, parsed.clusters, options.macrobriefAprovado)
           : [];
       const errors = [...stageErrors, ...contractErrors, ...macroErrors];
+      if (errors.length > 0) lastErrors = errors;
 
       if (parsed.ok && errors.length === 0 && parsed.contrato) {
         const result = buildDecompositionFromAnalystPlan({
@@ -609,7 +616,7 @@ export class SpecDecomposerSkill {
       messages.push({
         role: "user",
         content:
-          `A conferência do NextCode reprovou o plano (rodada ${rodada} de ${ANALISTA_MAX_RODADAS}). ` +
+          `A validação T8b reprovou o plano (rodada ${rodada} de ${ANALISTA_MAX_RODADAS}). ` +
           "Corrija TODOS os erros abaixo e devolva o plano INTEIRO, em Markdown com frontmatter YAML:\n" +
           errors.slice(0, 40).map((e) => `- ${e}`).join("\n") +
           (errors.length > 40 ? `\n- … e mais ${errors.length - 40}` : "") +
@@ -617,7 +624,7 @@ export class SpecDecomposerSkill {
       });
     }
 
-    return reprovado("rodadas_esgotadas", { rodadas: ANALISTA_MAX_RODADAS });
+    return reprovado("rodadas_esgotadas", { rodadas: ANALISTA_MAX_RODADAS, erros: lastErrors });
   }
 
   /**
@@ -732,8 +739,11 @@ export class SpecDecomposerSkill {
   }
 }
 
-/** A2.2 — rodadas do analista (1 plano + 2 correções com a lista de erros da T8b). */
-const ANALISTA_MAX_RODADAS = 3;
+/** A2.2 — rodadas do analista (1 plano + correções com a lista de erros da T8b). */
+const ANALISTA_MAX_RODADAS = Math.max(
+  1,
+  Math.min(8, Number(process.env.ANALISTA_MAX_RODADAS) || 3)
+);
 /**
  * Teto de saída do analista. O plano da Spec real (58 arquivos, 43 REQ) tem ~4 mil tokens, mas o
  * `deepseek-v4-pro` conta o raciocínio na saída: no replay A2.3 as 3 rodadas com 16.000 pararam em
@@ -755,7 +765,18 @@ export type AnalystPlanParse =
   | { ok: false; error: string };
 
 function yamlList(v: YamlValue | undefined): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string").map((s) => s.trim()).filter((s) => s !== "[]");
+  if (Array.isArray(v)) {
+    const out: string[] = [];
+    for (const x of v) {
+      if (typeof x === "string") {
+        const s = x.trim();
+        if (s && s !== "[]") out.push(s);
+      } else if (Array.isArray(x)) {
+        out.push(...yamlList(x as YamlValue));
+      }
+    }
+    return out;
+  }
   if (typeof v === "string") {
     const t = v.trim();
     if (!t || t === "[]") return [];
@@ -826,10 +847,17 @@ function parseAnalystYaml(content: string): AnalystPlanParse | null {
       return { ok: false, error: `[FORMATO] Etapa "${id}": cluster "${cluster}" inválido (use ${ANALYST_CLUSTERS.join(", ")}).` };
     }
     clusters[id] = cluster as ClusterKind;
+    const reqNorm = normalizeReqIdList(yamlList(m.reqs));
+    if (reqNorm.invalid.length > 0) {
+      return {
+        ok: false,
+        error: `[FORMATO] Etapa "${id}": "${reqNorm.invalid[0]}" não é um requisito. Escreva REQ-001, um id por item, sem colchetes.`,
+      };
+    }
     stages.push({
       id,
       arquivos: yamlList(m.arquivos).map((f) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim()),
-      reqs: yamlList(m.reqs).map((r) => r.toUpperCase()),
+      reqs: reqNorm.ids,
       dependeDe: yamlList(m.depende_de ?? m.dependeDe),
     });
   }
@@ -868,10 +896,17 @@ export function parseAnalystPlan(content: string): AnalystPlanParse {
       return { ok: false, error: `[FORMATO] Etapa "${id}": "arquivos", "reqs" e "dependeDe" têm de ser listas de texto.` };
     }
     clusters[id] = m.cluster;
+    const reqNorm = normalizeReqIdList((m.reqs ?? []).map((r: string) => r.trim()));
+    if (reqNorm.invalid.length > 0) {
+      return {
+        ok: false,
+        error: `[FORMATO] Etapa "${id}": "${reqNorm.invalid[0]}" não é um requisito. Escreva REQ-001, um id por item, sem colchetes.`,
+      };
+    }
     stages.push({
       id,
       arquivos: m.arquivos.map((f: string) => f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim()),
-      reqs: (m.reqs ?? []).map((r: string) => r.trim().toUpperCase()),
+      reqs: reqNorm.ids,
       dependeDe: (m.dependeDe ?? []).map((d: string) => d.trim()),
     });
   }
@@ -952,9 +987,9 @@ export function buildDecompositionFromAnalystPlan(params: {
   };
 
   const planoStages = ordered.map((s) => ({
-    id: s.id.replace(/-v\d+$/, ""),
+    id: s.id,
     arquivos: [...s.arquivos],
-    dependeDe: (s.dependeDe ?? []).map((d) => d.replace(/-v\d+$/, "")),
+    dependeDe: [...(s.dependeDe ?? [])],
   }));
 
   const nodes: DAGNode[] = [scaffold];
@@ -1024,7 +1059,7 @@ export function buildDecompositionFromAnalystPlan(params: {
         cluster,
         reqsCobertos: [...s.reqs],
         microbrief,
-        etapaId: s.id.replace(/-v\d+$/, ""), // Gap 4: id da etapa do plano (dono do contrato)
+        etapaId: s.id, // id da etapa do plano, igual ao dono do contrato (mb-back-v1 não perde o sufixo)
         contrato, // Gap 4: ContratoProjeto completo para validação no executor
         planoStages, // grafo inteiro: validateContract não vê um único dono
       },

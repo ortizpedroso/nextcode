@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
-import { requireAuth } from "@/core/security/local-auth";
+import { requireReadAuth } from "@/core/security/local-auth";
 
 function getWindowsDrives(): string[] {
   if (process.platform !== "win32") return [];
@@ -21,7 +21,7 @@ function getWindowsDrives(): string[] {
 // C1 — esta rota lista o sistema de arquivos inteiro (drives, caminhos arbitrários
 // via ?targetPath). No modelo de ameaça LAN/Docker isso é leitura de segredos. Exige auth.
 export async function GET(request: NextRequest) {
-  const guard = requireAuth(request);
+  const guard = requireReadAuth(request);
   if (guard.response) return guard.response;
   try {
     const { searchParams } = new URL(request.url);

@@ -36,9 +36,16 @@ export function ensureAuditTrailGuards(client: PrismaClient = prisma): Promise<v
   return globalForPrisma.auditTrailGuards;
 }
 
+function prismaDevLogLevels(): Array<"query" | "error" | "warn"> {
+  if (process.env.NEXTCODE_PRISMA_QUERY_LOG === "1") {
+    return ["query", "error", "warn"];
+  }
+  return ["error", "warn"];
+}
+
 function createPrismaClient(): PrismaClient {
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: process.env.NODE_ENV === "development" ? prismaDevLogLevels() : ["error"],
   });
 }
 

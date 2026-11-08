@@ -10,11 +10,13 @@ import { runTestBench, type TestBenchReport } from "@/core/execution/test-bench"
 import { contractBenchRequest, type RepairContractTest } from "@/core/orchestrator/repair-payload";
 import { withProjectBuildLock } from "@/core/governance/empirical-gate";
 import { TerminalExecutionEngine } from "@/core/execution/terminal-execution-engine";
-import { normalizeScopePath } from "@/core/governance/dual-lens-auditor";
+import { compilerSilenceErrors, normalizeScopePath } from "@/core/governance/dual-lens-auditor";
+import { resolveRealInside } from "@/core/governance/quarantine-manager";
+import { maskSecretsForJev } from "@/core/governance/secret-guard";
 import { recordLlmCost } from "@/core/llm/cost";
 import type { GatewayConfig } from "@/core/llm/gateways";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
-import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
+import { stageFileInventoryBlock, type MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 
 export const MAX_TOOL_OUTPUT_CHARS = 12_000;
 export const MAX_LIST_FILES_ENTRIES = 300;
@@ -427,14 +429,18 @@ export function buildExecutorToolProtocolPrompt(): string {
   ].join("\n");
 }
 
+export function recusaDeSilencioNaGravacao(caminho: string, conteudo: string): string | null {
+  const erros = compilerSilenceErrors(caminho, conteudo);
+  return erros.length > 0 ? erros.join("\n") : null;
+}
+
 function resolveInsideRoot(rootDir: string, relativePath: string): string | null {
-  const resolvedRoot = path.resolve(rootDir);
   const cleaned = relativePath.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
-  const resolvedTarget = path.resolve(resolvedRoot, cleaned);
-  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + path.sep)) {
+  try {
+    return resolveRealInside(rootDir, cleaned || ".");
+  } catch {
     return null;
   }
-  return resolvedTarget;
 }
 
 function addLineNumbers(content: string): string {
@@ -663,8 +669,6 @@ export interface ExecutorToolLoopParams {
     groqKey?: string | null;
     nvidiaKey?: string | null;
     deepseekKey?: string | null;
-    omniRouteUrl?: string | null;
-    omniRouteKey?: string | null;
   };
   paidGateways?: GatewayConfig[];
   allowedRoutedViaPrefixes?: string[];
@@ -889,7 +893,11 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
     }
 
     messages.push({ role: "assistant", content: turnText });
-    messages.push({ role: "user", content: results.join("\n\n") });
+    const inventory =
+      quarantinedFiles.size > 0
+        ? `\n\n${stageFileInventoryBlock(Object.fromEntries(quarantinedFiles))}`
+        : "";
+    messages.push({ role: "user", content: results.join("\n\n") + inventory });
   }
 
   async function dispatchOneTurn(): Promise<TurnDispatchOutcome> {
@@ -918,8 +926,6 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
           groqKey: routerKeys.groqKey ?? undefined,
           nvidiaKey: routerKeys.nvidiaKey ?? undefined,
           deepseekKey: routerKeys.deepseekKey ?? undefined,
-          omniRouteUrl: routerKeys.omniRouteUrl ?? undefined,
-          omniRouteKey: routerKeys.omniRouteKey ?? undefined,
           stream: false,
           signal: stepSignal,
           gatewayTimeoutMs: stepTimeoutMs,
@@ -1121,11 +1127,16 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         if (!caminho || conteudo === null) {
           toolOutput = 'Erro em write_file: informe {"caminho": "...", "conteudo": "..."}.';
         } else {
-          qm.writeFile(nodeId, caminho, conteudo);
-          const sanitized = QuarantineManagerClass.sanitizeContent(caminho, conteudo);
-          quarantinedFiles.set(caminho, sanitized);
-          const lineCount = sanitized.split(/\r?\n/).length;
-          toolOutput = `Arquivo "${caminho}" gravado na quarentena (${lineCount} linhas).`;
+          const silencio = recusaDeSilencioNaGravacao(caminho, conteudo);
+          if (silencio) {
+            toolOutput = silencio;
+          } else {
+            qm.writeFile(nodeId, caminho, conteudo);
+            const sanitized = QuarantineManagerClass.sanitizeContent(caminho, conteudo);
+            quarantinedFiles.set(caminho, sanitized);
+            const lineCount = sanitized.split(/\r?\n/).length;
+            toolOutput = `Arquivo "${caminho}" gravado na quarentena (${lineCount} linhas).`;
+          }
         }
       } else if (ferramenta === "edit_file") {
         const caminho = typeof args.caminho === "string" ? normalizeScopePath(args.caminho) : "";
@@ -1164,10 +1175,15 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
               const idx = workingContent.indexOf(workingOld);
               const updated =
                 workingContent.slice(0, idx) + trechoNovo + workingContent.slice(idx + workingOld.length);
-              qm.writeFile(nodeId, caminho, updated);
-              const sanitized = QuarantineManagerClass.sanitizeContent(caminho, updated);
-              quarantinedFiles.set(caminho, sanitized);
-              toolOutput = `Arquivo "${caminho}" editado na quarentena com sucesso.`;
+              const silencio = recusaDeSilencioNaGravacao(caminho, updated);
+              if (silencio) {
+                toolOutput = silencio;
+              } else {
+                qm.writeFile(nodeId, caminho, updated);
+                const sanitized = QuarantineManagerClass.sanitizeContent(caminho, updated);
+                quarantinedFiles.set(caminho, sanitized);
+                toolOutput = `Arquivo "${caminho}" editado na quarentena com sucesso.`;
+              }
             }
           }
         }
@@ -1215,7 +1231,7 @@ export async function runExecutorToolLoop(params: ExecutorToolLoopParams): Promi
         acoesNoTurno,
       },
     });
-    return toolOutput;
+    return maskSecretsForJev(toolOutput).text;
   }
 }
 

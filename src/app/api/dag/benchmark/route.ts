@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     const targetModels = Array.isArray(modelsToCompare) && modelsToCompare.length > 0
       ? modelsToCompare
-      : ["omniroute:auto", "gemini:flash", "claude:sonnet", "groq:llama-3.3-70b"];
+      : ["freellmapi:auto", "gemini:flash", "claude:sonnet", "groq:llama-3.3-70b"];
 
     const taskCount = session.tasks.length || 3;
 
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       let tokenCostEst = 0.0015;
       let governancePassRate = 100;
 
-      if (model.includes("omniroute")) {
+      if (model.includes("freellmapi")) {
         speedMsPerTask = 850;
         tokenCostEst = 0.0002;
         governancePassRate = 98;
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         governancePassRate,
         totalEstimatedCostUSD: Number(totalEstimatedCostUSD.toFixed(4)),
         recommendation:
-          model.includes("omniroute")
+          model.includes("freellmapi")
             ? "Coeficiente fixo de custo baixo. Nenhum modelo foi chamado."
             : model.includes("sonnet")
             ? "Coeficiente fixo de custo alto. Nenhum modelo foi chamado."

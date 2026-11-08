@@ -64,7 +64,7 @@ export function resetSessionToken(rejectedToken?: string | null): void {
 
 /**
  * Fetch autenticado para rotas locais: injeta X-Nextcode-Token automaticamente.
- * Uso em componentes: `await authFetch("/api/omniroute/setup", { method: "POST" })`.
+ * Uso em componentes: `await authFetch("/api/dag", { method: "POST", body: ... })`.
  */
 export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const token = await getSessionToken();

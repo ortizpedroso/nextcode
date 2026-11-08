@@ -195,6 +195,44 @@ const REQ_ID_RE = /^REQ-\d{3}$/;
 const FILE_LINE_RE = /^([^:\s]+):(\d+)(?:-(\d+))?$/;
 
 /**
+ * Um item de `reqs` vira um ou mais `REQ-NNN`.
+ * `[REQ-069]`, `[REQ-001` e `REQ-003]` (vírgula partida pelo YAML) contam como os ids de dentro.
+ * `REQ-001–REQ-003` no mesmo item vira o intervalo, até 20 ids.
+ */
+export function canonicalReqIdsFromToken(raw: string): string[] {
+  const matches = [...raw.matchAll(/REQ-(\d+)/gi)];
+  if (matches.length === 0) return [];
+  const asId = (digits: string) => `REQ-${digits.length >= 3 ? digits : digits.padStart(3, "0")}`;
+  if (matches.length === 2 && !raw.includes(",")) {
+    const range = /REQ-\d+\s*(?:\.{2,}|[–—]|até|\ba\b|\bto\b)\s*REQ-\d+/i.test(raw)
+      || /REQ-\d+\s*-\s*REQ-\d+/i.test(raw);
+    if (range) {
+      const a = Number(matches[0][1]);
+      const b = Number(matches[1][1]);
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      if (hi > lo && hi - lo <= 20) {
+        const span: string[] = [];
+        for (let n = lo; n <= hi; n++) span.push(`REQ-${String(n).padStart(3, "0")}`);
+        return span;
+      }
+    }
+  }
+  return [...new Set(matches.map((m) => asId(m[1])))];
+}
+
+export function normalizeReqIdList(raws: string[]): { ids: string[]; invalid: string[] } {
+  const ids: string[] = [];
+  const invalid: string[] = [];
+  for (const raw of raws) {
+    const found = canonicalReqIdsFromToken(raw);
+    if (found.length === 0) invalid.push(raw);
+    else ids.push(...found);
+  }
+  return { ids: [...new Set(ids)], invalid };
+}
+
+/**
  * Inferência mecânica de cluster a partir do caminho de um arquivo.
  */
 export function inferClusterFromFilePath(filePath: string): ClusterKind {
@@ -318,10 +356,17 @@ export function validateMacrobriefMechanical(
   const coveredSet = new Set<string>();
 
   for (const mb of macrobrief.microbriefs) {
-    for (const r of mb.reqs) {
-      coveredSet.add(r);
-      if (!specSet.has(r)) {
-        errors.push(`[MACROBRIEF T8b] O Microbrief "${mb.id}" referencia requisito inventado "${r}" que não existe na Spec.`);
+    for (const raw of mb.reqs) {
+      const ids = canonicalReqIdsFromToken(raw);
+      if (ids.length === 0) {
+        errors.push(`[MACROBRIEF T8b] O Microbrief "${mb.id}" referencia requisito inventado "${raw}" que não existe na Spec.`);
+        continue;
+      }
+      for (const r of ids) {
+        coveredSet.add(r);
+        if (!specSet.has(r)) {
+          errors.push(`[MACROBRIEF T8b] O Microbrief "${mb.id}" referencia requisito inventado "${r}" que não existe na Spec.`);
+        }
       }
     }
   }
@@ -503,6 +548,59 @@ export interface FileLineRef {
   file: string;
   start: number;
   end: number;
+}
+
+function normalizeCitedPath(p: string): string {
+  return String(p || "").trim().replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").replace(/^\/+/, "");
+}
+
+export type CitedStageFileMatch =
+  | { kind: "one"; path: string; content: string }
+  | { kind: "none" }
+  | { kind: "ambiguous" };
+
+/** Caminho citado contra os arquivos desta etapa: igualdade, ou um único sufixo. Dois sufixos não escolhem. */
+export function matchCitedStageFile(
+  citedPath: string,
+  codeContentMap: Record<string, string>
+): CitedStageFileMatch {
+  const norm = normalizeCitedPath(citedPath);
+  if (!norm) return { kind: "none" };
+  const entries = Object.entries(codeContentMap).map(([file, content]) => ({
+    path: file,
+    norm: normalizeCitedPath(file),
+    content: String(content ?? ""),
+  }));
+  const exact = entries.filter((e) => e.norm === norm);
+  const pool = exact.length > 0 ? exact : entries.filter((e) => e.norm.endsWith(`/${norm}`));
+  if (pool.length === 1) return { kind: "one", path: pool[0].path, content: pool[0].content };
+  if (pool.length > 1) return { kind: "ambiguous" };
+  return { kind: "none" };
+}
+
+/** Mesma lista para o executor e para o avaliador: caminho completo e intervalo real de linhas. */
+export function stageFileInventoryBlock(codeContentMap: Record<string, string>): string {
+  const lines = Object.entries(codeContentMap)
+    .map(([file, content]) => {
+      const total = String(content ?? "").split(/\r?\n/).length;
+      return `- ${normalizeCitedPath(file)}: ${total} linha(s) (intervalo válido: 1-${total})`;
+    })
+    .sort();
+  return (
+    "[INVENTÁRIO DESTA ETAPA]\n" +
+    "Cite somente estes caminhos, copiados como estão. A linha tem de cair no intervalo.\n" +
+    (lines.join("\n") || "(nenhum arquivo desta etapa)")
+  );
+}
+
+/** Antes de existir arquivo: os caminhos do escopo, os mesmos que o inventário vai medir. */
+export function stageScopePathBlock(paths: string[]): string {
+  const lines = paths.map((p) => `- ${normalizeCitedPath(p)}`).filter((l) => l !== "- ").sort();
+  return (
+    "[CAMINHOS DESTA ETAPA]\n" +
+    "Grave e cite somente estes caminhos, copiados como estão. O intervalo de linhas entra no inventário quando o arquivo já existe.\n" +
+    (lines.join("\n") || "(nenhum arquivo nesta etapa)")
+  );
 }
 
 /**
@@ -740,15 +838,8 @@ export function validateExecutorReportMechanical(
   }
 
   const allowedFilesSet = new Set(
-    [...report.arquivosPermitidos.criar, ...report.arquivosPermitidos.modificar].map((f) =>
-      f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim()
-    )
+    [...report.arquivosPermitidos.criar, ...report.arquivosPermitidos.modificar].map((f) => normalizeCitedPath(f))
   );
-
-  const normalizedContentMap = new Map<string, string>();
-  for (const [k, v] of Object.entries(quarantineFilesContentMap)) {
-    normalizedContentMap.set(k.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim(), v);
-  }
 
   const expectedReqs = new Set(report.reqsCobertos);
   const reportedReqs = new Set<string>();
@@ -783,25 +874,30 @@ export function validateExecutorReportMechanical(
     }
 
     for (const ref of refs) {
-      if (!allowedFilesSet.has(ref.file)) {
+      const hit = matchCitedStageFile(ref.file, quarantineFilesContentMap);
+      if (hit.kind === "ambiguous") {
         errors.push(
-          `[RELATÓRIO P12] O requisito "${row.reqId}" cita o arquivo "${ref.file}", que não pertence ao escopo permitido do Microbrief.`
+          `[RELATÓRIO P12] O requisito "${row.reqId}" cita "${ref.file}", que não identifica um único arquivo desta etapa.`
         );
         continue;
       }
-
-      const fileContent = normalizedContentMap.get(ref.file);
-      if (fileContent === undefined) {
-        errors.push(
-          `[RELATÓRIO P12] O requisito "${row.reqId}" cita "${ref.file}", mas esse arquivo não existe na quarentena.`
-        );
+      if (hit.kind !== "one" || !allowedFilesSet.has(normalizeCitedPath(hit.path))) {
+        if (allowedFilesSet.has(normalizeCitedPath(ref.file))) {
+          errors.push(
+            `[RELATÓRIO P12] O requisito "${row.reqId}" cita "${ref.file}", mas esse arquivo não existe na quarentena.`
+          );
+        } else {
+          errors.push(
+            `[RELATÓRIO P12] O requisito "${row.reqId}" cita o arquivo "${ref.file}", que não pertence ao escopo permitido do Microbrief.`
+          );
+        }
         continue;
       }
 
-      const totalLines = fileContent.split(/\r?\n/).length;
+      const totalLines = hit.content.split(/\r?\n/).length;
       if (ref.start < 1 || ref.end < ref.start || ref.end > totalLines) {
         errors.push(
-          `[RELATÓRIO P12] O requisito "${row.reqId}" cita linhas ${ref.start}-${ref.end} em "${ref.file}", mas o arquivo possui ${totalLines} linha(s).`
+          `[RELATÓRIO P12] O requisito "${row.reqId}" cita linhas ${ref.start}-${ref.end} em "${hit.path}", mas o arquivo possui ${totalLines} linha(s).`
         );
       }
     }
@@ -881,11 +977,6 @@ export function validateEvaluatorVerdictMechanical(
     );
   }
 
-  const normalizedContentMap = new Map<string, string>();
-  for (const [k, v] of Object.entries(quarantineFilesContentMap)) {
-    normalizedContentMap.set(k.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim(), v);
-  }
-
   const lens1Map = new Map(verdict.lente1.map((r) => [r.reqId, r]));
   const lens2Map = new Map(verdict.lente2.map((r) => [r.reqId, r]));
 
@@ -909,11 +1000,16 @@ export function validateEvaluatorVerdictMechanical(
     const citedFile = m[1].replace(/\\/g, "/").replace(/^(?:\.\/)+/, "").trim();
     const startLine = Number(m[2]);
     const endLine = m[3] ? Number(m[3]) : startLine;
-    const content = normalizedContentMap.get(citedFile);
-    if (content === undefined) {
-      errors.push(`[VEREDITO LENTE 1] Arquivo citado "${citedFile}" para "${row.reqId}" não existe na quarentena.`);
+    const hit = matchCitedStageFile(citedFile, quarantineFilesContentMap);
+    if (hit.kind !== "one") {
+      errors.push(
+        hit.kind === "ambiguous"
+          ? `[VEREDITO LENTE 1] Arquivo citado "${citedFile}" para "${row.reqId}" não identifica um único arquivo desta etapa.`
+          : `[VEREDITO LENTE 1] Arquivo citado "${citedFile}" para "${row.reqId}" não existe na quarentena.`
+      );
       continue;
     }
+    const content = hit.content;
     const totalLines = content.split(/\r?\n/).length;
     if (startLine < 1 || endLine < startLine || endLine > totalLines) {
       errors.push(
