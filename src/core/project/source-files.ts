@@ -2,11 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 
 /** Extensões que contam como código de verdade (não config, não documentação). */
-const SOURCE_EXTENSIONS = new Set([
+export const SOURCE_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".rs", ".java", ".kt", ".cs", ".php", ".rb",
   ".vue", ".svelte", ".swift", ".c", ".cpp", ".h",
 ]);
-const IGNORED_DIRS = new Set(["node_modules", ".git", ".next", ".nextcode", "graphify-out", "dist", "build", "coverage"]);
+export const IGNORED_DIRS = new Set(["node_modules", ".git", ".next", ".nextcode", "graphify-out", "dist", "build", "coverage"]);
 
 /**
  * Mudança 25 (b): conta arquivos-fonte na pasta do projeto, sem Jev. Antes, "a pasta existe" bastava

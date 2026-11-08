@@ -24,8 +24,16 @@ export function routeFileCandidates(caminho: string): string[] {
 
 const PLACEHOLDER_OBJECTIVE = /^(especifica[cç][aã]o atualizada\.?|<.*>)?$/i;
 
+export type CheckSpecStructureOptions = {
+  /** Paths removidos do disco mas ainda citados em REQ preservado (reconciliação). */
+  reqCriteriaPathsAbsentFromArquivos?: string[];
+};
+
 /** Problemas estruturais que impedem a execução correta; lista vazia = Spec consistente. */
-export function checkSpecStructure(spec: ParsedSpec): string[] {
+export function checkSpecStructure(
+  spec: ParsedSpec,
+  opts?: CheckSpecStructureOptions
+): string[] {
   const problems: string[] = [];
   const files = new Set(spec.arquivosAfetados.map((f) => f.trim()));
 
@@ -88,11 +96,19 @@ export function checkSpecStructure(spec: ParsedSpec): string[] {
       if (filesArr.length > 0) {
         const normCriterio = (req.criterio || "").replace(/\\/g, "/");
         const matched = normFiles.filter((nf) => normCriterio.includes(nf));
-        if (matched.length === 0) {
+        const ghostPaths = opts?.reqCriteriaPathsAbsentFromArquivos ?? [];
+        const citesGhostOnly =
+          matched.length === 0 &&
+          ghostPaths.length > 0 &&
+          ghostPaths.some((p) => {
+            const np = p.replace(/\\/g, "/");
+            return normCriterio.includes(np);
+          });
+        if (matched.length === 0 && !citesGhostOnly) {
           problems.push(
             `O critério do requisito "${id || req.titulo}" não cita nenhum arquivo de arquivos_afetados.`
           );
-        } else {
+        } else if (matched.length > 0) {
           for (const mf of matched) citedNormFiles.add(mf);
         }
       }
