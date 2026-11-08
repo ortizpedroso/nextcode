@@ -1,7 +1,7 @@
 # NextCode — Documento Único de Referência (o que foi feito e o que falta fazer)
 
 > **Fonte única do projeto NextCode (`C:\projetos\nextcode`).**
-> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. **Atualizado 30/10/2026:** a §3 está em ordem de relevância (o que ainda muda uma entrega vem primeiro). O A1 do analista, o F1, o 5a–5c e o dono de infra no plano já estão no código. O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
+> Consolidado em 23/10/2026 a partir do commit `cabc2d7`. **Atualizado 31/10/2026:** §4.3.1 (Trava T1 + conferente + T8b como plataforma), §2.10 (estabilização macro Out/31), §1.5. A §3 continua em ordem de relevância. Melhorias de 31/10 são **genéricas ao harness** (não atalhos por projeto). O primeiro rascunho foi feito pelo Antigravity, lendo os 270 arquivos de `docs/`. A auditoria do Claude corrigiu os nomes de arquivo, função e evento conferindo cada um com `git grep` / `git ls-files`.
 > - Toda melhoria aprovada entra **aqui antes** de ser executada (regra 1 do `CLAUDE.md`).
 > - Os documentos antigos saíram da pasta e continuam recuperáveis com `git show cabc2d7:<caminho>` (lista na §10).
 > - Registro de cada passo: `memory/diario.md`. Decisões do fundador: `memory/decisoes.md`. Números medidos: `memory/medicoes.md`.
@@ -9,7 +9,7 @@
 ## Índice
 1. Visão geral, regras e estado atual
 2. O que foi feito (linha do tempo)
-3. **O que falta fazer (fila por relevância)**
+3. **O que falta fazer (fila por relevância)** — §3.0 aprovado; a escolha do pedido único tem botão no painel
 4. Arquitetura (fases, travas, papéis, organograma, fluxo)
 5. Uso do Jev
 6. Templates e memória do projeto
@@ -57,6 +57,7 @@ Cada papel é uma skill em `skills/<nome>/SKILL.md`, e o harness aplica as trava
 |---|---|
 | `docs/PROMPT-AUDITORIA-*.md`, `docs/ENTREGA-TRIAGEM.md`, `docs/relatorios/*`, `docs/arquitetura-pipeline.html`, `memory/MEMORIAL-GATEWAY-ENTREGA.md` | Conteúdo **resumido neste doc** (§2.9); arquivo **apagado** (§10); histórico no git; HTML exportado fica cópia local do fundador |
 | Specs/planos duplicados fora da Spec canônica da sessão | Não criar; pedido = Spec aprovada no servidor |
+| `memory/HANDOFF-2026-10-31-TRAVA-T1.md`, `memory/RETOMADA.md`, `memory/projects/nextcode.md` | Apagados em 03/11. O ponto de parada está na §1.6; o plano, na §3.0 |
 
 Melhoria aprovada entra **só** em `NEXTCODE-REFERENCIA.md` **antes** de codar (regra 1).
 
@@ -85,13 +86,41 @@ Estes números são daquela data. O estado conferido em 30/10 está na §1.4.
 O que o código faz hoje, conferido arquivo a arquivo:
 - Spec aprovada entra em `MACROBRIEF` (`etapa1Ativa: true` em `session-phase.ts`). Com a flag falsa, o código iria direto a `PLANEJAMENTO`.
 - O analista, quando há roteador, escreve o plano e o contrato. Sem roteador, ou com o modelo desligado em teste, `decomposeWithAnalistaSkill` ainda devolve a heurística. A função interna `fallback` está definida e não é chamada.
-- `renderContractTs` grava o contrato; a etapa gera `src/contracts/conformidade/`; `validateContract` roda no executor (`CONTRACT_VALIDATION_FAILED`) e, se o payload tem `planoStages`, usa o grafo inteiro, não uma etapa isolada.
+- `renderContractTs` grava o contrato; a etapa gera `src/contracts/conformidade/`. `validateContract` é igualdade exata de id e roda **antes** do executor (`CONTRACT_PLAN_BLOCK`). Se o contrato não fecha, a sessão vai a `BLOQUEADA` com volta para `SPEC_REVISAO`: nenhuma tentativa é gasta e as outras etapas não entram em cascata. O id da etapa é opaco: `mb-back` e `mb-back-v1` são etapas diferentes. O harness não reescreve id. Um grafo antigo que cortou `-vN` depois da T8b é reparado em `restoreCutStageIds` só quando há uma única etapa com essa base e os arquivos do dono cabem nela. `mb-back-v1` e `mb-back-v2` não se fundem.
 - `importante` com arquivo e linha reais reprova a etapa (F1.2). `critico` também. `menor` não muda o veredito.
 - Apagar a pasta do projeto passa por `checkFolderSafeToDelete`, que recusa a pasta sem o arquivo `.nextcode` na raiz. A rota só chama `fs.rmSync` depois dessa recusa.
 - `NEXTCODE_DISABLE_JEV=1` faz `readJevKey` devolver vazio (`jev.ts`). Em 23/10 essa variável não existia.
-- O chat da tela não publica `reasoning_content`. `extractAssistantTextFromCompletion` também não lê esse campo: `content` vazio devolve vazio; `candidates` e `choices[0].text` continuam (diário 263).
+- O chat da tela não publica `reasoning_content`. `extractAssistantTextFromCompletion` não lê esse campo nas respostas visíveis (diário 263). **Exceção:** laudo do conferente — §1.5 / §4.3.1.
 - A triagem da entrega roda depois de `tryStartDeliveryRepair`. Lacuna só de ambiente ou harness volta antes, com `FALHA_AMBIENTE`, e não abre reparo.
 - T8b conta no máximo 4 arquivos de código por etapa; `Dockerfile`, compose e `prisma/migrations` atribuídos pelo plano não entram nessa conta (diário 264).
+
+### 1.5 Estado conferido em 31/10/2026 (plataforma — Trava T1 / conferência / UI)
+
+Foco: **coerência de fase × `specApproved` × UI**, e **contrato JSON do conferente**, sem regra de domínio de um projeto alvo.
+
+| Área | Comportamento (código) |
+|---|---|
+| **Trava T1** | `src/core/orchestrator/spec-trava-t1.ts`: em `PLANO_REPROVADO` → `BLOQUEADA` ou entrada em `SPEC_REVISAO`, **`specApproved` volta a `false`** (`syncSpecApprovalAfterPhaseTransition` em `session-phase.ts`). UI: `specTravaT1Pendente` — em `SPEC_REVISAO`/`BLOQUEADA` a Spec T1 mostra **reaprovar**, mesmo se a flag antiga ainda estiver `true` até sincronizar. GET `/api/dag`: `healStuckSpecApprovalFlag` corrige sessões presas. |
+| **Aprovar Spec** | Gatilho único: `approveSpecAndStart` (`execution-trigger.ts`). **T8b reprovada** → `ok: false`, `reason: PLANO_REPROVADO` (não sucesso falso). Bloqueio pós-T8b com `faseAntesDoBloqueio: SPEC_REVISAO`: aprovar na Spec T1 pode **desbloquear** (`DESBLOQUEIO_HUMANO`) e seguir o fluxo. |
+| **Conferente** | `invokeConferenteMacrobrief` (`conferente-gateway.ts`): tier **heavy**, `response_format: json_object` nos gateways (`gateways.ts`), 2 tentativas, parse em `conferente-laudo.ts` (JSON balanceado, fence, vírgula final, fallback `reasoning_content` **só para laudo**). Pausa operacional → `CONFERENCIA_LLM_INDISPONIVEL` / `pausaSemTentativa` (`intake-pause.ts`) — **não** reprova Spec, **não** gasta `voltasConferencia`, **não** pede cluster. |
+| **T8b prosa** | `plan-scope-check.ts`: parênteses de prosa (ex. E.164, bcryptjs) **não** viram `[CONTRATO ASSINATURA]` falso positivo. |
+| **Intervenção humana** | Botões **Retomar** / **Autorizar rodada** só no **painel DAG** (direita), só quando `phase === BLOQUEADA` (`sessionNeedsHumanIntervention` = fase, não histórico do chat). Em `SPEC_REVISAO`: aviso azul → **Spec T1** e aprovar de novo. |
+| **Mensagens T1** | `approve-spec-messages.ts`: `PLANO_REPROVADO`, `SESSAO_BLOQUEADA`, laudo JSON inválido (`CONFERENTE_LAUDO_JSON_INVALIDO`). |
+
+**Próximo macro inalterado:** Gate 1 (§3.3 item 8) como **prova** num projeto real; item 18 OmniRoute depois do veredito.
+
+### 1.6 Parada do teste pesado (03/11/2026)
+
+Sessão ao vivo **Sessão - NextPay**, id `cc5b1243-c05a-4953-831b-f9dcc62740c2`, `specVersion` 4, fase `BLOQUEADA`. Placar: 15 concluídas, 0 na fila, 19 bloqueadas. Não editar o projeto alvo nem o banco. Não clicar em **Retomar** nem em **Aprovar**.
+
+| Etapa | Histórico | O que a parada mede |
+|---|---|---|
+| 9 `lib/cobrancas-service.ts`, `lib/relatorios.ts` | 2 rejeições de auditoria cega. O contador `attempts` no banco está em 1 | Tentativa 1: janela de 12 meses e previsão cortam o dia na borda (código). Tentativa 2: o retorno `{ id }` segue o contrato e o critério pede QR Pix, copia-e-cola e linha digitável. Jev: `ambiguous_spec`, 81%. A política parou na tentativa 2 |
+| 12 `onboarding/route.ts` | 3 | Falha própria anterior. Continua bloqueada |
+| 19 `api-keys` / webhook | 3 | Falha própria anterior. Continua bloqueada |
+| 15–18, 20–23, 26–33 | 0 | Cascata. Quem também espera a 12 ou a 19 não volta só com a 9 |
+
+O plano que trata essa parada está na §3.0. Em 04/11 a etapa 9 já tinha a escolha **vale o critério** e gastou as 3 tentativas seguintes na auditoria cega (onboarding sem status, replay sem dados de pagamento, data em UTC misturada com horário local). O fundador pausou o teste em 06/11. Não clicar em **Retomar** nem em **Aprovar**. O contrato da sessão ficou com o alargamento errado (`VENCIDA?: unknown`, `qrPix?` e `linhaDigitavel?` também em `obterIndicadores`). O harness recusa esse alargamento. Em 07/11 a escolha antiga volta ao painel da etapa 9: **vale o critério** reescreve o contrato da sessão e não abre tentativa nova. Depois disso, **Re-tentar** só a etapa 9. O banco não foi reescrito à mão.
 
 ---
 
@@ -105,7 +134,7 @@ O que o código faz hoje, conferido arquivo a arquivo:
   - Tipo 1 mecânico (`dual-lens-auditor.ts`);
   - 3 tentativas (Trava T6 / D-RANHO, `incident-reporter.ts`);
   - trilha `TelemetryLog`, só acrescenta.
-- **Etapa 0:** máquina de fases, fila com reserva atômica e lease (`job-queue.ts`), worker com retomada, gateways FreeLLMAPI e OmniRoute (`src/core/llm/gateways.ts`). Esta fase está nos commits `1476128`, `9f9584e`, `52bc206` e `e0a9c90`.
+- **Etapa 0:** máquina de fases, fila com reserva atômica e lease (`job-queue.ts`), worker com retomada, gateways FreeLLMAPI e DeepSeek (`src/core/llm/gateways.ts`). OmniRoute foi retirado do caminho ativo em 07/11/2026 (pacote E). Esta fase está nos commits `1476128`, `9f9584e`, `52bc206` e `e0a9c90`.
 
 ### 2.2 E0 — base (06/10–15/10)
 | Pacote | O que ficou | Commits |
@@ -140,12 +169,14 @@ O que o código faz hoje, conferido arquivo a arquivo:
   - lê o arquivo inteiro (até 60 mil caracteres por arquivo e 200 mil por etapa);
   - aponta problemas por severidade e tem a evidência conferida;
   - o porteiro roda `tsc`+ESLint antes dele;
+  - código novo da etapa não silencia o compilador: `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `as any`, `as unknown as` e `import` com caminho variável reprovam no Tipo 1 (`[SILENCIO]`), antes do avaliador; a tentativa conta. O porteiro mede o mesmo arquivo sem esse silêncio e a rejeição inclui o erro de tipo (`[ESCONDIDO]`). O aviso não pede para reduzir a etapa;
+  - turno que estoura o tempo da etapa não é erro de sintaxe: o aviso não pede etapa menor nem mudança na Spec. A tentativa conta. Re-tentar abre um ciclo novo;
   - controles: 7/7.
   - Commits `a06fa8d`…`42b878e`.
 - **Outros itens:**
   - M20 desligou a memória do projeto (`324a586`);
   - SM1 confere a Spec mecanicamente e carimba a data (`c10d3b7`);
-  - M24: avaliador fora do ar dá 3 tentativas grátis, depois pausa de 5 min com sonda no Claude.
+  - M24: avaliador fora do ar dá 3 tentativas grátis, depois pausa de 5 min com sonda no Claude. A pausa só vale quando o modelo não entrega veredito (sem resposta, JSON ilegível, exceção). Prova recusada (arquivo:linha fora da etapa, REQ sem veredito, aprovação sem prova) reprova a etapa com o motivo; não pausa a sessão. Executor e avaliador recebem o mesmo inventário da etapa (caminho completo e `1-N`). Citação com sufixo vale só se houver um arquivo; dois com o mesmo final, arquivo de fora e linha além do fim continuam inválidos.
 
 ### 2.5 Execução autônoma 2 — mudança 26 (19–20/10)
 Passos P1 a P13, um commit cada, de `fbda610` a `835e98f`:
@@ -183,7 +214,7 @@ Passos P1 a P13, um commit cada, de `fbda610` a `835e98f`:
 - **Mudanças 40–42:**
   - 40: reabrir a entrega (`REABRIR_ENTREGA`, `scripts/retomar-sessao.ts --reabrir`);
   - 41: client do Prisma regerado e erro do `next build` atribuído à etapa dona;
-  - 42: pausa que pisca vira `SEM_LLM_PERSISTENTE`.
+  - 42: pausa que pisca vira `SEM_LLM_PERSISTENTE`. Limite ou cooldown da rota não entra nisso: a sessão espera o prazo que o gateway informou (ex.: 14 s) e segue sozinha. Crédito esgotado e chave recusada continuam bloqueando.
   - Commits `8a8b52a`, `b3ab02a`, `b6b5077`.
 - **Teste independente:** relatório `TESTE-E1-4-antigravity.md`, aceito com ressalvas.
 
@@ -213,7 +244,7 @@ Commits `1f5234f`…`bacbd2e`; relatórios `AUDITORIA-E5`, `IMPLEMENTADO-E5`, `D
   - J7: perfil;
   - TR1 (7): correção da Spec por trecho (`spec-patch.ts`).
 - **Testes, segurança e operação:**
-  - **44.11 E5:** skill `testador` escreve testes de aceite sem ver o código (`src/core/governance/acceptance-tests.ts`). Há testes visíveis e escondidos; a trava `presumedTechnology` impede tecnologia não pedida.
+  - **44.11 E5:** skill `testador` escreve testes de aceite sem ver o código (`src/core/governance/acceptance-tests.ts`). Há testes visíveis e escondidos; a trava `presumedTechnology` impede tecnologia não pedida. Teste que não carrega porque passa um mock a `vi.mock` antes de inicializar esse nome é descartado (`ownTestLoadFailure`); "módulo da etapa ainda não existe" continua vermelho válido, e asserção que falhou continua bloqueando.
   - **44.12 J20:** marca injeção em arquivo lido (`src/core/governance/injection-scan.ts`).
   - **44.13 E6:** CI (`.github/workflows/ci.yml`, ainda não publicado), imagens fixadas por digest, OmniRoute em `127.0.0.1`, produção com 0 vulnerabilidades.
 - **Mudança 45:** o escritor de testes da revisão final consulta a documentação oficial antes de transformar uma dúvida de integração em pergunta (`buildWriterPrompt` com `docsOficiais`).
@@ -249,13 +280,83 @@ Commits `1f5234f`…`bacbd2e`; relatórios `AUDITORIA-E5`, `IMPLEMENTADO-E5`, `D
 
 **Fechamento TESTE-E5 vitest (30/10, diário 274):** re-baseline **1167/1167**; harness E2E com mock de promoção empírica + `reapplyPromotion`; correção T10 `review.ressalvas ?? []`; testes de orquestrador em `tests/orchestrator_recovered/`; isolamento de fila com `runOnce(..., { onlySessionIds })`. Commits `1aee3d7` e estabilização Windows (diário 273).
 
+### 2.10 Plataforma Trava T1 + conferência + UI (31/10/2026)
+
+Pacote **macro** (qualquer sessão / qualquer Spec), registrado antes de commit único quando o fundador fechar o teste:
+
+- **`spec-trava-t1.ts`:** invariantes T1; revogação de `specApproved` em replanejamento; cura no GET DAG.
+- **`conferente-gateway.ts` + `conferente-laudo.ts`:** contrato JSON do conferente centralizado; `json_object` no gateway; parser tolerante.
+- **`execution-trigger.ts`:** T8b reprovada não retorna aprovação bem-sucedida; desbloqueio automático ao reaprovar após bloqueio de plano.
+- **`session-resume.ts` / UI:** mensagens quando fase já é `SPEC_REVISAO`; intervenção só em `BLOQUEADA` no painel DAG.
+- **`intake-pause.ts` / `approve-spec-messages.ts`:** pausas operacionais vs reprovação de conteúdo.
+- **Testes:** `tests/lib/spec-trava-t1.test.ts`, `tests/intake/conferente-laudo.test.ts`, `tests/lib/plano-reprovado-phase.test.ts`.
+
+Diário operacional: entrada **275+** quando o fundador validar na tela (Gate 1 em curso).
+
 ---
 
 ## 3. O que falta fazer (fila por relevância)
 
-Atualizado em 30/10 tarde (diário 274). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
+Atualizado em 31/10/2026 (§1.5, §2.10). A ordem é o efeito numa entrega real, não a data em que o item nasceu. Um item por vez, até a porta. Item novo só entra com data, motivo e evidência. O que já está no código fica na §3.6 e não se reabre.
 
 O contrato do analista (o antigo A1) **já existe**: `renderContractTs` grava `src/contracts/`, cada etapa gera conformidade e o `tsc` confere, e divergência de contrato no avaliador é `critico`. A reserva sem analista ainda grava uma frase fixa (`spec-decomposer.ts`, heurística). Isso não justifica refazer o A1. Os itens 1, 2 e 3 da fila anterior estão no código (diário 263). O que o harness ainda não pega: citação de uma linha real de código errado, e critério da Spec escrito em prosa, sem `nome(arg1, arg2)` na mesma linha.
+
+### 3.0 Plano aprovado (03/11/2026) — pedido único e a mesma régua
+
+**Estado:** aprovado pelo fundador em 03/11, com um ajuste: não colar texto de skill alheia no executor. Pode ler skills existentes, melhorar a ideia e criar uma skill nova deste projeto. O porteiro que barra a etapa é código. A skill descreve a regra; o modelo não decide se a etapa roda. Evidência: §1.6. O prompt de implementação está no fim desta seção. A outra LLM entregou o porteiro e a régua. A auditoria desta sessão aceitou isso e recusou o fechamento: a escolha não tinha porta. Em 03/11 a porta entrou no painel (`pedido_unico_escolha` → `aplicarEscolhaHumanaPedidoUnico`). **Vale o critério** alarga só o contrato guardado na sessão, depois da escolha, e não edita arquivo do projeto alvo. A sessão volta a `EXECUCAO` para a fila pegar essa etapa. Etapa bloqueada por outra causa não aceita essa escolha. Em 06/11 o alargamento da etapa 9 foi corrigido: status entre parênteses não vira campo; o campo entra obrigatório e só na função que o critério nomeia; campo opcional não cumpre o critério; escolha já gravada como resolvida não volta ao painel. No mesmo dia o checklist das skills (estudo, sem colar texto alheio) foi conferido no código: relatório do executor não aprova, eixo de estilo não apaga reprovação de Spec, prova sem citação não aprova, conferente e T7 ficam. O que faltava entrou: se o critério nomeia arquivo ou símbolo produzido que o microbrief não lista, a etapa para antes do executor, sem gastar tentativa (`microbrief-escopo.ts`). Em 07/11, escolha gravada como resolvida que não deixou o campo obrigatório na função do critério volta ao painel (`marcarEscolhaPedidoUnicoNoPainel`). A escolha alinha o contrato da sessão e não devolve à fila a etapa que já usou as 3 tentativas. **Re-tentar** é o que abre o ciclo novo.
+
+**Invariante (06/11) — arquivo e símbolo do microbrief:** antes do executor e antes dos testes de aceite, o microbrief nomeia os arquivos que pode criar ou modificar. Se um critério dessa etapa nomeia um arquivo, ou um símbolo que ela produz, e essa lista ou `interfacesProduz` não traz o nome, a etapa para. O símbolo é o nome que `exporta`, `função`, `interface` ou `método` introduz, inclusive um segundo nome na mesma frase. Parâmetro, campo dentro de `()` ou `{}`, sigla só em maiúsculas, o texto depois de devolve, retorna ou persiste, e o nome depois de de, do, da ou via não são símbolo produzido. Esse nome é o tipo ou o meio. Não gasta tentativa. Não cascateia etapa que já tem falha própria. Não abre segunda escolha. Campo de retorno continua no pedido único. Quando a etapa conclui, a marca de escopo incompleto sai. Cascata e aviso ao humano usam a checagem atual. Cast `as any` ou `as unknown as` volta ao modelo na mesma tentativa, antes da quarentena. A tela de gateways mostra só que a chave existe. Skill `pedido-unico` que não carrega não finge escolha aberta. Re-tentar segue. O terminal fora do Docker avisa que rodou no computador, depois da lista negra. Parêntese dentro de um alias de tipo não é lista de parâmetro. Chave depois de ponto é a frase seguinte, não o retorno. Grupo `{...}?` não é campo obrigatório. Campo obrigatório aninhado conta. Alias de entrada não entra no retorno. Conflito gravado que a leitura atual não reproduz não bloqueia o Re-tentar e não mostra a escolha. Objeto depois de status 4xx ou 5xx é corpo de erro, não campo do retorno de sucesso. Vírgula dentro de parênteses não separa campo. Conceito conhecido (QR, linha digitável) só na cláusula de retorno ou no pedido explícito de incluir/devolver, não na frase seguinte. Vale o contrato filtra falha de aceite pelo texto da falha. Nó `running` preso só `recoverZombieRunningNodes` gasta tentativa. Pausa SEM_LLM por crédito ou chave recusada não retoma sozinha na sonda. Silêncio em planejamento grava a fase certa antes do bloqueio. GET `/api/metrics` exige token. Stream do terminal usa env podado e timeout. Rotas órfãs de OmniRoute health/audit/setup foram removidas; compose não sobe mais serviço omniroute.
+
+O estudo das skills de planejamento e de verificação virou porteiro. A auditoria não afrouxa: pedido coerente que o código não cumpre continua reprovado e a tentativa continua contando.
+
+**Regra proposta (é isto que a aprovação decide):** contrato e critério da mesma etapa pedem o mesmo retorno. Se pedirem retornos diferentes, a etapa não roda. O humano escolhe qual texto é o pedido. O outro texto é alinhado a esse antes do executor. O executor não escolhe. Exemplo da etapa 9: contrato `{ id }` contra critério que pede QR Pix, copia-e-cola e linha digitável.
+
+| Fatia | O que o porteiro faz | O que não faz | Prova |
+|---|---|---|---|
+| 1. Pedido único, antes da tentativa | Compara o retorno do contrato da etapa com o critério dos mesmos REQ. Conflito: não chama o executor. Uma decisão, um botão de escolha. Sem escolha, a fila dessa etapa não anda | Não aprova `{ id }` calando o QR. Não apaga o critério sozinho. Não mexe nas etapas 12 e 19 | Teste: par contrato/critério em conflito não dispara o executor. Par coerente dispara. Código que erra um critério coerente continua reprovado |
+| 2. A mesma lacuna na tentativa seguinte | A volta N+1 é julgada primeiro pela lacuna já citada (arquivo e linha). Lacuna nova pode ser registrada e não apaga a anterior. O aviso nomeia essa causa e um botão. A Spec permanece, salvo o caso da fatia 1 | Não sobe o teto de 3 tentativas. Não trata troca de defeito como correção. Não manda dividir a Spec por lista instável | Teste: duas auditorias com lacunas diferentes mantêm a primeira no veredito seguinte. O mesmo erro repetido continua esgotando em 3 |
+| 3. Prova que carrega | Já está no código (`ownTestLoadFailure`, 03/11). Teste que não carrega por mock usado antes de existir sai. Módulo da etapa ausente continua vermelho. Asserção que falhou continua bloqueando | Não reabrir. Não contar de novo como item a implementar | Suíte `e5-testes-de-aceite` e `incident-reporter` |
+
+**Fora deste plano:** colar no prompt do executor o texto de `skills/writing-plans`, `skills/verification-before-completion`, `skills/test-driven-development` ou de qualquer outra skill já pronta; subir o timeout de 300 s; dividir etapa por tempo esgotado; segunda chave paga; carregar código sem reiniciar o processo. Não fecham o conflito contrato × critério.
+
+**Prompt para a LLM que implementa** (fatias 1 e 2 e a skill nova; a fatia 3 não entra). Copiar da linha `OBJETIVO` até `FIM DO PROMPT`.
+
+```text
+OBJETIVO
+Implementar no NextCode o porteiro "pedido único" e a régua da mesma lacuna. Criar a skill nova skills/pedido-unico/SKILL.md. Não colar texto de outra skill no executor.
+
+CONTEXTO
+Harness em C:\projetos\nextcode. Fonte única: docs/NEXTCODE-REFERENCIA.md §3.0 e §1.6.
+Sessão ao vivo NextPay cc5b1243-c05a-4953-831b-f9dcc62740c2 está BLOQUEADA. Não editar o projeto alvo, não escrever em prisma/dev.db, não clicar em Retomar nem em Aprovar, não reiniciar o servidor se houver etapa running.
+Papéis aceitos por loadRoleSkill (src/core/skills/skill-runtime.ts): elicitador, analista, executor, avaliador, testador, conferente. Papel desconhecido lança erro. A skill nova usa papel conferente, escrever nunca, ferramentas vazias.
+O executor é montado em src/core/orchestrator/node-executor.ts. O feedback da tentativa anterior já entra por volta da linha do AUTO-HEALING. A auditoria cega está em src/core/governance/dual-lens-auditor.ts. O incidente está em src/core/governance/incident-reporter.ts. ownTestLoadFailure em src/core/governance/acceptance-tests.ts já existe: não reabrir.
+
+FATIA 1 — PEDIDO ÚNICO, ANTES DO EXECUTOR
+Função pura, com teste, sem chamada de modelo. Entrada: texto do contrato da etapa (interfacesProduz) e os critérios dos REQ dessa etapa. Saída: coerente, ou conflito com os campos que o critério pede e o tipo de retorno do contrato não nomeia.
+Caso que tem de falhar fechado: contrato com retorno { id: string } e critério que pede QR Pix, copia-e-cola ou linha digitável.
+Caso que tem de passar: contrato e critério nomeiam os mesmos campos, ou o critério não pede campo fora do retorno.
+Antes de generateAcceptanceTests e antes do laço do executor, chamar essa função. Se houver conflito, não chamar o executor, não gastar tentativa, não cascatear as etapas 12 e 19. Gravar na etapa o conflito e publicar uma mensagem com uma decisão só: "vale o contrato" ou "vale o critério". Sem essa escolha, a etapa não volta à fila.
+Vale o contrato: a auditoria e o teste de aceite desta etapa não reprovam por campo que o retorno do contrato não nomeia. O critério continua no registro; sai do pedido desta etapa.
+Vale o critério: a etapa continua sem executor até o texto do contrato guardado na sessão nomear esses campos. Não editar arquivo do projeto alvo para alinhar o contrato. Quem alarga o retorno é o harness, no contrato da sessão, só depois da escolha.
+loadRoleSkill("pedido-unico") roda nesse porteiro. Se a skill não carregar, a etapa não executa.
+
+FATIA 2 — A MESMA LACUNA NA TENTATIVA SEGUINTE
+Se a rejeição anterior cita arquivo:linha, a rejeição nova tem de repetir essa citação enquanto o código novo não mostrar que aquele trecho mudou. Lacuna nova pode ser acrescentada e não apaga a anterior. Não subir maxAttempts. Não tratar auditorias com listas diferentes como "já corrigido".
+O aviso dessa causa nomeia a lacuna que permaneceu e um botão: Re-tentar. A Spec permanece. Não pedir para dividir a Spec. O caso de conflito da fatia 1 não usa esse aviso: usa a escolha entre contrato e critério.
+
+SKILL NOVA
+Arquivo skills/pedido-unico/SKILL.md. Pode ler skills/writing-plans/SKILL.md, skills/verification-before-completion/SKILL.md e skills/test-driven-development/SKILL.md só para extrair a ideia. O corpo é texto novo, em português, deste projeto: um pedido só; a prova julga esse pedido; a tentativa seguinte começa pela lacuna já citada. Não copiar parágrafos dessas skills. Não inserir o corpo no system prompt do executor. checagens no frontmatter: retorno_do_contrato_e_criterio, lacuna_anterior_permanece, prova_carrega. A terceira checagem só aponta para ownTestLoadFailure; não reimplementar.
+
+TESTES
+Arquivo novo em tests/governance/pedido-unico.test.ts. Tem de falhar se a função pura for removida. Não usar tests/orchestrator/ (pasta corrompida). Rodar esse arquivo e tests/governance/incident-reporter.test.ts e tests/governance/e5-testes-de-aceite.test.ts. Não afrouxar asserção existente para a suíte passar.
+
+NÃO FAZER
+Não commitar. Não editar prisma/dev.db. Não mudar DAG_STEP_TIMEOUT_MS. Não acrescentar papel novo na união de loadRoleSkill. Não colar skill no dispatch do executor. Não reabrir a fatia 3. Não corrigir NextPay à mão.
+
+ENTREGA
+Diff só dos arquivos desta tarefa. No fim, listar os testes rodados e a saída. O que estiver fora do escopo vai em Sugestões, não no código.
+FIM DO PROMPT
+```
 
 ### 3.1 Muda o que sai como pronto
 Vazio nesta data. Os três itens desta seção passaram para a §3.6.
@@ -279,7 +380,7 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 | 9 | Citações de documento apagado em comentários de código e no `CLAUDE.md` | feito e auditado (diário 264): `docs/LLM-GATEWAYS.md` saiu de `gateways.ts`, `gateways.test.ts`, `smart-router.ts` e `jev-decisions.ts`. O JSON do J3 em `final-reviewer.ts` ficou como recuperação no git |
 | 10 | Benchmark simulado em `/api/dag/benchmark` | feito e auditado (diário 264): menu Simulação, modal avisa que não é medida, resposta `simulado: true` |
 | 11 | Aviso duplo do 5c | feito e auditado (diário 264): `deveAvisarTentativasEsgotadas` impede `reportBlockedNodeToHuman` quando o erro é `DEPENDENCIA_DESCONHECIDA` |
-| 18 | **Remover OmniRoute / OmniRouter** do repositório (rotas, docker, config, UI, router, testes, env). **Não faz mais parte do projeto** — roteamento só FreeLLMAPI/BYOK (decisão fundador 30/10). **Porta:** Gate 1 (item 8) concluído + registro no diário | commit dedicado + `tsc` + `vitest` 1167/1167 |
+| 18 | **Remover OmniRoute / OmniRouter** do repositório (rotas, docker, config, UI, router, testes, env). **Não faz mais parte do projeto** — roteamento só FreeLLMAPI/BYOK (decisão fundador 30/10). **Feito no código em 07/11/2026** (pacote E); commit dedicado e vitest completo pendem do operador | commit dedicado + `tsc` + `vitest` |
 | 19 | **Retornar Headroom (ferramenta externa)** — fundador pediu **depois** do item 18. Distinto de `src/core/headroom/context-pruner.ts` (pruner interno do chat; manter até nova decisão) | após item 18 |
 
 ### 3.5 Sem código agora
@@ -306,10 +407,12 @@ Infra que a Spec **não cita** continua só no encaixe depois da T10 (5a). Isso 
 | Dono no plano | aceito (diário 259, `5c16162`). Base sem Microbrief não é dona. Arquivo que já está só na base não é copiado; o T8b reprova o plano |
 | Aprovação sem prova | aceito com ressalvas (diário 263, `d1c0045`). `nivelProva` `dito`, ausente ou `falha_descartada`, ou `fatoQueGarante` sem linha real, descarta a resposta quando o veredito interno seria implementado. Citar uma linha real de código errado continua passando |
 | Assinatura da Spec | aceito com ressalvas (diário 263, `d1c0045`). `nome(arg1, arg2)` na linha do REQ exige esses identificadores em `contrato.funcoes[].assinatura`, senão `[CONTRATO ASSINATURA]`. Prosa sem parênteses não dispara. O mesmo `export` dos dois lados continua sem `[F1 JUNCAO]` |
-| Raciocínio interno | aceito com ressalvas (diário 263, `d1c0045`). `extractAssistantTextFromCompletion` não lê `reasoning_content`. `content` vazio devolve vazio |
+| Raciocínio interno | aceito com ressalvas (diário 263, `d1c0045`). Chat e respostas visíveis: `extractAssistantTextFromCompletion` não lê `reasoning_content`. **Exceção (31/10):** parse do **laudo do conferente** tenta `reasoning_content` se o JSON não estiver em `content` (`conferente-laudo.ts`) |
 | Chat sem raciocínio | `db449a1`. A rota do chat usa `textoVisivelDaResposta`. Os outros papéis passam por `extractAssistantTextFromCompletion`, que também ignora `reasoning_content` |
 | Apagar pasta | `checkFolderSafeToDelete` exige o arquivo `.nextcode` na raiz antes de `fs.rmSync` (`folder-safety.ts`, rota `projects/[id]`) |
 | Política, bench, terminal, fase | yaml ausente cai em `DEFAULT_ORCHESTRATION_POLICY`; bench em `bench/resultados/`; terminal bloqueia `rd /s`, `del /s`, `Remove-Item -Recurse`, `Get-ChildItem env:`; `etapa1Ativa` está ligado |
+| Trava T1 coerente (31/10) | `spec-trava-t1.ts`; T8b → `ok: false`; revogação `specApproved`; Spec T1 em `SPEC_REVISAO`; conferente em `conferente-gateway.ts` | Não reabrir com atalho por projeto |
+| Conferente JSON (31/10) | `json_object` no gateway; parser + retry; exceção: laudo lê `reasoning_content` se `content` vazio | Chat da tela continua sem publicar raciocínio ao usuário |
 
 ### 3.7 Depois do Gate 1
 | # | Item | Gatilho |
@@ -351,7 +454,7 @@ Caminhos principais:
 ### 4.3 Travas
 | Trava | Garante |
 |---|---|
-| T1 | aprovação humana da Spec |
+| T1 | aprovação humana da Spec; ver §4.3.1 (fase × flag × replanejamento) |
 | T2 | escopo de arquivos por etapa |
 | T3 | trilha `TelemetryLog`, só acrescenta |
 | T4 | quarentena + `tsc`/ESLint + rollback |
@@ -361,6 +464,29 @@ Caminhos principais:
 | T8a/T8b | Spec × plano: todo REQ coberto, nenhum inventado, escopo, sem ciclo |
 | T9 | só o papel da fase age |
 | T10 | entrega: arquivos, REQ, build do projeto final, revisão final com prova na bancada |
+
+### 4.3.1 Trava T1 — gatilho único e estados (plataforma)
+
+**Único caminho para gravar `specApproved: true` e criar etapas:** `approveSpecAndStart` (`execution-trigger.ts`), acionado pelo PATCH `/api/sessions/[id]` com `specApproved: true` (modal Spec T1). **Invariante macro (31/10):** a flag só vira `true` em `commitSpecApprovalAfterPlanoT8bOk` (`spec-trava-t1.ts`) **depois** do analista passar na T8b **e** da fase chegar à família EXECUCAO (`PLANO_PRONTO`). Em `MACROBRIEF`, `CONFERENCIA` e `PLANEJAMENTO` ela permanece `false`. O selo verde exige essa família; `travaT1Pendente: false` sozinho não pinta o modal. Um segundo PATCH na mesma sessão espera o primeiro. Se a fase já está nessas três, a aprovação **continua o analista** — não devolve `CONCURRENT_PHASE_CHANGED`.
+
+```
+SPEC_REVISAO ──(humano aprova T1)──► PLANEJAMENTO ──(analista + T8b)──► EXECUCAO
+       ▲                                    │
+       │                                    │ PLANO_REPROVADO
+       │                                    ▼
+       └──── DESBLOQUEIO_HUMANO ◄── BLOQUEADA (faseAntesDoBloqueio: SPEC_REVISAO)
+```
+
+| Evento / fase | `specApproved` | O que o humano vê |
+|---|---|---|
+| Humano aprova T1, analista/T8b em curso (`MACROBRIEF`, `CONFERENCIA` ou `PLANEJAMENTO`) | **`false`** até T8b OK e `PLANO_PRONTO` | Modal: pendente; nada “Spec aprovada” |
+| Plano T8b OK + etapas criadas | `true` | Execução / DAG |
+| T8b reprovada (`PLANO_REPROVADO`) | **`false`** (nunca commitada ou revogada) | Chat + lista de erros; `BLOQUEADA` → **Retomar** → reaprovar Spec T1 |
+| `SPEC_REVISAO` | deve ser **`false`** | Spec T1: **Reaprovar para replanejar** |
+| Conferente: laudo JSON inválido / modelo fora | **inalterado** (Spec não reprovada) | Modal: pausa operacional; **aprovar de novo** sem editar Spec |
+| Conferente: laudo com `falhas[]` | inalterado até nova rodada elicitador | Problemas de Macrobrief × Spec (conteúdo) |
+
+**Arquivos de referência:** `spec-trava-t1.ts`, `conferente-gateway.ts`, `conferente-laudo.ts`, `intake-pause.ts`, `canonical-spec-modal.tsx` (usa `specTravaT1Pendente`).
 
 ### 4.4 Papéis
 - Elicitador (Opus 5.5) → Spec.
@@ -429,10 +555,14 @@ flowchart TD
     SpecOk -- Não --> SpecRev[SPEC_REVISAO / chat elicitador]
     SpecRev --> SpecOk
 
-    SpecOk -- Sim --> Macro[MACROBRIEF + conferente]
+    SpecOk -- Sim --> ConfGate{Conferente<br/>laudo JSON}
+    ConfGate -->|pausa operacional| SpecOk
+    ConfGate -->|falhas Macrobrief| SpecRev
+    ConfGate -->|ok| Macro[MACROBRIEF]
     Macro --> Plan[PLANEJAMENTO<br/>Analista + T8b]
-    Plan -->|Plano reprovado| Plan
-    Plan --> Exec[EXECUCAO<br/>Fila session_queue · até 3 nós paralelos]
+    Plan -->|T8b reprovado| BloqPlan[BLOQUEADA<br/>specApproved false]
+    BloqPlan -->|Retomar| SpecRev
+    Plan -->|ok| Exec[EXECUCAO<br/>Fila session_queue · até 3 nós paralelos]
 
     subgraph Etapa [Cada nó da DAG]
         Testador[Testador / aceite] --> Executor[Executor cluster]
@@ -477,7 +607,7 @@ flowchart TD
 | Spec original | NextCode (código / skill) | Diferença importante |
 |---|---|---|
 | Spec + Macrobrief | `elicitador` → Spec; em seguida `MACROBRIEF` e `CONFERENCIA` (`etapa1Ativa: true`) | A flag falsa pularia o Macrobrief e iria a `PLANEJAMENTO` |
-| Skill Conferente + JEV | skill `conferente-macrobrief` no intake; JEV `macrobrief_coverage_conference` em **sombra** | A skill pode devolver a fase (`CONFERENCIA_FALHOU`). O Jev dessa conferência não decide |
+| Skill Conferente + JEV | `invokeConferenteMacrobrief` (`conferente-gateway.ts`); skill `conferente-macrobrief`; JEV `macrobrief_coverage_conference` em **sombra** | Laudo = JSON (`aprovado`, `falhas`, `incertos`). JSON ilegível = **pausa operacional**, não reprovação de Spec. Falhas no laudo = conteúdo Macrobrief × Spec |
 | Contratos globais | **A1** do analista grava `src/contracts/` e a conformidade da etapa (§3.6) | O furo que resta é contrato e etapas com o mesmo export errado (§3.1 item 2). A heurística sem analista ainda é frase fixa |
 | 4 clusters | `cluster` + roles `executor-*` / `avaliador-*` | Mesma ideia; plano = **DAG de etapas**, não só 4 caixas |
 | Autoteste cluster | `empirical-gate` + testes de aceite (`acceptance-tests`) | Harness **mecânico** antes do avaliador |
@@ -490,11 +620,23 @@ flowchart TD
 
 ### 4.8 Ações humanas (painel / chat)
 
+**UI (31/10):** **Retomar** e **Autorizar rodada** ficam no **Monitor da DAG** (painel direito), visíveis só com `session.phase === BLOQUEADA`. Em `SPEC_REVISAO`, o painel orienta **Spec T1 → aprovar** (replanejar após T8b). Atalhos no chat: `retomar`, `autorizar rodada` (`/api/chat`).
+
+**UI (02/11):** etapa com status `running` no banco não significa que o processo está trabalhando. Se o poll de `/api/dag` falha, o cabeçalho e o monitor dizem **Execução parada — servidor fora do ar**. Quando o servidor volta a responder, o painel volta a **Executando**.
+
+**UI (03/11):** cada erro do incidente T6 tem **Copiar** e horário local. Auditoria cega que cita linhas do código não pede para dividir a Spec: **Re-tentar** abre outro ciclo e a Spec permanece. As 3 tentativas continuam valendo. Etapa parada no pedido único mostra **vale o contrato** e **vale o critério** no lugar de Re-tentar.
+
 | Situação | Ação | Spec muda? |
 |---|---|---|
-| Ambiente (tsc/ui-check/Docker/memória) | **Retomar** | Não |
+| Plano T8b reprovado | **Retomar** → `SPEC_REVISAO` → **Spec T1** aprovar de novo | Não (mesmo texto) salvo se o humano editar no chat |
+| Ambiente (tsc/ui-check/Docker/memória) ou provedor do executor sem atender, com etapa ainda pendente | **Retomar** devolve a fila. Etapa que já esgotou o código continua bloqueada | Não |
+| Id de etapa cortado pelo harness antigo (`-vN`) e reparável (uma etapa, arquivos do dono cabem) | A conferência restaura o id e a fila segue. A regra continua igualdade exata | Não |
+| Contrato que, depois do reparo, ainda não fecha com as etapas | Para antes do executor. **Retomar** → `SPEC_REVISAO` → aprovar a Spec de novo para replanejar | Não, salvo se o erro for de requisito |
 | Código com dona, rodadas esgotadas | **Autorizar rodada** | Não |
+| Etapa esgotou as tentativas de código e as outras só caíram em cascata | **Retomar** zera essa etapa e quem só dependia dela. Outra etapa com falha própria continua bloqueada, e quem só espera essa outra também. O aviso separa as duas contagens. Se a rejeição já aponta arquivo de outra etapa concluída, essa dona volta à fila e esta espera, sem tentativa nova. O contrato que ainda não fecha não entra aqui | Não |
+| Rejeição crítica cita arquivo de uma única outra etapa já concluída, o texto diz que o modelo não tem o campo, ou o type-check aponta propriedade ausente num tipo do Prisma e só uma etapa tem `schema.prisma` | Essa etapa espera e não gasta tentativa. A etapa dona volta à fila uma vez e mantém o resto do arquivo. O mesmo conjunto de campos não reabre de novo. Campo inventado com nome real já existente continua nesta etapa | Não |
 | Código no disco já corrigido | **Reverificar entrega** / Retomar (BLOQUEADA) | Não |
+| Contrato e critério da mesma etapa pedem retornos diferentes | A etapa para antes do executor, sem gastar tentativa. No painel: **vale o contrato** (o critério sai do pedido desta etapa e continua no registro) ou **vale o critério** (o harness alarga o retorno no contrato da sessão, obrigatório, só na função do critério). Status entre parênteses não vira campo. Campo opcional não cumpre o critério. Escolha gravada que não deixou o campo obrigatório volta aos botões. A escolha não abre tentativa além das 3 já usadas. Sem a escolha, Re-tentar e Retomar não devolvem essa etapa. Outra etapa com falha própria não é liberada | O texto do contrato da sessão, só se a escolha for **vale o critério** |
 | Lacuna sem dono / encaixe | Dockerfile, compose e `prisma/` abrem `encaixe-infra`. PostCSS e `.env.example` só ganham dono se já houver etapa compatível (§3.2 item 6) | Não |
 | Mudar produto | Responder o que ajustar na Spec | Sim |
 | ENTREGUE revalidar | Reabrir entrega | Não |
@@ -693,7 +835,7 @@ Commit: `fix(politica): A1.0 - sem reserva antiga da politica em docs/`.
    - arquivo de função ou rota fora dos arquivos da etapa dona;
    - `usadoPor` sem dependência (direta ou indireta) da etapa dona;
    - nome repetido;
-   - tipo citado que não é entidade, enum, primitivo TS nem tipo global do TS (`Promise`, `Date`, `Record`, `Array`, `Request`, `Response`…);
+   - tipo citado que não é entidade, enum, primitivo TS nem tipo global das libs do TypeScript e do Node (`Promise`, `Date`, `Request`, `Response`, `RequestInit`, `AbortSignal`… — os nomes vêm dos `.d.ts` de `lib` e `@types/node`, não só de uma lista fechada);
    - rota cujo arquivo não é `route.ts`.
 3. **`renderContractTs(contrato)`:** um arquivo TS só com tipos (`export type Enum = "A" | "B"`, `export interface Entidade { … }`, `export type FnNome = (…) => …`), sem código executável. Tem de compilar sozinho.
 4. **`renderConformance(contrato, etapaId)`:** arquivo TS que, para cada função e rota cujo dono é a etapa, importa o símbolo real do arquivo (`@/…`) e o atribui a uma constante do tipo do contrato.
@@ -814,6 +956,8 @@ Após resumir em §2.9, **apagados do disco** (recuperar com `git show HEAD:<cam
 
 **Estado da pasta `docs/`:** apenas `NEXTCODE-REFERENCIA.md`.
 
+**Limpeza 31/10/2026:** removidos do disco `docs/PROMPT-AUDITORIA-*.md` (4) e `docs/relatorios/**` (16 arquivos). Recuperar: `git show HEAD~1:docs/relatorios/<arquivo>` ou commit anterior que ainda continha o path.
+
 ---
 
 ## 11. Decisões Macro da Sessão 23/10/2026
@@ -845,4 +989,7 @@ Scripts `bench.ts` e `teste-pesado.ts` redirecionados para `bench/resultados/`. 
 Função `readJevKey` em `jev.ts` verifica `process.env.NEXTCODE_DISABLE_JEV === "1"` antes de acessar banco. Permite desativar Jev sem I/O em testes e ambientes sem rede. Recomendação 1 da auditoria E5.
 
 ### D-M9: Skill Conferente-Macrobrief e Ativação da Fase MACROBRIEF
-Criada skill `conferente-macrobrief` (`skills/conferente-macrobrief/SKILL.md`) como primeira barreira de qualidade entre o Macrobrief do elicitador e o planejamento. Cobre 5 lacunas não cobertas pela validação mecânica ou pelo Jev: rastreabilidade critério→arquivo, consistência do contrato com a Spec, viabilidade da stack, completude dos erros de rota e dependências implícitas de regra de negócio. `etapa1Ativa` está `true` em `session-phase.ts` (a chamada `transition` por volta da linha 166). Fluxo: conferente audita → se reprovado, volta ao elicitador; se aprovado, Jev valida semanticamente (com 2 novas perguntas: `contrato_reflete_spec` e `dependencias_regra_negocio`). Função integrada no `intake-engine.ts`.
+Criada skill `conferente-macrobrief` (`skills/conferente-macrobrief/SKILL.md`) como primeira barreira de qualidade entre o Macrobrief do elicitador e o planejamento. Cobre 5 lacunas não cobertas pela validação mecânica ou pelo Jev: rastreabilidade critério→arquivo, consistência do contrato com a Spec, viabilidade da stack, completude dos erros de rota e dependências implícitas de regra de negócio. `etapa1Ativa` está `true` em `session-phase.ts` (a chamada `transition` por volta da linha 166). Fluxo: conferente audita → se reprovado, volta ao elicitador; se aprovado, Jev valida semanticamente (com 2 novas perguntas: `contrato_reflete_spec` e `dependencias_regra_negocio`). Chamada LLM centralizada em `invokeConferenteMacrobrief` (`conferente-gateway.ts`); ciclo elicitador/analista continua em `intake-engine.ts`.
+
+### D-M10: Trava T1 — fase, flag e replanejamento (31/10/2026)
+**Problema:** após T8b ou retorno a `SPEC_REVISAO`, `specApproved` podia permanecer `true` e a UI mostrava “Spec já aprovada”, bloqueando replanejamento. **Decisão:** invariantes em `spec-trava-t1.ts`; T8b reprovada retorna falha explícita em `approveSpecAndStart`; conferente fora de contrato JSON classifica como pausa operacional (`intake-pause.ts`), não como reprovação de Spec. Detalhe operacional: §4.3.1 e §1.5.
