@@ -11,7 +11,9 @@ import { BriefBuilder } from "../brief/brief-builder";
 import { loadRoleSkill, buildSkillSystemPrompt } from "../skills/skill-runtime";
 import {
   classifyLens2Divergence,
+  matchCitedStageFile,
   parseFileLineRefList,
+  stageFileInventoryBlock,
   type Lens1ReqStatus,
   type Lens2DivergenceKind,
   type MicrobriefAndReportDocument,
@@ -19,6 +21,7 @@ import {
 import type { ClusterKind } from "../config/orchestration-policy";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
 import type { ContratoProjeto } from "../orchestrator/project-contract";
+import { aplicarReguaMesmaLacuna, filtrarAuditoriaPorValeContrato } from "./pedido-unico";
 import * as nodeFs from "fs";
 import * as nodePath from "path";
 
@@ -119,13 +122,113 @@ export function fileLineRefExists(ref: string, codeContentMap: Record<string, st
   // Extensão opcional: Dockerfile, Makefile, deploy/Caddyfile (sem .ext) são válidos na etapa 8+.
   const m = String(ref || "").match(/([A-Za-z0-9_.\/@\[\]()-]+(?:\.[A-Za-z0-9]+)?):(\d+)(?:-(\d+))?/);
   if (!m) return false;
-  const norm = normalizeScopePath(m[1]);
-  const content = Object.entries(codeContentMap).find(([k]) => normalizeScopePath(k) === norm)?.[1];
-  if (content === undefined) return false;
+  // Frase com "(schema.prisma:152 ...)": o "(" não é pasta. Grupo de rota "(auth)/" permanece.
+  const cited = m[1].startsWith("(") && !m[1].includes(")/") ? m[1].replace(/^\(+/, "") : m[1];
+  const hit = matchCitedStageFile(cited, codeContentMap);
+  if (hit.kind !== "one") return false;
   const start = Number(m[2]);
   const end = m[3] ? Number(m[3]) : start;
-  const total = content.split(/\r?\n/).length;
+  const total = hit.content.split(/\r?\n/).length;
   return start >= 1 && end >= start && end <= total;
+}
+
+/**
+ * O modelo respondeu um veredito e o harness recusou a prova (linha fora do arquivo, REQ sem
+ * veredito, aprovação sem prova). Isso não é queda do provedor: a etapa não se aprova.
+ * Sem resposta, JSON ilegível ou exceção continuam queda (`heuristic_fallback`).
+ */
+export function isEvaluatorEvidenceDiscard(motivo: string): boolean {
+  return /não existe no código desta etapa|faltou o veredito de|aprovação sem prova válida/i.test(motivo);
+}
+
+/**
+ * Código novo desta etapa que esconde o compilador. A diretiva mora em comentário;
+ * o cast e o import variável são lidos fora de comentário.
+ */
+export function compilerSilenceErrors(filePath: string, content: string): string[] {
+  if (!/\.(?:[cm]?[jt]sx?)$/i.test(filePath)) return [];
+  const errors: string[] = [];
+  const lines = String(content ?? "").split(/\r?\n/);
+  let inBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const n = i + 1;
+    const directive = raw.match(/@ts-(?:expect-error|ignore|nocheck)\b/);
+    if (directive) {
+      errors.push(
+        `[SILENCIO] ${filePath}:${n} diretiva ${directive[0]} esconde o compilador. Remova e corrija o erro de tipo.`
+      );
+    }
+    let code = raw;
+    if (inBlock) {
+      const end = code.indexOf("*/");
+      if (end < 0) continue;
+      code = code.slice(end + 2);
+      inBlock = false;
+    }
+    const blockAt = code.indexOf("/*");
+    if (blockAt >= 0) {
+      const end = code.indexOf("*/", blockAt + 2);
+      if (end < 0) {
+        code = code.slice(0, blockAt);
+        inBlock = true;
+      } else {
+        code = code.slice(0, blockAt) + code.slice(end + 2);
+      }
+    }
+    const slash = code.indexOf("//");
+    if (slash >= 0) code = code.slice(0, slash);
+    if (/\bas\s+any\b/.test(code)) {
+      errors.push(`[SILENCIO] ${filePath}:${n} "as any" esconde o tipo. Remova o cast e use o tipo real.`);
+    }
+    if (/\bas\s+unknown\s+as\b/.test(code)) {
+      errors.push(`[SILENCIO] ${filePath}:${n} "as unknown as" esconde o tipo. Remova o cast e use o tipo real.`);
+    }
+    if (/\bas\s+unknown\s*\)\s*as\b/.test(code.replace(/\s+/g, " "))) {
+      errors.push(`[SILENCIO] ${filePath}:${n} cast duplo esconde o tipo. Remova o cast e use o tipo real.`);
+    }
+    if (/\bas\s+unknown\s*$/.test(code.trim()) && i + 1 < lines.length) {
+      const prox = lines[i + 1].replace(/\/\/.*$/, "").trim();
+      if (/^\s*as\s+\w/.test(prox)) {
+        errors.push(`[SILENCIO] ${filePath}:${n} cast duplo em linhas seguidas esconde o tipo. Remova o cast.`);
+      }
+    }
+    const isJsx = /\.(?:tsx|jsx)$/i.test(filePath);
+    if (!isJsx && /<any>/.test(code)) {
+      errors.push(`[SILENCIO] ${filePath}:${n} "<any>" esconde o tipo. Remova o cast e use o tipo real.`);
+    }
+    if (/import\s*\(\s*(?!['"`])/.test(code)) {
+      errors.push(
+        `[SILENCIO] ${filePath}:${n} import dinâmico com caminho variável. Use import estático com caminho fixo.`
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Cópia só para o type-check: tira o silêncio para o tsc mostrar o erro que ele escondia.
+ * O arquivo da etapa continua como o executor gravou.
+ */
+export function stripCompilerSilence(content: string): string {
+  const bindings = new Map<string, string>();
+  let text = String(content ?? "").replace(/@ts-(?:expect-error|ignore|nocheck)\b/g, "");
+  const comments: string[] = [];
+  text = text.replace(/\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/g, (comment) => {
+    comments.push(comment);
+    return `\u0000${comments.length - 1}\u0000`;
+  });
+  for (const match of text.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])([^'"`]+)\2/g)) {
+    bindings.set(match[1], match[3]);
+  }
+  text = text.replace(/\bas\s+unknown\s+as\b/g, "as");
+  text = text.replace(/\bas\s+any\b/g, "");
+  text = text.replace(/import\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/g, (_full, ident: string) => {
+    const literal = bindings.get(ident);
+    const spec = (literal ?? "@silencio/caminho-variavel").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    return `import('${spec}')`;
+  });
+  return text.replace(/\u0000(\d+)\u0000/g, (_full, index: string) => comments[Number(index)] ?? "");
 }
 
 export interface ValidateType2Options {
@@ -139,6 +242,10 @@ export interface ValidateType2Options {
   contrato?: ContratoProjeto | null;
   contratosProduz?: string;
   contratosConsome?: string[];
+  rejeicaoAnterior?: string | null;
+  problemasAnteriores?: ReadonlyArray<{ severidade?: string; arquivoLinha?: string; descricao?: string }> | null;
+  codigoAnterior?: Record<string, string> | null;
+  camposIgnoradosPorValeContrato?: string[];
 }
 
 /** Função de despacho LLM injetada pelo chamador (desacopla o auditor do SmartRouter/provedores). */
@@ -239,6 +346,7 @@ export class DualLensAuditor {
     }
 
     for (const [filePath, content] of Object.entries(codeContentMap)) {
+      compilationErrors.push(...compilerSilenceErrors(filePath, content));
       // 0. Validação mecânica estrita para arquivos .json (Linter determinístico)
       if (filePath.toLowerCase().endsWith(".json")) {
         try {
@@ -650,6 +758,7 @@ export class DualLensAuditor {
           (reqsInstruction ? ',"reqVerdicts":[...]' : "") +
           ',"problemas":[{"severidade":"critico"|"importante"|"menor","req":"REQ-001","arquivoLinha":"arquivo:linha","descricao":"o defeito e o que fazer"}]}. ' +
           "Toda evidência e todo problema citam arquivo:linha DESTA etapa que existe no código mostrado; citação que não existe faz a resposta ser descartada. " +
+          "evidencia, arquivoLinha e fatoQueGarante copiam um caminho do inventário desta etapa, e a linha cai no intervalo indicado. " +
           "REGRA INEGOCIÁVEL DE CONTRATO: qualquer divergência com o contrato do Macrobrief (src/contracts/index.ts) — função com parâmetro a mais/menos, tipo trocado, retorno diferente ou rota divergente — é OBRIGATORIAMENTE um defeito CRÍTICO ('severidade':'critico') e reprova a etapa (implemented: false). " +
           "Problema critico reprova; importante com arquivo e linha existentes também reprova; menor só registra. Problema que você considerou e descartou não entra na lista. Aprovação exige prova: diga em fatoQueGarante qual fato do código garante que a etapa está certa (citando arquivo e linha existentes no código desta etapa) e em nivelProva como chegou a ele: arquivo_linha | executado | reproduzido (dito, nivelProva ausente ou falha_descartada não aprovam)." +
           skillBlock,
@@ -659,6 +768,7 @@ export class DualLensAuditor {
         content:
           `[BRIEF ORIGINAL]\n${briefMarkdown.slice(0, Number(process.env.BLIND_AUDIT_MAX_BRIEF_CHARS) || 30000)}` +
           contractSection +
+          `\n\n${stageFileInventoryBlock(codeContentMap)}` +
           `\n\n[ARQUIVOS GERADOS]\n${fileBlocks.join("\n\n")}` +
           // G2: a nova chamada sabe por que a anterior foi descartada (no fim: o cache do Brief continua valendo).
           (previousDiscard
@@ -977,12 +1087,9 @@ export class DualLensAuditor {
                 citedLineExists = false;
               } else {
                 for (const ref of refs) {
-                  const normCited = normalizeScopePath(ref.file);
-                  const matchedFileContent = Object.entries(codeContentMap).find(
-                    ([k]) => normalizeScopePath(k) === normCited
-                  )?.[1];
-                  const totalLines = matchedFileContent ? matchedFileContent.split(/\r?\n/).length : 0;
-                  if (!matchedFileContent || ref.start < 1 || ref.end < ref.start || ref.end > totalLines) {
+                  const hit = matchCitedStageFile(ref.file, codeContentMap);
+                  const totalLines = hit.kind === "one" ? hit.content.split(/\r?\n/).length : 0;
+                  if (hit.kind !== "one" || ref.start < 1 || ref.end < ref.start || ref.end > totalLines) {
                     citedLineExists = false;
                     break;
                   }
@@ -1067,7 +1174,7 @@ export class DualLensAuditor {
           .map((d) => d.detalhe)
           .join("; ");
 
-        return {
+        let resultado: ValidationType2Result = {
           verdict,
           rawVerdict: effectiveRawVerdict,
           ressalvas: blindVerdict.ressalvas,
@@ -1094,7 +1201,53 @@ export class DualLensAuditor {
           method: "llm_blind",
           divergenceDetected: divergence,
         };
+
+        if (options?.camposIgnoradosPorValeContrato && options.camposIgnoradosPorValeContrato.length > 0) {
+          resultado = filtrarAuditoriaPorValeContrato(resultado, options.camposIgnoradosPorValeContrato);
+        }
+
+        if (
+          (options?.rejeicaoAnterior || (options?.problemasAnteriores && options.problemasAnteriores.length > 0)) &&
+          options?.codigoAnterior
+        ) {
+          const regua = aplicarReguaMesmaLacuna({
+            rejeicaoAnterior: options.rejeicaoAnterior,
+            problemasAnteriores: options.problemasAnteriores,
+            codigoAnterior: options.codigoAnterior,
+            codigoNovo: codeContentMap,
+            rejeicaoNova: resultado.rejectionReason,
+            problemasNovos: resultado.problemas,
+          });
+          if (regua.forcarRejeicao) {
+            resultado = {
+              ...resultado,
+              verdict: "REJECTED",
+              rawVerdict: "REPROVADO",
+              problemas: regua.problemasFinais,
+              rejectionReason: regua.rejeicaoFinal,
+            };
+          }
+        }
+
+        return resultado;
       }
+    }
+
+    // Prova recusada nas duas chamadas: o modelo respondeu. Reprovar a etapa com o motivo,
+    // sem marcar heuristic_fallback (isso pausaria a sessão como "avaliador fora do ar").
+    if (discards.length > 0 && discards.every(isEvaluatorEvidenceDiscard)) {
+      const motivo = discards[discards.length - 1];
+      return {
+        verdict: "REJECTED",
+        rawVerdict: "REPROVADO",
+        lens1BlindReport: `[LENTE 1 - VEREDITO DESCARTADO]\n- O avaliador respondeu, mas a prova não existe no código desta etapa.\n- ${discards.join("\n- ")}`,
+        lens2CrossVerification:
+          "Veredito não aceito: citação ou prova fora do código desta etapa. A etapa não foi aprovada.",
+        rejectionReason: motivo,
+        descartes: discards,
+        method: "llm_blind",
+        divergenceDetected: false,
+      };
     }
 
     const fallback = DualLensAuditor.heuristicFallback(workerExecutionReport, filesInScope);

@@ -107,6 +107,36 @@ const TECNOLOGIAS_DE_DESENHO: Array<{ nome: string; noTeste: RegExp; noMicrobrie
   { nome: "bcrypt", noTeste: /\bbcrypt/i, noMicrobrief: /\bbcrypt/i },
 ];
 
+/**
+ * O teste nem carregou porque ele mesmo usa um mock antes de inicializar
+ * (`const asaasMock` passado a `vi.mock`, que o Vitest iça). "Cannot find module"
+ * do arquivo da etapa continua vermelho válido: o código ainda pode não existir.
+ */
+export function ownTestLoadFailure(conteudo: string, loadError: string): boolean {
+  if (/cannot find module/i.test(loadError)) return false;
+  const access = /Cannot access '([^']+)' before initialization/i.exec(loadError);
+  if (!access) return false;
+  const name = access[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const declared = new RegExp(`\\b(?:const|let|var|function)\\s+${name}\\b`).test(conteudo);
+  const passedToMock = new RegExp(`vi\\.mock\\([^)]*\\b${name}\\b`).test(conteudo);
+  return declared && passedToMock;
+}
+
+export function acceptanceFailuresThatCount<T extends { file: string; txt: string }>(
+  failures: T[],
+  tests: Array<{ caminho: string; conteudo: string }>
+): { contar: T[]; descartados: T[] } {
+  const contar: T[] = [];
+  const descartados: T[] = [];
+  for (const failure of failures) {
+    const load = /não carregou:\s*([\s\S]*)$/.exec(failure.txt);
+    const test = tests.find((item) => failure.file.endsWith(item.caminho));
+    if (load && test && ownTestLoadFailure(test.conteudo, load[1])) descartados.push(failure);
+    else contar.push(failure);
+  }
+  return { contar, descartados };
+}
+
 export function presumedTechnology(conteudo: string, microbriefTexto: string): string | null {
   for (const t of TECNOLOGIAS_DE_DESENHO) {
     if (t.noTeste.test(conteudo) && !t.noMicrobrief.test(microbriefTexto)) return t.nome;
@@ -180,6 +210,10 @@ export async function generateAcceptanceTests(params: {
   const regressoes = new Set<string>();
   const validos = candidatos.filter((t) => {
     const c = classifyRun(report, t.arquivo);
+    if (c.status === "nao_carregou" && ownTestLoadFailure(t.conteudo, c.saida ?? "")) {
+      descartados.push({ arquivo: t.arquivo, motivo: "o teste não carrega: usa um mock antes de inicializar" });
+      return false;
+    }
     if (c.status === "passou") {
       if (modifica) {
         regressoes.add(t.arquivo);
