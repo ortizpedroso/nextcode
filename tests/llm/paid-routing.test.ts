@@ -20,15 +20,6 @@ const fakeGateways: GatewayConfig[] = [
     modelHeavy: "auto:smart",
   },
   {
-    id: "omniroute",
-    enabled: true,
-    priority: 2,
-    baseUrl: "http://localhost:20128/v1",
-    apiKey: "",
-    modelFast: "auto/fast",
-    modelHeavy: "auto/best-free",
-  },
-  {
     id: "deepseek",
     enabled: true,
     priority: 3,
@@ -87,10 +78,10 @@ describe("R1.3b — loadPaidGatewaysForTier", () => {
     ]);
   });
 
-  it("deepseek direto e omniroute nunca entram", async () => {
+  it("deepseek direto nunca entra na rota paga", async () => {
     const res = await loadPaidGatewaysForTier("pesado", defaultCfg, async () => fakeGateways);
     expect(res.every((g) => g.id === "freellmapi")).toBe(true);
-    expect(res.some((g) => g.id === "deepseek" || g.id === "omniroute")).toBe(false);
+    expect(res.some((g) => g.id === "deepseek")).toBe(false);
   });
 
   it("sem freellmapi → lista vazia", async () => {

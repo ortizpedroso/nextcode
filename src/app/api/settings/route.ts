@@ -9,6 +9,14 @@ import {
   MasterKeyMissingError,
 } from "@/core/security/crypto";
 
+function legacyGatewayKey(row: Record<string, unknown>): string | null {
+  const custom = row.customGatewayKey;
+  if (typeof custom === "string" && custom) return custom;
+  const legacy = row.omniRouteKey;
+  if (typeof legacy === "string" && legacy) return legacy;
+  return null;
+}
+
 async function ensureSettingTable() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -20,9 +28,9 @@ async function ensureSettingTable() {
         "deepseekKey" TEXT,
         "groqKey" TEXT,
         "nvidiaKey" TEXT,
-        "omniRouteKey" TEXT,
-        "omniRouteUrl" TEXT DEFAULT 'http://localhost:20128/v1',
-        "customEndpoint" TEXT DEFAULT 'http://localhost:20128/v1',
+        "customGatewayKey" TEXT,
+        "typesafeKey" TEXT,
+        "customEndpoint" TEXT,
         "activeProvider" TEXT NOT NULL DEFAULT 'auto',
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -40,14 +48,29 @@ async function ensureSettingTable() {
     if (!existingCols.has("typesafeKey")) {
       await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "typesafeKey" TEXT;`).catch(() => {});
     }
+    if (!existingCols.has("customGatewayKey")) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Setting" ADD COLUMN "customGatewayKey" TEXT;`).catch(() => {});
+    }
+    if (existingCols.has("omniRouteKey")) {
+      await prisma
+        .$executeRawUnsafe(
+          `UPDATE "Setting" SET "customGatewayKey" = "omniRouteKey" WHERE ("customGatewayKey" IS NULL OR "customGatewayKey" = '') AND "omniRouteKey" IS NOT NULL AND "omniRouteKey" != '';`
+        )
+        .catch(() => {});
+    }
+    if (!existingCols.has("customEndpoint") && existingCols.has("omniRouteUrl")) {
+      await prisma
+        .$executeRawUnsafe(
+          `UPDATE "Setting" SET "customEndpoint" = "omniRouteUrl" WHERE ("customEndpoint" IS NULL OR "customEndpoint" = '') AND "omniRouteUrl" IS NOT NULL AND "omniRouteUrl" != '';`
+        )
+        .catch(() => {});
+    }
   } catch (e) {
     console.warn("[SETTINGS] Bootstrap de tabela Setting:", e);
   }
 }
 
 export async function GET(request: Request) {
-  // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
-  // o token da sessão local, sem rate limit (a UI faz polling).
   const readGuard = requireReadAuth(request);
   if (readGuard.response) return readGuard.response;
   try {
@@ -71,14 +94,13 @@ export async function GET(request: Request) {
       setting = await prisma.setting.create({
         data: {
           id: "default",
-          omniRouteUrl: "http://localhost:20128/v1",
-          customEndpoint: "http://localhost:20128/v1",
           activeProvider: "auto",
         },
       });
     }
 
-    // FASE 4: a UI nunca recebe o segredo em claro; apenas máscara estável.
+    const gatewayKeyEnc = legacyGatewayKey(setting);
+
     const mask = (v?: string | null) => {
       if (!v) return "";
       const plain = readSecret(v);
@@ -93,10 +115,9 @@ export async function GET(request: Request) {
       deepseekKey: mask(setting.deepseekKey),
       groqKey: mask(setting.groqKey),
       nvidiaKey: mask(setting.nvidiaKey),
-      omniRouteKey: mask(setting.omniRouteKey),
+      customGatewayKey: mask(gatewayKeyEnc),
       typesafeKey: mask(setting.typesafeKey),
-      omniRouteUrl: setting.omniRouteUrl || "http://localhost:20128/v1",
-      customEndpoint: setting.customEndpoint || "http://localhost:20128/v1",
+      customEndpoint: setting.customEndpoint || "",
       activeProvider: setting.activeProvider || "auto",
       hasGeminiKey: Boolean(setting.geminiKey),
       hasClaudeKey: Boolean(setting.claudeKey),
@@ -104,9 +125,8 @@ export async function GET(request: Request) {
       hasDeepseekKey: Boolean(setting.deepseekKey),
       hasGroqKey: Boolean(setting.groqKey),
       hasNvidiaKey: Boolean(setting.nvidiaKey),
-      hasOmniRouteKey: Boolean(setting.omniRouteKey),
+      hasCustomGatewayKey: Boolean(gatewayKeyEnc),
       hasTypesafeKey: Boolean(setting.typesafeKey),
-      // false = chaves novas seriam gravadas em texto plano (sem NEXTCODE_MASTER_KEY) — a UI avisa.
       secretsEncryptionEnabled: isSecretEncryptionEnabled(),
       updatedAt: setting.updatedAt,
     });
@@ -132,9 +152,8 @@ export async function POST(request: NextRequest) {
       deepseekKey,
       groqKey,
       nvidiaKey,
-      omniRouteKey,
+      customGatewayKey,
       typesafeKey,
-      omniRouteUrl,
       customEndpoint,
       activeProvider,
     } = body;
@@ -156,6 +175,8 @@ export async function POST(request: NextRequest) {
       return writeSecret(str);
     };
 
+    const existingGatewayKey = legacyGatewayKey(existing ?? {});
+
     const newGeminiKey = processKeyUpdate(geminiKey, existing?.geminiKey);
     const newClaudeKey = processKeyUpdate(claudeKey, existing?.claudeKey);
     const newOpenaiKey = processKeyUpdate(openaiKey, existing?.openaiKey);
@@ -163,15 +184,18 @@ export async function POST(request: NextRequest) {
     const newGroqKey = processKeyUpdate(groqKey, existing?.groqKey);
     const newNvidiaKey = processKeyUpdate(nvidiaKey, existing?.nvidiaKey);
     const newTypesafeKey = processKeyUpdate(typesafeKey, existing?.typesafeKey);
-    const newOmniRouteKey = processKeyUpdate(omniRouteKey, existing?.omniRouteKey);
+    const newCustomGatewayKey = processKeyUpdate(customGatewayKey, existingGatewayKey);
 
-    const newEndpoint = customEndpoint || omniRouteUrl || existing?.customEndpoint || "http://localhost:20128/v1";
+    const newEndpoint =
+      customEndpoint !== undefined && customEndpoint !== null
+        ? String(customEndpoint).trim() || null
+        : existing?.customEndpoint || null;
 
     let updated: any = null;
     try {
       await prisma.$executeRawUnsafe(
-        `INSERT INTO "Setting" ("id", "geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "omniRouteKey", "typesafeKey", "omniRouteUrl", "customEndpoint", "activeProvider", "updatedAt")
-         VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `INSERT INTO "Setting" ("id", "geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "customGatewayKey", "typesafeKey", "customEndpoint", "activeProvider", "updatedAt")
+         VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT("id") DO UPDATE SET
            "geminiKey" = excluded."geminiKey",
            "claudeKey" = excluded."claudeKey",
@@ -179,9 +203,8 @@ export async function POST(request: NextRequest) {
            "deepseekKey" = excluded."deepseekKey",
            "groqKey" = excluded."groqKey",
            "nvidiaKey" = excluded."nvidiaKey",
-           "omniRouteKey" = excluded."omniRouteKey",
+           "customGatewayKey" = excluded."customGatewayKey",
            "typesafeKey" = excluded."typesafeKey",
-           "omniRouteUrl" = excluded."omniRouteUrl",
            "customEndpoint" = excluded."customEndpoint",
            "activeProvider" = excluded."activeProvider",
            "updatedAt" = CURRENT_TIMESTAMP;`,
@@ -191,9 +214,8 @@ export async function POST(request: NextRequest) {
         newDeepseekKey,
         newGroqKey,
         newNvidiaKey,
-        newOmniRouteKey,
+        newCustomGatewayKey,
         newTypesafeKey,
-        newEndpoint,
         newEndpoint,
         activeProvider || "auto"
       );
@@ -204,7 +226,7 @@ export async function POST(request: NextRequest) {
         deepseekKey: newDeepseekKey,
         groqKey: newGroqKey,
         nvidiaKey: newNvidiaKey,
-        omniRouteKey: newOmniRouteKey,
+        customGatewayKey: newCustomGatewayKey,
         typesafeKey: newTypesafeKey,
         customEndpoint: newEndpoint,
       };
@@ -220,9 +242,8 @@ export async function POST(request: NextRequest) {
           deepseekKey: newDeepseekKey,
           groqKey: newGroqKey,
           nvidiaKey: newNvidiaKey,
-          omniRouteKey: newOmniRouteKey,
+          customGatewayKey: newCustomGatewayKey,
           typesafeKey: newTypesafeKey,
-          omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
           activeProvider: activeProvider || "auto",
         },
@@ -233,16 +254,22 @@ export async function POST(request: NextRequest) {
           deepseekKey: newDeepseekKey,
           groqKey: newGroqKey,
           nvidiaKey: newNvidiaKey,
-          omniRouteKey: newOmniRouteKey,
+          customGatewayKey: newCustomGatewayKey,
           typesafeKey: newTypesafeKey,
-          omniRouteUrl: newEndpoint,
           customEndpoint: newEndpoint,
           activeProvider: activeProvider || "auto",
         },
       });
     }
 
-    console.log("[SETTINGS] Configurações salvas (chaves cifradas): Gemini=", Boolean(updated.geminiKey), "| Groq=", Boolean(updated.groqKey), "| NVIDIA=", Boolean(updated.nvidiaKey));
+    console.log(
+      "[SETTINGS] Configurações salvas (chaves cifradas): Gemini=",
+      Boolean(updated.geminiKey),
+      "| Groq=",
+      Boolean(updated.groqKey),
+      "| NVIDIA=",
+      Boolean(updated.nvidiaKey)
+    );
 
     return NextResponse.json({
       success: true,
@@ -254,9 +281,9 @@ export async function POST(request: NextRequest) {
         deepseekKey: updated.deepseekKey ? "••••" : "",
         groqKey: (updated as any).groqKey ? "••••" : "",
         nvidiaKey: (updated as any).nvidiaKey ? "••••" : "",
-        omniRouteKey: updated.omniRouteKey ? "••••" : "",
+        customGatewayKey: updated.customGatewayKey ? "••••" : "",
         typesafeKey: (updated as any).typesafeKey ? "••••" : "",
-        customEndpoint: updated.customEndpoint,
+        customEndpoint: updated.customEndpoint ?? "",
       },
       updatedAt: updated.updatedAt,
     });

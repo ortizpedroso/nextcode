@@ -28,7 +28,6 @@ describe("SmartRouter Multi-Provider Fallbacks", () => {
     const options: DispatchOptions = {
       messages: [{ role: "user", content: "Olá" }],
       groqKey: "gsk_test_groq_key_123",
-      omniRouteUrl: "http://localhost:20128",
       stream: false,
     };
 
@@ -60,7 +59,6 @@ describe("SmartRouter Multi-Provider Fallbacks", () => {
     const options: DispatchOptions = {
       messages: [{ role: "user", content: "Teste NVIDIA" }],
       nvidiaKey: "nvapi_test_key_456",
-      omniRouteUrl: "http://localhost:20128",
       stream: false,
     };
 
@@ -92,7 +90,6 @@ describe("SmartRouter Multi-Provider Fallbacks", () => {
     const options: DispatchOptions = {
       messages: [{ role: "user", content: "Teste DeepSeek" }],
       deepseekKey: "sk-deepseek-test",
-      omniRouteUrl: "http://localhost:20128",
       stream: false,
     };
 

@@ -2,9 +2,9 @@
 // Fase 12 — Quota Tracker: cooldown por combo quando a COTA esgota (HTTP 402/429).
 //
 // Contexto do bug real (diagnóstico capturado em produção):
-//   OmniRoute: HTTP 402 "[openrouter/openrouter/auto] This request requires more
+//   Gateways agregadores: HTTP 402 "[openrouter/auto] This request requires more
 //   credits, or fewer max_tokens..."
-// O OmniRoute aceita qualquer combo "auto/*", mas cada combo tem um POOL de
+// O agregador aceita qualquer combo "auto/*", mas cada combo tem um POOL de
 // provedores com cotas próprias. Quando o pool do combo esgota, TODAS as
 // requisições daquele combo falham com 402 até o reset diário dos free tiers
 // (meia-noite UTC). Sem este tracker, a cascata repetia o combo esgotado a cada

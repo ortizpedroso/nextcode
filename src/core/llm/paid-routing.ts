@@ -28,7 +28,7 @@ export const CONTINGENCY_EXECUTOR_MODELS: { model: string; family: string }[] = 
 ];
 
 /**
- * Rota dos papéis críticos: SOMENTE FreeLLMAPI (DeepSeek direto fora e OmniRoute pausado — decisões de 08/10).
+ * Rota dos papéis críticos: SOMENTE FreeLLMAPI (DeepSeek direto fora — decisões de 08/10).
  * 1º perfil pago (auto:<perfil>); 2º modelo pago fixo; 3º modelos de contingência (se ativos e independentes do avaliador).
  * Nunca auto / auto:smart / auto:fast.
  * Quem garante que a resposta veio de provedor pago é a trava X-Routed-Via no SmartRouter.

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/client-session";
-import { ArrowDown, ArrowUp, CheckCircle2, ExternalLink, Loader2, RefreshCw, Save, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Save, XCircle } from "lucide-react";
 
 interface GatewayRow {
-  id: "freellmapi" | "omniroute";
+  id: "freellmapi" | "deepseek";
   label: string;
   dashboardUrl: string;
   enabled: boolean;
@@ -41,7 +41,7 @@ interface Draft {
 }
 
 /**
- * Gateways LLM em ordem de uso (FreeLLMAPI, OmniRoute). O diagnóstico faz uma conversa real com o
+ * Gateways LLM em ordem de uso (FreeLLMAPI, DeepSeek). O diagnóstico faz uma conversa real com o
  * modelo configurado: verde aqui significa que o chat e a DAG vão funcionar por esse gateway.
  */
 export function LlmGatewaysCard() {
@@ -126,18 +126,6 @@ export function LlmGatewaysCard() {
     await load();
   };
 
-  const move = async (index: number, delta: number) => {
-    const reordered = [...gateways];
-    const [item] = reordered.splice(index, 1);
-    reordered.splice(index + delta, 0, item);
-    await authFetch("/api/llm/gateways", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gateways: reordered.map((g, i) => ({ id: g.id, priority: i })) }),
-    });
-    await load();
-  };
-
   const setDraft = (id: string, field: keyof Draft, value: string) =>
     setDrafts((prev) => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
 
@@ -145,9 +133,9 @@ export function LlmGatewaysCard() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Gateways LLM</h3>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">FreeLLMAPI</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Ordem de uso: o primeiro que responder atende. Depois deles, as chaves BYOK diretas.
+            As chaves dos provedores ficam no painel do FreeLLMAPI. Com o gateway em localhost:3100, o NextCode usa a chave unificada que já está no container. Colar outra chave aqui (senha do painel ou chave de um provedor) não entra.
           </p>
         </div>
         <button
@@ -166,7 +154,7 @@ export function LlmGatewaysCard() {
         </div>
       )}
 
-      {gateways.map((gw, index) => {
+      {gateways.filter((gw) => gw.id === "freellmapi").map((gw, index) => {
         const h = health[gw.id];
         const d = drafts[gw.id];
         if (!d) return null;
@@ -198,23 +186,7 @@ export function LlmGatewaysCard() {
                   ))}
               </div>
               <div className="flex items-center gap-1">
-                <button
-                  onClick={() => move(index, -1)}
-                  disabled={index === 0}
-                  className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"
-                  title="Subir na ordem"
-                >
-                  <ArrowUp className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => move(index, 1)}
-                  disabled={index === gateways.length - 1}
-                  className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"
-                  title="Descer na ordem"
-                >
-                  <ArrowDown className="w-3.5 h-3.5" />
-                </button>
-                <label className="flex items-center gap-1 text-xs ml-2 cursor-pointer">
+                <label className="flex items-center gap-1 text-xs cursor-pointer">
                   <input type="checkbox" checked={gw.enabled} onChange={() => toggle(gw)} />
                   Ativo
                 </label>
@@ -241,8 +213,10 @@ export function LlmGatewaysCard() {
                 <span>{gw.id === "freellmapi" ? "Chave unificada" : "API key"}</span>
                 <input
                   type="password"
+                  name="freellmapi-unified-key"
+                  autoComplete="off"
                   value={d.apiKey}
-                  placeholder={gw.hasKey ? `salva: ${gw.maskedKey}` : "cole a chave"}
+                  placeholder={gw.hasKey ? `salva: ${gw.maskedKey}` : "cole a chave unificada do painel"}
                   onChange={(e) => setDraft(gw.id, "apiKey", e.target.value)}
                   className="w-full px-2 py-1.5 text-xs rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />

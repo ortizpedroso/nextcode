@@ -1,6 +1,6 @@
 /**
  * Gateways LLM: ordem, classificação de falha, passagem ao próximo
- * gateway e diagnóstico real — com servidores HTTP falsos de FreeLLMAPI e OmniRoute.
+ * gateway e diagnóstico real — com servidores HTTP falsos de FreeLLMAPI e DeepSeek.
  * O desenho está em docs/NEXTCODE-REFERENCIA.md.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -9,7 +9,9 @@ import type { AddressInfo } from "net";
 import prisma from "@/lib/prisma";
 import { SmartRouter } from "@/core/router/smart-router";
 import {
+  classifyProviderOutage,
   classifyStatus,
+  providerResetWaitMs,
   probeGateway,
   resetGatewayState,
   saveGatewayConfig,
@@ -20,11 +22,11 @@ type Mode = "ok" | "exhausted" | "auth";
 
 let freeMode: Mode = "ok";
 let freeChatCalls: { model: string; auth: string | undefined }[] = [];
-let omniChatCalls: { model: string }[] = [];
+let deepChatCalls: { model: string }[] = [];
 let freeServer: http.Server;
-let omniServer: http.Server;
+let deepServer: http.Server;
 let freeUrl = "";
-let omniUrl = "";
+let deepUrl = "";
 const FREE_KEY = "freellmapi-test-key";
 
 function listen(server: http.Server): Promise<string> {
@@ -72,18 +74,22 @@ beforeAll(async () => {
     res.writeHead(404);
     res.end();
   });
-  omniServer = http.createServer(async (req, res) => {
+  freeUrl = await listen(freeServer);
+  deepServer = http.createServer(async (req, res) => {
     const body = await readBody(req);
-    if (req.url === "/v1/chat/completions") {
-      omniChatCalls.push({ model: body.model });
+    if (req.url === "/v1/models") {
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "ok via omni" } }] }));
+      return res.end(JSON.stringify({ data: [{ id: "deepseek-chat" }] }));
+    }
+    if (req.url === "/v1/chat/completions") {
+      deepChatCalls.push({ model: body.model });
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "ok via deep" } }] }));
     }
     res.writeHead(404);
     res.end();
   });
-  freeUrl = await listen(freeServer);
-  omniUrl = await listen(omniServer);
+  deepUrl = await listen(deepServer);
   originalSetting = await prisma.setting.findUnique({ where: { id: "default" } });
 });
 
@@ -95,16 +101,15 @@ afterAll(async () => {
   }
   resetGatewayState();
   await new Promise<void>((r) => freeServer.close(() => r()));
-  await new Promise<void>((r) => omniServer.close(() => r()));
+  await new Promise<void>((r) => deepServer.close(() => r()));
 });
 
 beforeEach(async () => {
   freeMode = "ok";
   freeChatCalls = [];
-  omniChatCalls = [];
+  deepChatCalls = [];
   await prisma.llmGateway.deleteMany({});
   resetGatewayState();
-  process.env.OMNIROUTE_MODEL = "modelo-omni-teste";
 });
 
 const freeGw = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
@@ -117,31 +122,30 @@ const freeGw = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
   modelHeavy: "auto:smart",
   ...overrides,
 });
-const omniGw = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
-  id: "omniroute",
+const deepGw = (overrides: Partial<GatewayConfig> = {}): GatewayConfig => ({
+  id: "deepseek",
   enabled: true,
   priority: 1,
-  baseUrl: `${omniUrl}/v1`,
-  apiKey: "",
-  modelFast: null,
-  modelHeavy: null,
+  baseUrl: `${deepUrl}/v1`,
+  apiKey: "sk-deep-test",
+  modelFast: "deepseek-chat",
+  modelHeavy: "deepseek-chat",
   ...overrides,
 });
 const messages = [{ role: "user" as const, content: "oi" }];
 
 describe("Gateways LLM — ordem e passagem ao próximo", () => {
-  it("FreeLLMAPI primeiro: atende, informa quem serviu (X-Routed-Via) e o OmniRoute nem é chamado", async () => {
+  it("FreeLLMAPI primeiro: atende, informa quem serviu (X-Routed-Via) e o DeepSeek nem é chamado", async () => {
     const res = await new SmartRouter().dispatchWithFallback({
       messages,
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
-      gateways: [freeGw(), omniGw()],
+      gateways: [freeGw(), deepGw()],
     });
     expect(res.providerUsed).toBe("freellmapi");
     expect(res.modelUsed).toBe("groq/llama-3.3-70b-versatile");
     expect(res.badge).toContain("FreeLLMAPI");
     expect(freeChatCalls).toEqual([{ model: "auto", auth: `Bearer ${FREE_KEY}` }]);
-    expect(omniChatCalls).toHaveLength(0);
+    expect(deepChatCalls).toHaveLength(0);
     const json = await res.response.json();
     expect(json.choices[0].message.content).toBe("ok via free");
   });
@@ -151,24 +155,22 @@ describe("Gateways LLM — ordem e passagem ao próximo", () => {
       messages,
       tier: "heavy",
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
-      gateways: [freeGw(), omniGw()],
+      gateways: [freeGw(), deepGw()],
     });
     expect(freeChatCalls[0].model).toBe("auto:smart");
   });
 
-  it("FreeLLMAPI esgotado (503) → OmniRoute atende, e a falha vai para a telemetria classificada", async () => {
+  it("FreeLLMAPI esgotado (503) → DeepSeek atende, e a falha vai para a telemetria classificada", async () => {
     freeMode = "exhausted";
     const before = new Date(Date.now() - 1);
     const res = await new SmartRouter().dispatchWithFallback({
       messages,
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
-      gateways: [freeGw(), omniGw()],
+      gateways: [freeGw(), deepGw()],
     });
-    expect(res.providerUsed).toBe("omniroute");
+    expect(res.providerUsed).toBe("deepseek");
     expect(freeChatCalls).toHaveLength(1);
-    expect(omniChatCalls).toHaveLength(1);
+    expect(deepChatCalls).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 50));
     const logs = await prisma.telemetryLog.findMany({
       where: { action: "llm.gateway_failure", createdAt: { gte: before } },
@@ -176,52 +178,18 @@ describe("Gateways LLM — ordem e passagem ao próximo", () => {
     expect(logs.some((l) => JSON.parse(l.details!).kind === "exhausted")).toBe(true);
   });
 
-  it("FreeLLMAPI fora do ar (conexão recusada) → OmniRoute atende", async () => {
+  it("FreeLLMAPI fora do ar (conexão recusada) → DeepSeek atende", async () => {
     const res = await new SmartRouter().dispatchWithFallback({
       messages,
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
-      gateways: [freeGw({ baseUrl: "http://localhost:1/v1" }), omniGw()],
+      gateways: [freeGw({ baseUrl: "http://localhost:1/v1" }), deepGw()],
     });
-    expect(res.providerUsed).toBe("omniroute");
-    expect(omniChatCalls).toHaveLength(1);
+    expect(res.providerUsed).toBe("deepseek");
+    expect(deepChatCalls).toHaveLength(1);
   });
 
-  it("ordem invertida: OmniRoute primeiro e FreeLLMAPI não é chamado", async () => {
-    const res = await new SmartRouter().dispatchWithFallback({
-      messages,
-      stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
-      gateways: [omniGw({ priority: 0 }), freeGw({ priority: 1 })],
-    });
-    expect(res.providerUsed).toBe("omniroute");
-    expect(freeChatCalls).toHaveLength(0);
-  });
 
-  it("configuração do banco: FreeLLMAPI salvo com chave entra na frente; sem chave fica de fora", async () => {
-    await prisma.setting.update({ where: { id: "default" }, data: { omniRouteUrl: `${omniUrl}/v1` } });
 
-    await saveGatewayConfig("freellmapi", { baseUrl: `${freeUrl}/v1` });
-    let res = await new SmartRouter().dispatchWithFallback({ messages, stream: false, omniRouteUrl: `${omniUrl}/v1` });
-    expect(res.providerUsed).toBe("omniroute");
-    expect(freeChatCalls).toHaveLength(0);
-
-    await saveGatewayConfig("freellmapi", { apiKey: FREE_KEY });
-    res = await new SmartRouter().dispatchWithFallback({ messages, stream: false, omniRouteUrl: `${omniUrl}/v1` });
-    expect(res.providerUsed).toBe("freellmapi");
-  });
-
-  it("OmniRoute desativado no banco não é chamado; modelo exato do OmniRoute vem do LlmGateway", async () => {
-    await saveGatewayConfig("omniroute", { modelFast: "provedor/modelo-exato" });
-    await new SmartRouter().dispatchWithFallback({ messages, stream: false, omniRouteUrl: `${omniUrl}/v1` });
-    expect(omniChatCalls[0].model).toBe("provedor/modelo-exato");
-
-    omniChatCalls = [];
-    await saveGatewayConfig("omniroute", { enabled: false });
-    const res = await new SmartRouter().dispatchWithFallback({ messages, stream: false, omniRouteUrl: `${omniUrl}/v1` });
-    expect(omniChatCalls).toHaveLength(0);
-    expect(res.providerUsed).not.toBe("omniroute");
-  });
 });
 
 describe("Gateways LLM — rotas nativas (BYOK direto) depois do agregador", () => {
@@ -281,6 +249,20 @@ describe("Gateways LLM — classificação e diagnóstico real", () => {
     expect(classifyStatus(402)).toBe("exhausted");
     expect(classifyStatus(429)).toBe("exhausted");
     expect(classifyStatus(503)).toBe("exhausted");
+  });
+
+  it("cooldown e falha transitória 502/fetch de upstream do FreeLLMAPI viram espera (não chave nem crédito)", () => {
+    const detail =
+      "No candidate model has a configured, usable provider key. All models exhausted: 1 route checked (1 rate-limited or on cooldown).";
+    expect(classifyProviderOutage(detail, 503)).toBe("espera");
+    const upstreamFetch502 =
+      "All 1 routed attempt(s) failed with upstream provider errors (error ×1). This is a provider-side failure, not a problem with your request; retry, or check provider status. Attempt trail: custom/deepseek-v4-pro key1: error. Last error: fetch";
+    expect(classifyProviderOutage(upstreamFetch502, 502)).toBe("espera");
+    expect(classifyProviderOutage("out_of_credits", 402)).toBe("credito");
+    expect(classifyProviderOutage("invalid api key", 401)).toBe("chave");
+    expect(providerResetWaitMs("Soonest reset ~14s.")).toBe(14_000);
+    expect(providerResetWaitMs("Soonest reset ~18h")).toBe(18 * 3_600_000);
+    expect(providerResetWaitMs("sem prazo")).toBeNull();
   });
 
   it("diagnóstico: fora do ar → manda subir o container", async () => {
@@ -368,7 +350,6 @@ describe("Gateways LLM — modelo forte pago só no tier pesado", () => {
       messages,
       tier: "heavy",
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
       gateways: [freeGw(), paidGw()],
     });
     expect(res.providerUsed).toBe("deepseek");
@@ -382,7 +363,6 @@ describe("Gateways LLM — modelo forte pago só no tier pesado", () => {
       messages,
       tier: "fast",
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
       gateways: [paidGw(), freeGw()],
     });
     expect(res.providerUsed).toBe("freellmapi");
@@ -394,7 +374,6 @@ describe("Gateways LLM — modelo forte pago só no tier pesado", () => {
       messages,
       tier: "heavy",
       stream: false,
-      omniRouteUrl: `${omniUrl}/v1`,
       gateways: [{ ...paidGw(), baseUrl: "http://localhost:1/v1" }, freeGw()],
     });
     expect(res.providerUsed).toBe("freellmapi");

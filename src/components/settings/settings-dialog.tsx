@@ -3,31 +3,23 @@
 import { useState, useEffect } from "react";
 import { authFetch } from "@/lib/client-session";
 import {
-  Key,
   AlertTriangle,
   Server,
   Sliders,
   HelpCircle,
   X,
   CheckCircle2,
-  Save,
   Zap,
   Code,
   ShieldCheck,
   FileCode,
   Plus,
-  ExternalLink,
   Trash2,
   Edit3,
   RefreshCw,
-  Globe,
-  Radio,
   Check,
   UserCheck,
-  ShieldAlert,
-  Lock,
 } from "lucide-react";
-import { ByokTab } from "./byok-tab";
 import { LlmGatewaysCard } from "./llm-gateways-card";
 import { HeadroomCard } from "./headroom-card";
 import { GithubSkillInstallerCard } from "./github-skill-installer-card";
@@ -39,7 +31,7 @@ export interface SettingsFormState {
   deepseekKey: string;
   groqKey: string;
   nvidiaKey: string;
-  omniRouteKey: string;
+  customGatewayKey: string;
   typesafeKey: string;
   customEndpoint: string;
 }
@@ -77,7 +69,7 @@ export function SettingsDialog({
   onClose,
   onSave,
 }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<"keys" | "custom" | "mcp" | "omniroute" | "headroom" | "roles" | "preferences" | "docs">("keys");
+  const [activeTab, setActiveTab] = useState<"mcp" | "gateways" | "headroom" | "roles" | "preferences" | "docs">("gateways");
   const [formData, setFormData] = useState<SettingsFormState>(settings);
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ provider: string; ok: boolean; message: string } | null>(null);
@@ -334,39 +326,15 @@ export function SettingsDialog({
           {/* Sidebar de Abas Internas */}
           <div className="w-56 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 p-3 space-y-1">
             <button
-              onClick={() => setActiveTab("keys")}
+              onClick={() => setActiveTab("gateways")}
               className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2.5 font-medium transition-all ${
-                activeTab === "keys"
-                  ? "bg-[#e8f1fb] dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 font-semibold"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-900"
-              }`}
-            >
-              <Key className="w-4 h-4 text-[#0066cc]" />
-              <span>Chaves Nativas (BYOK)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("custom")}
-              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2.5 font-medium transition-all ${
-                activeTab === "custom"
-                  ? "bg-[#e8f1fb] dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 font-semibold"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-900"
-              }`}
-            >
-              <Globe className="w-4 h-4 text-[#0066cc]" />
-              <span>Provedores OpenAI-Compatible</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("omniroute")}
-              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-2.5 font-medium transition-all ${
-                activeTab === "omniroute"
+                activeTab === "gateways"
                   ? "bg-[#e8f1fb] dark:bg-blue-950/60 text-[#0066cc] dark:text-blue-400 font-semibold"
                   : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-900"
               }`}
             >
               <Zap className="w-4 h-4 text-amber-500" />
-              <span>Gateways LLM</span>
+              <span>FreeLLMAPI</span>
             </button>
 
             <button
@@ -455,42 +423,17 @@ export function SettingsDialog({
               </div>
             )}
 
-            {/* ABA 1: BYOK NATIVO COM TESTES INLINE */}
-            {activeTab === "keys" && secretsEncryptionEnabled === false && (
+            {activeTab === "gateways" && secretsEncryptionEnabled === false && (
               <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
                 <span>
-                  <strong>Chave mestra ausente neste servidor:</strong> nenhuma chave de API pode ser salva (o NextCode
-                  não grava senha em texto plano). Reinicie pelo <code>npm run dev</code>: ele gera a chave mestra no{" "}
+                  <strong>Chave mestra ausente neste servidor:</strong> a chave unificada não pode ser salva (o NextCode
+                  não grava segredo em texto plano). Reinicie pelo <code>npm run dev</code>: ele gera a chave mestra no{" "}
                   <code>.env</code> automaticamente.
                 </span>
               </div>
             )}
-            {activeTab === "keys" && (
-              <ByokTab
-                settings={formData}
-                onUpdateSettings={setFormData}
-                onSave={async () => {
-                  try {
-                    await onSave(formData);
-                    setTestResult({
-                      provider: "Configurações BYOK",
-                      ok: true,
-                      message: "Chaves salvas com sucesso no banco de dados!",
-                    });
-                  } catch (err) {
-                    setTestResult({
-                      provider: "Configurações BYOK",
-                      ok: false,
-                      message: err instanceof Error ? err.message : String(err),
-                    });
-                  }
-                }}
-              />
-            )}
-
-            {/* ABA: OMNIROUTE LOCAL 1-CLIQUE */}
-            {activeTab === "omniroute" && <LlmGatewaysCard />}
+            {activeTab === "gateways" && <LlmGatewaysCard />}
 
             {/* ABA: HEADROOM TOKEN OPTIMIZER */}
             {activeTab === "headroom" && <HeadroomCard />}
@@ -571,203 +514,6 @@ export function SettingsDialog({
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {/* ABA 2: PROVEDORES OPENAI-COMPATIBLE CUSTOMIZADOS */}
-            {activeTab === "custom" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                  <h4 className="font-bold text-slate-900 dark:text-white">
-                    Provedores Personalizados (OpenAI Compatible)
-                  </h4>
-                  <button
-                    onClick={() => setShowCustomModal(true)}
-                    className="px-3 py-1.5 bg-[#0066cc] text-white rounded-lg flex items-center gap-1 text-xs font-medium shadow-sm"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Adicionar Provedor
-                  </button>
-                </div>
-
-                {customProviders.length === 0 ? (
-                  <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center text-slate-400">
-                    Nenhum provedor personalizado cadastrado (ex: Ollama, vLLM, LM Studio, Groq, LiteLLM).
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {customProviders.map((p) => {
-                      const modelsArr = JSON.parse(p.models || "[]");
-                      return (
-                        <div
-                          key={p.id}
-                          className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex items-center justify-between"
-                        >
-                          <div className="space-y-1">
-                            <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-2">
-                              <span>{p.name}</span>
-                              <code className="text-[10px] bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
-                                id: {p.id}
-                              </code>
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono">{p.baseUrl}</div>
-                            {modelsArr.length > 0 && (
-                              <div className="text-[10px] text-slate-400 flex items-center gap-1 pt-1">
-                                <span>Modelos: {modelsArr.map((m: { name: string }) => m.name).join(", ")}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleDeleteCustomProvider(p.id)}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-lg"
-                              title="Excluir"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Modal Cadastrar Provedor Customizado */}
-                {showCustomModal && (
-                  <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 w-full max-w-lg shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <Globe className="w-4 h-4 text-[#0066cc]" />
-                        Cadastrar Provedor OpenAI-Compatible
-                      </h3>
-                      <form onSubmit={handleSaveCustomProvider} className="space-y-3 text-xs">
-                        <div>
-                          <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            ID do Provedor (slug: letras minúsculas, números, - e _)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="ex: ollama-local"
-                            value={customForm.id}
-                            onChange={(e) => setCustomForm({ ...customForm, id: e.target.value })}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#0066cc]"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Nome de Exibição
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="ex: Ollama Local ou Gateway Interno"
-                            value={customForm.name}
-                            onChange={(e) => setCustomForm({ ...customForm, name: e.target.value })}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#0066cc]"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            URL Base da API
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="ex: http://localhost:11434/v1"
-                            value={customForm.baseUrl}
-                            onChange={(e) => setCustomForm({ ...customForm, baseUrl: e.target.value })}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#0066cc]"
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Chave de API (Opcional)
-                          </label>
-                          <input
-                            type="password"
-                            placeholder="Deixe em branco se gerenciar autenticação via cabeçalhos"
-                            value={customForm.apiKey}
-                            onChange={(e) => setCustomForm({ ...customForm, apiKey: e.target.value })}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[#0066cc]"
-                          />
-                        </div>
-
-                        {/* Modelos */}
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                          <label className="block font-bold text-slate-900 dark:text-white">
-                            Modelos Suportados
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="ID: deepseek-r1:14b"
-                              value={customForm.modelId}
-                              onChange={(e) => setCustomForm({ ...customForm, modelId: e.target.value })}
-                              className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Nome: DeepSeek R1 14B"
-                              value={customForm.modelName}
-                              onChange={(e) => setCustomForm({ ...customForm, modelName: e.target.value })}
-                              className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (customForm.modelId.trim() && customForm.modelName.trim()) {
-                                  setCustomForm({
-                                    ...customForm,
-                                    modelsList: [
-                                      ...customForm.modelsList,
-                                      { id: customForm.modelId.trim(), name: customForm.modelName.trim() },
-                                    ],
-                                    modelId: "",
-                                    modelName: "",
-                                  });
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-lg font-medium"
-                            >
-                              +
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {customForm.modelsList.map((m, i) => (
-                              <span
-                                key={i}
-                                className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 px-2 py-0.5 rounded text-[10px] flex items-center gap-1 font-mono"
-                              >
-                                {m.name} ({m.id})
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 pt-3">
-                          <button
-                            type="button"
-                            onClick={() => setShowCustomModal(false)}
-                            className="px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-4 py-1.5 text-xs bg-[#0066cc] hover:bg-blue-700 text-white font-medium rounded-lg shadow-sm"
-                          >
-                            Salvar Provedor
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1043,14 +789,6 @@ export function SettingsDialog({
                     </p>
                   </div>
 
-                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1">
-                    <div className="font-bold text-[#0066cc] flex items-center gap-1.5">
-                      <Zap className="w-4 h-4" /> intent-router
-                    </div>
-                    <p className="text-slate-600 dark:text-slate-400 text-[11px]">
-                      Classifica a complexidade e roteia tarefas entre as camadas FAST e HEAVY.
-                    </p>
-                  </div>
                 </div>
               </div>
             )}

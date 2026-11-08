@@ -8,23 +8,20 @@ generator client {
 }
 
 model Setting {
-  id             String   @id @default("default")
-  geminiKey      String?
-  claudeKey      String?
-  openaiKey      String?
-  deepseekKey    String?
-  groqKey        String?
-  nvidiaKey      String?
-  omniRouteKey   String?
-  // Jev (TypeSafe AI): motor de decisão da orquestração (ver docs/ARQUITETURA-ORQUESTRACAO.md).
-  typesafeKey    String?
-  // 20128 = porta oficial do OmniRoute no docker-compose.yml (8080 era um default obsoleto
-  // que fazia o router apontar para porta fechada -> "Cotas e Serviços Indisponíveis")
-  omniRouteUrl   String?  @default("http://localhost:20128/v1")
-  customEndpoint String?  @default("http://localhost:20128/v1")
-  activeProvider String   @default("auto")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default("default")
+  geminiKey        String?
+  claudeKey        String?
+  openaiKey        String?
+  deepseekKey      String?
+  groqKey          String?
+  nvidiaKey        String?
+  /// Chave de gateway OpenAI-compatível custom (ex. OpenRouter), cifrada.
+  customGatewayKey String?
+  typesafeKey      String?
+  customEndpoint   String?
+  activeProvider   String   @default("auto")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model CustomProvider {
@@ -66,10 +63,9 @@ model Project {
 
 
 // Gateways de LLM compatíveis com OpenAI, tentados em ordem de priority (menor primeiro).
-// Ver docs/LLM-GATEWAYS.md. O OmniRoute continua com URL/chave em Setting (legado); aqui
-// ele só tem ordem, ativação e modelos.
+// Ver docs/LLM-GATEWAYS.md.
 model LlmGateway {
-  id         String   @id // "freellmapi" | "omniroute"
+  id         String   @id // "freellmapi" | "deepseek"
   enabled    Boolean  @default(true)
   priority   Int      @default(0)
   baseUrl    String?
@@ -180,5 +176,3 @@ model Job {
   session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   @@index([status, lockedUntil])
 }
-
-

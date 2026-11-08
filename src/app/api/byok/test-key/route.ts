@@ -28,7 +28,8 @@ async function resolveKeyForTest(provider: string, inputKey?: string): Promise<s
   else if (provider === "deepseek") encryptedVal = setting.deepseekKey;
   else if (provider === "groq") encryptedVal = setting.groqKey;
   else if (provider === "nvidia") encryptedVal = setting.nvidiaKey;
-  else if (provider === "omniRoute" || provider === "custom") encryptedVal = setting.omniRouteKey;
+  else if (provider === "custom")
+    encryptedVal = setting.customGatewayKey || setting.omniRouteKey;
   else if (provider === "typesafe") encryptedVal = setting.typesafeKey;
 
   if (!encryptedVal) return "";
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
     const { provider, apiKey, baseUrl } = body;
 
     const key = await resolveKeyForTest(provider, apiKey);
-    if (!key && provider !== "omniRoute" && provider !== "custom") {
+    if (!key && provider !== "custom") {
       return NextResponse.json(
         { success: false, message: "Nenhuma chave salva no banco de dados ou informada no campo." },
         { status: 400 }
@@ -249,7 +250,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, message: `Erro NVIDIA: ${errMsg}` });
       }
 
-      if (provider === "omniRoute" || provider === "custom") {
+      if (provider === "custom") {
         const targetUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/models` : "https://openrouter.ai/api/v1/models";
         const headers: Record<string, string> = {};
         if (key) {

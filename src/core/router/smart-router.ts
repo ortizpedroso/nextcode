@@ -24,7 +24,6 @@ export interface AvailableKeys {
   hasOpenaiKey: boolean;
   hasGroqKey?: boolean;
   hasNvidiaKey?: boolean;
-  hasOmniRouteKey: boolean;
   customEndpoint?: string | null;
 }
 
@@ -36,11 +35,6 @@ export interface PruneResult {
 }
 
 import { safeFetch } from "../security/safe-fetch";
-import { isComboOnCooldown, markComboExhausted } from "./quota-tracker";
-import { ensureVerifiedOmniModels, reportOmniModelFailure, reportOmniModelSuccess } from "./omni-model-discovery";
-// Imports estáticos: os antigos `require()` dentro de try/catch falhavam em silêncio quando o
-// módulo rodava como ESM (ex.: tsx) — a chave do OmniRoute virava "" e o gateway recebia
-// requisições ANÔNIMAS (catálogo 401; chat sem as conexões da conta).
 import { readSecret, isEncrypted } from "../security/crypto";
 import { getAvailableGeminiModels } from "./gemini-client";
 import { TelemetryLogger } from "../telemetry/telemetry-logger";
@@ -53,101 +47,6 @@ import {
   type GatewayFailureKind,
 } from "../llm/gateways";
 import { extractAssistantTextFromCompletion } from "../llm/chat-completion-text";
-import prisma from "@/lib/prisma";
-
-export function resolveOmniRouteUrl(rawUrl?: string): string {
-  // FIX DEFINITIVO (porta morta): normaliza qualquer URL apontando para a porta 8080
-  // (default legado do schema Prisma — porta em que NADA roda) para a porta real do
-  // gateway, derivada de OMNIROUTE_URL do .env/compose (fallback 20128). Sem isso,
-  // registros legados no SQLite faziam o dispatcher bater em porta fechada enquanto a
-  // UI (que sonda localhost:20128 por cascata) mostrava o card verde — o paradoxo
-  // "verde mas quebrado".
-  const envUrl = (process.env.OMNIROUTE_URL || "").trim();
-  let base = (rawUrl || envUrl || "http://localhost:20128/v1").trim();
-  if (/:8080(\/|$)/.test(base)) {
-    let port = "20128";
-    try {
-      port = new URL(envUrl).port || "20128";
-    } catch {
-      /* env ausente/inválido: usa a porta padrão documentada */
-    }
-    base = base.replace(/:8080(?=\/|$)/, `:${port}`);
-    console.warn(`[ROUTER] omniRouteUrl legado na porta 8080 detectado — reescrito para :${port} (${base}).`);
-  }
-
-  // IMPORTANTE: a detecção de Docker serve apenas para converter "localhost" -> "host.docker.internal".
-  // Reescrever para o hostname "omniroute" fora da rede do docker-compose causa ENOTFOUND indevido
-  // Otimização decisiva (Fase 7): localhost/127.0.0.1 SEMPRE aponta para o próprio
-  // namespace de rede — dentro OU fora de um container. Logo, NÃO há motivo para
-  // reescrevê-lo quando o alvo é loopback. host.docker.internal só é necessário
-  // quando o processo roda em container e precisa alcançar o LOOPBACK DO HOST.
-  // Como não temos como distinguir isso no runtime, tratamos assim:
-  //   - IS_DOCKER=true (injetado pelo compose) => conversão explícita pedida pelo operador;
-  //   - /.dockerenv presente sem flag => ambiente genérico de container (CI/k8s): mantém localhost,
-  //     que é o comportamento correto para gateways publicados via port-mapping interno ou hostNetwork.
-  // A conversão automática por /.dockerenv era a fonte de falsos ENOTFOUND em CI e testes.
-  if (isDockerExplicit() && (base.includes("localhost") || base.includes("127.0.0.1"))) {
-    // host.docker.internal funciona em Docker Desktop (Mac/Windows) e no Linux com --add-host.
-    return base
-      .replace("localhost", "host.docker.internal")
-      .replace("127.0.0.1", "host.docker.internal");
-  }
-  return base;
-}
-
-/** Apenas flags EXPLÍCITAS do operador/compose autorizam a reescrita de loopback. */
-function isDockerExplicit(): boolean {
-  return (
-    process.env.IS_DOCKER === "true" ||
-    process.env.DOCKER_CONTAINER === "1" ||
-    process.env.DOCKER === "true"
-  );
-}
-/**
- * Constrói a URL do gateway OmniRoute aceitando qualquer forma configurada pelo usuário:
- * "http://host:porta", ".../v1", ".../v1/chat/completions" etc. Retorna sempre o endpoint
- * completo de chat completions e a raiz correspondente.
- */
-export function buildOmniEndpoints(rawUrl?: string): { chatUrl: string; rootUrl: string } {
-  const resolved = resolveOmniRouteUrl(rawUrl).replace(/\/+$/, "");
-  const withoutSuffix = resolved.replace(/\/v1(\/chat\/completions)?$/i, "");
-  return {
-    chatUrl: `${withoutSuffix}/v1/chat/completions`,
-    rootUrl: withoutSuffix,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Fase 6 — Circuit-breaker do OmniRoute: após N falhas consecutivas, pula o
-// gateway por X ms (evita pagar timeout de conexão em TODA mensagem quando o
-// container está morto/entrando em OOM-restart).
-// ---------------------------------------------------------------------------
-const CB_FAILURE_THRESHOLD = Number(process.env.OMNIROUTE_CB_FAILURES) || 3;
-const CB_OPEN_MS = Number(process.env.OMNIROUTE_CB_COOLDOWN_MS) || 30000;
-let omniCbFailures = 0;
-let omniCbOpenedAt = 0;
-
-function omniCircuitOpen(): boolean {
-  if (omniCbFailures < CB_FAILURE_THRESHOLD) return false;
-  if (Date.now() - omniCbOpenedAt > CB_OPEN_MS) {
-    // meio-aberto: permite UMA tentativa de sondagem
-    omniCbFailures = CB_FAILURE_THRESHOLD - 1;
-    console.log("[ROUTER] Circuit-breaker OmniRoute meio-aberto: tentando sondar o gateway.");
-    return false;
-  }
-  return true;
-}
-function omniRecordFailure() {
-  omniCbFailures += 1;
-  if (omniCbFailures === CB_FAILURE_THRESHOLD) {
-    omniCbOpenedAt = Date.now();
-    console.warn(`[ROUTER] Circuit-breaker OmniRoute ABERTO por ${CB_OPEN_MS}ms apos ${CB_FAILURE_THRESHOLD} falhas consecutivas.`);
-  }
-}
-function omniRecordSuccess() {
-  if (omniCbFailures > 0) console.log("[ROUTER] Circuit-breaker OmniRoute FECHADO (gateway recuperado).");
-  omniCbFailures = 0;
-}
 
 // FIX (chave Gemini válida dando erro 404): os IDs "gemini-3.5-flash"/"gemini-3.7-flash"
 // NÃO existem na API v1beta do Google — qualquer requisição com eles retorna
@@ -159,27 +58,15 @@ export const HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-1.5-pro";
 
 // FIX (diagnóstico): guarda a última razão de falha de cada rota para embutir no
 // alerta de esgotamento — sem isso, UI verde + chat quebrado ficava indepurável.
-let lastOmniFailure = "";
 let lastGatewayFailure = "";
 let lastGroqFailure = "";
 let lastNvidiaFailure = "";
 let lastDeepseekFailure = "";
 let lastGeminiFailure = "";
 
-/** OmniRoute desativado explicitamente em Configurações > Gateways LLM. */
-async function isOmniRouteDisabled(): Promise<boolean> {
-  try {
-    const row = await prisma.llmGateway.findUnique({ where: { id: "omniroute" }, select: { enabled: true } });
-    return row?.enabled === false;
-  } catch {
-    return false;
-  }
-}
-
 function buildDispatchDiagnostics(): string {
   const parts: string[] = [];
   if (lastGatewayFailure) parts.push(lastGatewayFailure);
-  if (lastOmniFailure) parts.push(`OmniRoute Local: ${lastOmniFailure}`);
   if (lastGroqFailure) parts.push(`Groq Cloud: ${lastGroqFailure}`);
   if (lastNvidiaFailure) parts.push(`NVIDIA NIM: ${lastNvidiaFailure}`);
   if (lastDeepseekFailure) parts.push(`DeepSeek API: ${lastDeepseekFailure}`);
@@ -228,8 +115,6 @@ export interface DispatchOptions {
   groqKey?: string | null;
   nvidiaKey?: string | null;
   deepseekKey?: string | null;
-  omniRouteUrl?: string | null;
-  omniRouteKey?: string | null;
   stream?: boolean;
   /**
    * C5 — sinal de abort real (ex.: AbortSignal.timeout do guard da DAG).
@@ -247,13 +132,15 @@ export interface DispatchOptions {
   gatewayTimeoutMs?: number;
   /** F10: sessão que pediu a chamada — a falha do gateway fica na trilha dela (o worker lê o erro certo). */
   sessionId?: string;
+  /** Papéis com laudo JSON (conferente): pede json_object nos gateways compatíveis. */
+  responseFormat?: import("@/core/llm/gateways").LlmResponseFormat;
 }
 
 export interface DispatchResult {
   response: Response;
-  providerUsed: "freellmapi" | "deepseek" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
+  providerUsed: "freellmapi" | "deepseek" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "gemini-fallback" | "none";
   badge: string;
-  tierTag: "freellmapi" | "deepseek" | "omniroute" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
+  tierTag: "freellmapi" | "deepseek" | "groq-fallback" | "nvidia-fallback" | "deepseek-fallback" | "fast-fallback" | "fast" | "heavy" | "exhausted";
   modelUsed: string;
 }
 
@@ -262,29 +149,15 @@ export interface DispatchResult {
 // Fase 6 — Métricas leves do dispatcher (in-memory, expostas via GET /api/metrics)
 // ---------------------------------------------------------------------------
 export interface RouterMetrics {
-  omnirouteAttempts: number;
-  omnirouteSuccesses: number;
   geminiFallbacks: number;
   exhausted: number;
-  omniLatenciesMs: number[];
 }
 const metrics: RouterMetrics = {
-  omnirouteAttempts: 0,
-  omnirouteSuccesses: 0,
   geminiFallbacks: 0,
   exhausted: 0,
-  omniLatenciesMs: [],
 };
-export function getRouterMetrics(): RouterMetrics & { p50?: number; p95?: number } {
-  const sorted = [...metrics.omniLatenciesMs].sort((a, b) => a - b);
-  const pct = (q: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : undefined);
-  return { ...metrics, p50: pct(0.5), p95: pct(0.95) };
-}
-function recordOmniAttempt() { metrics.omnirouteAttempts += 1; }
-function recordOmniSuccess(latencyMs: number) {
-  metrics.omnirouteSuccesses += 1;
-  metrics.omniLatenciesMs.push(latencyMs);
-  if (metrics.omniLatenciesMs.length > 200) metrics.omniLatenciesMs.shift();
+export function getRouterMetrics(): RouterMetrics {
+  return { ...metrics };
 }
 function recordGeminiFallback() { metrics.geminiFallbacks += 1; }
 function recordExhausted() { metrics.exhausted += 1; }
@@ -573,18 +446,7 @@ export class SmartRouter {
           };
         }
 
-        // Fallback 2: OmniRoute Local se houver endpoint customizado ou chave OmniRoute
-        if (keys.customEndpoint || keys.hasOmniRouteKey) {
-          return {
-            ...analysis,
-            tier: "custom",
-            actualModelUsed: "auto",
-            fallbackTriggered: true,
-            fallbackNotice: "Aviso: Chaves remotas indisponíveis. Redirecionando tarefa para o OmniRoute Local.",
-          };
-        }
-
-        // Fallback 3: Fallback final para Gemini Flash
+        // Fallback 2: Fallback final para Gemini Flash
         return {
           ...analysis,
           tier: "fast",
@@ -602,15 +464,6 @@ export class SmartRouter {
           actualModelUsed: "claude-3-7-sonnet",
           fallbackTriggered: true,
           fallbackNotice: "Chave Gemini não cadastrada. Executando via Claude Sonnet.",
-        };
-      }
-      if (keys.customEndpoint || keys.hasOmniRouteKey) {
-        return {
-          ...analysis,
-          tier: "custom",
-          actualModelUsed: "auto",
-          fallbackTriggered: true,
-          fallbackNotice: "Roteando para OmniRoute Local.",
         };
       }
     }
@@ -801,7 +654,8 @@ export class SmartRouter {
     maxTokens?: number,
     allowedRoutedViaPrefixes?: string[],
     timeoutMs?: number,
-    sessionId?: string
+    sessionId?: string,
+    responseFormat?: import("@/core/llm/gateways").LlmResponseFormat
   ): Promise<DispatchResult | { failedKind: GatewayFailureKind }> {
     const label = GATEWAY_DEFAULTS[gw.id].label;
     const model = modelForTier(gw, tier) || "auto";
@@ -812,6 +666,7 @@ export class SmartRouter {
       signal,
       maxTokens: maxTokens || Number(process.env.LLM_GATEWAY_MAX_TOKENS) || 8192,
       timeoutMs,
+      responseFormat,
     });
     if (attempt.ok) {
       if (
@@ -884,218 +739,7 @@ export class SmartRouter {
   }
 
   /**
-   * Rota OmniRoute (gateway local): cascata de modelos, cooldown de cota e circuit-breaker
-   * próprios — extraída de dispatchWithFallback sem mudança de comportamento. `explicitModels`
-   * vem de LlmGateway.modelFast/modelHeavy (modelo exato escolhido pelo operador).
-   */
-  private async tryOmniRouteGateway(params: {
-    messages: DispatchMessage[];
-    tier: ModelTier;
-    stream: boolean;
-    signal?: AbortSignal;
-    omniRouteUrl?: string | null;
-    effectiveOmniRouteKey: string;
-    explicitModels?: string[];
-  }): Promise<DispatchResult | null> {
-    const { messages, tier, stream, signal, omniRouteUrl, effectiveOmniRouteKey, explicitModels } = params;
-    const omniMaxTokens = Number(process.env.OMNIROUTE_MAX_TOKENS) || 8192;
-
-    const rawUrl = omniRouteUrl || process.env.OMNIROUTE_URL || "http://localhost:20128/v1";
-    const { chatUrl: omniEndpoint, rootUrl: omniRootUrl } = buildOmniEndpoints(rawUrl);
-
-    // Timeout POR MODELO (não por gateway). Sem stream, o gateway só devolve os headers quando
-    // termina de gerar — 15s cortava respostas de código no meio. Com stream, só precisa do
-    // primeiro byte.
-    const omniAttemptTimeoutMs =
-      Number(process.env.OMNIROUTE_TIMEOUT_MS) || (stream ? 20000 : 60000);
-    const circuitOpen = omniCircuitOpen();
-
-    // Cascata de modelos. Ordem de precedência:
-    //  1. OMNIROUTE_MODEL (lista explícita do operador);
-    //  2. modelos VERIFICADOS por descoberta (ver omni-model-discovery.ts) — testados de
-    //     verdade contra o gateway, só de provedores com credencial ativa, mais rápido primeiro;
-    //  3. combos virtuais `auto/*` do gateway, só como último recurso: eles sorteiam entre
-    //     centenas de alvos (inclusive provedores sem credencial) e podem levar dezenas de
-    //     segundos até falhar — era a causa do "OmniRoute não funciona".
-    const autoCascade =
-      tier === "heavy"
-        ? ["auto/coding:free", "auto/best-coding-fast", "auto/fast", "auto/cheap", "auto/best-free", "auto"]
-        : ["auto/best-free", "auto/chat", "auto/fast", "auto/cheap", "auto"];
-    const envModels = explicitModels?.length ? explicitModels.join(",") : process.env.OMNIROUTE_MODEL?.trim();
-    let fullList: string[];
-    let usingVerifiedModels = false;
-    if (envModels) {
-      fullList = envModels.split(",").map((s) => s.trim()).filter(Boolean);
-    } else {
-      const verified =
-        circuitOpen || signal?.aborted
-          ? []
-          : await ensureVerifiedOmniModels(
-              { rootUrl: omniRootUrl, chatUrl: omniEndpoint, apiKey: effectiveOmniRouteKey },
-              signal
-            );
-      usingVerifiedModels = verified.length > 0;
-      fullList = usingVerifiedModels ? verified.map((m) => m.id) : autoCascade;
-    }
-
-    const requestedOmniModels = fullList.filter((m) => !isComboOnCooldown(m));
-    if (requestedOmniModels.length === 0 && fullList.length > 0) {
-      console.warn("[ROUTER] Todos os modelos da cascata em cooldown de cota; tentando o primeiro como última chance.");
-      requestedOmniModels.push(fullList[0]);
-    }
-
-    // ----------------------------------------------------
-    // OmniRoute Local Gateway
-    // ----------------------------------------------------
-    recordOmniAttempt();
-    if (circuitOpen) {
-      lastOmniFailure = "circuit-breaker aberto apos falhas consecutivas (cooldown de 30s)";
-      console.warn("[ROUTER] OmniRoute ignorado (circuit-breaker aberto); avançando na cascata BYOK.");
-    } else
-    for (let omniIdx = 0; omniIdx < requestedOmniModels.length; omniIdx++) {
-      const requestedOmniModel = requestedOmniModels[omniIdx];
-      let networkDown = false;
-      try {
-      const omniHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (effectiveOmniRouteKey) {
-        omniHeaders["Authorization"] = `Bearer ${effectiveOmniRouteKey}`;
-      }
-
-      const omniBody = JSON.stringify({
-        model: requestedOmniModel,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        stream,
-        max_tokens: omniMaxTokens,
-      });
-
-      const omniStart = Date.now();
-      // Timeout do MODELO combinado com o sinal do chamador (guard da DAG). Antes, com `signal`
-      // presente o timeout interno era ignorado e um modelo travado consumia a etapa inteira.
-      const attemptTimeout = AbortSignal.timeout(omniAttemptTimeoutMs);
-      const attemptSignal = signal ? AbortSignal.any([signal, attemptTimeout]) : attemptTimeout;
-      let modelTimedOut = false;
-      const omniRes = await safeFetch(omniEndpoint, {
-        method: "POST",
-        headers: omniHeaders,
-        body: omniBody,
-        signal: attemptSignal,
-      }).catch((err) => {
-        if (signal?.aborted) {
-          // O chamador desistiu (timeout da etapa): não há o que tentar depois.
-          networkDown = true;
-          lastOmniFailure = "requisição abortada pelo chamador";
-        } else if (attemptTimeout.aborted) {
-          // Modelo lento NÃO é gateway fora do ar: tenta o próximo modelo da cascata.
-          // Antes isso dava `break` e abandonava o OmniRoute inteiro no primeiro combo lento.
-          modelTimedOut = true;
-          lastOmniFailure = `modelo "${requestedOmniModel}" sem resposta em ${omniAttemptTimeoutMs}ms`;
-          console.warn(`[ROUTER] OmniRoute: ${lastOmniFailure} — tentando o próximo da cascata.`);
-        } else {
-          // Falha de conexão real (gateway parado/porta fechada): só isso alimenta o circuit-breaker.
-          networkDown = true;
-          omniRecordFailure();
-          lastOmniFailure = `falha de rede em ${omniEndpoint}: ${String(err).slice(0, 160)}`;
-          console.warn(
-            `[ROUTER] OmniRoute inacessível em ${omniEndpoint} (${Date.now() - omniStart}ms): ${String(err)}`
-          );
-        }
-        return null;
-      });
-      if (modelTimedOut && usingVerifiedModels) reportOmniModelFailure(requestedOmniModel);
-
-      if (omniRes && omniRes.ok) {
-        omniRecordSuccess();
-        recordOmniSuccess(Date.now() - omniStart);
-        if (usingVerifiedModels) reportOmniModelSuccess(requestedOmniModel, Date.now() - omniStart);
-
-        const idleMs = Number(process.env.OMNIROUTE_IDLE_TIMEOUT_MS) || 45000;
-        let idleTimer: ReturnType<typeof setTimeout> | undefined;
-        let streamBroken = false;
-        const resetIdle = () => {
-          if (idleTimer) clearTimeout(idleTimer);
-          idleTimer = setTimeout(() => {
-            streamBroken = true;
-            try {
-              if (omniRes.body) void omniRes.body.cancel().catch(() => {});
-            } catch {
-              /* body já fechado */
-            }
-          }, idleMs);
-        };
-        resetIdle();
-
-        if (omniRes.body) {
-          const guarded = omniRes.body.pipeThrough(
-            new TransformStream<Uint8Array, Uint8Array>({
-              transform(chunk, controller) {
-                resetIdle();
-                controller.enqueue(chunk);
-              },
-              flush() {
-                if (idleTimer) clearTimeout(idleTimer);
-              },
-            })
-          );
-          console.log(`[ROUTER] Chamada processada via OmniRoute Local (${requestedOmniModel}).`);
-          return {
-            response: new Response(guarded, { status: omniRes.status, headers: omniRes.headers }),
-            providerUsed: "omniroute",
-            badge: "🤖 OmniRoute Local",
-            tierTag: "omniroute",
-            modelUsed: requestedOmniModel,
-          };
-        } else {
-          if (idleTimer) clearTimeout(idleTimer);
-          console.log(`[ROUTER] Chamada processada via OmniRoute Local (${requestedOmniModel}).`);
-          return {
-            response: omniRes,
-            providerUsed: "omniroute",
-            badge: "🤖 OmniRoute Local",
-            tierTag: "omniroute",
-            modelUsed: requestedOmniModel,
-          };
-        }
-      } else if (omniRes) {
-        // 5xx aqui é falha do PROVEDOR por trás do gateway (ex.: 502 de upstream sem
-        // credencial), não do gateway: não alimenta mais o circuit-breaker — antes, três
-        // modelos ruins seguidos desligavam o OmniRoute inteiro por 30s.
-        const errText = await omniRes.text().catch(() => "");
-        // 401/403 também chegam de PROVEDORES por trás do gateway (credencial do upstream
-        // recusada/esgotada), não só da chave do gateway — então seguem para o próximo modelo.
-        const quotaHit = omniRes.status === 402 || omniRes.status === 429;
-        if (quotaHit) markComboExhausted(requestedOmniModel, omniRes.status);
-        if (usingVerifiedModels) reportOmniModelFailure(requestedOmniModel);
-        lastOmniFailure = quotaHit
-          ? `HTTP ${omniRes.status} (cotas/créditos esgotados no modelo "${requestedOmniModel}"): ${errText.slice(0, 160)}`
-          : `HTTP ${omniRes.status} no modelo "${requestedOmniModel}": ${errText.slice(0, 160)}`;
-        console.warn(
-          `[ROUTER] OmniRoute HTTP ${omniRes.status} no modelo "${requestedOmniModel}" (${Date.now() - omniStart}ms). ` +
-            (omniIdx < requestedOmniModels.length - 1
-              ? `tentando o próximo da cascata: "${requestedOmniModels[omniIdx + 1]}"`
-              : `Resposta: ${errText.substring(0, 200)}`)
-        );
-      }
-      if (networkDown) break;
-    } catch (omniErr) {
-      omniRecordFailure();
-      lastOmniFailure = `exceção na tentativa OmniRoute: ${String(omniErr).slice(0, 160)}`;
-      console.warn(`[ROUTER] OmniRoute indisponível ou em erro: (${String(omniErr)})`);
-      break;
-    }
-    }
-    return null;
-  }
-
-  /**
-   * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall):
-   * 1. Tentativa 1 (Primária): OmniRoute Local Gateway (/v1/chat/completions)
-   * 2. Tentativa 2: Groq Cloud API Direta
-   * 3. Tentativa 3: NVIDIA NIM API Direta
-   * 4. Tentativa 4: DeepSeek API Direta
-   * 5. Tentativa 5: Google Gemini Direto
-   * 6. Tentativa 6 (Esgotamento): Retorna alerta amigável de cota/serviço indisponível.
+   * Executa o despacho de chamadas LLM com cascata de fallback silenciosa (Waterfall).
    */
   public async dispatchWithFallback(options: DispatchOptions): Promise<DispatchResult> {
     const {
@@ -1106,8 +750,6 @@ export class SmartRouter {
       groqKey,
       nvidiaKey,
       deepseekKey,
-      omniRouteUrl,
-      omniRouteKey,
       stream = true,
       signal,
     } = options;
@@ -1128,58 +770,27 @@ export class SmartRouter {
 
     const effectiveGeminiKey = resolveEffectiveGeminiKey(geminiKey);
 
-    const effectiveOmniRouteKey =
-      (() => {
-        try {
-          return isEncrypted(omniRouteKey) ? readSecret(omniRouteKey) : omniRouteKey || "";
-        } catch {
-          return "";
-        }
-      })().trim() ||
-      process.env.OMNIROUTE_KEY ||
-      process.env.OMNIROUTE_API_KEY ||
-      "";
-
-    if (omniRouteKey && /^enc:v\d:/i.test(omniRouteKey.trim())) {
-      console.warn("[ROUTER] omniRouteKey recebida CRIPTOGRAFADA (enc:vN:) — use readSecret() antes do dispatch.");
-    }
-
-    // ----------------------------------------------------
-    // TENTATIVA 1: gateways LLM em ordem de prioridade (FreeLLMAPI, OmniRoute). Desenho em docs/NEXTCODE-REFERENCIA.md.
-    // ----------------------------------------------------
     const gateways = options.gateways ?? (await loadGatewayConfigs().catch(() => [] as GatewayConfig[]));
-    // OmniRoute sempre participa (salvo se desativado explicitamente): é a rota legada e os testes
-    // existentes apontam para ele via omniRouteUrl.
-    const omniDisabled = options.gateways ? !gateways.some((g) => g.id === "omniroute") : await isOmniRouteDisabled();
-    const withOmni: GatewayConfig[] =
-      gateways.some((g) => g.id === "omniroute") || omniDisabled
-        ? gateways
-        : [...gateways, { id: "omniroute", enabled: true, priority: 99, baseUrl: "", apiKey: "", modelFast: null, modelHeavy: null }];
-    // Tier pesado (código dos nós): gateways pagos/fortes primeiro. Tier rápido: só gateways com
-    // modelo rápido (o pago não é gasto em chat e classificação). OmniRoute sem modelo = cascata.
     const gatewayOrder: GatewayConfig[] = (
       tier === "heavy"
-        ? [...withOmni.filter((g) => g.heavyFirst), ...withOmni.filter((g) => !g.heavyFirst)]
-        : withOmni
-    ).filter((g) => g.id === "omniroute" || modelForTier(g, tier) !== null);
+        ? [...gateways.filter((g) => g.heavyFirst), ...gateways.filter((g) => !g.heavyFirst)]
+        : gateways
+    ).filter((g) => modelForTier(g, tier) !== null);
     let aggregatorAlreadyTried = false;
     for (const gw of gatewayOrder) {
       if (signal?.aborted) break;
-      if (gw.id === "omniroute") {
-        const explicit = modelForTier(gw, tier);
-        const omniResult = await this.tryOmniRouteGateway({
-          messages,
-          tier,
-          stream,
-          signal,
-          omniRouteUrl,
-          effectiveOmniRouteKey,
-          explicitModels: explicit ? explicit.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
-        });
-        if (omniResult) return omniResult;
-        continue;
-      }
-      const gatewayResult = await this.tryOpenAiGateway(gw, messages, tier, stream, signal, options.maxTokens, options.allowedRoutedViaPrefixes, options.gatewayTimeoutMs, options.sessionId);
+      const gatewayResult = await this.tryOpenAiGateway(
+        gw,
+        messages,
+        tier,
+        stream,
+        signal,
+        options.maxTokens,
+        options.allowedRoutedViaPrefixes,
+        options.gatewayTimeoutMs,
+        options.sessionId,
+        options.responseFormat
+      );
       if ("response" in gatewayResult) return gatewayResult;
       // O gateway está no ar e já tentou os provedores dele (com as mesmas chaves): as rotas
       // nativas abaixo usam modelos fixos (vários já descontinuados) e só somavam minutos.
@@ -1239,7 +850,7 @@ export class SmartRouter {
           });
 
           // Anti-SSRF: mesmo o host do Gemini sendo fixo, toda saída HTTP do router passa
-          // pelo safeFetch (validação pós-DNS + sem redirect), como Groq/NVIDIA/OmniRoute.
+          // pelo safeFetch (validação pós-DNS + sem redirect), como Groq/NVIDIA/BYOK.
           // O Response é devolvido intacto, então o streaming SSE continua funcionando.
           let geminiRes = await safeFetch(geminiUrl, {
             method: "POST",
@@ -1293,7 +904,7 @@ export class SmartRouter {
     // TENTATIVA 6: Esgotamento de Cotas / Provedores
     // ----------------------------------------------------
     const alertText =
-      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível obter resposta de nenhum dos provedores configurados (FreeLLMAPI, OmniRoute Local, Groq Cloud, NVIDIA NIM, DeepSeek ou Gemini Direto). Abra **Configurações > Gateways LLM** e rode o diagnóstico: ele diz exatamente o que falhou e o que fazer." +
+      "⚠️ **Cotas e Serviços Indisponíveis:** Não foi possível obter resposta de nenhum dos provedores configurados (FreeLLMAPI, Groq Cloud, NVIDIA NIM, DeepSeek ou Gemini Direto). Abra **Configurações > Gateways LLM** e rode o diagnóstico: ele diz exatamente o que falhou e o que fazer." +
       buildDispatchDiagnostics();
 
     let fallbackResponse: Response;

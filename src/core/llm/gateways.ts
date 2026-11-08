@@ -1,5 +1,5 @@
 /**
- * Gateways de LLM compatíveis com OpenAI (FreeLLMAPI e OmniRoute). O desenho está em docs/NEXTCODE-REFERENCIA.md.
+ * Gateways de LLM compatíveis com OpenAI (FreeLLMAPI e DeepSeek). O desenho está em docs/NEXTCODE-REFERENCIA.md.
  *
  * Os dois gateways JÁ fazem roteamento entre provedores, cooldown e controle de cota. O NextCode
  * não reimplementa nada disso: escolhe o gateway pela ordem configurada, classifica a falha
@@ -9,11 +9,11 @@
 import prisma from "@/lib/prisma";
 import { readSecret, writeSecret } from "@/core/security/crypto";
 import { safeFetch } from "@/core/security/safe-fetch";
-import { ensureVerifiedOmniModels } from "@/core/router/omni-model-discovery";
 import { extractAssistantTextFromCompletion } from "@/core/llm/chat-completion-text";
+import { localUnifiedKey, shouldSyncLocalFreellmapiKey } from "@/core/llm/local-freellmapi-key";
 
-export type GatewayId = "freellmapi" | "omniroute" | "deepseek";
-export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "omniroute", "deepseek"];
+export type GatewayId = "freellmapi" | "deepseek";
+export const GATEWAY_IDS: GatewayId[] = ["freellmapi", "deepseek"];
 
 export interface GatewayConfig {
   id: GatewayId;
@@ -39,23 +39,13 @@ export const GATEWAY_DEFAULTS: Record<GatewayId, { label: string; baseUrl: strin
     pingPath: "/api/ping",
     dashboardUrl: "http://localhost:3100",
   },
-  omniroute: {
-    label: "OmniRoute",
-    baseUrl: "http://localhost:20128/v1",
-    priority: 1,
-    // null = cascata própria do router (OMNIROUTE_MODEL > modelos verificados > combos auto/*).
-    modelFast: null,
-    modelHeavy: null,
-    pingPath: "/api/health",
-    dashboardUrl: "http://localhost:20128",
-  },
   deepseek: {
     // API paga e direta (chave em Configurações > chaves nativas). Só no tier pesado: o código
     // dos nós vai para ela primeiro; chat e Auditor Cego seguem no gratuito (modelo diferente
     // do executor, como a arquitetura pede para o avaliador).
     label: "DeepSeek (pago)",
     baseUrl: "https://api.deepseek.com/v1",
-    priority: 2,
+    priority: 1,
     modelFast: null,
     modelHeavy: "deepseek-v4-pro",
     pingPath: "/models",
@@ -73,7 +63,7 @@ export function invalidateGatewayCache(): void {
 
 /**
  * Gateways ativos e utilizáveis, em ordem de prioridade. FreeLLMAPI só entra com chave
- * unificada (ele recusa chamadas sem ela). OmniRoute lê URL/chave do Setting legado.
+ * unificada (ele recusa chamadas sem ela).
  */
 export async function loadGatewayConfigs(): Promise<GatewayConfig[]> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
@@ -97,14 +87,11 @@ export async function loadGatewayConfigs(): Promise<GatewayConfig[]> {
       modelFast: row?.modelFast ?? def.modelFast,
       modelHeavy: row?.modelHeavy ?? def.modelHeavy,
     };
-    if (id === "omniroute") {
-      base.baseUrl = setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || def.baseUrl;
-      base.apiKey = readSecret(setting?.omniRouteKey);
-    }
     if (id === "deepseek") {
       base.apiKey = readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey);
       base.heavyFirst = true;
     }
+    if (id === "freellmapi") base.apiKey = await alignFreellmapiKey(base.baseUrl, base.apiKey);
     if ((id === "freellmapi" || id === "deepseek") && !base.apiKey) continue;
     if (!base.enabled) continue;
     configs.push(base);
@@ -138,6 +125,11 @@ export async function saveGatewayConfig(id: GatewayId, update: GatewayUpdate): P
     create: { id, priority: GATEWAY_DEFAULTS[id].priority, ...data },
   });
   invalidateGatewayCache();
+  if (id === "freellmapi") {
+    const row = await prisma.llmGateway.findUnique({ where: { id: "freellmapi" } });
+    const baseUrl = row?.baseUrl || GATEWAY_DEFAULTS.freellmapi.baseUrl;
+    await alignFreellmapiKey(baseUrl, readSecret(row?.apiKey));
+  }
 }
 
 export function modelForTier(gw: GatewayConfig, tier: "fast" | "heavy" | "custom"): string | null {
@@ -151,6 +143,31 @@ export function chatCompletionsUrl(baseUrl: string): string {
 
 function rootUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
+/**
+ * No FreeLLMAPI local a chave unificada mora no container. Uma chave colada à mão
+ * (senha do painel, chave de provedor, chave antiga) faz o /v1 responder 401.
+ * Quando a URL é a deste compose, a chave do container substitui a gravada.
+ */
+export async function alignFreellmapiKey(baseUrl: string, current: string): Promise<string> {
+  if (!shouldSyncLocalFreellmapiKey(baseUrl)) return current;
+  const local = await localUnifiedKey();
+  if (!local || local === current) return current;
+  const encrypted = writeSecret(local);
+  if (!encrypted) return current;
+  await prisma.llmGateway.upsert({
+    where: { id: "freellmapi" },
+    update: { apiKey: encrypted },
+    create: {
+      id: "freellmapi",
+      priority: GATEWAY_DEFAULTS.freellmapi.priority,
+      baseUrl,
+      apiKey: encrypted,
+    },
+  });
+  invalidateGatewayCache();
+  return local;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,12 +210,62 @@ export function classifyStatus(status: number): GatewayFailureKind {
   return "exhausted"; // 402, 429, 5xx: o gateway já esgotou o próprio fallback
 }
 
+/** espera = a rota volta sozinha; credito/chave = o humano precisa agir. */
+export type ProviderOutage = "espera" | "credito" | "chave" | "outro";
+
+/**
+ * Detecta falha de transporte/rede ou 502/504 entre o gateway local (ex.: FreeLLMAPI) e o provedor upstream
+ * (ex.: `HTTP 502 — ... upstream provider errors ... Last error: fetch`, `ENOTFOUND`, `EAI_AGAIN`, `UND_ERR_CONNECT_TIMEOUT`).
+ * Não é erro de chave nem falta de crédito: o container local responde à sonda (`/v1/models`), mas a rede/upstream caiu temporariamente.
+ */
+export function isUpstreamTransportOrServerOutage(detail: string, status?: number): boolean {
+  const text = (detail || "").toLowerCase();
+  if (status === 401 || status === 403 || status === 402) return false;
+  if (/out_of_credits|insufficient quota|payment required|sem crédito|invalid api key|incorrect api key|unauthorized/.test(text)) {
+    return false;
+  }
+  if (status === 502 || status === 504 || status === 522 || status === 524) return true;
+  return /upstream provider error|provider-side failure|last error:\s*fetch|fetch failed|enotfound|eai_again|econnreset|econnrefused|etimedout|und_err_connect_timeout|socket hang up|bad gateway|gateway timeout|overloaded|temporarily unavailable/.test(
+    text
+  );
+}
+
+/**
+ * O FreeLLMAPI embrulha cooldown como "no usable provider key", e quedas de rede/upstream como HTTP 502 (`Last error: fetch`).
+ * Frases de limite/cooldown e falhas transitórias de transporte/upstream decidem antes de chave/crédito.
+ */
+export function classifyProviderOutage(detail: string, status?: number): ProviderOutage {
+  const text = detail.toLowerCase();
+  if (/rate[- ]?limit|cooldown|soonest reset|wait for rate/.test(text)) return "espera";
+  if (status === 401 || status === 403 || /invalid api key|incorrect api key|unauthorized/.test(text)) return "chave";
+  if (status === 402 || /out_of_credits|insufficient quota|payment required|sem crédito/.test(text)) return "credito";
+  if (isUpstreamTransportOrServerOutage(detail, status)) return "espera";
+  if (/no candidate model|usable provider key|api key/.test(text)) return "chave";
+  return "outro";
+}
+
+/** "Soonest reset ~14s" / "~18h". Sem prazo no texto, devolve null. */
+export function providerResetWaitMs(detail: string): number | null {
+  const match = detail.match(/soonest reset\s*~?\s*(\d+)\s*(h|min|m|s)\b/i);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  const unit = match[2].toLowerCase();
+  if (unit === "h") return amount * 3_600_000;
+  if (unit === "m" || unit === "min") return amount * 60_000;
+  return amount * 1_000;
+}
+
+export type LlmResponseFormat = { type: "json_object" };
+
 export interface GatewayCallOptions {
   messages: { role: string; content: string }[];
   model: string;
   stream: boolean;
   signal?: AbortSignal;
   maxTokens?: number;
+  /** OpenAI-compat: força JSON quando o gateway suporta (conferente, laudos). */
+  responseFormat?: LlmResponseFormat;
   /** Tempo máximo desta chamada; sem ele vale LLM_GATEWAY_TIMEOUT_MS ou 30 s (stream) / 120 s. */
   timeoutMs?: number;
 }
@@ -209,40 +276,62 @@ export async function callGateway(gw: GatewayConfig, opts: GatewayCallOptions): 
   const attemptTimeout = AbortSignal.timeout(timeoutMs);
   const signal = opts.signal ? AbortSignal.any([opts.signal, attemptTimeout]) : attemptTimeout;
   const started = Date.now();
+  const requestBody = JSON.stringify({
+    model: opts.model,
+    messages: opts.messages,
+    stream: opts.stream,
+    ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
+    ...(opts.responseFormat ? { response_format: opts.responseFormat } : {}),
+  });
+  const requestHeaders = {
+    "Content-Type": "application/json",
+    ...(gw.apiKey ? { Authorization: `Bearer ${gw.apiKey}` } : {}),
+  };
+  const transientRetryDelayMs = Number(process.env.NEXTCODE_GATEWAY_TRANSIENT_RETRY_MS ?? 350);
 
-  let res: Response;
-  try {
-    res = await safeFetch(chatCompletionsUrl(gw.baseUrl), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(gw.apiKey ? { Authorization: `Bearer ${gw.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        messages: opts.messages,
-        stream: opts.stream,
-        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
-      }),
-      signal,
-    });
-  } catch (err) {
-    if (opts.signal?.aborted) return { ok: false, kind: "timeout", detail: "requisição abortada pelo chamador" };
-    if (attemptTimeout.aborted) {
-      return { ok: false, kind: "timeout", detail: `sem resposta em ${Math.round(timeoutMs / 1000)}s` };
+  for (let attemptIdx = 0; attemptIdx < 2; attemptIdx++) {
+    let res: Response;
+    try {
+      res = await safeFetch(chatCompletionsUrl(gw.baseUrl), {
+        method: "POST",
+        headers: requestHeaders,
+        body: requestBody,
+        signal,
+      });
+    } catch (err) {
+      if (opts.signal?.aborted) return { ok: false, kind: "timeout", detail: "requisição abortada pelo chamador" };
+      if (attemptTimeout.aborted) {
+        return { ok: false, kind: "timeout", detail: `sem resposta em ${Math.round(timeoutMs / 1000)}s` };
+      }
+      downUntil.set(gw.id, Date.now() + DOWN_COOLDOWN_MS);
+      return { ok: false, kind: "network", detail: `inacessível em ${gw.baseUrl}: ${String(err).slice(0, 160)}` };
     }
-    downUntil.set(gw.id, Date.now() + DOWN_COOLDOWN_MS);
-    return { ok: false, kind: "network", detail: `inacessível em ${gw.baseUrl}: ${String(err).slice(0, 160)}` };
+
+    if (res.ok) {
+      downUntil.delete(gw.id);
+      const routed = res.headers.get("x-routed-via");
+      return { ok: true, response: res, servedBy: routed || opts.model, latencyMs: Date.now() - started };
+    }
+
+    const body = await res.text().catch(() => "");
+    const detail = extractErrorMessage(body);
+
+    // Se o gateway local respondeu 502/504 por queda momentânea de socket/fetch upstream, tenta mais 1 vez antes de falhar.
+    if (
+      attemptIdx === 0 &&
+      !signal.aborted &&
+      isUpstreamTransportOrServerOutage(detail, res.status)
+    ) {
+      if (transientRetryDelayMs > 0) {
+        await new Promise((r) => setTimeout(r, transientRetryDelayMs));
+      }
+      if (!signal.aborted) continue;
+    }
+
+    return { ok: false, kind: classifyStatus(res.status), status: res.status, detail };
   }
 
-  if (res.ok) {
-    downUntil.delete(gw.id);
-    const routed = res.headers.get("x-routed-via");
-    return { ok: true, response: res, servedBy: routed || opts.model, latencyMs: Date.now() - started };
-  }
-
-  const body = await res.text().catch(() => "");
-  return { ok: false, kind: classifyStatus(res.status), status: res.status, detail: extractErrorMessage(body) };
+  return { ok: false, kind: "exhausted", detail: "sem detalhe" };
 }
 
 // ---------------------------------------------------------------------------
@@ -293,29 +382,14 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     prisma.llmGateway.findUnique({ where: { id } }).catch(() => null),
     prisma.setting.findUnique({ where: { id: "default" } }).catch(() => null),
   ]);
-  const baseUrl =
-    id === "omniroute"
-      ? setting?.omniRouteUrl || setting?.customEndpoint || process.env.OMNIROUTE_URL || def.baseUrl
-      : row?.baseUrl || def.baseUrl;
-  const apiKey =
-    id === "omniroute"
-      ? readSecret(setting?.omniRouteKey)
-      : id === "deepseek"
-        ? readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey)
-        : readSecret(row?.apiKey);
+  const baseUrl = row?.baseUrl || def.baseUrl;
+  let apiKey =
+    id === "deepseek"
+      ? readSecret((setting as { deepseekKey?: string | null } | null)?.deepseekKey)
+      : readSecret(row?.apiKey);
+  if (id === "freellmapi") apiKey = await alignFreellmapiKey(baseUrl, apiKey);
   const configuredModel = row?.modelFast ?? def.modelFast ?? def.modelHeavy;
-  // O diagnóstico testa o MESMO modelo que o roteador vai usar. No OmniRoute sem modelo fixo, o
-  // roteador usa OMNIROUTE_MODEL ou os modelos verificados pela descoberta (não o combo auto/*).
-  let model = configuredModel || process.env.OMNIROUTE_MODEL?.split(",")[0]?.trim() || "";
-  if (!model && id === "omniroute" && apiKey) {
-    const root = rootUrl(baseUrl);
-    const verified = await ensureVerifiedOmniModels(
-      { rootUrl: root, chatUrl: chatCompletionsUrl(baseUrl), apiKey },
-      AbortSignal.timeout(90000)
-    ).catch(() => []);
-    model = verified[0]?.id || "";
-  }
-  if (!model) model = "auto/best-free";
+  let model = configuredModel || (id === "freellmapi" ? "auto/best-free" : "deepseek-chat");
 
   const health: GatewayHealth = {
     id,
@@ -346,7 +420,7 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     health.action =
       id === "freellmapi"
         ? "Suba o gateway: docker compose up -d freellmapi"
-        : "Suba o gateway: docker compose up -d omniroute";
+        : "Verifique a URL do gateway DeepSeek e a chave em Configurações.";
     return health;
   }
 
@@ -356,7 +430,7 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     health.action =
       id === "freellmapi"
         ? `Abra ${def.dashboardUrl}, crie a conta, cadastre as chaves dos provedores e copie a chave unificada (página Keys) para cá.`
-        : `Gere uma API key no painel do OmniRoute (${def.dashboardUrl}) e salve aqui.`;
+        : `Cadastre a chave DeepSeek em Configurações (provedor pago).`;
     return health;
   }
 
@@ -368,7 +442,7 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
     health.action =
       id === "freellmapi"
         ? `Copie de novo a chave unificada em ${def.dashboardUrl} (página Keys).`
-        : `A chave salva não vale neste OmniRoute: gere outra em ${def.dashboardUrl} e salve aqui.`;
+        : `A chave DeepSeek foi recusada: gere outra no painel da DeepSeek e salve aqui.`;
     return health;
   }
 
@@ -406,24 +480,15 @@ export async function probeGateway(id: GatewayId): Promise<GatewayHealth> {
 
   health.httpStatus = attempt.status ?? null;
   health.error = attempt.detail;
-  // OmniRoute: a chave do gateway já passou no /v1/models (authOk). Qualquer 4xx/5xx daqui em
-  // diante vem dos PROVEDORES por trás do modelo — trocar a chave do OmniRoute não resolve.
-  if (id === "omniroute" && attempt.kind !== "timeout" && attempt.kind !== "network") {
-    health.action =
-      `A chave do OmniRoute está correta (o gateway aceitou). Quem recusou foi o provedor por trás do modelo "${model}"` +
-      (/opencode/i.test(attempt.detail)
-        ? " (o OpenCode Zen bloqueia o plano gratuito fora do app OpenCode)"
-        : "") +
-      `. Para o OmniRoute servir modelos bons, conecte um provedor com chave própria em ${def.dashboardUrl} → Providers e fixe o modelo dele aqui (ex.: groq/llama-3.3-70b-versatile). Enquanto isso, o FreeLLMAPI é a rota principal.`;
-    return health;
-  }
   health.action =
     attempt.kind === "auth"
       ? `Chave recusada: copie de novo a chave unificada em ${def.dashboardUrl}.`
       : attempt.kind === "exhausted"
-        ? id === "freellmapi"
-          ? `Nenhum provedor do FreeLLMAPI respondeu. Cadastre chaves gratuitas (Groq, Google, Cerebras, OpenRouter...) em ${def.dashboardUrl} → Keys.`
-          : `O modelo "${model}" não tem provedor disponível agora (cota ou credencial). Ajuste os provedores/combos em ${def.dashboardUrl}.`
+        ? isUpstreamTransportOrServerOutage(attempt.detail, attempt.status)
+          ? `Falha transitória de rede ou instabilidade no provedor upstream (HTTP ${attempt.status ?? "5xx"}). As chaves estão preservadas; verifique a conexão de rede/DNS do container ou aguarde o provedor estabilizar.`
+          : id === "freellmapi"
+            ? `Nenhum provedor do FreeLLMAPI respondeu. Cadastre chaves gratuitas (Groq, Google, Cerebras, OpenRouter...) em ${def.dashboardUrl} → Keys.`
+            : `O modelo "${model}" não tem provedor disponível agora (cota ou credencial). Ajuste os provedores/combos em ${def.dashboardUrl}.`
         : attempt.kind === "bad_request"
           ? `O gateway recusou o modelo "${model}". Defina um modelo válido.`
           : "O gateway não respondeu a tempo.";
