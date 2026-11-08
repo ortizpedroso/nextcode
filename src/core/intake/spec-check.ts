@@ -128,13 +128,18 @@ export function checkSpecStructure(
 
   // SM1 (b) / T8a: arquivo citado por um REQ tem de estar em arquivos_afetados — senão nenhuma etapa
   // o escreve e o REQ fica impossível (teste real: REQ-002 exigia `vitest.config.ts`, fora da lista).
+  const ghostPaths = opts?.reqCriteriaPathsAbsentFromArquivos ?? [];
   for (const req of spec.requisitos ?? []) {
     for (const cited of citedFilePaths(`${req.titulo} ${req.criterio}`)) {
       const known = Array.from(files).some((f) => {
         const nf = f.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
         return nf === cited || nf.endsWith(`/${cited}`) || cited.endsWith(`/${nf}`);
       });
-      if (!known) {
+      const isGhost = ghostPaths.some((p) => {
+        const np = p.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
+        return np === cited || np.endsWith(`/${cited}`) || cited.endsWith(`/${np}`);
+      });
+      if (!known && !isGhost) {
         problems.push(
           `O requisito "${req.id}" cita o arquivo "${cited}", que não está em arquivos_afetados: acrescente-o (e a um módulo) ou tire a citação.`
         );

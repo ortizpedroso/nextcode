@@ -228,19 +228,11 @@ export function runProjectSpecAudit(
         };
       } else {
         const parsedMerged = parseSpecDocument(mergedText);
-        const allErrors = parsedMerged
-          ? checkSpecStructure(parsedMerged)
+        const checkErrors = parsedMerged
+          ? checkSpecStructure(parsedMerged, {
+              reqCriteriaPathsAbsentFromArquivos: delta.arquivosRemovidosNaSpec,
+            })
           : ["Erro ao parsear Spec reconciliada."];
-
-        // Erros de citação de arquivo removido do disco em REQ preservado viram aviso/lacuna, sem bloquear o merge
-        const checkErrors = allErrors.filter((err) => {
-          const citesRemoved = delta.arquivosRemovidosNaSpec.some((f) => err.includes(f));
-          const uncitedPreservedReq = delta.avisos.some((aviso) => {
-            const reqMatch = aviso.match(/O requisito "([^"]+)"/);
-            return reqMatch && err.includes(reqMatch[1]);
-          });
-          return !citesRemoved && !uncitedPreservedReq;
-        });
 
         if (checkErrors.length > 0) {
           result = {
