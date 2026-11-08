@@ -18,6 +18,12 @@ export function humanActionText(acao: HumanAction | undefined): string {
       return "**O que fazer:** a Spec está certa — o que sobrou é defeito de código, cada um com etapa dona (e, quando há, o teste que prova). Clique em **Autorizar mais uma rodada** no painel da DAG — ou escreva `autorizar rodada` aqui no chat. Se preferir mudar o pedido, responda o que ajustar: aí a Spec volta para revisão.";
     case "reparo_encaixe":
       return "**O que fazer:** a Spec **não** precisa ser reescrita — o que falhou é **código ou harness**. Se **já corrigiu no disco** (ou o build passa localmente), escreva **`reverificar entrega`** ou **`retomar`** para rodar a verificação final de novo. Se ainda faltam rodadas de reparo automático, use **`autorizar rodada`**. Só revise a Spec se quiser mudar o pedido de produto.";
+    case "reaprovar_trava_t1":
+      return (
+        "**O que fazer:** leia a lista de problemas acima. A **Spec pode estar correta** — o que falhou foi só o **plano DAG** (analista/T8b). " +
+        "Ajuste arquivos ou requisitos na Spec **somente se** os erros pedirem; depois abra **Spec T1** e **aprove de novo**. " +
+        "Se não houver lista de erros, confira tier **heavy**, gateway e timeout do analista antes de reaprovar."
+      );
     case "ajustar_spec":
     default:
       return "**O que fazer:** responda aqui no chat dizendo o que ajustar: a Spec volta para revisão e, aprovada, a execução recomeça.";

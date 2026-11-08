@@ -595,8 +595,6 @@ async function diretrizDoAnalista(sessionId: string, item: RepairPlanItem): Prom
       maxTokens: 800,
       sessionId,
       geminiKey: readSecret(setting?.geminiKey),
-      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-      omniRouteKey: readSecret(setting?.omniRouteKey),
       stream: false,
       signal: AbortSignal.timeout(90_000),
     });

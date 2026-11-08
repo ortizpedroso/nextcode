@@ -232,6 +232,43 @@ const IGNORED_TYPE_IDENTIFIERS = new Set([
   "Blob", "Json", "Request", "Response",
 ]);
 
+const IDENT_ONLY = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+
+/** Parâmetros exigidos pela Spec a partir de um trecho entre parênteses após o nome da função. */
+export function specParamNamesFromParenthetical(insideParens: string): string[] {
+  const trimmed = insideParens.trim();
+  if (!trimmed) return [];
+
+  const parts = trimmed.split(",");
+  const names: string[] = [];
+  let sawTyped = false;
+
+  for (const part of parts) {
+    const p = part.trim();
+    if (!p) continue;
+    if (p.startsWith("...")) {
+      const rest = p.slice(3).trim();
+      const m = rest.match(/^([a-zA-Z_$][a-zA-Z0-9_$]*)/);
+      if (m) names.push(m[1]);
+      continue;
+    }
+    if (p.includes(":")) {
+      sawTyped = true;
+      const beforeColon = p.split(":")[0].trim();
+      const m = beforeColon.match(/^([a-zA-Z_$][a-zA-Z0-9_$]*)/);
+      if (m) names.push(m[1]);
+      continue;
+    }
+    if (IDENT_ONLY.test(p)) names.push(p);
+  }
+
+  // Prosa entre parênteses (E.164, custo 12, etc.) — não é lista de parâmetros TS.
+  if (!sawTyped && names.length !== parts.filter((x) => x.trim()).length) return [];
+  if (!sawTyped && names.length === 0) return [];
+
+  return names.filter((n) => !IGNORED_TYPE_IDENTIFIERS.has(n));
+}
+
 /**
  * 2. Parâmetro que a Spec pôs entre parênteses não pode sumir da assinatura.
  * Para cada função do contrato, procura no textoPorReq o nome da função como palavra inteira
@@ -256,13 +293,13 @@ export function checkContractSignatureParameters(
 
   if (allFuncoes.length === 0) return [];
 
-  const errors: string[] = [];
+  const errorSet = new Set<string>();
   const reqTexts = Object.values(textoPorReq);
 
   for (const f of allFuncoes) {
     const fnName = f.nome;
     const fnWordRegex = new RegExp(`\\b${escapeRegExp(fnName)}\\b`, "g");
-    const sigWordRegex = (word: string) => new RegExp(`\\b${word}\\b`);
+    const sigWordRegex = (word: string) => new RegExp(`\\b${escapeRegExp(word)}\\b`);
 
     for (const text of reqTexts) {
       if (!text) continue;
@@ -275,19 +312,12 @@ export function checkContractSignatureParameters(
           const parenMatch = after.match(/^\s*\(([^)]*)\)/);
           if (!parenMatch) continue;
 
-          const insideParens = parenMatch[1];
-          const parts = insideParens.split(",");
-          for (const part of parts) {
-            const beforeColon = part.split(":")[0].trim();
-            if (!beforeColon) continue;
-
-            const idMatch = beforeColon.match(/^[a-zA-Z_$][a-zA-Z0-9_$]*/);
-            if (!idMatch) continue;
-            const ident = idMatch[0];
-            if (IGNORED_TYPE_IDENTIFIERS.has(ident)) continue;
-
+          const paramNames = specParamNamesFromParenthetical(parenMatch[1]);
+          for (const ident of paramNames) {
             if (!sigWordRegex(ident).test(f.assinatura)) {
-              errors.push(`[CONTRATO ASSINATURA] função "${fnName}" não contém o parâmetro "${ident}" em sua assinatura.`);
+              errorSet.add(
+                `[CONTRATO ASSINATURA] função "${fnName}" não contém o parâmetro "${ident}" em sua assinatura.`
+              );
             }
           }
         }
@@ -295,7 +325,7 @@ export function checkContractSignatureParameters(
     }
   }
 
-  return errors;
+  return [...errorSet];
 }
 
 /** T8b inteira sobre o plano final (depois da divisão pelo Jev): regras antigas + as do A2.1 + F1.1 junção. */

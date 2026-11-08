@@ -60,7 +60,8 @@ export type PhaseEvent =
   | { type: 'SEM_PENDENCIAS' }
   | { type: 'SEM_LLM' }
   | { type: 'LLM_VOLTOU' }
-  | { type: 'EXECUTOR_BLOQUEADO' }
+  | { type: 'EXECUTOR_BLOQUEADO'; motivo?: string }
+  | { type: 'CONTRATO_PLANO_INVALIDO' }
   | { type: 'TETO_CUSTO' }
   | { type: 'DESBLOQUEIO_HUMANO' }
   | { type: 'VERIFICACAO_COM_LACUNAS' }
@@ -91,6 +92,7 @@ export const PHASE_EVENT_TYPES = [
   'SEM_LLM',
   'LLM_VOLTOU',
   'EXECUTOR_BLOQUEADO',
+  'CONTRATO_PLANO_INVALIDO',
   'TETO_CUSTO',
   'DESBLOQUEIO_HUMANO',
   'VERIFICACAO_COM_LACUNAS',
@@ -126,7 +128,14 @@ export type PhaseEffect =
  * retomar = nada a mudar na Spec (ambiente, erro interno, silêncio, avaliador fora);
  * autorizar_verba = teto; retentar_etapa = etapa com 3 tentativas; ajustar_spec = o pedido precisa mudar.
  */
-export type HumanAction = 'retomar' | 'autorizar_verba' | 'retentar_etapa' | 'ajustar_spec' | 'autorizar_rodada' | 'reparo_encaixe';
+export type HumanAction =
+  | 'retomar'
+  | 'autorizar_verba'
+  | 'retentar_etapa'
+  | 'ajustar_spec'
+  | 'reaprovar_trava_t1'
+  | 'autorizar_rodada'
+  | 'reparo_encaixe';
 
 export interface PhaseContext {
   phase: Phase;
@@ -198,7 +207,14 @@ function blockRejectedPlan(ctx: PhaseContext): TransitionResult {
   return {
     ok: true,
     ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
-    effects: [{ type: 'AVISAR_HUMANO', motivo: 'plano de execução reprovado na conferência (T8b)', acao: 'ajustar_spec' }],
+    effects: [
+      {
+        type: 'AVISAR_HUMANO',
+        motivo:
+          'plano de execução reprovado na validação T8b do analista (não é conferência Spec×Macrobrief)',
+        acao: 'reaprovar_trava_t1',
+      },
+    ],
   };
 }
 
@@ -523,7 +539,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
       if (event.type === 'SILENCIO_DETECTADO') {
         return {
           ok: true,
-          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: ctx.phase },
           effects: [{ type: 'AVISAR_HUMANO', motivo: 'parada sem atividade há mais de 5 minutos', acao: 'retomar' }],
         };
       }
@@ -543,7 +559,7 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
   },
 
   EXECUCAO: {
-    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'AVALIADOR_FORA', 'EXECUTOR_BLOQUEADO', 'TETO_CUSTO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA'],
+    allowedEvents: ['SEM_PENDENCIAS', 'SEM_LLM', 'AVALIADOR_FORA', 'EXECUTOR_BLOQUEADO', 'CONTRATO_PLANO_INVALIDO', 'TETO_CUSTO', 'FALHA_REPETIDA', 'SILENCIO_DETECTADO', 'MENSAGEM_CLASSIFICADA'],
     allowedIntents: ['mudanca_durante_execucao', 'duvida_avulsa', 'status'],
     handler: (ctx, event) => {
       if (event.type === 'SEM_PENDENCIAS') {
@@ -563,7 +579,19 @@ const PHASE_DECLARATIVE_TABLE: Record<Phase, PhaseConfig> = {
         return {
           ok: true,
           ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'EXECUCAO' },
-          effects: [{ type: 'AVISAR_HUMANO', motivo: 'executor esgotou 3 tentativas', acao: 'retentar_etapa' }],
+          effects: [{ type: 'AVISAR_HUMANO', motivo: event.motivo ?? 'executor esgotou 3 tentativas', acao: 'retentar_etapa' }],
+        };
+      }
+      // O contrato não fecha com as etapas do plano. Não é código desta etapa e não gasta tentativa.
+      if (event.type === 'CONTRATO_PLANO_INVALIDO') {
+        return {
+          ok: true,
+          ctx: { ...ctx, phase: 'BLOQUEADA', faseAntesDoBloqueio: 'SPEC_REVISAO' },
+          effects: [{
+            type: 'AVISAR_HUMANO',
+            motivo: 'contrato do plano incompatível com as etapas (executor não chamado)',
+            acao: 'reaprovar_trava_t1',
+          }],
         };
       }
       // Teto de custo: só sai com autorização humana (DESBLOQUEIO_HUMANO), nunca sozinho.

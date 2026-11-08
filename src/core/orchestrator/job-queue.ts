@@ -29,6 +29,7 @@ import {
 import { diagnoseUiCheckAmbiente } from "@/core/execution/project-verification-env";
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
+import { escopoMicrobriefAindaImpede } from "@/core/governance/microbrief-escopo";
 import { tryStartDeliveryRepair } from "@/core/orchestrator/delivery-repair";
 import {
   buildDeliveryDiagnosis,
@@ -344,7 +345,13 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
       data: {
         status: "done",
         activeKey: null,
-        result: JSON.stringify(queueResult),
+        // Sem os TaskNode: cada conclusão copiava payload e result de novo e o SQLite chegou a dezenas de GB.
+        result: JSON.stringify({
+          processedCount: queueResult.processedCount,
+          allCompleted: queueResult.allCompleted,
+          taskCount: queueResult.tasks.length,
+          specCompleteness: queueResult.specCompleteness,
+        }),
         finishedAt: new Date(),
       },
     });
@@ -369,7 +376,20 @@ export async function executeClaimedJob(jobId: string, workerId: string): Promis
         return false;
       });
       if (hasBlockedNode && !hasRunnableTask && !queueResult.allCompleted) {
-        await applyPhaseEvent(job.sessionId, { type: "EXECUTOR_BLOQUEADO" }, { avisoJaPostado: true });
+        const bloqueadas = tasks.filter((t) => t.status === "blocked");
+        const soMicrobrief =
+          bloqueadas.length > 0 &&
+          bloqueadas.every((t) => (t.attempts ?? 0) === 0 && escopoMicrobriefAindaImpede(t));
+        await applyPhaseEvent(
+          job.sessionId,
+          {
+            type: "EXECUTOR_BLOQUEADO",
+            ...(soMicrobrief
+              ? { motivo: "o microbrief não lista arquivo ou símbolo que o critério nomeia" }
+              : {}),
+          },
+          { avisoJaPostado: true }
+        );
       }
     }
     // T10: fila vazia com DAG completa — inclusive retomada em VERIFICACAO (ambiente corrigido, ui-check não rodou).

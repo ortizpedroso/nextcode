@@ -1,6 +1,13 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
-import { loadGatewayConfigs, isGatewayAnswering, type GatewayConfig } from "@/core/llm/gateways";
+import {
+  classifyProviderOutage,
+  isUpstreamTransportOrServerOutage,
+  loadGatewayConfigs,
+  isGatewayAnswering,
+  providerResetWaitMs,
+  type GatewayConfig,
+} from "@/core/llm/gateways";
 import { applyPhaseEvent } from "@/core/orchestrator/session-phase";
 import {
   enqueueSessionQueueJob,
@@ -150,6 +157,10 @@ export async function superviseEvaluatorPauses(
 
 export const PAUSE_FLAP_WINDOW_MS = 10 * 60_000;
 export const PAUSE_FLAP_LIMIT = 3;
+/** Cooldown sem prazo no texto: espera curta e retoma. Não vira bloqueio de chave. */
+export const ESPERA_HOLD_MS = 6 * 60_000;
+/** Acima disso o aviso diz o prazo e a sessão espera, sem pedir troca de chave. */
+export const ESPERA_LONG_MS = 15 * 60_000;
 
 /** Quantas vezes a sessão foi para PAUSADA por `SEM_LLM` na janela. */
 export async function countRecentNoLlmPauses(sessionId: string, now: Date = new Date()): Promise<number> {
@@ -251,21 +262,88 @@ export async function supervisePausedSessions(
   for (const session of pausedSessions) {
     // Mudança 42: pausou por falta de LLM 3× em 10 min com o gateway "de pé" → o provedor não atende
     // (Gateway 22/10: DeepSeek out_of_credits; a sessão piscava a cada 25 s). Bloqueia em vez de retomar.
+    // Cooldown/limite não é chave ruim: a sonda passa e a rota volta sozinha. Segurar evita o pisca.
+    const since = new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS);
+    const lastFailure =
+      (await prisma.telemetryLog.findFirst({
+        where: { action: "llm.gateway_failure", sessionId: session.id, createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
+        select: { details: true, createdAt: true },
+      })) ??
+      (await prisma.telemetryLog.findFirst({
+        where: { action: "llm.gateway_failure", sessionId: null, createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
+        select: { details: true, createdAt: true },
+      }));
+    let failureDetail = "";
+    let failureStatus: number | undefined;
+    try {
+      const d = lastFailure?.details ? JSON.parse(lastFailure.details) : null;
+      if (d) {
+        failureDetail = String(d.detail ?? "");
+        if (typeof d.status === "number") failureStatus = d.status;
+      }
+    } catch {
+      failureDetail = "";
+    }
+    const outage = classifyProviderOutage(failureDetail, failureStatus);
+    if (outage === "espera" && lastFailure) {
+      const resetMs = providerResetWaitMs(failureDetail);
+      const holdMs = resetMs == null ? ESPERA_HOLD_MS : resetMs + 2_000;
+      const ageMs = now.getTime() - lastFailure.createdAt.getTime();
+      if (ageMs < holdMs) {
+        const existing = await prisma.message.findFirst({
+          where: {
+            sessionId: session.id,
+            role: "assistant",
+            createdAt: { gte: lastFailure.createdAt },
+            content: { contains: "rota do executor está em espera" },
+          },
+        });
+        if (!existing) {
+          const causaEspera = isUpstreamTransportOrServerOutage(failureDetail, failureStatus)
+            ? "instabilidade ou falha transitória de rede no provedor upstream"
+            : "limite ou cooldown do gateway";
+          const prazo =
+            resetMs == null
+              ? "A sessão continua pausada e segue sozinha quando a rota atender."
+              : holdMs > ESPERA_LONG_MS
+                ? `O gateway pediu espera de cerca de ${Math.round(resetMs / 60_000)} min. A sessão segue sozinha depois disso.`
+                : `O gateway pediu espera de cerca de ${Math.max(1, Math.round(resetMs / 1000))} s. A sessão segue sozinha depois disso.`;
+          await prisma.message.create({
+            data: {
+              sessionId: session.id,
+              role: "assistant",
+              content: `⏸️ **A rota do executor está em espera** (${causaEspera}). ${prazo}`,
+            },
+          });
+        }
+        continue;
+      }
+    }
     const flap = await countRecentNoLlmPauses(session.id, now);
+    if (outage === "credito" || outage === "chave") {
+      const acao =
+        outage === "credito"
+          ? "Confira o crédito do provedor do executor."
+          : "A chave do provedor foi recusada. Confira a chave no painel do gateway.";
+      await applyPhaseEvent(session.id, { type: "SEM_LLM_PERSISTENTE" }, {
+        detalheAviso:
+          `A sonda do gateway responde, mas a última falha foi ${outage === "credito" ? "falta de crédito/cota" : "chave recusada"}.` +
+          (failureDetail ? `\n\n**Detalhe:** \`${failureDetail.slice(0, 400)}\`` : "") +
+          `\n\n${acao}`,
+      });
+      continue;
+    }
+    if (outage === "espera") {
+      const res = await applyPhaseEvent(session.id, { type: "LLM_VOLTOU" });
+      if (res.ok && res.ctx.phase === "EXECUCAO") {
+        await enqueueSessionQueueJob(session.id);
+        resumedCount++;
+      }
+      continue;
+    }
     if (flap >= PAUSE_FLAP_LIMIT) {
-      // F10: o erro da própria sessão; o global (sem sessão, registros antigos) só na falta dele.
-      const since = new Date(now.getTime() - PAUSE_FLAP_WINDOW_MS);
-      const lastFailure =
-        (await prisma.telemetryLog.findFirst({
-          where: { action: "llm.gateway_failure", sessionId: session.id, createdAt: { gte: since } },
-          orderBy: { createdAt: "desc" },
-          select: { details: true },
-        })) ??
-        (await prisma.telemetryLog.findFirst({
-          where: { action: "llm.gateway_failure", sessionId: null, createdAt: { gte: since } },
-          orderBy: { createdAt: "desc" },
-          select: { details: true },
-        }));
       let detalhe = "";
       try {
         const d = lastFailure?.details ? JSON.parse(lastFailure.details) : null;
@@ -273,11 +351,12 @@ export async function supervisePausedSessions(
       } catch {
         detalhe = "";
       }
+      const acao = "Confira crédito, cota e chaves do provedor do executor (ex.: DeepSeek no FreeLLMAPI).";
       await applyPhaseEvent(session.id, { type: "SEM_LLM_PERSISTENTE" }, {
         detalheAviso:
           `A sessão pausou ${flap} vezes em ${PAUSE_FLAP_WINDOW_MS / 60_000} minutos: o gateway responde à sonda, mas nenhum modelo do executor atendeu.` +
           (detalhe ? `\n\n**Último erro do gateway:** \`${detalhe}\`` : "") +
-          "\n\nConfira crédito, cota e chaves do provedor do executor (ex.: DeepSeek no FreeLLMAPI).",
+          `\n\n${acao}`,
       });
       continue;
     }
@@ -327,7 +406,7 @@ let lastSuperviseExecutionAt = 0;
 /**
  * Supervisor Periódico da Fila (Item 1 do PLANO-DE-ACAO / Supervisor M5):
  * 1. Resgata sessões em EXECUCAO sem job ativo (queued/running);
- * 2. Destrava nós presos em 'running' com timeout excedido (zumbis);
+ * 2. Nó running preso: recoverZombieRunningNodes na fila da sessão (não aqui).
  * 3. Registra QUEUE_STALLED na trilha para cada intervenção do supervisor.
  */
 export async function superviseExecutionQueue(options?: {
@@ -342,9 +421,6 @@ export async function superviseExecutionQueue(options?: {
     return { orphanSessionsResumed: 0, stuckNodesReset: 0 };
   }
   lastSuperviseExecutionAt = nowMs;
-
-  const stuckTimeoutMs = options?.stuckTimeoutMs ?? DEFAULT_STUCK_NODE_TIMEOUT_MS;
-  const stuckThreshold = new Date(nowMs - stuckTimeoutMs);
 
   let orphanSessionsResumed = 0;
   let stuckNodesReset = 0;
@@ -381,43 +457,7 @@ export async function superviseExecutionQueue(options?: {
     });
   }
 
-  // 2. Nós presos em 'running' além do teto
-  const stuckNodes = await prisma.taskNode.findMany({
-    where: {
-      status: "running",
-      updatedAt: { lt: stuckThreshold },
-    },
-    select: { id: true, sessionId: true, title: true },
-  });
-
-  for (const node of stuckNodes) {
-    const activeJob = await prisma.job.findFirst({
-      where: {
-        sessionId: node.sessionId,
-        status: "running",
-        lockedUntil: { gt: now },
-      },
-    });
-
-    if (!activeJob) {
-      await prisma.taskNode.update({
-        where: { id: node.id },
-        data: { status: "pending" },
-      });
-      stuckNodesReset++;
-      TelemetryLogger.log({
-        sessionId: node.sessionId,
-        action: "QUEUE_STALLED",
-        details: {
-          reason: "stuck_running_node",
-          nodeId: node.id,
-          title: node.title,
-          intervention: "reset_to_pending",
-        },
-      });
-      await enqueueSessionQueueJob(node.sessionId).catch(() => null);
-    }
-  }
+  // Nó preso em running: só recoverZombieRunningNodes (timeout da etapa + margem) gasta tentativa.
 
   return { orphanSessionsResumed, stuckNodesReset };
 }
@@ -555,6 +595,7 @@ export async function runOnce(
       ...(only ? { sessionId: { in: only } } : {}),
     },
     orderBy: { createdAt: "asc" },
+    select: { id: true },
   });
 
   const claimedJobIds: string[] = [];
