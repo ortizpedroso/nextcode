@@ -98,10 +98,10 @@ describe("safe-fetch.ts — política anti-SSRF", () => {
     it("allowlist padrão cobre o caso de uso legítimo do gateway local", async () => {
       const m = await loadSafeFetch();
       for (const host of [
-        "http://localhost:20128/v1",
-        "http://host.docker.internal:20128/v1",
-        "http://omniroute:20128/v1",
-        "http://nextcode-omniroute:20128/v1",
+        "http://localhost:3100/v1",
+        "http://host.docker.internal:3100/v1",
+        "http://freellmapi:3100/v1",
+        "http://nextcode-freellmapi:3100/v1",
       ]) {
         expect(() => m.assertSafeUrl(host)).not.toThrow();
       }
@@ -128,7 +128,7 @@ describe("safe-fetch.ts — política anti-SSRF", () => {
       const spy = vi.fn(async () => fakeResponse);
       vi.stubGlobal("fetch", spy);
 
-      const res = await m.safeFetch("http://localhost:20128/v1/models", { timeoutMs: 1234 });
+      const res = await m.safeFetch("http://localhost:3100/v1/models", { timeoutMs: 1234 });
       expect(res).toBe(fakeResponse);
       expect(spy).toHaveBeenCalledTimes(1);
       const [, init] = spy.mock.calls[0];

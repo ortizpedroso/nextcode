@@ -164,4 +164,13 @@ describe("local-auth.ts — token, rate-limit e guard", () => {
       expect(m.maskKey("")).toBe("");
     });
   });
+
+  describe("maskKeyPresence", () => {
+    it("diz que a chave existe e não mostra trecho", async () => {
+      const m = await loadAuth({});
+      expect(m.maskKeyPresence("sk-supersecreta-XYZW")).toBe("••••");
+      expect(m.maskKeyPresence("")).toBe("");
+      expect(m.maskKeyPresence(null)).toBe("");
+    });
+  });
 });

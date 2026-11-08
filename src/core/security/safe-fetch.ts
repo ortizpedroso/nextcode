@@ -1,15 +1,15 @@
 /**
  * Fase 3 — Anti-SSRF.
  *
- * Endpoints que aceitam URLs configuráveis pelo usuário (setup/health/audit do
- * OmniRoute) NÃO podem fazer fetch cego: um atacante poderia apontar para
+ * Endpoints que aceitam URLs configuráveis pelo usuário (health de gateway BYOK)
+ * NÃO podem fazer fetch cego: um atacante poderia apontar para
  * 169.254.169.254 (metadados de nuvem), redes internas, file:// etc.
  *
  * Estratégia:
  *  - exige http/https e hostname explícito;
  *  - bloqueia IPs privados/link-local/multicast/loopback por padrão, COM
  *    allowlist local deliberada (localhost / host.docker.internal / rede do
- *    compose) porque o OmniRoute é, por design, um gateway LOCAL;
+ *    compose) porque gateways locais (FreeLLMAPI etc.) rodam em loopback;
  *  - resolve DNS antes de conectar e revalida o IP resolvido (mitiga DNS
  *    rebinding de domínios que apontam para 127.0.0.1);
  *  - redirect: "error" + timeout obrigatório.
@@ -23,8 +23,6 @@ const lookup = promisify(dns.lookup);
 const DEFAULT_ALLOWED_HOSTS = new Set([
   "localhost",
   "host.docker.internal",
-  "omniroute", // serviço da rede do docker-compose
-  "nextcode-omniroute",
   "freellmapi", // serviço da rede do docker-compose (gateway LLM primário)
   "nextcode-freellmapi",
 ]);

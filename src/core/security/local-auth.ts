@@ -52,6 +52,9 @@ export function getRuntimeToken(): string {
  */
 export function canIssueBootstrapToken(): boolean {
   if ((process.env.NEXTCODE_AUTH_TOKEN || "").trim()) return false; // token fixo: bootstrap desativado
+  // Dev escuta só em loopback. localhost e 127.0.0.1 são origens diferentes: a segunda
+  // aba não tem o token do localStorage da primeira. Entregar de novo o mesmo token.
+  if (process.env.NODE_ENV === "development") return true;
   return !authState.bootstrapTokenIssued;
 }
 
@@ -163,7 +166,7 @@ function checkToken(req: Request): AuthGuardResult {
  * Protege uma rota de LEITURA (GET) que expõe dados de sessões, projetos, DAG ou
  * configurações: exige o mesmo X-Nextcode-Token das rotas mutativas, mas sem o rate
  * limit — a UI faz polling desses GETs e estouraria o limite de 30 req/min.
- * Ficam abertos só GETs de status operacional sem dado de usuário (ex.: /api/metrics).
+ * GETs de status operacional exigem o mesmo token (ex.: /api/metrics).
  */
 export function requireReadAuth(req: Request): AuthGuardResult {
   return checkToken(req);
@@ -174,4 +177,9 @@ export function maskKey(value?: string | null): string {
   if (!value) return "";
   const tail = value.length >= 4 ? value.slice(-4) : "";
   return `••••${tail}`;
+}
+
+/** A tela de gateways mostra que a chave existe. Não devolve trecho dela. */
+export function maskKeyPresence(value?: string | null): string {
+  return value ? "••••" : "";
 }

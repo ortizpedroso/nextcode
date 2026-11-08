@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/core/security/local-auth";
 import { spawn } from "child_process";
-import { SandboxedTerminalSkill } from "@/core/skills/sandboxed-terminal";
+import { SandboxedTerminalSkill, TERMINAL_STREAM_TIMEOUT_MS, hostSubprocessEnv } from "@/core/skills/sandboxed-terminal";
 import prisma from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
@@ -34,8 +34,6 @@ export async function GET(req: NextRequest) {
       const shell = isWin ? "cmd.exe" : "/bin/sh";
       const args = isWin ? ["/c", command] : ["-c", command];
 
-      const child = spawn(shell, args, { cwd });
-
       const sendEvent = (event: string, data: any) => {
         const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
         try {
@@ -44,6 +42,15 @@ export async function GET(req: NextRequest) {
           // Controller might be closed
         }
       };
+
+      const child = spawn(shell, args, { cwd, env: hostSubprocessEnv() });
+      const timeout = setTimeout(() => {
+        child.kill();
+        sendEvent("error", { message: `Comando excedeu ${TERMINAL_STREAM_TIMEOUT_MS / 1000}s.` });
+        try {
+          controller.close();
+        } catch {}
+      }, TERMINAL_STREAM_TIMEOUT_MS);
 
       child.stdout.on("data", (chunk: Buffer) => {
         sendEvent("log", { type: "stdout", text: chunk.toString("utf-8") });
@@ -61,6 +68,7 @@ export async function GET(req: NextRequest) {
       });
 
       child.on("close", (code: number | null) => {
+        clearTimeout(timeout);
         sendEvent("done", { exitCode: code ?? 0 });
         try {
           controller.close();
