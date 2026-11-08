@@ -1,5 +1,7 @@
 # Prompt (copiar e colar): fechar gaps restantes do levantador-repositorio
 
+> **STATUS: CONCLUÍDO** (commits `3095854` … `cb8158c`). Use `scratch/PROMPT-integracao-levantador-harness.md` para o próximo pacote.
+
 Repositório: `c:\projetos\nextcode` apenas. Não pedir confirmação. Um commit por melhoria. Rode os testes no fim.
 
 ## Contexto
