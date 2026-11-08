@@ -28,11 +28,18 @@ import { readSecret } from "@/core/security/crypto";
 import { detectClusterGaps, type ClusterException } from "@/core/intake/cluster-gaps";
 import { callElicitadorClaude } from "@/core/llm/elicitador-claude";
 import { recordLlmCost } from "@/core/llm/cost";
+import { extractAssistantTextFromCompletion } from "@/core/llm/chat-completion-text";
+import type { ConferenteLaudo } from "@/core/intake/conferente-laudo";
+import { invokeConferenteMacrobrief } from "@/core/intake/conferente-gateway";
+import {
+  ConferentePausaMsg,
+  type IntakePausaCodigo,
+  intakePausaCodigoFromConferenteMsg,
+} from "@/core/intake/intake-pause";
 import {
   classificarTextoDeMacrobrief,
   documentoDeMacrobrief,
   macrobriefFixoDaSpec,
-  textoParaOConferente,
   type ElicitadorMacrobrief,
 } from "@/core/intake/macrobrief-elicitador";
 
@@ -82,6 +89,8 @@ export interface ElicitadorAnalistaCycleResult {
   problems: string[];
   /** Jev não respondeu o incerto: pergunta ao humano, sem gastar volta. */
   pausaSemTentativa?: boolean;
+  /** Tipo da pausa (obrigatório quando pausaSemTentativa). */
+  pausaCodigo?: IntakePausaCodigo;
   /** A mesma lacuna de cluster voltou: o humano precisa nomear o cluster. */
   perguntaHumana?: boolean;
   clusterGaps?: string[];
@@ -119,13 +128,11 @@ async function escreverMacrobriefDoElicitador(spec: string, sessionId?: string):
       messages,
       tier: "heavy",
       geminiKey: readSecret(setting?.geminiKey),
-      omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-      omniRouteKey: readSecret(setting?.omniRouteKey),
       stream: false,
     });
     if (!dispatchRes) return null;
     const resJson = await dispatchRes.response.json().catch(() => ({}));
-    const content = String(resJson.choices?.[0]?.message?.content || "");
+    const content = extractAssistantTextFromCompletion(resJson);
     await recordLlmCost({
       sessionId,
       papel: "elicitador",
@@ -137,16 +144,6 @@ async function escreverMacrobriefDoElicitador(spec: string, sessionId?: string):
   } catch {
     return null;
   }
-}
-
-function extractJsonObject(content: string): unknown {
-  const trimmed = content.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const raw = (fenced ? fenced[1] : trimmed).trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("sem objeto JSON");
-  return JSON.parse(raw.slice(start, end + 1));
 }
 
 export class IntakeEngine {
@@ -404,6 +401,7 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
             finalPhaseContext: ctx,
             finalSpec: currentSpec,
             pausaSemTentativa: true,
+            pausaCodigo: "MACROBRIEF_ILLEGIVEL",
             problems: [classificado.motivo],
           };
         }
@@ -445,25 +443,14 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
             };
           }
 
-          // Gap 2: Chamada real à Skill Conferente via modelo
-          const conferenteSkill = loadRoleSkill("conferente-macrobrief");
-          const conferenteSystemPrompt = buildSkillSystemPrompt(conferenteSkill, { includeLocalReferences: true });
-
-          interface ConferenteLaudo {
-            aprovado: boolean;
-            falhas: Array<{ req: string; tipo: string; descricao: string; correcao: string }>;
-            incertos: Array<{ req: string; pergunta: string }>;
-          }
-
           let laudoConferente: ConferenteLaudo = {
             aprovado: true,
             falhas: [],
             incertos: [],
           };
           let pausaConferente: string | null = null;
+          let pausaCodigoConferente: IntakePausaCodigo | null = null;
 
-          // Em teste o laudo mecânico (lacunas + T8) vale, para a suíte não depender de chave.
-          // Produção chama o modelo. ENABLE_CONFERENTE_LLM=true força a chamada também em teste.
           const skipConferenteLlm =
             options.laudoInjetado != null ||
             (process.env.NODE_ENV === "test" && process.env.ENABLE_CONFERENTE_LLM !== "true");
@@ -471,58 +458,18 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
           if (options.laudoInjetado) {
             laudoConferente = options.laudoInjetado;
           } else if (!skipConferenteLlm) {
-          // Gap 1 e 2: Chamar o conferente com as chaves do banco (não env), no tier forte, e extrair choices[0].message.content
-          const setting = await prisma.setting.findUnique({ where: { id: "default" } });
-          const smartRouter = new SmartRouter();
-          const messages: DispatchMessage[] = [
-            { role: "system", content: conferenteSystemPrompt },
-            {
-              role: "user",
-              content: textoParaOConferente(currentSpec, macroTexto),
-            },
-          ];
-
-          try {
-            const dispatchRes = await smartRouter.dispatchWithFallback({
-              messages,
-              tier: "heavy", // Skill pede nivel_modelo: forte
-              geminiKey: readSecret(setting?.geminiKey),
-              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-              stream: false,
-            });
-
-            if (dispatchRes) {
-              const resJson = await dispatchRes.response.json().catch(() => ({}));
-              const content = resJson.choices?.[0]?.message?.content || "";
-
-              if (!content) {
-                pausaConferente = "O conferente não devolveu o laudo.";
-              } else {
-                try {
-                  const parsedLaudo = extractJsonObject(content) as {
-                    aprovado?: unknown;
-                    falhas?: unknown;
-                    incertos?: unknown;
-                  };
-                  laudoConferente = {
-                    aprovado: parsedLaudo.aprovado === true, // Ausente ≠ true
-                    falhas: Array.isArray(parsedLaudo.falhas) ? parsedLaudo.falhas : [],
-                    incertos: Array.isArray(parsedLaudo.incertos) ? parsedLaudo.incertos : [],
-                  };
-                } catch {
-                  pausaConferente = "O laudo do conferente não é um JSON válido.";
-                }
-              }
+            const conf = await invokeConferenteMacrobrief(options.sessionId ?? "", currentSpec, macroTexto);
+            if (!conf.ok) {
+              pausaConferente = conf.problem;
+              pausaCodigoConferente = conf.pausaCodigo;
             } else {
-              pausaConferente = "O modelo do conferente não respondeu.";
+              laudoConferente = conf.laudo;
             }
-          } catch (err) {
-            console.warn("[INTAKE] Exceção ao chamar conferente-macrobrief:", err);
-            pausaConferente = "O modelo do conferente não respondeu.";
-          }
           }
 
           if (pausaConferente) {
+            const pausaCodigo =
+              pausaCodigoConferente ?? intakePausaCodigoFromConferenteMsg(pausaConferente) ?? "CONFERENTE_MODELO_INDISPONIVEL";
             return {
               ok: false,
               cyclesUsed,
@@ -534,6 +481,7 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
               macrobriefTexto: macroTexto,
               macrobriefElicitador: macroDoc,
               pausaSemTentativa: true,
+              pausaCodigo,
               problems: [pausaConferente],
             };
           }
@@ -571,6 +519,7 @@ Trate o YAML acima como a única fonte de regras de governança desta sessão �
                 macrobriefTexto: macroTexto,
                 macrobriefElicitador: macroDoc,
                 pausaSemTentativa: true,
+                pausaCodigo: "JEV_INCERTO_NAO_RESOLVIDO",
                 problems: laudoConferente.incertos.map(
                   (i) => `[INCERTEZA] REQ ${i.req}: ${i.pergunta}`
                 ),
