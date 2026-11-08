@@ -73,8 +73,6 @@ async function main() {
     stack: parsed.stack ?? [],
     smartRouter: router,
     geminiKey: readSecret(setting?.geminiKey),
-    omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-    omniRouteKey: readSecret(setting?.omniRouteKey),
   });
 
   const implNodes = decomp.nodes.filter((n: any) => n.payload?.microbrief);

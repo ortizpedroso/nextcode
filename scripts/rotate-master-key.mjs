@@ -101,7 +101,7 @@ let rewrote = 0;
 let skipped = 0;
 
 // --- Tabela Setting (colunas de chave) ---
-const settingCols = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "omniRouteKey"];
+const settingCols = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "customGatewayKey"];
 for (const row of db.prepare(`SELECT id, ${settingCols.join(", ")} FROM Setting`).all()) {
   const sets = [];
   const params = [];

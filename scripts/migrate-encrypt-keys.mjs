@@ -32,7 +32,7 @@ function encrypt(p) {
 const dbFile = process.argv[2] || process.env.DATABASE_URL?.replace(/^file:/, "") || path.join("prisma", "dev.db");
 console.log(`Migrando banco: ${dbFile}`);
 const db = new DatabaseSync(dbFile);
-const cols = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "omniRouteKey"];
+const cols = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "customGatewayKey"];
 const rows = db.prepare("SELECT id, " + cols.join(", ") + " FROM Setting").all();
 let migrated = 0;
 for (const row of rows) {

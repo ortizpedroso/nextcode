@@ -7,7 +7,7 @@
 import prisma from "../src/lib/prisma";
 import { isEncryptedWithActiveKey, isSecretEncryptionEnabled, readSecret, writeSecret } from "../src/core/security/crypto";
 
-const SETTING_FIELDS = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "omniRouteKey", "typesafeKey"] as const;
+const SETTING_FIELDS = ["geminiKey", "claudeKey", "openaiKey", "deepseekKey", "groqKey", "nvidiaKey", "customGatewayKey", "typesafeKey"] as const;
 
 function convert(value: string | null | undefined, label: string): string | null | undefined {
   if (!value || isEncryptedWithActiveKey(value)) return undefined;
