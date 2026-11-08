@@ -1,5 +1,9 @@
 import { readCanonicalSpecFile } from "./spec-file";
-import { parseSpecDocument, renderCanonicalSpecDocument } from "./spec-format";
+import {
+  parseSpecDocument,
+  renderCanonicalSpecDocument,
+  canonicalizeSpecDocument,
+} from "./spec-format";
 import { checkSpecStructure } from "./spec-check";
 import {
   extractProjectTitle,
