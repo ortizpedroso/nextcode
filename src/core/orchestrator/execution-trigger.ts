@@ -18,14 +18,24 @@ import {
 import { loadOrchestrationPolicy } from "@/core/config/orchestration-policy";
 import { splitNodesByJev } from "@/core/orchestrator/node-split";
 import { validateFinalPlan, atribuirInfraAoDono } from "@/core/orchestrator/plan-scope-check";
+import { buildPlanoReprovadoDetalhe, buildPlanoReprovadoProblems } from "@/core/orchestrator/plano-reprovado-report";
+import { finalizePlanoReprovadoSession } from "@/core/orchestrator/plano-reprovado-finalize";
 import { TelemetryLogger } from "@/core/telemetry/telemetry-logger";
 import type { MicrobriefAndReportDocument } from "@/core/templates/artifact-templates";
 import { IntakeEngine } from "@/core/intake/intake-engine";
+import { approveReasonFromIntakePausa } from "@/core/intake/intake-pause";
 import { clusterNamedByHuman, type ClusterException } from "@/core/intake/cluster-gaps";
 import type { ElicitadorMacrobrief } from "@/core/intake/macrobrief-elicitador";
 import type { DAGNode } from "@/core/dag/dag-engine";
 import type { ContratoProjeto } from "@/core/orchestrator/project-contract";
 import { canonicalizeSpecDocument } from "@/core/intake/spec-format";
+import { writeCanonicalSpecFile } from "@/core/intake/spec-file";
+import {
+  approveSpecCallIsIdempotent,
+  commitSpecApprovalAfterPlanoT8bOk,
+  phaseInExecucaoFamilia,
+  phaseInPlanoEmCurso,
+} from "@/core/orchestrator/spec-trava-t1";
 
 /** Mesmo teto de arquivos por etapa do decompositor (`FILES_PER_NODE`, spec-decomposer.ts). */
 const PLAN_MAX_FILES_PER_STAGE = 4;
@@ -58,6 +68,7 @@ export type ApproveSpecResult =
       ok: false;
       reason: "SPEC_AUSENTE" | "INTERVENCAO_PENDENTE" | "SESSAO_NAO_ENCONTRADA" | string;
       problems?: string[];
+      pausaCodigo?: import("@/core/intake/intake-pause").IntakePausaCodigo;
     };
 
 const ALREADY_STARTED_PHASES: Phase[] = [
@@ -69,13 +80,33 @@ const ALREADY_STARTED_PHASES: Phase[] = [
   "ENTREGUE",
 ];
 
-const inFlightBySession = new Map<string, Promise<void>>();
+/** Um PATCH por sessão. O segundo clique espera o primeiro em vez de colidir em SPEC_APROVADA. */
+const inFlightApprove = new Map<string, Promise<ApproveSpecResult>>();
+
+export function approveSpecAndStart(sessionId: string, canonicalSpec?: string): Promise<ApproveSpecResult> {
+  const running = inFlightApprove.get(sessionId);
+  if (running) return running;
+  const work = runApproveSpecAndStart(sessionId, canonicalSpec).finally(() => {
+    if (inFlightApprove.get(sessionId) === work) inFlightApprove.delete(sessionId);
+  });
+  inFlightApprove.set(sessionId, work);
+  return work;
+}
+
+function problemsFromPlanoReprovadoDetalhe(detalhe: string): string[] {
+  return detalhe
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("- "))
+    .map((l) => l.slice(2))
+    .slice(0, 15);
+}
 
 /**
  * Gatilho único de execução a partir de uma Spec Canônica aprovada explicitamente pelo usuário.
- * É o ÚNICO lugar de src/ autorizado a gravar specApproved: true ou criar TaskNode para iniciar uma DAG.
+ * É o único chamador autorizado a gravar specApproved: true (via commitSpecApprovalAfterPlanoT8bOk) ou criar TaskNode para iniciar uma DAG.
  */
-export async function approveSpecAndStart(
+async function runApproveSpecAndStart(
   sessionId: string,
   canonicalSpec?: string
 ): Promise<ApproveSpecResult> {
@@ -101,16 +132,28 @@ export async function approveSpecAndStart(
     return { ok: false, reason: "SESSAO_NAO_ENCONTRADA" };
   }
 
-  const initialPhase = (session.phase as Phase) || "ENTRADA";
+  let initialPhase = (session.phase as Phase) || "ENTRADA";
 
-  // PLANEJAMENTO | EXECUCAO | PAUSADA | BLOQUEADA | VERIFICACAO | ENTREGUE:
-  // a execução já foi iniciada para a Spec atual — retorna idempotente sem chamar transition(),
-  // sem criar nós, sem enfileirar e sem gerar PHASE_TRANSITION_REFUSED.
-  if (ALREADY_STARTED_PHASES.includes(initialPhase)) {
-    const existingWait = inFlightBySession.get(sessionId);
-    if (existingWait) {
-      await existingWait.catch(() => {});
+  if (initialPhase === "BLOQUEADA") {
+    const blockCtx = parseSessionPhaseContext(session.phase, session.phaseContext);
+    if (blockCtx.faseAntesDoBloqueio === "SPEC_REVISAO") {
+      const unblock = await applyPhaseEvent(sessionId, { type: "DESBLOQUEIO_HUMANO" });
+      if (!unblock.ok) {
+        return { ok: false, reason: unblock.reason ?? "DESBLOQUEIO_RECUSADO" };
+      }
+      initialPhase = unblock.ctx.phase;
+    } else {
+      return {
+        ok: false,
+        reason: "SESSAO_BLOQUEADA",
+        problems: [
+          "A sessão está bloqueada (execução, custo ou etapa). Use **Retomar** ou **Re-tentar** no painel DAG — aprovar a Spec não se aplica a este bloqueio.",
+        ],
+      };
     }
+  }
+
+  if (approveSpecCallIsIdempotent(initialPhase)) {
     const latest = await prisma.session.findUnique({
       where: { id: sessionId },
       select: { phase: true },
@@ -133,11 +176,7 @@ export async function approveSpecAndStart(
   });
   let currentPhase = ((currentBeforeAdvance?.phase as Phase) || "ENTRADA");
 
-  if (ALREADY_STARTED_PHASES.includes(currentPhase)) {
-    const existingWait = inFlightBySession.get(sessionId);
-    if (existingWait) {
-      await existingWait.catch(() => {});
-    }
+  if (approveSpecCallIsIdempotent(currentPhase)) {
     const latest = await prisma.session.findUnique({
       where: { id: sessionId },
       select: { phase: true },
@@ -194,6 +233,17 @@ export async function approveSpecAndStart(
     });
   }
 
+  if (session.project?.path) {
+    const arquivo = writeCanonicalSpecFile(session.project.path, effectiveSpec);
+    if (arquivo.ok && arquivo.wrote) {
+      TelemetryLogger.log({
+        sessionId,
+        action: "SPEC_ARQUIVO",
+        details: { arquivo: arquivo.relativePath },
+      });
+    }
+  }
+
   if (currentPhase === "ENTRADA" || currentPhase === "CONVERSA") {
     const msgRes = await applyPhaseEvent(
       sessionId,
@@ -237,11 +287,7 @@ export async function approveSpecAndStart(
     }
   }
 
-  if (ALREADY_STARTED_PHASES.includes(currentPhase)) {
-    const existingWait = inFlightBySession.get(sessionId);
-    if (existingWait) {
-      await existingWait.catch(() => {});
-    }
+  if (approveSpecCallIsIdempotent(currentPhase)) {
     const latest = await prisma.session.findUnique({
       where: { id: sessionId },
       select: { phase: true },
@@ -299,6 +345,7 @@ export async function approveSpecAndStart(
           cyclesUsed: conf.cyclesUsed,
           problemas: conf.problems.length,
           pausaSemTentativa: conf.pausaSemTentativa === true,
+          pausaCodigo: conf.pausaCodigo ?? null,
           perguntaHumana: conf.perguntaHumana === true,
           clusterGaps: conf.clusterGaps ?? [],
         },
@@ -318,10 +365,15 @@ export async function approveSpecAndStart(
           });
         }
         if (conf.pausaSemTentativa) {
+          const problems = conf.problems.slice(0, 10);
+          const reason = conf.pausaCodigo
+            ? approveReasonFromIntakePausa(conf.pausaCodigo)
+            : "PERGUNTA_AO_HUMANO";
           return {
             ok: false,
-            reason: "PERGUNTA_AO_HUMANO",
-            problems: conf.problems.slice(0, 10),
+            reason,
+            problems,
+            pausaCodigo: conf.pausaCodigo,
           };
         }
         if (conf.perguntaHumana) {
@@ -357,46 +409,49 @@ export async function approveSpecAndStart(
     }
   }
 
-  // 3. Aplica SPEC_APROVADA (SPEC_REVISAO → PLANEJAMENTO).
-  // Apenas UMA chamada concorrente pode vencer o updateMany otimista de SPEC_REVISAO → PLANEJAMENTO.
-  let resolveInFlight: (() => void) | null = null;
-  const inFlightPromise = new Promise<void>((resolve) => {
-    resolveInFlight = resolve;
-  });
-  if (!inFlightBySession.has(sessionId)) {
-    inFlightBySession.set(sessionId, inFlightPromise);
-  }
-
+  // 3. SPEC_APROVADA (SPEC_REVISAO → MACROBRIEF com etapa 1).
+  // Clique duplicado já espera o mesmo promise em approveSpecAndStart.
+  // Se a fase já está no plano, segue o analista — não recusa com CONCURRENT_PHASE_CHANGED.
   try {
-    const specApprovedRes = await applyPhaseEvent(
-      sessionId,
-      { type: "SPEC_APROVADA" },
-      { stopRetryIfPhaseIn: ["MACROBRIEF", "CONFERENCIA", ...ALREADY_STARTED_PHASES] }
-    );
+    const phaseBeforePlan = await prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { phase: true, specApproved: true },
+    });
+    let seguePlano = phaseInPlanoEmCurso(phaseBeforePlan?.phase);
 
-    if (!specApprovedRes.ok) {
-      if (specApprovedRes.reason === "CONCURRENT_PHASE_CHANGED") {
-        const winnerPromise = inFlightBySession.get(sessionId);
-        if (winnerPromise && winnerPromise !== inFlightPromise) {
-          await winnerPromise.catch(() => {});
-        }
+    if (!seguePlano) {
+      const specApprovedRes = await applyPhaseEvent(
+        sessionId,
+        { type: "SPEC_APROVADA" },
+        { stopRetryIfPhaseIn: ["MACROBRIEF", "CONFERENCIA", ...ALREADY_STARTED_PHASES] }
+      );
+
+      if (!specApprovedRes.ok) {
         const latest = await prisma.session.findUnique({
           where: { id: sessionId },
           select: { phase: true },
         });
-        return {
-          ok: true,
-          alreadyStarted: true,
-          phase: ((latest?.phase as Phase) || "PLANEJAMENTO"),
-        };
+        const p = ((latest?.phase as Phase) || "PLANEJAMENTO");
+        if (approveSpecCallIsIdempotent(p)) {
+          return { ok: true, alreadyStarted: true, phase: p };
+        }
+        if (phaseInPlanoEmCurso(p)) {
+          seguePlano = true;
+        } else if (p === "BLOQUEADA") {
+          return {
+            ok: false,
+            reason: "SESSAO_BLOQUEADA",
+            problems: [
+              "A sessão foi bloqueada enquanto a aprovação corria. Use Retomar no painel DAG se o bloqueio não for da Spec, ou aprove de novo se o plano tiver sido reprovado.",
+            ],
+          };
+        } else {
+          return { ok: false, reason: specApprovedRes.reason };
+        }
       }
-      return { ok: false, reason: specApprovedRes.reason };
     }
 
-    // Esta chamada venceu a transição SPEC_REVISAO → PLANEJAMENTO
-    inFlightBySession.set(sessionId, inFlightPromise);
-
-    // 4. Incrementa specVersion e grava specApproved: true (Passo 4b.4 / 4b.5)
+    // Trava T1: specApproved só após T8b OK (commitSpecApprovalAfterPlanoT8bOk). Versão alvo calculada agora.
     const sessionBeforeIncrement = await prisma.session.findUnique({
       where: { id: sessionId },
       select: { specVersion: true },
@@ -412,29 +467,10 @@ export async function approveSpecAndStart(
 
     await prisma.session.update({
       where: { id: sessionId },
-      data: {
-        specApproved: true,
-        specVersion: currentSpecVersion,
-      },
+      data: { specApproved: false },
     });
 
-    // 4b.3b: memória do projeto (.nextcode/MEMORY.md) DESLIGADA — mudança 20 (fundador 17/10). Não grava
-    // mais a cópia da Spec a cada aprovação; `consolidateMemoryFromSpec` fica para o conserto após o Gate 1.
-
-    // 4b.4: Nós pendentes da versão anterior viram status "superseded" e nunca mais executam.
-    // Os completed ficam intocados como histórico.
-    await prisma.taskNode.updateMany({
-      where: {
-        sessionId,
-        specVersion: { lt: currentSpecVersion },
-        status: { in: ["pending", "standby"] },
-      },
-      data: {
-        status: "superseded",
-      },
-    });
-
-    // 5. Idempotência por versão: se ainda não existirem TaskNodes para a specVersion atual,
+    // 5. Idempotência por versão: se ainda não existirem TaskNodes para a specVersion alvo,
     // decompõe a canonicalSpec gravada e cria os nós da nova versão
     const existingTasks = await prisma.taskNode.findMany({
       where: { sessionId, specVersion: currentSpecVersion },
@@ -448,7 +484,6 @@ export async function approveSpecAndStart(
         hasGeminiKey: Boolean(setting?.geminiKey),
         hasClaudeKey: Boolean(setting?.claudeKey),
         hasOpenaiKey: Boolean(setting?.openaiKey),
-        hasOmniRouteKey: Boolean(setting?.omniRouteKey),
         customEndpoint: setting?.customEndpoint,
       };
 
@@ -470,8 +505,6 @@ export async function approveSpecAndStart(
               sessionId,
               smartRouter,
               geminiKey: readSecret(setting?.geminiKey),
-              omniRouteUrl: setting?.omniRouteUrl || setting?.customEndpoint,
-              omniRouteKey: readSecret(setting?.omniRouteKey),
               skipModel: process.env.NODE_ENV === "test" && process.env.ENABLE_ANALISTA_LLM !== "true",
               notasExcecaoCluster: await notasDeExcecaoCluster(sessionId),
               macrobriefAprovado,
@@ -479,16 +512,13 @@ export async function approveSpecAndStart(
             })
           : SpecDecomposerSkill.decompose(effectiveSpec, undefined, specFilesScope);
       if (decompResult.planoReprovado) {
-        const motivo = decompResult.planoReprovado.motivo;
-        const detalhe =
-          "**Dono:** analista (plano não aprovado).\n\n" +
-          `Motivo: \`${motivo}\`. Nenhuma etapa foi criada e nada foi gasto em execução.`;
-        const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+        const plano = decompResult.planoReprovado;
+        const detalhe = buildPlanoReprovadoDetalhe(plano);
+        await finalizePlanoReprovadoSession(sessionId, detalhe);
         return {
-          ok: true,
-          alreadyStarted: false,
-          phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
-          tasks: [],
+          ok: false,
+          reason: "PLANO_REPROVADO",
+          problems: buildPlanoReprovadoProblems(plano),
         };
       }
 
@@ -524,12 +554,14 @@ export async function approveSpecAndStart(
             `O plano tem ${infraRes.errors.length} problema(s); nenhuma etapa foi criada e nada foi gasto em execução:\n` +
             infraRes.errors.slice(0, 15).map((e) => "- " + e).join("\n") +
             (infraRes.errors.length > 15 ? `\n- … e mais ${infraRes.errors.length - 15}` : "");
-          const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+          await finalizePlanoReprovadoSession(sessionId, detalhe);
           return {
-            ok: true,
-            alreadyStarted: false,
-            phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
-            tasks: [],
+            ok: false,
+            reason: "PLANO_REPROVADO",
+            problems: [
+              "O plano não passou na atribuição de infra (T8b). Nenhuma etapa foi criada.",
+              ...problemsFromPlanoReprovadoDetalhe(detalhe),
+            ],
           };
         }
 
@@ -552,12 +584,14 @@ export async function approveSpecAndStart(
             `O plano tem ${planCheck.errors.length} problema(s); nenhuma etapa foi criada e nada foi gasto em execução:\n` +
             planCheck.errors.slice(0, 15).map((e) => "- " + e).join("\n") +
             (planCheck.errors.length > 15 ? `\n- … e mais ${planCheck.errors.length - 15}` : "");
-          const blockRes = await applyPhaseEvent(sessionId, { type: "PLANO_REPROVADO" }, { detalheAviso: detalhe });
+          await finalizePlanoReprovadoSession(sessionId, detalhe);
           return {
-            ok: true,
-            alreadyStarted: false,
-            phase: blockRes.ok ? blockRes.ctx.phase : "PLANEJAMENTO",
-            tasks: [],
+            ok: false,
+            reason: "PLANO_REPROVADO",
+            problems: [
+              `O plano tem ${planCheck.errors.length} problema(s) na T8b. Nenhuma etapa foi criada.`,
+              ...planCheck.errors.slice(0, 15),
+            ],
           };
         }
       }
@@ -682,6 +716,18 @@ export async function approveSpecAndStart(
       };
     }
 
+    // Flag só depois da fase EXECUCAO. Antes disso (MACROBRIEF / CONFERENCIA /
+    // PLANEJAMENTO) um GET não pode ver specApproved true — o selo ficaria verde
+    // e a fila da DAG aceitaria nó com o analista ainda em curso.
+    if (!phaseInExecucaoFamilia(planoRes.ctx.phase)) {
+      return {
+        ok: false,
+        reason: "FASE_INESPERADA",
+        problems: [`PLANO_PRONTO não levou a sessão à execução (fase ${planoRes.ctx.phase}).`],
+      };
+    }
+    await commitSpecApprovalAfterPlanoT8bOk(sessionId, currentSpecVersion);
+
     let jobId: string | undefined;
     if (planoRes.effects.some((effect) => effect.type === "INICIAR_EXECUCAO")) {
       jobId = await enqueueSessionQueueJob(sessionId);
@@ -695,12 +741,7 @@ export async function approveSpecAndStart(
       tasks,
     };
   } finally {
-    if (resolveInFlight) {
-      (resolveInFlight as () => void)();
-    }
-    if (inFlightBySession.get(sessionId) === inFlightPromise) {
-      inFlightBySession.delete(sessionId);
-    }
+    // O mapa inFlightApprove é limpo pelo wrapper approveSpecAndStart.
   }
 }
 

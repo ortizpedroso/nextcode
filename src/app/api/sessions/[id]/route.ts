@@ -5,6 +5,8 @@ import {
   approveSpecAndStart,
   type ApproveSpecResult,
 } from "@/core/orchestrator/execution-trigger";
+import { healStuckSpecApprovalFlag, specTravaT1Pendente } from "@/core/orchestrator/spec-trava-t1";
+import { reconcileProjectSpecDocument } from "@/core/intake/spec-sync";
 
 /** Conferência Macrobrief + elicitador na aprovação (Specs grandes) pode levar vários minutos. */
 export const maxDuration = 600;
@@ -39,7 +41,17 @@ export async function GET(
       return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     }
 
-    return NextResponse.json({ session });
+    await reconcileProjectSpecDocument(id, session.project?.path ?? null, session.canonicalSpec);
+    const sessionFresh = await prisma.session.findUnique({
+      where: { id },
+      include: {
+        project: { select: { id: true, name: true, path: true } },
+        tasks: { orderBy: { createdAt: "asc" } },
+        messages: { orderBy: { createdAt: "asc" } },
+      },
+    });
+
+    return NextResponse.json({ session: sessionFresh ?? session });
   } catch (error) {
     return NextResponse.json(
       { error: "Falha ao buscar sessão", details: String(error) },
@@ -70,9 +82,12 @@ export async function PATCH(
       "VERIFICACAO",
       "ENTREGUE",
     ]);
+    const phaseBefore = currentBeforePatch?.phase || "";
     const isSpecFrozen =
       Boolean(currentBeforePatch?.specApproved) &&
-      frozenPhases.has(currentBeforePatch?.phase || "");
+      frozenPhases.has(phaseBefore) &&
+      phaseBefore !== "BLOQUEADA" &&
+      phaseBefore !== "PLANEJAMENTO";
 
     const dataToUpdate: Record<string, unknown> = {};
     if (title !== undefined) dataToUpdate.title = String(title).trim();
@@ -133,6 +148,17 @@ export async function PATCH(
             },
           },
         });
+        const healed = currentSession
+          ? {
+              ...currentSession,
+              specApproved: await healStuckSpecApprovalFlag({
+                id: currentSession.id,
+                phase: currentSession.phase,
+                specApproved: currentSession.specApproved,
+                specVersion: currentSession.specVersion,
+              }),
+            }
+          : currentSession;
         return NextResponse.json(
           {
             ok: false,
@@ -140,7 +166,11 @@ export async function PATCH(
             reason: triggerResult.reason,
             error: triggerResult.reason,
             problems: triggerResult.problems,
-            session: currentSession,
+            pausaCodigo: triggerResult.pausaCodigo,
+            travaT1Pendente: healed
+              ? specTravaT1Pendente(healed.phase, healed.specApproved)
+              : true,
+            session: healed,
           },
           { status: 400 }
         );
@@ -160,9 +190,27 @@ export async function PATCH(
       return NextResponse.json({ error: "Sessão não encontrada" }, { status: 404 });
     }
 
+    const taskCount =
+      triggerResult && body.specApproved === true
+        ? await prisma.taskNode.count({
+            where: { sessionId: id, specVersion: updated.specVersion ?? 0 },
+          })
+        : 0;
+
+    updated.specApproved = await healStuckSpecApprovalFlag({
+      id: updated.id,
+      phase: updated.phase,
+      specApproved: updated.specApproved,
+      specVersion: updated.specVersion,
+      activeTasksForCurrentVersion: taskCount,
+    });
+
+    const travaPendente = specTravaT1Pendente(updated.phase, updated.specApproved);
+
     return NextResponse.json({
       ok: true,
       success: true,
+      travaT1Pendente: travaPendente,
       ...(triggerResult
         ? { alreadyStarted: triggerResult.alreadyStarted, phase: triggerResult.phase }
         : {}),

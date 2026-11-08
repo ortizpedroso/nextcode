@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAuth, requireReadAuth } from "@/core/security/local-auth";
+import { writeCanonicalSpecFile } from "@/core/intake/spec-file";
 
 export async function GET(req: NextRequest) {
   // requireReadAuth: GET expõe dados locais (sessões, DAG, projetos, configurações) — exige
@@ -100,6 +101,13 @@ export async function POST(req: NextRequest) {
         specApproved: false,
       },
     });
+    if (newSession.projectId && newSession.canonicalSpec) {
+      const project = await prisma.project.findUnique({
+        where: { id: newSession.projectId },
+        select: { path: true },
+      });
+      if (project?.path) writeCanonicalSpecFile(project.path, newSession.canonicalSpec);
+    }
 
     // Restaura tarefas da DAG
     if (backupData.tasks && backupData.tasks.length > 0) {
