@@ -26,6 +26,8 @@ export function findSkillContent(
   const homeDir = process.env.USERPROFILE || process.env.HOME || "";
 
   const candidateDirs = [
+    { dir: path.join(process.cwd(), "skills"), type: "nextcode" },
+    { dir: path.join(targetDir, "skills"), type: "nextcode" },
     { dir: path.join(targetDir, ".gemini", "skills"), type: "google" },
     { dir: path.join(targetDir, ".claude", "skills"), type: "claude" },
     { dir: path.join(targetDir, ".cursor", "rules"), type: "cursor" },

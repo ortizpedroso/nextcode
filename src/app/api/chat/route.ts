@@ -389,7 +389,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Levantamento / Auditoria determinística do repositório (§8.2)
-    if (isProjectSpecAuditRequest(targetPrompt)) {
+    const earlySkill = await resolveSkillOrCommand(
+      targetPrompt,
+      sessionBefore?.project?.path || ctxProjectEarly?.path || process.cwd()
+    ).catch(() => null);
+    const isLevantadorSkill =
+      earlySkill?.commandName === "levantador-repositorio" ||
+      earlySkill?.skillName === "levantador-repositorio";
+
+    if (isProjectSpecAuditRequest(targetPrompt) || isLevantadorSkill) {
       const projectPath = sessionBefore?.project?.path || ctxProjectEarly?.path;
       if (!projectPath) {
         return respondDeterministically(

@@ -21,6 +21,7 @@ import {
 import { parseSpecDocument } from "@/core/intake/spec-format";
 import { checkSpecStructure } from "@/core/intake/spec-check";
 import { loadRoleSkill } from "@/core/skills/skill-runtime";
+import { resolveSkillOrCommand } from "@/core/skills/skill-resolver";
 import { isProjectSpecAuditRequest } from "@/core/orchestrator/message-intent";
 
 const dirs: string[] = [];
@@ -389,5 +390,13 @@ clusters:
 
     expect(isProjectSpecAuditRequest("olá, como vai você?")).toBe(false);
     expect(isProjectSpecAuditRequest("status")).toBe(false);
+  });
+
+  it("resolveSkillOrCommand resolve levantador-repositorio mesmo sem frase de gatilho em pt-BR", async () => {
+    const res = await resolveSkillOrCommand("/levantador-repositorio --custom-flag extra");
+    expect(res.isSkillOrCommand).toBe(true);
+    expect(res.commandName).toBe("levantador-repositorio");
+    expect(res.skillBlock).toBeDefined();
+    expect(res.skillBlock).toContain("levantador-repositorio");
   });
 });
